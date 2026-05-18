@@ -1,0 +1,49 @@
+name: delivery
+version: 1
+constraints:
+  - no_artifact_approved_without_review
+  - tdd_required
+  - all_changes_via_pr
+  - worktree_required_for_implementation
+checkpoints:
+  - before: delivery_start
+    summary: "Discovery complete. Proceed to delivery?"
+  - on: review_rejection_count_exceeds
+    threshold: 3
+    summary: "Review cycle exceeded threshold. Manual intervention required."
+roles:
+  - role: SeniorBackendTestDeveloper
+    provider: copilot
+    provider_fallback: claude
+    temperature: 0.2
+    parallel: false
+    needs_worktree: false
+    artifacts_out: [backend-tests]
+  - role: SeniorBackendDeveloper
+    provider: cursor
+    provider_fallback: claude
+    temperature: 0.3
+    instances: { min: 1, max: 3 }
+    parallel: true
+    needs_worktree: true
+    depends_on: [SeniorBackendTestDeveloper]
+    artifacts_out: [implementation]
+  - role: TechLead
+    provider: claude
+    temperature: 0.2
+    needs_worktree: false
+    depends_on: [SeniorBackendDeveloper]
+    artifacts_out: [tech-review]
+  - role: PeerReviewer
+    provider: copilot
+    provider_fallback: claude
+    temperature: 0.2
+    needs_worktree: false
+    depends_on: [TechLead]
+    artifacts_out: [peer-review]
+  - role: SeniorQAEngineer
+    provider: claude
+    temperature: 0.2
+    needs_worktree: false
+    depends_on: [PeerReviewer]
+    artifacts_out: [qa-signoff]

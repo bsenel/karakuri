@@ -1,0 +1,10 @@
+DROP TABLE IF EXISTS worktrees;
+DROP TABLE IF EXISTS research_results;
+DROP TABLE IF EXISTS action_items;
+DROP TABLE IF EXISTS checkpoints;
+DROP TABLE IF EXISTS tool_events;
+DROP TABLE IF EXISTS reviews;
+DROP TABLE IF EXISTS artifacts;
+DROP TABLE IF EXISTS manifests;
+DROP TABLE IF EXISTS blobs;
+DROP TABLE IF EXISTS sessions;

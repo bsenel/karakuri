@@ -1,0 +1,25 @@
+name: strategy
+version: 1
+constraints:
+  - design_doc_before_code
+checkpoints:
+  - before: strategy_complete
+    summary: "Strategy artifacts ready. Proceed?"
+roles:
+  - role: ProductManager
+    provider: claude
+    temperature: 0.3
+    parallel: false
+    artifacts_out: [prd]
+  - role: Architect
+    provider: claude
+    temperature: 0.2
+    parallel: false
+    depends_on: [ProductManager]
+    artifacts_out: [design-doc, adr]
+  - role: EngineeringManager
+    provider: claude
+    temperature: 0.2
+    parallel: false
+    depends_on: [Architect]
+    artifacts_out: [roadmap]

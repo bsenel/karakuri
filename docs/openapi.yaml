@@ -1,0 +1,67 @@
+openapi: 3.0.3
+info:
+  title: Karakuri API
+  version: 1.0.0
+  description: Multi-role LLM agent orchestration API
+servers:
+  - url: http://localhost:8080/api/v1
+paths:
+  /health:
+    get:
+      summary: Health check
+      responses:
+        "200":
+          description: OK
+  /sessions:
+    post:
+      summary: Create session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                mode:
+                  type: string
+                input:
+                  type: string
+                parent_sha:
+                  type: string
+    get:
+      summary: List sessions
+  /sessions/{sha}:
+    get:
+      summary: Get session
+    delete:
+      summary: Delete session
+  /sessions/{sha}/run:
+    post:
+      summary: Run orchestrator
+  /sessions/{sha}/status:
+    get:
+      summary: Session status
+  /sessions/{sha}/events:
+    get:
+      summary: SSE event stream
+  /sessions/{sha}/artifacts:
+    get:
+      summary: List artifacts
+  /sessions/{sha}/worktrees:
+    get:
+      summary: List worktrees
+  /sessions/{sha}/promote:
+    post:
+      summary: Promote session
+  /artifacts/{sha}:
+    get:
+      summary: Get artifact content
+  /artifacts/{sha}/diff/{other-sha}:
+    get:
+      summary: Diff artifacts
+  /auto/run:
+    post:
+      summary: Run autonomous cycle
+  /research:
+    post:
+      summary: On-demand research
