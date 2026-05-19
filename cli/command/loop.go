@@ -17,6 +17,7 @@ func loopCmd() *cobra.Command {
 func loopStartCmd() *cobra.Command {
 	var twinID string
 	var maxIter int
+	var watchMode bool
 	cmd := &cobra.Command{
 		Use:   "start <objective-id>",
 		Short: "Start the reasoning loop for an objective",
@@ -26,6 +27,7 @@ func loopStartCmd() *cobra.Command {
 				"objective_id": args[0],
 				"twin_id":      twinID,
 				"max_iter":     maxIter,
+				"watch_mode":   watchMode,
 			})
 			if err != nil {
 				return err
@@ -36,6 +38,7 @@ func loopStartCmd() *cobra.Command {
 	}
 	cmd.Flags().StringVar(&twinID, "twin", "", "Twin ID")
 	cmd.Flags().IntVar(&maxIter, "max-iter", 50, "Maximum loop iterations")
+	cmd.Flags().BoolVar(&watchMode, "watch", false, "Enable watch mode (loop continues on environment events)")
 	return cmd
 }
 

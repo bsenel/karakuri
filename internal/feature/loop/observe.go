@@ -51,6 +51,7 @@ func stepObserve(ctx context.Context, sc *stepContext) loop.WorldState {
 	}
 
 	// 4. Recall memory
+	recallStart := time.Now()
 	memEntries, err := sc.svc.memSvc.Recall(ctx, memory.Query{
 		AgentID: sc.agentDef.ID,
 		TwinID:  sc.twinID,
@@ -60,6 +61,7 @@ func stepObserve(ctx context.Context, sc *stepContext) loop.WorldState {
 	})
 	if err == nil {
 		sc.memEntries = memEntries
+		sc.svc.otel.RecordMemoryRecall("episodic+semantic", len(memEntries), time.Since(recallStart).Milliseconds())
 	}
 
 	// 5. Emit step completed

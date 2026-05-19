@@ -64,4 +64,17 @@ func (o *OTel) RecordTokens(role string, n int) {
 	o.RecordMetric("tokens_used", float64(n), map[string]string{"role": role})
 }
 
+func (o *OTel) RecordMemoryRecall(tier string, count int, latencyMS int64) {
+	o.RecordMetric("memory_recall_count", float64(count), map[string]string{"tier": tier})
+	o.RecordMetric("memory_recall_latency_ms", float64(latencyMS), map[string]string{"tier": tier})
+}
+
+func (o *OTel) RecordMemoryConsolidation(promoted int) {
+	o.RecordMetric("memory_consolidation_promoted", float64(promoted), nil)
+}
+
+func (o *OTel) RecordLoopIteration(domain string, step string, durationMS int64) {
+	o.RecordMetric("loop_iteration_duration_ms", float64(durationMS), map[string]string{"domain": domain, "step": step})
+}
+
 func Attr(k, v string) attribute.KeyValue { return attribute.String(k, v) }

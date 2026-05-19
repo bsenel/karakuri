@@ -218,6 +218,11 @@ func (s *serviceImpl) runLoop(ctx context.Context, loopID string, req loop.Reque
 	}
 
 	s.finalizeLoop(ctx, state, obj, iterations, criteriaMet, nil)
+
+	// Watch mode: after completing, subscribe to environment events and wait
+	if req.WatchMode && len(envs) > 0 {
+		s.runWatchMode(ctx, state, obj, envs, sc)
+	}
 }
 
 func (s *serviceImpl) finalizeLoop(ctx context.Context, state *loopState, obj objective.Objective, iterations []loop.Iteration, criteriaMet bool, runErr error) {

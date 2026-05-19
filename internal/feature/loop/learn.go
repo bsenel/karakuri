@@ -94,7 +94,10 @@ func stepLearn(ctx context.Context, sc *stepContext, ws loop.WorldState, p plan,
 		memoriesWritten++
 	}
 
-	// 5. Emit step completed
+	// 5. Trigger memory consolidation (promotes high-confidence episodic entries to semantic)
+	_ = sc.svc.memSvc.Consolidate(ctx, sc.agentDef.ID, 20)
+
+	// 6. Emit step completed
 	sc.svc.hub.Publish(ctx, event.Event{
 		Type:        event.TypeLoopStepCompleted,
 		ObjectiveID: string(sc.obj.ID),
@@ -105,7 +108,7 @@ func stepLearn(ctx context.Context, sc *stepContext, ws loop.WorldState, p plan,
 		Timestamp: time.Now().UTC(),
 	})
 
-	// 6. Emit iteration done
+	// 7. Emit iteration done
 	sc.svc.hub.Publish(ctx, event.Event{
 		Type:        event.TypeLoopIterationDone,
 		ObjectiveID: string(sc.obj.ID),

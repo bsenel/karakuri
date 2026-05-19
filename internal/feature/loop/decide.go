@@ -10,6 +10,40 @@ import (
 	"github.com/bsenel/karakuri/internal/core/loop"
 )
 
+// biasConfidenceFromHistory adjusts plan confidence based on procedural memory success rates.
+// Returns the adjusted confidence and a map of capability IDs with historical data.
+func biasConfidenceFromHistory(ctx context.Context, sc *stepContext, p plan) (float64, map[string]float64) {
+	confidence := p.Confidence
+	capHistory := make(map[string]float64)
+
+	for _, action := range p.Actions {
+		rec, err := sc.svc.store.QueryProcedural(ctx, string(sc.agentDef.ID), action.CapabilityID)
+		if err != nil {
+			continue
+		}
+		total := rec.SuccessCount + rec.FailureCount
+		if total == 0 {
+			continue
+		}
+		successRate := float64(rec.SuccessCount) / float64(total)
+		capHistory[action.CapabilityID] = successRate
+
+		if successRate > 0.8 {
+			confidence += 0.05
+			if confidence > 1.0 {
+				confidence = 1.0
+			}
+		} else if successRate < 0.3 {
+			confidence -= 0.1
+			if confidence < 0.0 {
+				confidence = 0.0
+			}
+		}
+	}
+
+	return confidence, capHistory
+}
+
 func stepDecide(ctx context.Context, sc *stepContext, p plan) (plan, bool) {
 	// 1. Emit step started
 	sc.svc.hub.Publish(ctx, event.Event{
@@ -25,6 +59,10 @@ func stepDecide(ctx context.Context, sc *stepContext, p plan) (plan, bool) {
 	authority := sc.agentDef.Authority
 	escalate := false
 	escalateReason := ""
+
+	// 2a. Bias plan confidence from procedural memory history (before authority check)
+	adjustedConfidence, capHistory := biasConfidenceFromHistory(ctx, sc, p)
+	p.Confidence = adjustedConfidence
 
 	// 2. Check confidence threshold
 	if authority.ConfidenceThreshold > 0 && p.Confidence < authority.ConfidenceThreshold {
@@ -100,8 +138,10 @@ func stepDecide(ctx context.Context, sc *stepContext, p plan) (plan, bool) {
 		Type:        event.TypeLoopStepCompleted,
 		ObjectiveID: string(sc.obj.ID),
 		Payload: map[string]any{
-			"step":      string(loop.StepDecide),
-			"escalated": escalate,
+			"step":                string(loop.StepDecide),
+			"escalated":           escalate,
+			"adjusted_confidence": p.Confidence,
+			"capability_history":  capHistory,
 		},
 		Timestamp: time.Now().UTC(),
 	})

@@ -21,6 +21,7 @@ func (h *LoopHandler) Start(w http.ResponseWriter, r *http.Request) {
 		ObjectiveID string `json:"objective_id"`
 		TwinID      string `json:"twin_id"`
 		MaxIter     int    `json:"max_iter"`
+		WatchMode   bool   `json:"watch_mode"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -30,6 +31,7 @@ func (h *LoopHandler) Start(w http.ResponseWriter, r *http.Request) {
 		Objective: objective.Objective{ID: objective.ObjectiveID(req.ObjectiveID)},
 		Twin:      twin.DigitalTwin{ID: req.TwinID},
 		MaxIter:   req.MaxIter,
+		WatchMode: req.WatchMode,
 	})
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
