@@ -11,12 +11,14 @@ import (
 	"time"
 
 	gitlib "github.com/go-git/go-git/v5"
+
 	"github.com/bsenel/karakuri/config"
+	"github.com/bsenel/karakuri/internal/core/objective"
 )
 
 type GoGitWorktreeManager struct {
-	cfg      config.GitConfig
-	mu       sync.RWMutex
+	cfg       config.GitConfig
+	mu        sync.RWMutex
 	worktrees map[string]Worktree
 }
 
@@ -34,16 +36,18 @@ func NewGoGitWorktreeManager(cfg config.GitConfig) (*GoGitWorktreeManager, error
 	return &GoGitWorktreeManager{cfg: cfg, worktrees: make(map[string]Worktree)}, nil
 }
 
-func (m *GoGitWorktreeManager) repoRoot() string {
-	return m.cfg.RepoPath
-}
+func (m *GoGitWorktreeManager) repoRoot() string { return m.cfg.RepoPath }
 
 func (m *GoGitWorktreeManager) Create(ctx context.Context, opts WorktreeOptions) (Worktree, error) {
+	objID := string(opts.ObjectiveID)
+	if len(objID) > 8 {
+		objID = objID[:8]
+	}
 	branch := opts.BranchName
 	if branch == "" {
-		branch = fmt.Sprintf("%s/%s/%s", m.cfg.BranchPrefix, opts.SessionSHA[:8], opts.TaskID)
+		branch = fmt.Sprintf("%s/%s/%s", m.cfg.BranchPrefix, objID, opts.TaskID)
 	}
-	basePath := filepath.Join(m.repoRoot(), m.cfg.WorktreeBase, "delivery-"+opts.SessionSHA[:8], "task-"+opts.TaskID)
+	basePath := filepath.Join(m.repoRoot(), m.cfg.WorktreeBase, string(opts.ObjectiveID), opts.TaskID)
 	if err := os.MkdirAll(filepath.Dir(basePath), 0o755); err != nil {
 		return Worktree{}, err
 	}
@@ -58,7 +62,7 @@ func (m *GoGitWorktreeManager) Create(ctx context.Context, opts WorktreeOptions)
 		}
 	}
 	wt := Worktree{
-		TaskID: opts.TaskID, SessionSHA: opts.SessionSHA,
+		TaskID: opts.TaskID, ObjectiveID: opts.ObjectiveID,
 		Path: basePath, Branch: branch, CreatedAt: time.Now().UTC(),
 	}
 	m.mu.Lock()
@@ -92,21 +96,20 @@ func (m *GoGitWorktreeManager) Remove(ctx context.Context, taskID string) error 
 	return nil
 }
 
-func (m *GoGitWorktreeManager) List(_ context.Context, sessionSHA string) ([]Worktree, error) {
+func (m *GoGitWorktreeManager) List(_ context.Context, objectiveID objective.ObjectiveID) ([]Worktree, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	var out []Worktree
-	prefix := sessionSHA[:8]
 	for _, wt := range m.worktrees {
-		if strings.Contains(wt.SessionSHA, prefix) || wt.SessionSHA == sessionSHA {
+		if wt.ObjectiveID == objectiveID {
 			out = append(out, wt)
 		}
 	}
 	return out, nil
 }
 
-func (m *GoGitWorktreeManager) Prune(ctx context.Context, sessionSHA string) error {
-	wts, _ := m.List(ctx, sessionSHA)
+func (m *GoGitWorktreeManager) Prune(ctx context.Context, objectiveID objective.ObjectiveID) error {
+	wts, _ := m.List(ctx, objectiveID)
 	for _, wt := range wts {
 		_ = m.Remove(ctx, wt.TaskID)
 	}

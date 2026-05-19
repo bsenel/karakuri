@@ -5,10 +5,19 @@ import (
 	"context"
 	"time"
 
-	"github.com/bsenel/karakuri/internal/core/entity"
 	"github.com/bsenel/karakuri/internal/core/vfs"
 	"github.com/bsenel/karakuri/internal/platform/storage"
 )
+
+type Artifact struct {
+	SHA         string    `json:"sha"`
+	ObjectiveID string    `json:"objective_id,omitempty"`
+	AgentID     string    `json:"agent_id,omitempty"`
+	Capability  string    `json:"capability,omitempty"`
+	ContentType string    `json:"content_type"`
+	Size        int64     `json:"size"`
+	CreatedAt   time.Time `json:"created_at"`
+}
 
 type Service struct {
 	store storage.StorageAdapter
@@ -18,47 +27,48 @@ func NewService(store storage.StorageAdapter) *Service {
 	return &Service{store: store}
 }
 
-func (s *Service) Write(ctx context.Context, sessionSHA, name, role string, content []byte) (entity.Artifact, error) {
-	sha := storage.ContentSHA([]byte(sessionSHA + ":" + name + ":" + string(content)))
-	if err := s.store.SaveBlob(ctx, sha, content, storage.BlobMetadata{MimeType: "text/plain", Size: int64(len(content))}); err != nil {
-		return entity.Artifact{}, err
+func (s *Service) Write(ctx context.Context, objectiveID, agentID, capability string, content []byte) (Artifact, error) {
+	sha := vfs.SHA(content)
+	meta := vfs.BlobMetadata{
+		SHA: sha, ContentType: "text/plain", Size: int64(len(content)),
+		ObjectiveID: objectiveID, AgentID: agentID, Capability: capability,
+		CreatedAt: time.Now().UTC(),
 	}
-	art := entity.Artifact{
-		SHA: sha, SessionSHA: sessionSHA, Name: name, Status: string(vfs.StatusDraft),
-		Role: role, CreatedAt: time.Now().UTC(),
+	if err := s.store.SaveBlob(ctx, sha, content, meta); err != nil {
+		return Artifact{}, err
 	}
-	if err := s.store.SaveArtifact(ctx, art); err != nil {
-		return entity.Artifact{}, err
-	}
-	manifest, err := s.store.GetManifest(ctx, sessionSHA)
+	return Artifact{
+		SHA: sha, ObjectiveID: objectiveID, AgentID: agentID, Capability: capability,
+		ContentType: "text/plain", Size: int64(len(content)), CreatedAt: meta.CreatedAt,
+	}, nil
+}
+
+func (s *Service) Read(ctx context.Context, sha string) ([]byte, vfs.BlobMetadata, error) {
+	return s.store.GetBlob(ctx, sha)
+}
+
+func (s *Service) List(ctx context.Context, objectiveID, agentID string) ([]Artifact, error) {
+	metas, err := s.store.ListBlobs(ctx, objectiveID, agentID)
 	if err != nil {
-		return entity.Artifact{}, err
+		return nil, err
 	}
-	if manifest.Artifacts == nil {
-		manifest.Artifacts = make(map[string]string)
+	out := make([]Artifact, len(metas))
+	for i, m := range metas {
+		out[i] = Artifact{
+			SHA: m.SHA, ObjectiveID: m.ObjectiveID, AgentID: m.AgentID,
+			Capability: m.Capability, ContentType: m.ContentType,
+			Size: m.Size, CreatedAt: m.CreatedAt,
+		}
 	}
-	manifest.Artifacts[name] = sha
-	if err := s.store.SaveManifest(ctx, sessionSHA, manifest); err != nil {
-		return entity.Artifact{}, err
-	}
-	return art, nil
-}
-
-func (s *Service) Read(ctx context.Context, sha string) ([]byte, error) {
-	content, _, err := s.store.GetBlob(ctx, sha)
-	return content, err
-}
-
-func (s *Service) List(ctx context.Context, sessionSHA string) ([]entity.Artifact, error) {
-	return s.store.QueryArtifacts(ctx, storage.ArtifactFilter{SessionSHA: sessionSHA})
+	return out, nil
 }
 
 func (s *Service) Diff(ctx context.Context, shaA, shaB string) (string, error) {
-	a, err := s.Read(ctx, shaA)
+	a, _, err := s.Read(ctx, shaA)
 	if err != nil {
 		return "", err
 	}
-	b, err := s.Read(ctx, shaB)
+	b, _, err := s.Read(ctx, shaB)
 	if err != nil {
 		return "", err
 	}
@@ -66,8 +76,4 @@ func (s *Service) Diff(ctx context.Context, shaA, shaB string) (string, error) {
 		return "", nil
 	}
 	return string(a) + "\n---\n" + string(b), nil
-}
-
-func (s *Service) Approve(ctx context.Context, sha string) error {
-	return s.store.UpdateArtifactStatus(ctx, sha, vfs.StatusApproved)
 }

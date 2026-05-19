@@ -6,32 +6,32 @@ import (
 	"time"
 )
 
-type Type string
-
+// SSE event type constants.
 const (
-	AgentStarted     Type = "agent_started"
-	ArtifactWritten  Type = "artifact_written"
-	WorktreeCreated  Type = "worktree_created"
-	WorktreeRemoved  Type = "worktree_removed"
-	WorktreePruned   Type = "worktree_pruned"
-	Checkpoint       Type = "checkpoint"
-	ReviewCompleted  Type = "review_completed"
-	TaskFailed       Type = "task_failed"
-	AdapterSkipped   Type = "adapter_skipped"
-	ActionItem       Type = "action_item"
-	PromotionReady   Type = "promotion_ready"
-	SessionCompleted Type = "session_completed"
+	TypeLoopStepStarted    = "loop_step_started"
+	TypeLoopStepCompleted  = "loop_step_completed"
+	TypeLoopIterationDone  = "loop_iteration_done"
+	TypeObjectiveCompleted = "objective_completed"
+	TypeObjectiveFailed    = "objective_failed"
+	TypeObjectiveBlocked   = "objective_blocked"
+	TypeCheckpoint         = "checkpoint"
+	TypeAuthorityExceeded  = "authority_exceeded"
+	TypeEnvironmentChanged = "environment_changed"
+	TypeMemoryRecalled     = "memory_recalled"
+	TypeMemoryLearned      = "memory_learned"
+	TypeWorktreeCreated    = "worktree_created"
+	TypeWorktreeRemoved    = "worktree_removed"
+	TypeArtifactWritten    = "artifact_written"
+	TypeAdapterSkipped     = "adapter_skipped"
+	TypeTwinStateUpdated   = "twin_state_updated"
 )
 
 type Event struct {
-	Type       Type           `json:"type"`
-	SessionSHA string         `json:"session_sha,omitempty"`
-	Payload    map[string]any `json:"payload,omitempty"`
-	Timestamp  time.Time      `json:"ts"`
-}
-
-type Publisher interface {
-	Publish(ctx context.Context, evt Event) error
+	Type        string         `json:"type"`
+	ObjectiveID string         `json:"objective_id,omitempty"`
+	TwinID      string         `json:"twin_id,omitempty"`
+	Payload     map[string]any `json:"payload,omitempty"`
+	Timestamp   time.Time      `json:"ts"`
 }
 
 type Hub struct {
@@ -43,35 +43,40 @@ func NewHub() *Hub {
 	return &Hub{subscribers: make(map[string]map[chan Event]struct{})}
 }
 
-func (h *Hub) Publish(_ context.Context, evt Event) error {
+func (h *Hub) Publish(_ context.Context, evt Event) {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
-	key := evt.SessionSHA
-	if key == "" {
-		key = "_global"
+	keys := []string{"_global"}
+	if evt.ObjectiveID != "" {
+		keys = append(keys, "obj:"+evt.ObjectiveID)
 	}
-	for ch := range h.subscribers[key] {
-		select {
-		case ch <- evt:
-		default:
+	if evt.TwinID != "" {
+		keys = append(keys, "twin:"+evt.TwinID)
+	}
+	for _, key := range keys {
+		for ch := range h.subscribers[key] {
+			select {
+			case ch <- evt:
+			default:
+			}
 		}
 	}
-	return nil
 }
 
-func (h *Hub) Subscribe(_ context.Context, sessionSHA string) (<-chan Event, func(), error) {
+// Subscribe returns a channel for events scoped to a key (e.g. "obj:<id>", "twin:<id>", "_global").
+func (h *Hub) Subscribe(_ context.Context, key string) (<-chan Event, func()) {
 	ch := make(chan Event, 64)
 	h.mu.Lock()
-	if h.subscribers[sessionSHA] == nil {
-		h.subscribers[sessionSHA] = make(map[chan Event]struct{})
+	if h.subscribers[key] == nil {
+		h.subscribers[key] = make(map[chan Event]struct{})
 	}
-	h.subscribers[sessionSHA][ch] = struct{}{}
+	h.subscribers[key][ch] = struct{}{}
 	h.mu.Unlock()
 	unsub := func() {
 		h.mu.Lock()
-		delete(h.subscribers[sessionSHA], ch)
+		delete(h.subscribers[key], ch)
 		close(ch)
 		h.mu.Unlock()
 	}
-	return ch, unsub, nil
+	return ch, unsub
 }

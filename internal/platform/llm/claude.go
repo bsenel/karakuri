@@ -18,7 +18,7 @@ func NewClaudeProvider() (*ClaudeProvider, error) {
 		return &ClaudeProvider{}, nil
 	}
 	model, err := anthropic.New(
-		anthropic.WithModel("claude-sonnet-4-20250514"),
+		anthropic.WithModel("claude-sonnet-4-6"),
 		anthropic.WithToken(apiKey),
 	)
 	if err != nil {
@@ -29,9 +29,9 @@ func NewClaudeProvider() (*ClaudeProvider, error) {
 
 func (c *ClaudeProvider) Name() string { return "claude" }
 
-func (c *ClaudeProvider) Available(_ context.Context) bool {
-	return true // mock mode when ANTHROPIC_API_KEY unset
-}
+func (c *ClaudeProvider) Available(_ context.Context) bool { return true }
+
+func (c *ClaudeProvider) AsLLM() llms.Model { return c.model }
 
 func (c *ClaudeProvider) Complete(ctx context.Context, req CompletionRequest) (CompletionResponse, error) {
 	if c.model == nil {
@@ -61,8 +61,6 @@ func (c *ClaudeProvider) Stream(ctx context.Context, req CompletionRequest) (<-c
 	}()
 	return ch, nil
 }
-
-func (c *ClaudeProvider) Model() llms.Model { return c.model }
 
 func lastUserMessage(msgs []Message) string {
 	for i := len(msgs) - 1; i >= 0; i-- {

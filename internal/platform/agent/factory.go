@@ -1,8 +1,11 @@
+// Package agent implements AgentFactory using LangChain Go.
+// All LangChain Go imports are confined to this package and internal/platform/llm.
 package agent
 
 import (
 	"context"
-	"time"
+	"encoding/json"
+	"fmt"
 
 	coreagent "github.com/bsenel/karakuri/internal/core/agent"
 	"github.com/bsenel/karakuri/internal/core/event"
@@ -10,73 +13,69 @@ import (
 	"github.com/bsenel/karakuri/internal/platform/observability"
 )
 
+// Factory implements coreagent.Factory.
 type Factory struct {
 	providers *llm.Registry
-	events    *event.Hub
+	hub       *event.Hub
 	otel      *observability.OTel
 }
 
-func NewFactory(providers *llm.Registry, events *event.Hub, otel *observability.OTel) *Factory {
-	return &Factory{providers: providers, events: events, otel: otel}
+func NewFactory(providers *llm.Registry, hub *event.Hub, otel *observability.OTel) *Factory {
+	return &Factory{providers: providers, hub: hub, otel: otel}
 }
 
-func (f *Factory) New(ctx context.Context, input coreagent.Input) (coreagent.Agent, error) {
-	providerName := input.Provider
+func (f *Factory) New(ctx context.Context, def coreagent.Definition) (coreagent.Agent, error) {
+	providerName := def.LLMHints.PreferredProvider
 	if providerName == "" {
 		providerName = "claude"
 	}
 	provider, ok := f.providers.Get(providerName)
 	if !ok {
-		return nil, context.Canceled
+		return nil, fmt.Errorf("provider %q not available", providerName)
 	}
-	return &langchainAgent{
-		provider: provider, input: input, events: f.events, otel: f.otel, sessionSHA: "",
+	return &karakuriAgent{
+		def:      def,
+		provider: provider,
+		hub:      f.hub,
+		otel:     f.otel,
 	}, nil
 }
 
-func (f *Factory) NewWithSession(ctx context.Context, sessionSHA string, input coreagent.Input) (coreagent.Agent, error) {
-	a, err := f.New(ctx, input)
-	if err != nil {
-		return nil, err
-	}
-	if la, ok := a.(*langchainAgent); ok {
-		la.sessionSHA = sessionSHA
-	}
-	return a, nil
+type karakuriAgent struct {
+	def      coreagent.Definition
+	provider llm.ProviderAdapter
+	hub      *event.Hub
+	otel     *observability.OTel
 }
 
-type langchainAgent struct {
-	provider   llm.ProviderAdapter
-	input      coreagent.Input
-	events     *event.Hub
-	otel       *observability.OTel
-	sessionSHA string
-}
+func (a *karakuriAgent) Run(ctx context.Context, input coreagent.Input) (coreagent.Output, error) {
+	systemPrompt := buildSystemPrompt(a.def, input)
+	userPrompt := buildUserPrompt(input)
 
-func (a *langchainAgent) Run(ctx context.Context, input coreagent.Input) (coreagent.Output, error) {
-	start := time.Now()
-	_ = a.events.Publish(ctx, event.Event{
-		Type: event.AgentStarted, SessionSHA: a.sessionSHA,
-		Payload: map[string]any{"role": input.Role, "provider": a.provider.Name()},
-		Timestamp: time.Now().UTC(),
-	})
-	msgs := append(input.Memory, coreagent.Message{Role: "user", Content: input.UserPrompt})
 	resp, err := a.provider.Complete(ctx, llm.CompletionRequest{
-		SystemPrompt: input.SystemPrompt,
-		Messages:     toLLMMessages(msgs),
-		Temperature:  input.Temperature,
-		MaxTokens:    4096,
+		SystemPrompt: systemPrompt,
+		Messages:     []llm.Message{{Role: "user", Content: userPrompt}},
+		Temperature:  a.def.LLMHints.TemperatureMax,
+		MaxTokens:    8192,
 	})
 	if err != nil {
 		return coreagent.Output{}, err
 	}
-	a.otel.IncAgentInvocation(input.Role)
-	a.otel.ObserveAgentLatency(input.Role, time.Since(start))
-	a.otel.RecordTokens(input.Role, resp.TokensUsed)
-	return coreagent.Output{Content: resp.Content, ToolCalls: toCoreToolCalls(resp.ToolCalls), TokensUsed: resp.TokensUsed}, nil
+
+	a.hub.Publish(ctx, event.Event{
+		Type:    event.TypeMemoryLearned,
+		Payload: map[string]any{"agent_id": string(a.def.ID), "tokens": resp.TokensUsed},
+	})
+
+	return coreagent.Output{
+		Content:    resp.Content,
+		Confidence: 0.85,
+		TokensUsed: resp.TokensUsed,
+		Reasoning:  resp.Content,
+	}, nil
 }
 
-func (a *langchainAgent) Stream(ctx context.Context, input coreagent.Input) (<-chan coreagent.OutputChunk, error) {
+func (a *karakuriAgent) Stream(ctx context.Context, input coreagent.Input) (<-chan coreagent.OutputChunk, error) {
 	ch := make(chan coreagent.OutputChunk, 8)
 	go func() {
 		defer close(ch)
@@ -90,18 +89,21 @@ func (a *langchainAgent) Stream(ctx context.Context, input coreagent.Input) (<-c
 	return ch, nil
 }
 
-func toLLMMessages(msgs []coreagent.Message) []llm.Message {
-	out := make([]llm.Message, len(msgs))
-	for i, m := range msgs {
-		out[i] = llm.Message{Role: m.Role, Content: m.Content}
-	}
-	return out
+func buildSystemPrompt(def coreagent.Definition, input coreagent.Input) string {
+	return fmt.Sprintf(
+		"You are %s, an autonomous agent. Your reasoning strategy is %s. "+
+			"You operate in the %s domain. "+
+			"Complete the assigned task and produce structured output.",
+		def.Name, string(def.ReasoningStrategy), def.Domain,
+	)
 }
 
-func toCoreToolCalls(calls []llm.ToolCall) []coreagent.ToolCall {
-	out := make([]coreagent.ToolCall, len(calls))
-	for i, c := range calls {
-		out[i] = coreagent.ToolCall{Name: c.Name, Args: c.Args}
+func buildUserPrompt(input coreagent.Input) string {
+	objJSON, _ := json.Marshal(input.Objective)
+	memSummary := ""
+	if len(input.Memory) > 0 {
+		memSummary = fmt.Sprintf("You have %d prior memory entries relevant to this objective.", len(input.Memory))
 	}
-	return out
+	return fmt.Sprintf("Objective: %s\n\nTask: %s\n\n%s",
+		string(objJSON), input.Task, memSummary)
 }

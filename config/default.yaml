@@ -22,7 +22,7 @@ observability:
         logs: ndjson
       rotation:
         max_size_mb: 100
-        max_age_days: 7
+        max_age_days: 30
 
 providers:
   default: claude
@@ -32,7 +32,14 @@ providers:
     copilot: claude
 
 executor: local
-workflows_dir: workflows
 
 auth:
   token: ""
+
+domains:
+  - id: software
+    enabled: true
+
+memory:
+  consolidation_threshold: 20
+  semantic_top_k: 5

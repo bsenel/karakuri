@@ -1,34 +1,30 @@
 package command
 
 import (
+	"fmt"
+
 	"github.com/bsenel/karakuri/cli/client"
 	"github.com/spf13/cobra"
 )
 
 func autoCmd() *cobra.Command {
-	var interval, scope, env string
-	var validate, dryRun bool
+	var domain, kind string
 	cmd := &cobra.Command{
 		Use:   "auto",
-		Short: "Run autonomous intelligence loops",
+		Short: "Create a watcher twin and start watch mode",
 		RunE: func(_ *cobra.Command, _ []string) error {
-			_ = interval
-			_ = scope
-			_ = env
-			_ = validate
-			_ = dryRun
-			data, _, err := api.Post("/auto/run", nil)
+			twinData, _, err := api.Post("/twins", map[string]string{
+				"name": "watcher", "kind": kind, "domain": domain,
+			})
 			if err != nil {
 				return err
 			}
-			client.PrintOutput(data, output)
+			client.PrintOutput(twinData, output)
+			fmt.Println("Watcher twin created. Use 'krk loop start <objective-id>' to begin autonomous operation.")
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&interval, "interval", "1h", "Run interval")
-	cmd.Flags().StringVar(&scope, "scope", "all", "Loop scope")
-	cmd.Flags().StringVar(&env, "env", "all", "Environment")
-	cmd.Flags().BoolVar(&validate, "validate", false, "Validate loops")
-	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "Dry run")
+	cmd.Flags().StringVar(&domain, "domain", "software", "Domain for the watcher twin")
+	cmd.Flags().StringVar(&kind, "kind", "team", "Twin kind")
 	return cmd
 }

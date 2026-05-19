@@ -4,53 +4,118 @@ import (
 	"context"
 	"time"
 
-	"github.com/bsenel/karakuri/internal/core/entity"
+	"github.com/bsenel/karakuri/internal/core/checkpoint"
+	"github.com/bsenel/karakuri/internal/core/memory"
+	"github.com/bsenel/karakuri/internal/core/objective"
+	"github.com/bsenel/karakuri/internal/core/twin"
 	"github.com/bsenel/karakuri/internal/core/vfs"
-	"github.com/bsenel/karakuri/internal/platform/git"
 )
 
-type BlobMetadata struct {
-	MimeType string
-	Size     int64
-}
-
-type SessionFilter struct {
-	Mode   string
+// TwinFilter filters twin list queries.
+type TwinFilter struct {
+	Kind   string
+	Domain string
 	Limit  int
 	Offset int
 }
 
-type ArtifactFilter struct {
-	SessionSHA string
-	Name       string
-	Status     string
+// LoopIteration is the storage DTO for loop step records.
+type LoopIteration struct {
+	ID          string
+	ObjectiveID string
+	Number      int
+	Step        string
+	InputJSON   string
+	OutputJSON  string
+	TokensUsed  int
+	DurationMS  int64
+	CreatedAt   time.Time
 }
 
+// ProceduralRecord is the storage DTO for procedural memory entries.
+type ProceduralRecord struct {
+	ID            string
+	AgentID       string
+	TwinID        string
+	CapabilityID  string
+	SuccessCount  int
+	FailureCount  int
+	AvgConfidence float64
+	UpdatedAt     time.Time
+}
+
+// ToolEvent is the storage DTO for tool operation audit records.
+type ToolEvent struct {
+	ID          string
+	ObjectiveID string
+	AgentID     string
+	Capability  string
+	Adapter     string
+	Success     bool
+	Confidence  float64
+	PayloadJSON string
+	CreatedAt   time.Time
+}
+
+// Worktree is the storage DTO for worktree records.
+type Worktree struct {
+	TaskID      string
+	ObjectiveID string
+	Path        string
+	Branch      string
+	CreatedAt   time.Time
+}
+
+// StorageAdapter is the single database abstraction for all Karakuri persistence.
 type StorageAdapter interface {
-	SaveBlob(ctx context.Context, sha string, content []byte, meta BlobMetadata) error
-	GetBlob(ctx context.Context, sha string) ([]byte, BlobMetadata, error)
-	SaveManifest(ctx context.Context, sessionSHA string, manifest vfs.Manifest) error
-	GetManifest(ctx context.Context, sessionSHA string) (vfs.Manifest, error)
-	UpdateArtifactStatus(ctx context.Context, sha string, status vfs.ArtifactStatus) error
-	ListSessions(ctx context.Context, filter SessionFilter) ([]entity.Session, error)
-	QueryArtifacts(ctx context.Context, filter ArtifactFilter) ([]entity.Artifact, error)
-	SaveReview(ctx context.Context, review entity.Review) error
-	SaveToolEvent(ctx context.Context, event entity.ToolEvent) error
-	SaveCheckpoint(ctx context.Context, cp entity.Checkpoint) error
-	ResolveCheckpoint(ctx context.Context, id string, decision entity.CheckpointDecision) error
-	SaveActionItem(ctx context.Context, item entity.ActionItem) error
-	SaveResearchResult(ctx context.Context, result entity.ResearchResult) error
-	SaveWorktree(ctx context.Context, wt git.Worktree) error
-	GetWorktree(ctx context.Context, taskID string) (git.Worktree, error)
-	ListWorktrees(ctx context.Context, sessionSHA string) ([]git.Worktree, error)
+	// Blobs (VFS)
+	SaveBlob(ctx context.Context, sha string, content []byte, meta vfs.BlobMetadata) error
+	GetBlob(ctx context.Context, sha string) ([]byte, vfs.BlobMetadata, error)
+	ListBlobs(ctx context.Context, objectiveID, agentID string) ([]vfs.BlobMetadata, error)
+
+	// Twins
+	SaveTwin(ctx context.Context, t twin.DigitalTwin) error
+	GetTwin(ctx context.Context, id string) (twin.DigitalTwin, error)
+	ListTwins(ctx context.Context, f TwinFilter) ([]twin.DigitalTwin, error)
+	UpdateTwin(ctx context.Context, t twin.DigitalTwin) error
+
+	// Objectives
+	SaveObjective(ctx context.Context, o objective.Objective) error
+	GetObjective(ctx context.Context, id objective.ObjectiveID) (objective.Objective, error)
+	ListObjectives(ctx context.Context, twinID string, status string) ([]objective.Objective, error)
+	UpdateObjectiveStatus(ctx context.Context, id objective.ObjectiveID, s objective.ObjectiveStatus) error
+
+	// Loop iterations
+	SaveLoopIteration(ctx context.Context, i LoopIteration) error
+	ListLoopIterations(ctx context.Context, objectiveID objective.ObjectiveID) ([]LoopIteration, error)
+
+	// Episodic memory
+	SaveMemoryEpisodic(ctx context.Context, e memory.Entry) error
+	QueryEpisodic(ctx context.Context, q memory.Query) ([]memory.Entry, error)
+	DeleteMemoryEntry(ctx context.Context, id string) error
+
+	// Semantic memory
+	SaveMemorySemantic(ctx context.Context, e memory.Entry) error
+	QuerySemantic(ctx context.Context, q memory.Query) ([]memory.Entry, error)
+
+	// Procedural memory
+	UpsertProcedural(ctx context.Context, r ProceduralRecord) error
+	QueryProcedural(ctx context.Context, agentID, capabilityID string) (ProceduralRecord, error)
+
+	// Checkpoints
+	SaveCheckpoint(ctx context.Context, c checkpoint.Checkpoint) error
+	GetCheckpoint(ctx context.Context, id string) (checkpoint.Checkpoint, error)
+	ResolveCheckpoint(ctx context.Context, id string, d checkpoint.Decision) error
+	ListPendingCheckpoints(ctx context.Context, twinID string) ([]checkpoint.Checkpoint, error)
+
+	// Worktrees
+	SaveWorktree(ctx context.Context, w Worktree) error
+	GetWorktree(ctx context.Context, taskID string) (Worktree, error)
+	ListWorktrees(ctx context.Context, objectiveID objective.ObjectiveID) ([]Worktree, error)
 	DeleteWorktree(ctx context.Context, taskID string) error
-	SaveSession(ctx context.Context, s entity.Session) error
-	GetSession(ctx context.Context, sha string) (entity.Session, error)
-	UpdateSessionState(ctx context.Context, sha string, state entity.SessionState) error
-	SaveArtifact(ctx context.Context, a entity.Artifact) error
-	GetArtifact(ctx context.Context, sha string) (entity.Artifact, error)
-	ListCheckpoints(ctx context.Context, sessionSHA string) ([]entity.Checkpoint, error)
-	GetReviews(ctx context.Context, sessionSHA string) ([]entity.Review, error)
+
+	// Tool events
+	SaveToolEvent(ctx context.Context, e ToolEvent) error
 }
 
 func Now() time.Time { return time.Now().UTC() }

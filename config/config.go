@@ -13,8 +13,9 @@ type Config struct {
 	Observability ObservabilityConfig `yaml:"observability"`
 	Providers     ProvidersConfig     `yaml:"providers"`
 	Executor      string              `yaml:"executor"`
-	WorkflowsDir  string              `yaml:"workflows_dir"`
 	Auth          AuthConfig          `yaml:"auth"`
+	Domains       []DomainConfig      `yaml:"domains"`
+	Memory        MemoryConfig        `yaml:"memory"`
 }
 
 type ServerConfig struct {
@@ -39,11 +40,11 @@ type ObservabilityConfig struct {
 }
 
 type ExporterConfig struct {
-	Name    string            `yaml:"name"`
-	Enabled bool              `yaml:"enabled"`
-	Path    string            `yaml:"path,omitempty"`
-	Formats map[string]string `yaml:"formats,omitempty"`
-	Rotation RotationConfig   `yaml:"rotation,omitempty"`
+	Name     string            `yaml:"name"`
+	Enabled  bool              `yaml:"enabled"`
+	Path     string            `yaml:"path,omitempty"`
+	Formats  map[string]string `yaml:"formats,omitempty"`
+	Rotation RotationConfig    `yaml:"rotation,omitempty"`
 }
 
 type RotationConfig struct {
@@ -58,6 +59,17 @@ type ProvidersConfig struct {
 
 type AuthConfig struct {
 	Token string `yaml:"token"`
+}
+
+type DomainConfig struct {
+	ID      string            `yaml:"id"`
+	Enabled bool              `yaml:"enabled"`
+	Options map[string]any    `yaml:"options,omitempty"`
+}
+
+type MemoryConfig struct {
+	ConsolidationThreshold int `yaml:"consolidation_threshold"` // episodic entries before consolidation
+	SemanticTopK           int `yaml:"semantic_top_k"`
 }
 
 func Load(path string) (*Config, error) {
@@ -98,11 +110,14 @@ func setDefaults(cfg *Config) {
 	if cfg.Executor == "" {
 		cfg.Executor = "local"
 	}
-	if cfg.WorkflowsDir == "" {
-		cfg.WorkflowsDir = "workflows"
-	}
 	if cfg.Providers.Default == "" {
 		cfg.Providers.Default = "claude"
+	}
+	if cfg.Memory.ConsolidationThreshold == 0 {
+		cfg.Memory.ConsolidationThreshold = 20
+	}
+	if cfg.Memory.SemanticTopK == 0 {
+		cfg.Memory.SemanticTopK = 5
 	}
 }
 
@@ -112,6 +127,10 @@ func Default() *Config {
 	cfg.Observability.Exporters = []ExporterConfig{{
 		Name: "local", Enabled: true, Path: "./karakuri-obs/",
 		Formats: map[string]string{"metrics": "ndjson", "logs": "ndjson"},
+		Rotation: RotationConfig{MaxSizeMB: 100, MaxAgeDays: 30},
 	}}
+	cfg.Domains = []DomainConfig{
+		{ID: "software", Enabled: true},
+	}
 	return cfg
 }

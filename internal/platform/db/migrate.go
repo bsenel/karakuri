@@ -5,17 +5,17 @@ import (
 	"gorm.io/gorm"
 )
 
-func AutoMigrate(db *gorm.DB) error {
+func RunMigrations(db *gorm.DB, _ string) error {
 	return db.AutoMigrate(
-		&schema.SessionModel{},
-		&schema.BlobModel{},
-		&schema.ManifestModel{},
-		&schema.ArtifactModel{},
-		&schema.ReviewModel{},
-		&schema.ToolEventModel{},
+		&schema.TwinModel{},
+		&schema.ObjectiveModel{},
+		&schema.LoopIterationModel{},
+		&schema.MemoryEpisodicModel{},
+		&schema.MemoryProceduralModel{},
+		&schema.MemorySemanticModel{},
 		&schema.CheckpointModel{},
-		&schema.ActionItemModel{},
-		&schema.ResearchResultModel{},
+		&schema.BlobModel{},
 		&schema.WorktreeModel{},
+		&schema.ToolEventModel{},
 	)
 }

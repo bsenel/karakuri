@@ -3,7 +3,6 @@ package client
 import (
 	"bytes"
 	"encoding/json"
-	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -58,42 +57,6 @@ func (c *Client) Post(path string, body any) ([]byte, int, error) {
 	return c.do(http.MethodPost, path, body)
 }
 func (c *Client) Delete(path string) ([]byte, int, error) { return c.do(http.MethodDelete, path, nil) }
-
-func (c *Client) CreateSession(mode, input, parentSHA string) (map[string]any, error) {
-	data, code, err := c.Post("/sessions", map[string]string{
-		"mode": mode, "input": input, "parent_sha": parentSHA,
-	})
-	if err != nil || code >= 400 {
-		return nil, fmt.Errorf("create session: %s %w", string(data), err)
-	}
-	var out map[string]any
-	return out, json.Unmarshal(data, &out)
-}
-
-func (c *Client) RunSession(sha string) error {
-	_, code, err := c.Post("/sessions/"+sha+"/run", nil)
-	if err != nil || code >= 400 {
-		return fmt.Errorf("run session failed: %d", code)
-	}
-	return nil
-}
-
-func (c *Client) WaitForCompletion(sha string, timeout time.Duration) error {
-	deadline := time.Now().Add(timeout)
-	for time.Now().Before(deadline) {
-		data, _, err := c.Get("/sessions/" + sha + "/status")
-		if err != nil {
-			return err
-		}
-		var st map[string]string
-		_ = json.Unmarshal(data, &st)
-		if st["state"] == "completed" || st["state"] == "failed" {
-			return nil
-		}
-		time.Sleep(2 * time.Second)
-	}
-	return fmt.Errorf("timeout waiting for session %s", sha)
-}
 
 func PrintOutput(data []byte, format string) {
 	switch format {

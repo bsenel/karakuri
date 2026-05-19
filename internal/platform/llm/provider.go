@@ -1,6 +1,10 @@
 package llm
 
-import "context"
+import (
+	"context"
+
+	"github.com/tmc/langchaingo/llms"
+)
 
 type Message struct {
 	Role    string
@@ -42,4 +46,6 @@ type ProviderAdapter interface {
 	Complete(ctx context.Context, req CompletionRequest) (CompletionResponse, error)
 	Stream(ctx context.Context, req CompletionRequest) (<-chan CompletionChunk, error)
 	Available(ctx context.Context) bool
+	// AsLLM returns the underlying LangChain Go model; only consumed within internal/platform/agent.
+	AsLLM() llms.Model
 }

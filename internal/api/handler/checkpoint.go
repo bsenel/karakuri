@@ -4,20 +4,18 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/bsenel/karakuri/internal/core/entity"
-	"github.com/bsenel/karakuri/internal/feature/checkpoint"
-	"github.com/bsenel/karakuri/internal/feature/orchestrator"
+	corecheckpoint "github.com/bsenel/karakuri/internal/core/checkpoint"
+	featurecp "github.com/bsenel/karakuri/internal/feature/checkpoint"
 	"github.com/go-chi/chi/v5"
 )
 
 type CheckpointHandler struct {
-	Checkpoints  *checkpoint.Service
-	Orchestrator *orchestrator.Service
+	Checkpoints *featurecp.Service
 }
 
-func (h *CheckpointHandler) List(w http.ResponseWriter, r *http.Request) {
-	sha := chi.URLParam(r, "sha")
-	cps, err := h.Checkpoints.List(r.Context(), sha)
+func (h *CheckpointHandler) ListPending(w http.ResponseWriter, r *http.Request) {
+	twinID := r.URL.Query().Get("twin_id")
+	cps, err := h.Checkpoints.ListPending(r.Context(), twinID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -25,20 +23,28 @@ func (h *CheckpointHandler) List(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, cps)
 }
 
-type resolveReq struct {
-	Decision string `json:"decision"`
+func (h *CheckpointHandler) Get(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	cp, err := h.Checkpoints.Get(r.Context(), id)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+	writeJSON(w, cp)
 }
 
 func (h *CheckpointHandler) Resolve(w http.ResponseWriter, r *http.Request) {
-	sha := chi.URLParam(r, "sha")
 	id := chi.URLParam(r, "id")
-	var req resolveReq
-	_ = json.NewDecoder(r.Body).Decode(&req)
-	if err := h.Orchestrator.ResolveCheckpoint(r.Context(), sha, id, req.Decision); err != nil {
-		if err2 := h.Checkpoints.Resolve(r.Context(), id, entity.CheckpointDecision(req.Decision)); err2 != nil {
-			http.Error(w, err2.Error(), http.StatusInternalServerError)
-			return
-		}
+	var req struct {
+		Decision string `json:"decision"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if err := h.Checkpoints.Resolve(r.Context(), id, corecheckpoint.Decision{Choice: req.Decision}); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
 	}
 	writeJSON(w, map[string]string{"status": "resolved"})
 }

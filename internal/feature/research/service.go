@@ -3,59 +3,54 @@ package research
 import (
 	"context"
 	"strings"
-	"time"
 
-	"github.com/bsenel/karakuri/internal/core/entity"
 	"github.com/bsenel/karakuri/internal/feature/artifact"
-	"github.com/bsenel/karakuri/internal/feature/session"
-	"github.com/bsenel/karakuri/internal/platform/storage"
 	"github.com/bsenel/karakuri/internal/platform/tools"
 )
 
 type Service struct {
 	tools    *tools.Registry
 	artifact *artifact.Service
-	sessions *session.Service
-	store    storage.StorageAdapter
 }
 
-func NewService(t *tools.Registry, art *artifact.Service, sess *session.Service, store storage.StorageAdapter) *Service {
-	return &Service{tools: t, artifact: art, sessions: sess, store: store}
+func NewService(t *tools.Registry, art *artifact.Service) *Service {
+	return &Service{tools: t, artifact: art}
 }
 
 type Request struct {
-	Topic   string
-	Sources []string
-	Depth   string
+	TwinID      string
+	ObjectiveID string
+	AgentID     string
+	Topic       string
+	Sources     []string
+	Depth       string
 }
 
-func (s *Service) Run(ctx context.Context, req Request) (entity.Session, error) {
-	sess, err := s.sessions.Create(ctx, session.CreateRequest{
-		Mode: entity.ModeAutonomous, Input: req.Topic,
-	})
-	if err != nil {
-		return entity.Session{}, err
-	}
+type Result struct {
+	ArtifactSHA string
+	Summary     string
+	Confidence  float64
+}
+
+func (s *Service) Run(ctx context.Context, req Request) (Result, error) {
 	srcs := req.Sources
 	if len(srcs) == 0 {
 		srcs = []string{"http-scraper"}
 	}
 	findings, err := s.tools.Research.Search(ctx, req.Topic, srcs, req.Depth)
 	if err != nil {
-		return entity.Session{}, err
+		return Result{}, err
 	}
-	var summary strings.Builder
+	var sb strings.Builder
 	var confidence float64
 	for _, f := range findings {
-		summary.WriteString(f.Summary)
-		summary.WriteString("\n")
+		sb.WriteString(f.Summary)
+		sb.WriteString("\n")
 		confidence = f.Confidence
 	}
-	art, _ := s.artifact.Write(ctx, sess.SHA, "research-result", "research", []byte(summary.String()))
-	_ = s.store.SaveResearchResult(ctx, entity.ResearchResult{
-		SHA: art.SHA, SessionSHA: sess.SHA, Topic: req.Topic,
-		Summary: summary.String(), Confidence: confidence, Sources: srcs,
-		CreatedAt: time.Now().UTC(),
-	})
-	return sess, nil
+	art, err := s.artifact.Write(ctx, req.ObjectiveID, req.AgentID, "software.reason.research", []byte(sb.String()))
+	if err != nil {
+		return Result{}, err
+	}
+	return Result{ArtifactSHA: art.SHA, Summary: sb.String(), Confidence: confidence}, nil
 }

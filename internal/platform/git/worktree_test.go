@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/bsenel/karakuri/config"
+	"github.com/bsenel/karakuri/internal/core/objective"
 	"github.com/bsenel/karakuri/internal/platform/git"
 )
 
@@ -21,7 +22,6 @@ func TestWorktreeCreateRemove(t *testing.T) {
 	if err := cmd.Run(); err != nil {
 		t.Fatal(err)
 	}
-	// initial commit required for worktree
 	writeFile := func(name, content string) {
 		if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644); err != nil {
 			t.Fatal(err)
@@ -46,12 +46,13 @@ func TestWorktreeCreateRemove(t *testing.T) {
 		t.Fatal(err)
 	}
 	ctx := context.Background()
-	wt, err := mgr.Create(ctx, git.WorktreeOptions{SessionSHA: "abc12345", TaskID: "task-1"})
+	objID := objective.ObjectiveID("obj-abc12345")
+	wt, err := mgr.Create(ctx, git.WorktreeOptions{ObjectiveID: objID, TaskID: "task-1"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(wt.Path); err != nil {
-		t.Fatalf("worktree path missing: %v", err)
+	if _, err := os.Stat(filepath.Dir(wt.Path)); err != nil {
+		t.Fatalf("worktree dir missing: %v", err)
 	}
 	if err := mgr.Remove(ctx, "task-1"); err != nil {
 		t.Fatal(err)

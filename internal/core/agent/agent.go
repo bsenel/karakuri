@@ -1,47 +1,87 @@
 package agent
 
-import "context"
+import (
+	"context"
+	"time"
 
-type Message struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
+	"github.com/bsenel/karakuri/internal/core/capability"
+)
+
+type AgentID string
+
+type ReasoningStrategy string
+
+const (
+	ReasoningChainOfThought ReasoningStrategy = "chain_of_thought"
+	ReasoningTreeOfThought  ReasoningStrategy = "tree_of_thought"
+	ReasoningReAct          ReasoningStrategy = "react"
+	ReasoningReflexion      ReasoningStrategy = "reflexion"
+)
+
+type Definition struct {
+	ID                AgentID
+	Name              string
+	Domain            string
+	Capabilities      []capability.CapabilityID
+	Memory            MemoryConfig
+	ReasoningStrategy ReasoningStrategy
+	Authority         AuthorityBounds
+	LLMHints          capability.LLMHints
 }
 
-type ToolCall struct {
-	Name   string         `json:"name"`
-	Args   map[string]any `json:"args,omitempty"`
-	Result string         `json:"result,omitempty"`
+type AuthorityBounds struct {
+	MaxAutonomousActions int
+	RequiresApprovalFor  []capability.CapabilityID
+	CanDelegate          bool
+	CanModifyObjective   bool
+	ConfidenceThreshold  float64 // below this, escalate to human
 }
 
-type Input struct {
-	Role         string    `json:"role"`
-	SystemPrompt string    `json:"system_prompt"`
-	UserPrompt   string    `json:"user_prompt"`
-	Tools        []string  `json:"tools,omitempty"`
-	Memory       []Message `json:"memory,omitempty"`
-	Temperature  float64   `json:"temperature"`
-	WorkDir      string    `json:"work_dir,omitempty"`
-	Provider     string    `json:"provider,omitempty"`
+type MemoryConfig struct {
+	WorkingWindowSize int           `json:"working_window_size,omitempty"`
+	EpisodicRetention time.Duration `json:"episodic_retention,omitempty"`
+	SemanticEnabled   bool          `json:"semantic_enabled,omitempty"`
+	ProceduralEnabled bool          `json:"procedural_enabled,omitempty"`
 }
 
-type Output struct {
-	Content    string     `json:"content"`
-	ToolCalls  []ToolCall `json:"tool_calls,omitempty"`
-	TokensUsed int        `json:"tokens_used"`
-}
-
-type OutputChunk struct {
-	Content  string
-	ToolCall *ToolCall
-	Done     bool
-	Err      error
-}
-
+// Agent is a runtime handle produced by AgentFactory per loop invocation.
 type Agent interface {
 	Run(ctx context.Context, input Input) (Output, error)
 	Stream(ctx context.Context, input Input) (<-chan OutputChunk, error)
 }
 
-type AgentFactory interface {
-	New(ctx context.Context, input Input) (Agent, error)
+type Input struct {
+	Objective   any // objective.Objective — avoids import cycle; cast in feature layer
+	WorldState  any // loop.WorldState
+	Memory      []MemoryEntry
+	LoopContext any // loop.LoopContext
+	Task        string
+}
+
+type Output struct {
+	Content    string
+	Actions    []any // []environment.Action
+	Confidence float64
+	TokensUsed int
+	Reasoning  string // chain-of-thought trace
+}
+
+type OutputChunk struct {
+	Content string
+	Done    bool
+	Err     error
+}
+
+type MemoryEntry struct {
+	ID         string
+	AgentID    AgentID
+	TwinID     string
+	Tier       string
+	Domain     string
+	Content    string
+	Embedding  []float32
+	Confidence float64
+	Sources    []string
+	CreatedAt  time.Time
+	ExpiresAt  *time.Time
 }

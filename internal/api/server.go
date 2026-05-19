@@ -6,18 +6,18 @@ import (
 	"github.com/bsenel/karakuri/config"
 	"github.com/bsenel/karakuri/internal/api/handler"
 	"github.com/bsenel/karakuri/internal/api/middleware"
+	"github.com/bsenel/karakuri/internal/core/capability"
+	"github.com/bsenel/karakuri/internal/core/domain"
+	"github.com/bsenel/karakuri/internal/core/environment"
 	"github.com/bsenel/karakuri/internal/core/event"
+	coreobjective "github.com/bsenel/karakuri/internal/core/objective"
 	"github.com/bsenel/karakuri/internal/feature/artifact"
-	"github.com/bsenel/karakuri/internal/feature/autonomous"
 	"github.com/bsenel/karakuri/internal/feature/checkpoint"
-	"github.com/bsenel/karakuri/internal/feature/delivery"
-	"github.com/bsenel/karakuri/internal/feature/discovery"
-	"github.com/bsenel/karakuri/internal/feature/orchestrator"
+	featureloop "github.com/bsenel/karakuri/internal/feature/loop"
+	"github.com/bsenel/karakuri/internal/feature/memory"
+	"github.com/bsenel/karakuri/internal/feature/objective"
 	"github.com/bsenel/karakuri/internal/feature/research"
-	"github.com/bsenel/karakuri/internal/feature/session"
-	"github.com/bsenel/karakuri/internal/feature/strategy"
-	platformagent "github.com/bsenel/karakuri/internal/platform/agent"
-	"github.com/bsenel/karakuri/internal/platform/executor"
+	"github.com/bsenel/karakuri/internal/feature/twin"
 	"github.com/bsenel/karakuri/internal/platform/git"
 	"github.com/bsenel/karakuri/internal/platform/llm"
 	"github.com/bsenel/karakuri/internal/platform/observability"
@@ -31,61 +31,97 @@ type App struct {
 	Router *chi.Mux
 }
 
-func NewApp(cfg *config.Config, store storage.StorageAdapter, providers *llm.Registry, toolReg *tools.Registry, exporters *observability.ExporterRegistry, wt git.WorktreeManager, hub *event.Hub, otel *observability.OTel) *App {
-	exec := executor.NewRegistry(cfg.Executor)
-	factory := platformagent.NewFactory(providers, hub, otel)
-
-	artSvc := artifact.NewService(store)
-	sessSvc := session.NewService(store)
-	stratSvc := strategy.NewService(factory, artSvc)
-	discSvc := discovery.NewService(factory, artSvc)
-	reviewer := delivery.NewReviewer(factory, artSvc, store, hub)
-	delivSvc := delivery.NewService(factory, artSvc, wt, store, reviewer, hub, otel)
+func NewApp(
+	cfg *config.Config,
+	store storage.StorageAdapter,
+	providers *llm.Registry,
+	toolReg *tools.Registry,
+	exporters *observability.ExporterRegistry,
+	wt git.WorktreeManager,
+	hub *event.Hub,
+	otel *observability.OTel,
+	capReg *capability.Registry,
+	envReg *environment.Registry,
+	domReg *domain.Registry,
+	templates []coreobjective.Template,
+) *App {
+	memSvc := memory.NewService(store, cfg.Memory.SemanticTopK)
+	twinSvc := twin.NewService(store, hub)
+	objSvc := objective.NewService(store)
+	for _, t := range templates {
+		objSvc.RegisterTemplate(t)
+	}
 	cpSvc := checkpoint.NewService(store, hub)
-	planner := orchestrator.NewPlanner(cfg.WorkflowsDir)
-	sched := orchestrator.NewScheduler(exec)
-	orchSvc := orchestrator.NewService(store, planner, sched, factory, stratSvc, discSvc, delivSvc, hub, otel, exec)
-	autoSvc := autonomous.NewService(toolReg, artSvc, sessSvc, hub, cfg.WorkflowsDir)
-	researchSvc := research.NewService(toolReg, artSvc, sessSvc, store)
+	artSvc := artifact.NewService(store)
+	resSvc := research.NewService(toolReg, artSvc)
+	loopSvc := featureloop.NewService()
 
 	r := chi.NewRouter()
 	r.Use(chimw.Recoverer)
 	r.Use(middleware.Logging)
 	r.Use(middleware.BearerAuth(cfg.Auth.Token))
 
-	health := &handler.HealthHandler{Providers: providers, Tools: toolReg, Exporters: exporters, Worktrees: wt, RepoPath: cfg.Git.RepoPath}
-	sessH := &handler.SessionHandler{Sessions: sessSvc, Orchestrator: orchSvc}
+	healthH := &handler.HealthHandler{Providers: providers, Tools: toolReg, Exporters: exporters, Worktrees: wt, RepoPath: cfg.Git.RepoPath}
+	twinH := &handler.TwinHandler{Twins: twinSvc}
+	objH := &handler.ObjectiveHandler{Objectives: objSvc}
+	loopH := &handler.LoopHandler{Loop: loopSvc}
+	cpH := &handler.CheckpointHandler{Checkpoints: cpSvc}
 	artH := &handler.ArtifactHandler{Artifacts: artSvc}
+	memH := &handler.MemoryHandler{Memory: memSvc}
+	domH := &handler.DomainHandler{Domains: domReg, Capabilities: capReg}
+	resH := &handler.ResearchHandler{Research: resSvc}
 	evtH := &handler.EventsHandler{Hub: hub}
-	cpH := &handler.CheckpointHandler{Checkpoints: cpSvc, Orchestrator: orchSvc}
-	revH := &handler.ReviewHandler{Store: store}
-	wtH := &handler.WorktreeHandler{Delivery: delivSvc}
-	autoH := &handler.AutonomousHandler{Autonomous: autoSvc, Sessions: sessSvc}
-	promoH := &handler.PromoteHandler{Autonomous: autoSvc}
-	resH := &handler.ResearchHandler{Research: researchSvc}
 
 	r.Route("/api/v1", func(r chi.Router) {
-		r.Get("/health", health.ServeHTTP)
-		r.Post("/sessions", sessH.Create)
-		r.Get("/sessions", sessH.List)
-		r.Get("/sessions/{sha}", sessH.Get)
-		r.Delete("/sessions/{sha}", sessH.Delete)
-		r.Post("/sessions/{sha}/run", sessH.Run)
-		r.Get("/sessions/{sha}/status", sessH.Status)
-		r.Get("/sessions/{sha}/events", evtH.Stream)
-		r.Get("/sessions/{sha}/artifacts", artH.ListBySession)
-		r.Get("/sessions/{sha}/checkpoints", cpH.List)
-		r.Post("/sessions/{sha}/checkpoints/{id}/resolve", cpH.Resolve)
-		r.Get("/sessions/{sha}/reviews", revH.ListBySession)
-		r.Get("/sessions/{sha}/worktrees", wtH.List)
-		r.Post("/sessions/{sha}/promote", promoH.Promote)
-		r.Get("/artifacts/{sha}", artH.Get)
-		r.Get("/artifacts/{sha}/diff/{other-sha}", artH.Diff)
-		r.Get("/reviews/{sha}", revH.Get)
-		r.Post("/auto/run", autoH.Run)
-		r.Get("/auto/status", autoH.Status)
-		r.Post("/auto/pause", autoH.Pause)
-		r.Post("/auto/resume", autoH.Resume)
+		r.Get("/health", healthH.ServeHTTP)
+
+		r.Route("/twins", func(r chi.Router) {
+			r.Post("/", twinH.Create)
+			r.Get("/", twinH.List)
+			r.Get("/{id}", twinH.Get)
+			r.Put("/{id}", twinH.Update)
+			r.Get("/{id}/events", evtH.StreamTwin)
+		})
+
+		r.Route("/objectives", func(r chi.Router) {
+			r.Post("/", objH.Create)
+			r.Get("/", objH.List)
+			r.Get("/templates", objH.ListTemplates)
+			r.Get("/{id}", objH.Get)
+			r.Post("/{id}/status", objH.UpdateStatus)
+			r.Get("/{id}/events", evtH.StreamObjective)
+		})
+
+		r.Route("/loops", func(r chi.Router) {
+			r.Post("/", loopH.Start)
+			r.Get("/{id}/status", loopH.Status)
+			r.Post("/{id}/resume", loopH.Resume)
+		})
+
+		r.Route("/checkpoints", func(r chi.Router) {
+			r.Get("/", cpH.ListPending)
+			r.Get("/{id}", cpH.Get)
+			r.Post("/{id}/resolve", cpH.Resolve)
+		})
+
+		r.Route("/artifacts", func(r chi.Router) {
+			r.Get("/", artH.List)
+			r.Post("/", artH.Write)
+			r.Get("/{sha}", artH.Get)
+			r.Get("/{sha}/diff/{other}", artH.Diff)
+		})
+
+		r.Route("/memory", func(r chi.Router) {
+			r.Post("/store", memH.Store)
+			r.Post("/recall", memH.Recall)
+			r.Post("/forget", memH.Forget)
+		})
+
+		r.Route("/domains", func(r chi.Router) {
+			r.Get("/", domH.List)
+			r.Get("/capabilities", domH.ListCapabilities)
+		})
+
 		r.Post("/research", resH.Run)
 	})
 

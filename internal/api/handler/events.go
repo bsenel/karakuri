@@ -13,8 +13,17 @@ type EventsHandler struct {
 	Hub *event.Hub
 }
 
-func (h *EventsHandler) Stream(w http.ResponseWriter, r *http.Request) {
-	sha := chi.URLParam(r, "sha")
+func (h *EventsHandler) StreamObjective(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	h.stream(w, r, "obj:"+id)
+}
+
+func (h *EventsHandler) StreamTwin(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	h.stream(w, r, "twin:"+id)
+}
+
+func (h *EventsHandler) stream(w http.ResponseWriter, r *http.Request, key string) {
 	flusher, ok := w.(http.Flusher)
 	if !ok {
 		http.Error(w, "streaming not supported", http.StatusInternalServerError)
@@ -24,11 +33,7 @@ func (h *EventsHandler) Stream(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
 
-	ch, unsub, err := h.Hub.Subscribe(r.Context(), sha)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
+	ch, unsub := h.Hub.Subscribe(r.Context(), key)
 	defer unsub()
 
 	for {
