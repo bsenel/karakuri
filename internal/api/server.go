@@ -18,6 +18,7 @@ import (
 	"github.com/bsenel/karakuri/internal/feature/objective"
 	"github.com/bsenel/karakuri/internal/feature/research"
 	"github.com/bsenel/karakuri/internal/feature/twin"
+	platformagent "github.com/bsenel/karakuri/internal/platform/agent"
 	"github.com/bsenel/karakuri/internal/platform/git"
 	"github.com/bsenel/karakuri/internal/platform/llm"
 	"github.com/bsenel/karakuri/internal/platform/observability"
@@ -54,7 +55,8 @@ func NewApp(
 	cpSvc := checkpoint.NewService(store, hub)
 	artSvc := artifact.NewService(store)
 	resSvc := research.NewService(toolReg, artSvc)
-	loopSvc := featureloop.NewService()
+	agentFactory := platformagent.NewFactory(providers, hub, otel)
+	loopSvc := featureloop.NewService(store, agentFactory, capReg, envReg, memSvc, cpSvc, artSvc, wt, hub, otel, domReg)
 
 	r := chi.NewRouter()
 	r.Use(chimw.Recoverer)

@@ -30,6 +30,7 @@ type Request struct {
 }
 
 type Result struct {
+	LoopID       string
 	ObjectiveID  objective.ObjectiveID
 	Status       objective.ObjectiveStatus
 	Iterations   []Iteration
