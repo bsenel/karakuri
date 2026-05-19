@@ -22,7 +22,7 @@ func softwareObjectiveTemplates() []objective.Template {
 			ID: "software.objective.strategy", Title: "Strategy", Domain: "software",
 			Description: "Research, business model, and value proposition",
 			SuccessCriteria: []objective.Criterion{
-				crit("strategy-doc", "Strategy document produced", "reason.evaluate", 1.0),
+				crit("strategy-doc", "Strategy document produced", "software.verify.tech_lead_review", 1.0),
 			},
 		},
 		{
@@ -30,7 +30,7 @@ func softwareObjectiveTemplates() []objective.Template {
 			Description: "Requirements, design doc, user stories, and task breakdown",
 			SuccessCriteria: []objective.Criterion{
 				crit("design-doc", "Design document produced", "software.verify.tech_lead_review", 0.5),
-				crit("tasks", "Task breakdown complete", "reason.evaluate", 0.5),
+				crit("tasks", "Task breakdown complete", "software.decide.prioritize_tasks", 0.5),
 			},
 		},
 		{
@@ -59,14 +59,14 @@ func softwareObjectiveTemplates() []objective.Template {
 			ID: "software.objective.research", Title: "Research", Domain: "software",
 			Description: "Deep research on a topic or ticket",
 			SuccessCriteria: []objective.Criterion{
-				crit("research-report", "Research report produced", "reason.evaluate", 1.0),
+				crit("research-report", "Research report produced", "software.reason.research", 1.0),
 			},
 		},
 		{
 			ID: "software.objective.incident_response", Title: "Incident Response", Domain: "software",
 			Description: "Fetch logs/metrics, identify issues, produce and execute remediation plan",
 			SuccessCriteria: []objective.Criterion{
-				crit("root-cause", "Root cause identified", "reason.evaluate", 0.4),
+				crit("root-cause", "Root cause identified", "software.verify.review", 0.4),
 				crit("remediation", "Remediation applied", "software.verify.run_tests", 0.6),
 			},
 			Constraints: []objective.Constraint{
@@ -77,7 +77,7 @@ func softwareObjectiveTemplates() []objective.Template {
 			ID: "software.objective.autonomous_watch", Title: "Autonomous Watch", Domain: "software",
 			Description: "Continuous environment observation; promotes to other templates on signal",
 			SuccessCriteria: []objective.Criterion{
-				crit("running", "Watcher active", "observe.fetch_signal", 1.0),
+				crit("running", "Watcher active", "software.observe.fetch_commits", 1.0),
 			},
 		},
 	}

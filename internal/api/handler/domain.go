@@ -3,8 +3,10 @@ package handler
 import (
 	"net/http"
 
+	"github.com/bsenel/karakuri/internal/conformance"
 	"github.com/bsenel/karakuri/internal/core/capability"
 	"github.com/bsenel/karakuri/internal/core/domain"
+	"github.com/go-chi/chi/v5"
 )
 
 type DomainHandler struct {
@@ -35,4 +37,16 @@ func (h *DomainHandler) ListCapabilities(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	writeJSON(w, h.Capabilities.List())
+}
+
+// Conformance runs the conformance suite against the named domain pack and returns the results.
+func (h *DomainHandler) Conformance(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	pack, ok := h.Domains.Get(id)
+	if !ok {
+		http.Error(w, `{"error":"domain not found"}`, http.StatusNotFound)
+		return
+	}
+	results := conformance.New().Run(r.Context(), pack)
+	writeJSON(w, results)
 }

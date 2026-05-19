@@ -1,0 +1,34 @@
+run:
+  timeout: 5m
+  modules-download-mode: readonly
+
+linters:
+  enable:
+    - govet
+    - staticcheck
+    - unused
+    - depguard
+
+linters-settings:
+  depguard:
+    rules:
+      no-langchain-in-core-or-feature:
+        files:
+          - "internal/core/**/*.go"
+          - "internal/feature/**/*.go"
+        deny:
+          - pkg: "github.com/tmc/langchaingo"
+            desc: "LangChain Go must only be imported in internal/platform/"
+      no-domain-in-core:
+        files:
+          - "internal/core/**/*.go"
+        deny:
+          - pkg: "github.com/bsenel/karakuri/domains"
+            desc: "domain packs must not be imported in internal/core/"
+
+issues:
+  exclude-rules:
+    - path: "_test.go"
+      linters:
+        - depguard
+        - unused

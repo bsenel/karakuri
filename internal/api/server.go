@@ -122,6 +122,7 @@ func NewApp(
 		r.Route("/domains", func(r chi.Router) {
 			r.Get("/", domH.List)
 			r.Get("/capabilities", domH.ListCapabilities)
+			r.Get("/{id}/conformance", domH.Conformance)
 		})
 
 		r.Post("/research", resH.Run)

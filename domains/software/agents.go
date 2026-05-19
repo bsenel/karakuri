@@ -38,21 +38,21 @@ func softwareAgentDefinitions() []agent.Definition {
 	return []agent.Definition{
 		{
 			ID: "software.agent.strategist", Name: "Strategist", Domain: "software",
-			Capabilities: caps("reason.synthesize", "reason.plan", "software.reason.research"),
+			Capabilities: caps("software.reason.research", "software.decide.prioritize_tasks", "software.act.write_design_doc"),
 			Memory: mem, ReasoningStrategy: agent.ReasoningReflexion,
 			Authority: authority(0, 0.9, "software.act.write_code"),
 			LLMHints:  capability.LLMHints{PreferredProvider: "claude", TemperatureMax: 0.7},
 		},
 		{
 			ID: "software.agent.architect", Name: "Architect", Domain: "software",
-			Capabilities: caps("software.reason.architecture_review", "software.act.write_design_doc", "reason.evaluate"),
+			Capabilities: caps("software.reason.architecture_review", "software.act.write_design_doc", "software.verify.tech_lead_review"),
 			Memory: mem, ReasoningStrategy: agent.ReasoningTreeOfThought,
 			Authority: authority(5, 0.8),
 			LLMHints:  capability.LLMHints{PreferredProvider: "claude", TemperatureMax: 0.8},
 		},
 		{
 			ID: "software.agent.researcher", Name: "Researcher", Domain: "software",
-			Capabilities: caps("software.reason.research", "observe.fetch_signal", "reason.synthesize"),
+			Capabilities: caps("software.reason.research", "software.observe.fetch_commits", "software.observe.read_codebase"),
 			Memory: mem, ReasoningStrategy: agent.ReasoningReAct,
 			Authority: authority(10, 0.7),
 			LLMHints:  capability.LLMHints{PreferredProvider: "gemini", FallbackProvider: "claude", TemperatureMax: 0.6},
@@ -66,7 +66,7 @@ func softwareAgentDefinitions() []agent.Definition {
 		},
 		{
 			ID: "software.agent.reviewer", Name: "Reviewer", Domain: "software",
-			Capabilities: caps("software.verify.review", "software.verify.tech_lead_review", "reason.evaluate"),
+			Capabilities: caps("software.verify.review", "software.verify.tech_lead_review", "software.reason.architecture_review"),
 			Memory: mem, ReasoningStrategy: agent.ReasoningReflexion,
 			Authority: authority(0, 0.85),
 			LLMHints:  capability.LLMHints{PreferredProvider: "copilot", FallbackProvider: "claude", TemperatureMax: 0.5},
