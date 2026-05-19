@@ -1,0 +1,20 @@
+services:
+  karakuri:
+    build: .
+    ports:
+      - "8080:8080"
+    volumes:
+      - karakuri-data:/data
+    environment:
+      - KARAKURI_AUTH_TOKEN=${KARAKURI_AUTH_TOKEN:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/api/v1/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    restart: unless-stopped
+
+volumes:
+  karakuri-data:

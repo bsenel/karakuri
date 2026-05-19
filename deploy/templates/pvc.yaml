@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "karakuri.fullname" . }}-data
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "karakuri.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: {{ .Values.storage.size }}
+  {{- with .Values.storage.storageClassName }}
+  storageClassName: {{ . }}
+  {{- end }}

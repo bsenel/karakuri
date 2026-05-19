@@ -1,0 +1,19 @@
+# Patterns excluded from helm package tarballs.
+# argocd/ is a sibling artifact, not part of the chart.
+argocd/
+
+# Standard helm excludes
+.DS_Store
+.git/
+.gitignore
+.bzr/
+.hg/
+.hgignore
+.svn/
+*.swp
+*.bak
+*.tmp
+*.orig
+*~
+.idea/
+.vscode/

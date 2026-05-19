@@ -1,0 +1,22 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: karakuri
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/bsenel/karakuri.git
+    targetRevision: HEAD
+    path: deploy
+    helm:
+      releaseName: karakuri
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: karakuri
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

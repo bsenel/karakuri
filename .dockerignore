@@ -1,0 +1,6 @@
+bin/
+karakuri-obs/
+karakuri.db
+worktrees/
+*.db
+.git

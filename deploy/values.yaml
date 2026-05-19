@@ -1,0 +1,33 @@
+image:
+  repository: karakuri
+  tag: latest
+  pullPolicy: Never
+
+nameOverride: ""
+fullnameOverride: ""
+
+replicaCount: 1
+
+service:
+  type: NodePort
+  port: 8080
+  nodePort: 30080
+
+storage:
+  size: 5Gi
+  storageClassName: standard
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: "1"
+    memory: 512Mi
+
+secret:
+  name: karakuri-secrets
+
+probes:
+  livenessPath: /api/v1/health
+  readinessPath: /api/v1/health

@@ -1,0 +1,9 @@
+image:
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  nodePort: null
+
+storage:
+  storageClassName: local-path

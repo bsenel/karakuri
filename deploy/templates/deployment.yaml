@@ -1,0 +1,56 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "karakuri.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "karakuri.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "karakuri.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "karakuri.selectorLabels" . | nindent 8 }}
+    spec:
+      containers:
+        - name: karakuri
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8080
+          envFrom:
+            - secretRef:
+                name: {{ .Values.secret.name }}
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: config
+              mountPath: /etc/karakuri
+          livenessProbe:
+            httpGet:
+              path: {{ .Values.probes.livenessPath }}
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          readinessProbe:
+            httpGet:
+              path: {{ .Values.probes.readinessPath }}
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ include "karakuri.fullname" . }}-data
+        - name: config
+          configMap:
+            name: {{ include "karakuri.fullname" . }}-config
+            items:
+              - key: config.yaml
+                path: config.yaml

@@ -1,0 +1,45 @@
+server:
+  addr: ":8080"
+
+database:
+  driver: sqlite
+  dsn: /data/karakuri.db
+
+git:
+  repo_path: /data/repo
+  worktree_base: /data/worktrees
+  base_branch: main
+  branch_prefix: karakuri
+  auto_prune: true
+
+observability:
+  exporters:
+    - name: local
+      enabled: true
+      path: /data/obs/
+      formats:
+        metrics: ndjson
+        logs: ndjson
+      rotation:
+        max_size_mb: 100
+        max_age_days: 30
+
+providers:
+  default: claude
+  fallback:
+    gemini: claude
+    cursor: claude
+    copilot: claude
+
+executor: local
+
+auth:
+  token: ""
+
+domains:
+  - id: software
+    enabled: true
+
+memory:
+  consolidation_threshold: 20
+  semantic_top_k: 5
