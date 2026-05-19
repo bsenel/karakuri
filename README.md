@@ -148,6 +148,43 @@ memory:
   semantic_top_k: 5
 ```
 
+## Deployment
+
+Karakuri ships five interchangeable ways to run locally. All five share one Docker image (`karakuri:latest`) and one canonical runtime config (`deploy/karakuri.yaml`), so switching between them never requires re-templating values.
+
+| Variant | Best for | Up | Down |
+|---|---|---|---|
+| **Docker Compose** | Simplest single-machine dev | `make docker-up` | `make docker-down` |
+| **Helm (direct)** | Any existing Kubernetes cluster | `make helm-up` | `make helm-down` |
+| **Minikube** | Local single-node K8s with a built-in image registry | `make minikube-up` | `make minikube-down` |
+| **k3s** | Lightweight K8s (edge / VMs / Raspberry Pi) | `make k3s-up` | `make k3s-down` |
+| **ArgoCD** | GitOps continuous sync from this repo's `deploy/` | `make argocd-up` | `make argocd-down` |
+
+Every variant reaches the API at `localhost:8080` (for Helm/k3s, after `kubectl port-forward svc/karakuri 8080:8080 -n karakuri`).
+
+### Required env vars
+
+```bash
+export ANTHROPIC_API_KEY=sk-ant-...
+export KARAKURI_AUTH_TOKEN=""   # optional; empty disables auth
+```
+
+The Makefile injects these as a Kubernetes Secret (`karakuri-secrets`) for the K8s variants and as Compose environment for Docker.
+
+### Helm chart
+
+`deploy/` is the chart root (chart name `karakuri` from `Chart.yaml`). The same chart drives Helm direct, Minikube, k3s, and ArgoCD. Tunable values live in [`deploy/values.yaml`](deploy/values.yaml); k3s-specific overrides in [`deploy/values-k3s.yaml`](deploy/values-k3s.yaml).
+
+```bash
+helm template karakuri deploy                       # render manifests
+helm upgrade --install karakuri deploy -n karakuri  # install/upgrade
+helm package deploy                                 # produce karakuri-0.1.0.tgz
+```
+
+### Single source of truth
+
+`deploy/karakuri.yaml` is the canonical server config (`/data/`-paths). The Dockerfile `COPY`s it into the image; the chart's ConfigMap template reads the same file via `.Files.Get`. No drift is possible. The local-dev config (`./karakuri.db` paths) remains at `config/default.yaml` for `go run`.
+
 ## Adapter Ecosystem
 
 | Category | Adapter | Status |
