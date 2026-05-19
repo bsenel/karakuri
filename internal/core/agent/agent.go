@@ -73,15 +73,15 @@ type OutputChunk struct {
 }
 
 type MemoryEntry struct {
-	ID         string
-	AgentID    AgentID
-	TwinID     string
-	Tier       string
-	Domain     string
-	Content    string
-	Embedding  []float32
-	Confidence float64
-	Sources    []string
-	CreatedAt  time.Time
-	ExpiresAt  *time.Time
+	ID         string     `json:"id"`
+	AgentID    AgentID    `json:"agent_id"`
+	TwinID     string     `json:"twin_id,omitempty"`
+	Tier       string     `json:"tier"`
+	Domain     string     `json:"domain,omitempty"`
+	Content    string     `json:"content"`
+	Embedding  []float32  `json:"embedding,omitempty"`
+	Confidence float64    `json:"confidence"`
+	Sources    []string   `json:"sources,omitempty"`
+	CreatedAt  time.Time  `json:"created_at"`
+	ExpiresAt  *time.Time `json:"expires_at,omitempty"`
 }

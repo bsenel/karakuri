@@ -25,6 +25,7 @@ type Objective struct {
 	Domain          string          `json:"domain"`
 	TwinID          string          `json:"twin_id,omitempty"`
 	Priority        int             `json:"priority,omitempty"`
+	MaxIterations   int             `json:"max_iterations,omitempty"`
 	Deadline        *time.Time      `json:"deadline,omitempty"`
 	SuccessCriteria []Criterion     `json:"success_criteria,omitempty"`
 	Constraints     []Constraint    `json:"constraints,omitempty"`

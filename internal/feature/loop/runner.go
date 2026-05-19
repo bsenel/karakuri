@@ -90,6 +90,9 @@ func (s *serviceImpl) runLoop(ctx context.Context, loopID string, req loop.Reque
 	// 6. Run the iteration loop
 	maxIter := req.MaxIter
 	if maxIter <= 0 {
+		maxIter = obj.MaxIterations
+	}
+	if maxIter <= 0 {
 		maxIter = 50
 	}
 
@@ -167,9 +170,7 @@ func (s *serviceImpl) runLoop(ctx context.Context, loopID string, req loop.Reque
 			state.mu.Lock()
 			state.status.Paused = false
 			state.mu.Unlock()
-
-			// Continue the loop
-			continue
+			// Fall through to act with the approved plan
 		}
 
 		// act

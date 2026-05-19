@@ -92,16 +92,6 @@ func stepDecide(ctx context.Context, sc *stepContext, p plan) (plan, bool) {
 			Timestamp: time.Now().UTC(),
 		})
 
-		// Block until decision arrives
-		select {
-		case <-ctx.Done():
-		case <-sc.state.decisionCh:
-		}
-
-		sc.state.mu.Lock()
-		sc.state.status.Paused = false
-		sc.state.mu.Unlock()
-
 		paused = true
 	}
 

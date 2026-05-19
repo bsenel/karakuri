@@ -24,6 +24,7 @@ type ObjectiveModel struct {
 	Description     string     `gorm:"column:description;not null;default:''"`
 	Domain          string     `gorm:"column:domain;not null"`
 	Priority        int        `gorm:"column:priority;not null;default:0"`
+	MaxIterations   int        `gorm:"column:max_iterations;not null;default:0"`
 	Deadline        *time.Time `gorm:"column:deadline"`
 	CriteriaJSON    string     `gorm:"column:criteria_json;not null;default:'[]'"`
 	ConstraintsJSON string     `gorm:"column:constraints_json;not null;default:'[]'"`

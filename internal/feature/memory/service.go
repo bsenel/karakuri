@@ -50,6 +50,9 @@ func (s *Service) Recall(ctx context.Context, q memory.Query) ([]memory.Entry, e
 	if q.TopK == 0 {
 		q.TopK = s.topK
 	}
+	if len(q.Tiers) == 0 {
+		q.Tiers = []memory.Tier{memory.TierEpisodic, memory.TierSemantic, memory.TierProcedural, memory.TierWorking}
+	}
 	var out []memory.Entry
 	for _, tier := range q.Tiers {
 		var entries []memory.Entry

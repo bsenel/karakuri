@@ -163,7 +163,7 @@ func (s *GORMStorage) SaveObjective(ctx context.Context, o objective.Objective) 
 	}
 	return s.db.WithContext(ctx).Save(&schema.ObjectiveModel{
 		ID: string(o.ID), Title: o.Title, Description: o.Description, Domain: o.Domain,
-		TwinID: o.TwinID, Priority: o.Priority, Deadline: o.Deadline,
+		TwinID: o.TwinID, Priority: o.Priority, MaxIterations: o.MaxIterations, Deadline: o.Deadline,
 		CriteriaJSON: string(critJ), ConstraintsJSON: string(constrJ), ParentID: parentID,
 		Status: string(o.Status),
 	}).Error
@@ -213,7 +213,7 @@ func objectiveFromModel(m schema.ObjectiveModel) objective.Objective {
 	}
 	return objective.Objective{
 		ID: objective.ObjectiveID(m.ID), Title: m.Title, Description: m.Description,
-		Domain: m.Domain, TwinID: m.TwinID, Priority: m.Priority, Deadline: m.Deadline,
+		Domain: m.Domain, TwinID: m.TwinID, Priority: m.Priority, MaxIterations: m.MaxIterations, Deadline: m.Deadline,
 		SuccessCriteria: criteria, Constraints: constraints, ParentID: parentID,
 		Status: objective.ObjectiveStatus(m.Status),
 		CreatedAt: m.CreatedAt, UpdatedAt: m.UpdatedAt,
@@ -259,7 +259,10 @@ func (s *GORMStorage) SaveMemoryEpisodic(ctx context.Context, e memory.Entry) er
 
 func (s *GORMStorage) QueryEpisodic(ctx context.Context, q memory.Query) ([]memory.Entry, error) {
 	var models []schema.MemoryEpisodicModel
-	db := s.db.WithContext(ctx).Where("agent_id = ?", string(q.AgentID))
+	db := s.db.WithContext(ctx)
+	if q.AgentID != "" {
+		db = db.Where("agent_id = ?", string(q.AgentID))
+	}
 	if q.TwinID != "" {
 		db = db.Where("twin_id = ?", q.TwinID)
 	}
@@ -314,7 +317,10 @@ func (s *GORMStorage) SaveMemorySemantic(ctx context.Context, e memory.Entry) er
 func (s *GORMStorage) QuerySemantic(ctx context.Context, q memory.Query) ([]memory.Entry, error) {
 	// Keyword-based fallback until sqlite-vec is wired
 	var models []schema.MemorySemanticModel
-	db := s.db.WithContext(ctx).Where("agent_id = ?", string(q.AgentID))
+	db := s.db.WithContext(ctx)
+	if q.AgentID != "" {
+		db = db.Where("agent_id = ?", string(q.AgentID))
+	}
 	if q.TwinID != "" {
 		db = db.Where("twin_id = ?", q.TwinID)
 	}

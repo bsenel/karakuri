@@ -30,13 +30,13 @@ type Request struct {
 }
 
 type Result struct {
-	LoopID       string
-	ObjectiveID  objective.ObjectiveID
-	Status       objective.ObjectiveStatus
-	Iterations   []Iteration
-	CriteriaMet  float64 // 0.0–1.0 weighted completion score
-	CheckpointID *string
-	LearnedFacts []memory.Entry
+	LoopID       string                  `json:"loop_id"`
+	ObjectiveID  objective.ObjectiveID   `json:"objective_id"`
+	Status       objective.ObjectiveStatus `json:"status"`
+	Iterations   []Iteration             `json:"iterations,omitempty"`
+	CriteriaMet  float64                 `json:"criteria_met"`
+	CheckpointID *string                 `json:"checkpoint_id,omitempty"`
+	LearnedFacts []memory.Entry          `json:"learned_facts,omitempty"`
 }
 
 type Iteration struct {
@@ -63,10 +63,10 @@ type Context struct {
 }
 
 type Status struct {
-	LoopID      string
-	ObjectiveID objective.ObjectiveID
-	Step        Step
-	Iteration   int
-	CriteriaMet float64
-	Paused      bool
+	LoopID      string                `json:"loop_id"`
+	ObjectiveID objective.ObjectiveID `json:"objective_id"`
+	Step        Step                  `json:"step"`
+	Iteration   int                   `json:"iteration"`
+	CriteriaMet float64               `json:"criteria_met"`
+	Paused      bool                  `json:"paused"`
 }
