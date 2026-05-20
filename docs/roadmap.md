@@ -331,19 +331,72 @@ Or via API: `PUT /twins/:id/bindings` with `{"adapter_bindings": {"versioncontro
 
 ---
 
-## Phase 7 — Multi-LLM Provider Parity (Planned)
+## Phase 7 — Multi-LLM Provider Parity + CLI Agents (Planned)
 
-**Goal:** Activate the provider fallback chain by implementing the Gemini/Cursor/Copilot adapters that currently return `ErrNotImplemented`. Validate that loops survive provider outages mid-run.
+**Goal:** Activate the provider fallback chain by implementing the Gemini/Cursor/Copilot adapters that currently return `ErrNotImplemented`, **and** make Karakuri capable of delegating to installed coding-agent CLIs (Claude Code, Cursor CLI, Gemini CLI, `copilot`) as first-class sub-agents. Loops survive both API outages and let operators reuse the CLI tools they already trust.
+
+Two integration surfaces because they are conceptually different:
+
+- **API providers** slot in behind the existing `ProviderAdapter` interface — same input/output, different vendor.
+- **CLI agents** are subprocesses with their own tool loop (Claude Code already does its own file edits, shell calls, etc.). Wrapping them as `ProviderAdapter` would flatten away their multi-step nature, so they get a sibling interface (`CLIAgentAdapter`) that exposes a "delegate this task" call instead of a single LLM completion.
+
+### Track A — API providers (slot in behind `ProviderAdapter`)
 
 **Steps:**
 
-1. **Gemini adapter** (`internal/platform/llm/gemini.go`) — wrap LangChain Go's `googleai` client; map `CompletionOptions` to Gemini params; implement `AsLLM()` for tool-use parity.
-2. **Cursor / Copilot adapters** — implement via their respective LLM endpoints; fall back to Anthropic-compatible API contracts where applicable.
+1. **Gemini API adapter** (`internal/platform/llm/gemini.go`) — wrap LangChain Go's `googleai` client; map `CompletionOptions` to Gemini params; implement `AsLLM()` for tool-use parity. Multi-instance per ADR 006 (`tools.llm.providers.acme_gemini`, etc.).
+2. **Cursor / Copilot API adapters** — implement via their respective LLM endpoints; fall back to Anthropic-compatible API contracts where applicable.
 3. **Fallback chain telemetry** — emit `provider_fallback` SSE event when the registry escalates; record provider hop count per loop iteration in episodic memory.
 4. **Cost / token metrics per provider** — already wired in `RecordLoopIteration`; add `provider` label to differentiate.
 5. **Provider selection by `LLMHints`** — capability metadata can pin to a specific provider (e.g. `software.reason.research` prefers Gemini for breadth); registry honors the hint with fallback.
 
-**Acceptance:** With `ANTHROPIC_API_KEY` unset mid-loop, the next reason step transparently falls back to Gemini; loop completes; `krk loop status` shows the provider hop in the iteration trace.
+### Track B — CLI agents (subprocess-backed delegate agents)
+
+**Design:**
+
+```go
+// internal/core/agent/cliagent.go (new)
+type CLIAgentAdapter interface {
+    Name() string                     // "claude_code", "cursor_cli", "gemini_cli", "copilot_cli"
+    Active() bool
+    Delegate(ctx context.Context, task DelegateInput) (DelegateOutput, error)
+    Stream(ctx context.Context, task DelegateInput) (<-chan DelegateChunk, error)
+}
+
+type DelegateInput struct {
+    Prompt       string            // natural-language task description
+    WorktreePath string            // CLI runs with this as cwd
+    Files        []string          // optional explicit context files
+    AllowedTools []string          // e.g. ["read", "edit", "bash"] — passed to CLI if supported
+    Env          map[string]string // additional env vars
+}
+
+type DelegateOutput struct {
+    Summary      string
+    ArtifactSHAs []string          // blobs produced (parsed from CLI output)
+    ToolUses     []ToolUse         // surfaced from CLI's own tool log
+    ExitCode     int
+}
+```
+
+**Steps:**
+
+1. **Claude Code CLI adapter** (`internal/platform/cli/claude.go`) — subprocess `claude --print --output-format=stream-json "<prompt>"` in the worktree; parse the JSON stream into `DelegateChunk` events; capture file changes from the streamed `tool_use` blocks; surface `ArtifactSHAs` via the worktree diff. Auth via existing `claude` login (no token to manage).
+2. **Cursor CLI adapter** (`internal/platform/cli/cursor.go`) — subprocess `cursor-agent --print --output-format=stream-json "<prompt>"` per [Cursor CLI docs](https://docs.cursor.com/en/cli); same streaming parse, same artifact discovery via worktree diff. Honors `--model` for explicit selection; cursor login handles auth.
+3. **Gemini CLI adapter** (`internal/platform/cli/gemini.go`) — subprocess `gemini --prompt "<prompt>"` from `@google/gemini-cli`; map output into `DelegateOutput`. Auth via gemini CLI's own OAuth flow.
+4. **Copilot CLI adapter** (`internal/platform/cli/copilot.go`) — subprocess `gh copilot suggest` / `gh copilot explain` from the GitHub CLI extension; narrower scope than the others (suggest/explain rather than autonomous edits), so `Delegate()` returns a suggestion that the loop's act step decides whether to apply.
+5. **`software.act.delegate_to_cli` capability** — new capability with input schema `{cli, prompt, allowed_tools?}`; act step routes to the corresponding `CLIAgentAdapter` by `cli` param; resulting artifacts flow through the existing `ArtifactService`.
+6. **Loop-step instrumentation** — `cli_agent_started` / `cli_agent_completed` SSE events; per-CLI duration and exit-code metrics; CLI output captured into episodic memory verbatim for later inspection.
+7. **Sandbox + worktree contract** — CLIs are invoked inside the per-task worktree (already created by `WorktreeManager`), so their edits stay isolated; the act step diffs the worktree after the CLI exits to discover artifacts.
+8. **Multi-instance + twin-bound (ADR 006)** — `tools.cli_agents` slot with named instances (`acme_claude_code`, `bsenel_cursor`, …) so each twin can pin a preferred CLI agent via `AdapterBindings`.
+
+**Why this matters.** Many operators already pay for a coding-agent CLI subscription (Claude Code, Cursor) that includes its own model, tool loop, and sandbox. Reusing those CLIs lets Karakuri orchestrate work without re-paying for raw tokens or re-implementing tool dispatch; Karakuri becomes the *outer* loop (objective + memory + verify) wrapping the CLI's *inner* loop (write code, run tests, iterate).
+
+### Acceptance
+
+- With `ANTHROPIC_API_KEY` unset mid-loop, the next reason step transparently falls back to Gemini (Track A); loop completes; `krk loop status` shows the provider hop in the iteration trace.
+- A `software.objective.delivery` objective with `delegate_to_cli` set to `claude_code` completes by invoking the local `claude` CLI inside a worktree; resulting commits + artifacts are visible via `krk artifact list`; CLI output is recoverable from episodic memory.
+- Two twins bind to different CLIs (`acme` → `claude_code`, `bsenel` → `cursor_cli`); concurrent loops respect each binding; `/health` shows both CLI instances with their `active` state derived from binary availability.
 
 ---
 
