@@ -6,6 +6,7 @@ import (
 
 	"github.com/bsenel/karakuri/config"
 	"github.com/bsenel/karakuri/internal/platform/tools/calendar"
+	"github.com/bsenel/karakuri/internal/platform/tools/cliagent"
 	"github.com/bsenel/karakuri/internal/platform/tools/design"
 	"github.com/bsenel/karakuri/internal/platform/tools/email"
 	"github.com/bsenel/karakuri/internal/platform/tools/messaging"
@@ -76,6 +77,7 @@ type Registry struct {
 	Testing     SlotInstances[testing.TestingAdapter]
 	Calendar    SlotInstances[calendar.CalendarAdapter]
 	Email       SlotInstances[email.EmailAdapter]
+	CLIAgents   SlotInstances[cliagent.CLIAgentAdapter]
 
 	// Single-instance slots — kept simple until use cases demand multi-instance.
 	Observability observability.ObservabilityAdapter
@@ -115,6 +117,7 @@ func NewRegistryFromConfig(cfg config.ToolsConfig) *Registry {
 	r.Testing = buildTestingSlot(cfg.Testing)
 	r.Calendar = buildCalendarSlot(cfg.Calendar)
 	r.Email = buildEmailSlot(cfg.Email)
+	r.CLIAgents = buildCLIAgentSlot(cfg.CLIAgents)
 	return r
 }
 
@@ -162,6 +165,10 @@ func (r *Registry) Status() []AdapterStatus {
 	})
 	collect("email", r.Email.List(), func(n string) bool {
 		a, ok := r.Email.Resolve(n)
+		return ok && a.Active()
+	})
+	collect("cli_agents", r.CLIAgents.List(), func(n string) bool {
+		a, ok := r.CLIAgents.Resolve(n)
 		return ok && a.Active()
 	})
 	// Single-instance slots — show as one row each.
@@ -285,6 +292,40 @@ func buildCalendarSlot(cfg config.SlotConfig) SlotInstances[calendar.CalendarAda
 			}
 		default:
 			slog.Warn("unknown calendar adapter type", "instance", name, "type", inst.Type)
+		}
+	}
+	return s
+}
+
+func buildCLIAgentSlot(cfg config.SlotConfig) SlotInstances[cliagent.CLIAgentAdapter] {
+	s := SlotInstances[cliagent.CLIAgentAdapter]{
+		defaultName: cfg.Default,
+		instances:   map[string]instanceEntry[cliagent.CLIAgentAdapter]{},
+	}
+	for name, inst := range cfg.Instances {
+		switch inst.Type {
+		case "claude_code":
+			s.instances[name] = instanceEntry[cliagent.CLIAgentAdapter]{
+				typeName: "claude_code",
+				adapter:  cliagent.NewClaudeCode(inst.OptString("binary")),
+			}
+		case "cursor_cli":
+			s.instances[name] = instanceEntry[cliagent.CLIAgentAdapter]{
+				typeName: "cursor_cli",
+				adapter:  cliagent.NewCursorCLI(inst.OptString("binary")),
+			}
+		case "gemini_cli":
+			s.instances[name] = instanceEntry[cliagent.CLIAgentAdapter]{
+				typeName: "gemini_cli",
+				adapter:  cliagent.NewGeminiCLI(inst.OptString("binary")),
+			}
+		case "copilot_cli":
+			s.instances[name] = instanceEntry[cliagent.CLIAgentAdapter]{
+				typeName: "copilot_cli",
+				adapter:  cliagent.NewCopilotCLI(inst.OptString("binary")),
+			}
+		default:
+			slog.Warn("unknown cli_agents adapter type", "instance", name, "type", inst.Type)
 		}
 	}
 	return s

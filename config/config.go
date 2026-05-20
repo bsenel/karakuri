@@ -31,6 +31,7 @@ type ToolsConfig struct {
 	Testing        SlotConfig `yaml:"testing"`
 	Calendar       SlotConfig `yaml:"calendar"`
 	Email          SlotConfig `yaml:"email"`
+	CLIAgents      SlotConfig `yaml:"cli_agents"`
 }
 
 // SlotConfig is the uniform per-slot shape (Pattern B).
@@ -151,6 +152,7 @@ func resolveEnvRefs(cfg *Config) {
 		&cfg.Tools.Testing,
 		&cfg.Tools.Calendar,
 		&cfg.Tools.Email,
+		&cfg.Tools.CLIAgents,
 	}
 	for _, slot := range slots {
 		for name, inst := range slot.Instances {

@@ -10,6 +10,7 @@ import (
 
 	"github.com/bsenel/karakuri/internal/core/environment"
 	"github.com/bsenel/karakuri/internal/platform/tools"
+	"github.com/bsenel/karakuri/internal/platform/tools/cliagent"
 	"github.com/bsenel/karakuri/internal/platform/tools/messaging"
 	"github.com/bsenel/karakuri/internal/platform/tools/projectmgmt"
 	"github.com/bsenel/karakuri/internal/platform/tools/versioncontrol"
@@ -71,6 +72,20 @@ func softwareEnvironmentFactories(reg *tools.Registry) []environment.Factory {
 					}
 				}
 				return &commsEnv{id: "software.env.communication", msg: msg}, nil
+			},
+		},
+		{
+			EnvID:       "software.env.cli_agent",
+			Domain:      "software",
+			Description: "Coding-agent CLI delegate (Claude Code, Cursor, Gemini, Copilot)",
+			Build: func(ctx environment.BuildContext) (environment.Environment, error) {
+				var cli cliagent.CLIAgentAdapter = cliagent.NewNoOp()
+				if reg != nil {
+					if a, ok := reg.CLIAgents.Resolve(ctx.AdapterBindings["cli_agents"]); ok {
+						cli = a
+					}
+				}
+				return &cliEnv{id: "software.env.cli_agent", cli: cli}, nil
 			},
 		},
 		noopFactory("software.env.ci", "CI pipeline: build status, test results, coverage"),
@@ -309,6 +324,82 @@ func (e *commsEnv) Subscribe(_ context.Context, _ environment.EventFilter) (<-ch
 }
 
 func (e *commsEnv) Snapshot(ctx context.Context) (environment.EnvironmentSnapshot, error) {
+	obs, _ := e.Observe(ctx, environment.ObservationQuery{})
+	return environment.EnvironmentSnapshot{SHA: obs.Version, EnvID: e.id, State: obs.State, Timestamp: obs.Timestamp}, nil
+}
+
+// ── cliEnv (CLI coding-agent adapter) ────────────────────────────────────────
+
+type cliEnv struct {
+	id  environment.EnvironmentID
+	cli cliagent.CLIAgentAdapter
+}
+
+func (e *cliEnv) ID() environment.EnvironmentID { return e.id }
+func (e *cliEnv) Domain() string                { return "software" }
+
+func (e *cliEnv) Observe(_ context.Context, _ environment.ObservationQuery) (environment.Observation, error) {
+	// CLI agents have no observe surface — observation reports the configured
+	// instance name so the agent's reason step can pick a target.
+	state := map[string]any{"adapter": e.cli.Name(), "active": e.cli.Active()}
+	return environment.Observation{
+		EnvID: e.id, State: state, Version: stateVersion(state), Timestamp: time.Now().UTC(),
+	}, nil
+}
+
+func (e *cliEnv) Act(ctx context.Context, a environment.Action) (environment.ActionResult, error) {
+	if e.cli == nil || !e.cli.Active() {
+		return noopAct(a), nil
+	}
+	if string(a.CapabilityID) != "software.act.delegate_to_cli" {
+		// Other capabilities aren't this env's concern — fall through to noop success.
+		return noopAct(a), nil
+	}
+
+	in := cliagent.DelegateInput{
+		Prompt:         asString(a.Params, "prompt"),
+		WorktreePath:   asString(a.Params, "worktree_path"),
+		TimeoutSeconds: 600,
+	}
+	if files, ok := a.Params["files"].([]any); ok {
+		for _, f := range files {
+			if s, ok := f.(string); ok {
+				in.Files = append(in.Files, s)
+			}
+		}
+	}
+	if tools, ok := a.Params["allowed_tools"].([]any); ok {
+		for _, t := range tools {
+			if s, ok := t.(string); ok {
+				in.AllowedTools = append(in.AllowedTools, s)
+			}
+		}
+	}
+
+	out, err := e.cli.Delegate(ctx, in)
+	if err != nil {
+		return environment.ActionResult{Success: false, Error: err.Error(),
+			StateDelta: map[string]any{"adapter": e.cli.Name()}}, nil
+	}
+	return environment.ActionResult{
+		Success: true,
+		StateDelta: map[string]any{
+			"adapter":    e.cli.Name(),
+			"summary":    out.Summary,
+			"tool_uses":  out.ToolUses,
+			"exit_code":  out.ExitCode,
+			"raw_output": out.RawOutput,
+		},
+		ArtifactSHAs: out.ArtifactSHAs,
+	}, nil
+}
+
+func (e *cliEnv) Subscribe(_ context.Context, _ environment.EventFilter) (<-chan environment.EnvironmentEvent, error) {
+	ch := make(chan environment.EnvironmentEvent)
+	return ch, nil
+}
+
+func (e *cliEnv) Snapshot(ctx context.Context) (environment.EnvironmentSnapshot, error) {
 	obs, _ := e.Observe(ctx, environment.ObservationQuery{})
 	return environment.EnvironmentSnapshot{SHA: obs.Version, EnvID: e.id, State: obs.State, Timestamp: obs.Timestamp}, nil
 }

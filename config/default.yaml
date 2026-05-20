@@ -83,3 +83,9 @@ tools:
   email:
     default: ""
     instances: {}
+  # CLI coding-agent slot (Phase 7). type: claude_code | cursor_cli | gemini_cli | copilot_cli
+  # Each instance can override the CLI binary path via the `binary:` field;
+  # default looks the binary up on PATH.
+  cli_agents:
+    default: ""
+    instances: {}

@@ -146,6 +146,63 @@ func TestUnknownInstanceType_LoggedAndSkipped(t *testing.T) {
 	}
 }
 
+func TestNewRegistryFromConfig_CLIAgents(t *testing.T) {
+	cfg := config.ToolsConfig{
+		CLIAgents: config.SlotConfig{
+			Default: "acme_claude",
+			Instances: map[string]config.InstanceConfig{
+				"acme_claude":  {Type: "claude_code"},
+				"acme_cursor":  {Type: "cursor_cli"},
+				"acme_gemini":  {Type: "gemini_cli"},
+				"acme_copilot": {Type: "copilot_cli"},
+			},
+		},
+	}
+	r := NewRegistryFromConfig(cfg)
+	want := map[string]string{
+		"acme_claude":  "claude_code",
+		"acme_cursor":  "cursor_cli",
+		"acme_gemini":  "gemini_cli",
+		"acme_copilot": "copilot_cli",
+	}
+	for name, expected := range want {
+		a, ok := r.CLIAgents.Resolve(name)
+		if !ok {
+			t.Errorf("expected instance %s to resolve", name)
+			continue
+		}
+		if a.Name() != expected {
+			t.Errorf("instance %s: expected name %s, got %s", name, expected, a.Name())
+		}
+	}
+	// Default resolves to claude_code.
+	def, ok := r.CLIAgents.Resolve("")
+	if !ok || def.Name() != "claude_code" {
+		t.Errorf("expected default = claude_code, got ok=%t name=%v", ok, def)
+	}
+}
+
+func TestCLIAgentStatusShape(t *testing.T) {
+	cfg := config.ToolsConfig{
+		CLIAgents: config.SlotConfig{
+			Default: "primary",
+			Instances: map[string]config.InstanceConfig{
+				"primary": {Type: "claude_code"},
+			},
+		},
+	}
+	r := NewRegistryFromConfig(cfg)
+	found := false
+	for _, s := range r.Status() {
+		if s.Slot == "cli_agents" && s.Instance == "primary" && s.Type == "claude_code" && s.IsDefault {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("cli_agents primary instance not surfaced in Status()")
+	}
+}
+
 func TestInstanceOptString_AndOptInt(t *testing.T) {
 	inst := config.InstanceConfig{
 		Options: map[string]any{

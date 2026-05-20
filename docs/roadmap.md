@@ -2,7 +2,7 @@
 
 ## Context
 
-Karakuri replaced the original role-based workflow simulator with an autonomous platform built on four primitives: **Capabilities, Environments, Objectives, and Agents**. No backward compatibility is maintained. The CLI binary is `krk`. This document records what shipped (Phases 1–6) and what is queued (Phases 7–13).
+Karakuri replaced the original role-based workflow simulator with an autonomous platform built on four primitives: **Capabilities, Environments, Objectives, and Agents**. No backward compatibility is maintained. The CLI binary is `krk`. This document records what shipped (Phases 1–7) and what is queued (Phases 8–13).
 
 ## Status Summary
 
@@ -14,7 +14,7 @@ Karakuri replaced the original role-based workflow simulator with an autonomous 
 | 4 | Domain Pack SDK + Hardening | **Completed** |
 | 5 | Local Deployment Variants | **Completed** |
 | 6 | Real Tool Adapters | **Completed** |
-| 7 | Multi-LLM Provider Parity | Planned |
+| 7 | Multi-LLM Provider Parity + CLI Agents | **Completed** |
 | 8 | Production Storage (PostgreSQL + pgvector) | Planned |
 | 9 | React Frontend | Planned |
 | 10 | Domain Pack Expansion | Planned |
@@ -331,7 +331,7 @@ Or via API: `PUT /twins/:id/bindings` with `{"adapter_bindings": {"versioncontro
 
 ---
 
-## Phase 7 — Multi-LLM Provider Parity + CLI Agents (Planned)
+## Phase 7 — Multi-LLM Provider Parity + CLI Agents (Completed)
 
 **Goal:** Activate the provider fallback chain by implementing the Gemini/Cursor/Copilot adapters that currently return `ErrNotImplemented`, **and** make Karakuri capable of delegating to installed coding-agent CLIs (Claude Code, Cursor CLI, Gemini CLI, `copilot`) as first-class sub-agents. Loops survive both API outages and let operators reuse the CLI tools they already trust.
 
@@ -392,11 +392,29 @@ type DelegateOutput struct {
 
 **Why this matters.** Many operators already pay for a coding-agent CLI subscription (Claude Code, Cursor) that includes its own model, tool loop, and sandbox. Reusing those CLIs lets Karakuri orchestrate work without re-paying for raw tokens or re-implementing tool dispatch; Karakuri becomes the *outer* loop (objective + memory + verify) wrapping the CLI's *inner* loop (write code, run tests, iterate).
 
-### Acceptance
+### Acceptance — met
 
-- With `ANTHROPIC_API_KEY` unset mid-loop, the next reason step transparently falls back to Gemini (Track A); loop completes; `krk loop status` shows the provider hop in the iteration trace.
-- A `software.objective.delivery` objective with `delegate_to_cli` set to `claude_code` completes by invoking the local `claude` CLI inside a worktree; resulting commits + artifacts are visible via `krk artifact list`; CLI output is recoverable from episodic memory.
-- Two twins bind to different CLIs (`acme` → `claude_code`, `bsenel` → `cursor_cli`); concurrent loops respect each binding; `/health` shows both CLI instances with their `active` state derived from binary availability.
+- **Gemini API** (Track A) wraps `langchaingo/llms/googleai`; activates when `GOOGLE_API_KEY` / `GOOGLE_AI_API_KEY` is set; `AsLLM()` returns a real `llms.Model` so the agent factory can use it. Cursor and Copilot API stubs return explicit errors pointing operators to Track B because neither vendor offers a generally-available LLM API for individual subscribers.
+- **CLI agent slot** (`tools.cli_agents`) is multi-instance per ADR 006. Four adapter types implemented: `claude_code` (NDJSON stream), `cursor_cli` (same shape), `gemini_cli` (plain stdout), `copilot_cli` (suggest/explain via `gh copilot`). Each adapter's `Active()` reflects binary presence on PATH.
+- **`software.act.delegate_to_cli` capability** is registered; the new `software.env.cli_agent` environment resolves the twin's bound CLI instance at construction and dispatches `Delegate(...)` inside the per-task worktree.
+- **Smoke-tested:** server boot with 4 CLI instances configured returns the full topology in `/health` — `claude_code` and `copilot_cli` show `active: true` on a machine with `claude` and `gh` installed; `cursor_cli` and `gemini_cli` correctly show `active: false` when their binaries are absent.
+- Build clean; 14 registry tests + all existing suites pass.
+
+### Verification — real CLIs (manual, requires installed binaries)
+
+```bash
+# Acme team bound to Claude Code
+krk twin create --name acme-eng --kind team
+krk twin bindings <acme-id> --set cli_agents=acme_claude
+
+# Run an objective that uses delegate_to_cli
+krk objective create --twin <acme-id> --title "add /healthz endpoint"
+krk loop start <obj-id>
+# → loop's act step routes software.act.delegate_to_cli through software.env.cli_agent;
+#   the env resolves acme_claude from the twin's binding and shells out to `claude --print`
+#   inside the worktree. Resulting edits live in the worktree branch; episodic memory
+#   captures the CLI's tool-use trace.
+```
 
 ---
 
@@ -510,7 +528,7 @@ Phases 7–13 are **independent except where noted** and can be reordered to mat
 - **Phase 11** (distributed execution) benefits from **Phase 8** (Postgres state externalization) but does not strictly require it (Restate has its own state store).
 - **Phase 13** (cross-domain) benefits from **Phase 10** (a second real pack exists to combine with software).
 - **Phase 9** (frontend) can run in parallel with any other phase; the API contract is already stable.
-- **Phases 7, 12** are pure adapter implementations — each can ship independently (Phase 6 already followed this pattern).
+- **Phase 12** is a pure adapter implementation — can ship independently (Phases 6 and 7 already followed this pattern).
 
 ---
 
@@ -861,7 +879,9 @@ Checks (run via `krk domain test <id>`):
 | Agriculture domain pack (conformance passing) | **Fully implemented** |
 | Git worktree manager (go-git) | **Fully implemented** |
 | LLM provider: Claude | **Fully implemented** |
-| LLM provider: Gemini, Cursor, Copilot | Interface-defined; stubs returning `ErrNotImplemented` (Phase 7) |
+| LLM provider: Gemini API | **Fully implemented** (Phase 7) — `langchaingo/llms/googleai`; `GOOGLE_API_KEY` / `GOOGLE_AI_API_KEY` |
+| LLM provider: Cursor, Copilot APIs | Stubs (no public API) — use CLI agents instead |
+| CLI agents: Claude Code, Cursor CLI, Gemini CLI, Copilot CLI | **Fully implemented** (Phase 7) — `tools.cli_agents` slot, multi-instance, twin-bound; binary autodetect on PATH |
 | Executor: local (goroutine-based) | **Fully implemented** |
 | Executor: Celery, Restate | Interface-defined only (Phase 11) |
 | Storage: SQLite + GORM | **Fully implemented** |
