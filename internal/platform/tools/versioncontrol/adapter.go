@@ -27,6 +27,7 @@ type Commit struct {
 }
 
 type VersionControlAdapter interface {
+	Name() string
 	CreatePR(ctx context.Context, pr PullRequest) (prURL string, err error)
 	ListPRs(ctx context.Context, repo string, since time.Time) ([]PRSummary, error)
 	GetCommits(ctx context.Context, repo string, since time.Time) ([]Commit, error)

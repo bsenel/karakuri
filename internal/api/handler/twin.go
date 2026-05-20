@@ -64,8 +64,9 @@ func (h *TwinHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req struct {
-		Name   string `json:"name"`
-		Domain string `json:"domain"`
+		Name            string            `json:"name"`
+		Domain          string            `json:"domain"`
+		AdapterBindings map[string]string `json:"adapter_bindings"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -77,6 +78,33 @@ func (h *TwinHandler) Update(w http.ResponseWriter, r *http.Request) {
 	if req.Domain != "" {
 		t.Domain = req.Domain
 	}
+	if req.AdapterBindings != nil {
+		t.AdapterBindings = req.AdapterBindings
+	}
+	if err := h.Twins.Update(r.Context(), t); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, t)
+}
+
+// SetBindings replaces a twin's adapter bindings outright. PATCH-style merge is
+// not supported — callers send the full map. Empty map clears all bindings.
+func (h *TwinHandler) SetBindings(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	t, err := h.Twins.Get(r.Context(), id)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+	var req struct {
+		AdapterBindings map[string]string `json:"adapter_bindings"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	t.AdapterBindings = req.AdapterBindings
 	if err := h.Twins.Update(r.Context(), t); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

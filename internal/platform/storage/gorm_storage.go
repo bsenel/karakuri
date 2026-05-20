@@ -78,11 +78,15 @@ func (s *GORMStorage) SaveTwin(ctx context.Context, t twin.DigitalTwin) error {
 	objsJ, _ := json.Marshal(t.Objectives)
 	memJ, _ := json.Marshal(t.Memory)
 	childJ, _ := json.Marshal(t.Children)
+	bindingsJ, _ := json.Marshal(t.AdapterBindings)
+	if len(bindingsJ) == 0 || string(bindingsJ) == "null" {
+		bindingsJ = []byte("{}")
+	}
 	return s.db.WithContext(ctx).Save(&schema.TwinModel{
 		ID: t.ID, Name: t.Name, Kind: string(t.Kind), Domain: t.Domain,
 		AgentsJSON: string(agentsJ), EnvsJSON: string(envsJ),
 		ObjectivesJSON: string(objsJ), MemoryJSON: string(memJ),
-		ChildrenJSON: string(childJ),
+		ChildrenJSON: string(childJ), AdapterBindingsJSON: string(bindingsJ),
 	}).Error
 }
 
@@ -126,28 +130,19 @@ func twinFromModel(m schema.TwinModel) twin.DigitalTwin {
 	var objs []string
 	var mem agent.MemoryConfig
 	var children []string
+	var bindings map[string]string
 	_ = json.Unmarshal([]byte(m.AgentsJSON), &agents)
 	_ = json.Unmarshal([]byte(m.EnvsJSON), &envs)
 	_ = json.Unmarshal([]byte(m.ObjectivesJSON), &objs)
 	_ = json.Unmarshal([]byte(m.MemoryJSON), &mem)
 	_ = json.Unmarshal([]byte(m.ChildrenJSON), &children)
-
-	// convert string slice to environment.EnvironmentID
-	envIDs := make([]interface{}, len(envs))
-	for i, e := range envs {
-		envIDs[i] = e
-	}
-	objIDs := make([]interface{}, len(objs))
-	for i, o := range objs {
-		objIDs[i] = o
-	}
-	_ = envIDs
-	_ = objIDs
+	_ = json.Unmarshal([]byte(m.AdapterBindingsJSON), &bindings)
 
 	return twin.DigitalTwin{
 		ID: m.ID, Name: m.Name, Kind: twin.Kind(m.Kind), Domain: m.Domain,
 		Agents: agents, Children: children, Memory: mem,
-		CreatedAt: m.CreatedAt, UpdatedAt: m.UpdatedAt,
+		AdapterBindings: bindings,
+		CreatedAt:       m.CreatedAt, UpdatedAt: m.UpdatedAt,
 	}
 }
 

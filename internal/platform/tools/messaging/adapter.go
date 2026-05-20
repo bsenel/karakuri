@@ -13,6 +13,7 @@ type Message struct {
 }
 
 type MessagingAdapter interface {
+	Name() string
 	GetMessages(ctx context.Context, channel string, since time.Time) ([]Message, error)
 	PostMessage(ctx context.Context, channel, text string) error
 	Active() bool

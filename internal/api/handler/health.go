@@ -21,10 +21,10 @@ type HealthHandler struct {
 func (h *HealthHandler) ServeHTTP(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]any{
-		"status":     "ok",
-		"providers":  h.Providers.All(),
-		"adapters":   h.Tools.Summary(),
-		"exporters":  h.Exporters.Names(),
-		"git":        map[string]any{"repo_path": h.RepoPath, "worktree_manager": h.Worktrees != nil},
+		"status":    "ok",
+		"providers": h.Providers.All(),
+		"adapters":  h.Tools.Status(), // [{slot, name, active}, ...]
+		"exporters": h.Exporters.Names(),
+		"git":       map[string]any{"repo_path": h.RepoPath, "worktree_manager": h.Worktrees != nil},
 	})
 }

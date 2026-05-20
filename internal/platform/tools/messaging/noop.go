@@ -10,6 +10,8 @@ type NoOp struct{}
 
 func NewNoOp() *NoOp { return &NoOp{} }
 
+func (n *NoOp) Name() string { return "noop" }
+
 func (n *NoOp) Active() bool { return false }
 
 func (n *NoOp) GetMessages(ctx context.Context, channel string, since time.Time) ([]Message, error) {

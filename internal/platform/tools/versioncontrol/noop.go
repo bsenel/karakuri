@@ -10,6 +10,8 @@ type NoOp struct{}
 
 func NewNoOp() *NoOp { return &NoOp{} }
 
+func (n *NoOp) Name() string { return "noop" }
+
 func (n *NoOp) Active() bool { return false }
 
 func (n *NoOp) CreatePR(ctx context.Context, pr PullRequest) (string, error) {

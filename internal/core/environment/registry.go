@@ -5,11 +5,20 @@ import (
 	"sync"
 )
 
+// BuildContext carries the per-loop context an environment factory needs to
+// build a tenant-specific environment instance. Currently used to resolve
+// twin-bound adapter instances at construction time; extensible without
+// breaking callers (add fields, keep existing zero-value behavior).
+type BuildContext struct {
+	TwinID          string
+	AdapterBindings map[string]string // slot name → instance name
+}
+
 type Factory struct {
 	EnvID       EnvironmentID
 	Domain      string
 	Description string
-	Build       func(cfg map[string]any) (Environment, error)
+	Build       func(ctx BuildContext) (Environment, error)
 }
 
 type Registry struct {
@@ -34,14 +43,14 @@ func (r *Registry) Register(f Factory) error {
 	return nil
 }
 
-func (r *Registry) Build(id EnvironmentID, cfg map[string]any) (Environment, error) {
+func (r *Registry) Build(id EnvironmentID, ctx BuildContext) (Environment, error) {
 	r.mu.RLock()
 	f, ok := r.factories[id]
 	r.mu.RUnlock()
 	if !ok {
 		return nil, fmt.Errorf("environment %q not registered", id)
 	}
-	return f.Build(cfg)
+	return f.Build(ctx)
 }
 
 func (r *Registry) List() []Factory {

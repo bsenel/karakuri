@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/bsenel/karakuri/internal/core/domain"
+	"github.com/bsenel/karakuri/internal/core/environment"
 )
 
 // Result holds the outcome of a single conformance check.
@@ -77,11 +78,12 @@ func checkCapabilitySchemas(_ context.Context, p domain.Pack) Result {
 	return Result{Check: name, Passed: true, Message: fmt.Sprintf("all %d capabilities have valid schemas", len(p.Capabilities()))}
 }
 
-// checkEnvironmentFactories verifies every factory's Build(nil) returns a non-nil environment without error.
+// checkEnvironmentFactories verifies every factory's Build returns a non-nil
+// environment without error when called with a zero-value BuildContext.
 func checkEnvironmentFactories(_ context.Context, p domain.Pack) Result {
 	const name = "environment_factories"
 	for _, f := range p.EnvironmentFactories() {
-		env, err := f.Build(nil)
+		env, err := f.Build(environment.BuildContext{})
 		if err != nil {
 			return Result{
 				Check:   name,

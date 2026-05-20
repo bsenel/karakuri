@@ -85,7 +85,7 @@ Each capability must have a unique prefixed ID (`<domain>.<step>.<name>`), valid
 
 ## 3. environments.go
 
-Environments are built by factories. Ship a no-op default so the pack registers without real infrastructure.
+Environments are built by factories. Ship a no-op default so the pack registers without real infrastructure. The `Build` closure receives an `environment.BuildContext` carrying the twin context (twin ID and `AdapterBindings`) for the current loop run — packs that integrate with tool adapters use this to resolve the right instance at construction time (see "Packs that integrate with tool adapters" below).
 
 ```go
 func yourEnvironmentFactories() []environment.Factory {
@@ -94,7 +94,7 @@ func yourEnvironmentFactories() []environment.Factory {
             EnvID:       "yourdomain.env.field",
             Domain:      "yourdomain",
             Description: "Field sensor network",
-            Build: func(_ map[string]any) (environment.Environment, error) {
+            Build: func(_ environment.BuildContext) (environment.Environment, error) {
                 return &noopEnv{id: "yourdomain.env.field"}, nil
             },
         },
@@ -118,6 +118,29 @@ func (e *noopEnv) Snapshot(_ context.Context) (environment.EnvironmentSnapshot, 
     return environment.EnvironmentSnapshot{SHA: "noop", EnvID: e.id}, nil
 }
 ```
+
+### Packs that integrate with tool adapters
+
+Packs whose environments delegate to platform-level tool adapters (GitHub, Slack, Gmail, …) accept a `*tools.Registry` via a second constructor and capture the resolved adapter at `Build` time using `ctx.AdapterBindings`. The software pack is the reference:
+
+```go
+// pack.go: two constructors — one for tests/conformance, one for prod wiring
+func New() *Pack { return &Pack{} }
+func NewWithTools(reg *tools.Registry) *Pack { return &Pack{tools: reg} }
+
+// environments.go: resolve the bound instance, fall back to no-op if absent
+Build: func(ctx environment.BuildContext) (environment.Environment, error) {
+    var vc versioncontrol.VersionControlAdapter = versioncontrol.NewNoOp()
+    if reg != nil {
+        if a, ok := reg.VC.Resolve(ctx.AdapterBindings["versioncontrol"]); ok {
+            vc = a
+        }
+    }
+    return &gitEnv{id: "yourdomain.env.git", vc: vc}, nil
+},
+```
+
+The env struct holds the resolved adapter directly — `Act()` is a direct call with no per-action lookup. Empty bindings or unknown instance names fall through to the slot's default; missing default → no-op. See ADR 006 for the full design.
 
 ## 4. agents.go
 
@@ -206,7 +229,7 @@ This runs 7 checks server-side and returns pass/fail per check:
 |-------|-----------------|
 | `id_format` | Pack ID is non-empty, lowercase, no whitespace |
 | `capability_schemas` | All capabilities have non-empty InputSchema.Type and OutputSchema.Type |
-| `environment_factories` | All factories Build(nil) without error and return non-nil |
+| `environment_factories` | All factories Build a non-nil environment without error when called with a zero-value `BuildContext` |
 | `agent_capability_refs` | All capability IDs referenced by agents exist in the pack |
 | `criterion_verifier_refs` | All Criterion.Verifier IDs exist in the pack |
 | `no_capability_id_collision` | No two capabilities share the same ID |

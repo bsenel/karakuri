@@ -9,6 +9,8 @@ type HTTPScraper struct{}
 
 func NewHTTPScraper() *HTTPScraper { return &HTTPScraper{} }
 
+func (h *HTTPScraper) Name() string { return "http-scraper" }
+
 func (h *HTTPScraper) Active() bool { return true }
 
 func (h *HTTPScraper) Search(ctx context.Context, topic string, sources []string, depth string) ([]Finding, error) {

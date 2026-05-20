@@ -13,7 +13,7 @@ func agricultureEnvironmentFactories() []environment.Factory {
 			EnvID:       environment.EnvironmentID(id),
 			Domain:      "agriculture",
 			Description: desc,
-			Build: func(_ map[string]any) (environment.Environment, error) {
+			Build: func(_ environment.BuildContext) (environment.Environment, error) {
 				return &noopAgricultureEnv{id: environment.EnvironmentID(id)}, nil
 			},
 		}

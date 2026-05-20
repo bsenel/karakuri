@@ -9,11 +9,20 @@ import (
 	"github.com/bsenel/karakuri/internal/core/domain"
 	"github.com/bsenel/karakuri/internal/core/environment"
 	"github.com/bsenel/karakuri/internal/core/objective"
+	"github.com/bsenel/karakuri/internal/platform/tools"
 )
 
-type Pack struct{}
+type Pack struct {
+	tools *tools.Registry
+}
 
+// New constructs a software domain pack without tool adapters — environments
+// fall back to no-op behavior. Used by tests and the conformance suite.
 func New() *Pack { return &Pack{} }
+
+// NewWithTools constructs a software pack whose environments dispatch to the
+// supplied tool registry (real GitHub / Linear / Slack adapters when configured).
+func NewWithTools(reg *tools.Registry) *Pack { return &Pack{tools: reg} }
 
 func (p *Pack) ID() string          { return "software" }
 func (p *Pack) Name() string        { return "Software Development" }
@@ -29,7 +38,7 @@ func (p *Pack) Capabilities() []capability.Capability {
 }
 
 func (p *Pack) EnvironmentFactories() []environment.Factory {
-	return softwareEnvironmentFactories()
+	return softwareEnvironmentFactories(p.tools)
 }
 
 func (p *Pack) AgentDefinitions() []agent.Definition {

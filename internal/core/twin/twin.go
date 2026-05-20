@@ -17,15 +17,16 @@ const (
 )
 
 type DigitalTwin struct {
-	ID           string                    `json:"id"`
-	Name         string                    `json:"name"`
-	Kind         Kind                      `json:"kind"`
-	Domain       string                    `json:"domain"`
-	Agents       []agent.Definition        `json:"agents,omitempty"`
-	Environments []environment.EnvironmentID `json:"environments,omitempty"`
-	Objectives   []objective.ObjectiveID   `json:"objectives,omitempty"`
-	Memory       agent.MemoryConfig        `json:"memory,omitempty"`
-	Children     []string                  `json:"children,omitempty"`
-	CreatedAt    time.Time                 `json:"created_at"`
-	UpdatedAt    time.Time                 `json:"updated_at"`
+	ID              string                      `json:"id"`
+	Name            string                      `json:"name"`
+	Kind            Kind                        `json:"kind"`
+	Domain          string                      `json:"domain"`
+	Agents          []agent.Definition          `json:"agents,omitempty"`
+	Environments    []environment.EnvironmentID `json:"environments,omitempty"`
+	Objectives      []objective.ObjectiveID     `json:"objectives,omitempty"`
+	Memory          agent.MemoryConfig          `json:"memory,omitempty"`
+	Children        []string                    `json:"children,omitempty"`
+	AdapterBindings map[string]string           `json:"adapter_bindings,omitempty"` // slot → instance name
+	CreatedAt       time.Time                   `json:"created_at"`
+	UpdatedAt       time.Time                   `json:"updated_at"`
 }

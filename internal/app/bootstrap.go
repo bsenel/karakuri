@@ -87,7 +87,7 @@ func BootstrapServer(cfgPath string) (*Bootstrap, error) {
 		return nil, err
 	}
 
-	toolReg := tools.NewRegistry()
+	toolReg := tools.NewRegistryFromConfig(cfg.Tools)
 	hub := event.NewHub()
 
 	capReg := capability.NewRegistry()
@@ -101,9 +101,9 @@ func BootstrapServer(cfgPath string) (*Bootstrap, error) {
 		_ = capReg.Register(cap)
 	}
 
-	// Register domain packs
+	// Register domain packs (software pack uses the tool registry; others are stubs)
 	allPacks := []domain.Pack{
-		domainsw.New(),
+		domainsw.NewWithTools(toolReg),
 		domainagri.New(),
 		domainconsult.New(),
 		domainhc.New(),

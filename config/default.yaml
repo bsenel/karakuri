@@ -43,3 +43,43 @@ domains:
 memory:
   consolidation_threshold: 20
   semantic_top_k: 5
+
+# Tool adapters — multi-instance shape (ADR 006).
+# Each slot carries a `default:` instance name and a map of named `instances:`.
+# Use `<field>_env: ENV_VAR_NAME` to populate `<field>` from an environment
+# variable at startup so checked-in YAML never holds plaintext credentials.
+#
+# Example multi-tenant config:
+#   tools:
+#     versioncontrol:
+#       default: acme_github
+#       instances:
+#         acme_github:    { type: github, repo: acme/api, token_env: ACME_GITHUB_TOKEN }
+#         personal_github: { type: github, repo: bsenel/sideproj, token_env: BSENEL_GITHUB_TOKEN }
+#     email:
+#       default: acme_outlook
+#       instances:
+#         acme_outlook:  { type: outlook, from_address: bot@acme.com, oauth_token_env: ACME_MS_TOKEN }
+#         personal_gmail: { type: gmail, from_address: bsenel@gmail.com, oauth_token_env: BSENEL_GOOGLE_TOKEN }
+tools:
+  versioncontrol:
+    default: ""
+    instances: {}
+  projectmgmt:
+    default: ""
+    instances: {}
+  messaging:
+    default: ""
+    instances: {}
+  design:
+    default: ""
+    instances: {}
+  testing:
+    default: ""
+    instances: {}
+  calendar:
+    default: ""
+    instances: {}
+  email:
+    default: ""
+    instances: {}

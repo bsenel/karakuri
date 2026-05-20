@@ -2,7 +2,7 @@
 
 ## Context
 
-Karakuri replaced the original role-based workflow simulator with an autonomous platform built on four primitives: **Capabilities, Environments, Objectives, and Agents**. No backward compatibility is maintained. The CLI binary is `krk`. This document records what shipped (Phases 1–5) and what is queued (Phases 6–13).
+Karakuri replaced the original role-based workflow simulator with an autonomous platform built on four primitives: **Capabilities, Environments, Objectives, and Agents**. No backward compatibility is maintained. The CLI binary is `krk`. This document records what shipped (Phases 1–6) and what is queued (Phases 7–13).
 
 ## Status Summary
 
@@ -13,7 +13,7 @@ Karakuri replaced the original role-based workflow simulator with an autonomous 
 | 3 | Memory Intelligence + Watch Mode | **Completed** |
 | 4 | Domain Pack SDK + Hardening | **Completed** |
 | 5 | Local Deployment Variants | **Completed** |
-| 6 | Real Tool Adapters | Planned |
+| 6 | Real Tool Adapters | **Completed** |
 | 7 | Multi-LLM Provider Parity | Planned |
 | 8 | Production Storage (PostgreSQL + pgvector) | Planned |
 | 9 | React Frontend | Planned |
@@ -257,20 +257,77 @@ krk loop start <obj-id>
 
 ---
 
-## Phase 6 — Real Tool Adapters (Planned)
+## Phase 6 — Real Tool Adapters (Completed)
 
-**Goal:** Replace no-op `versioncontrol`, `projectmgmt`, `messaging` adapters with real implementations so the **act** step produces real-world side effects (PRs, tickets, messages) — not just artifacts and worktrees.
+**Goal:** Replace no-op tool adapters with real implementations so the **act** step produces real-world side effects (PRs, tickets, messages, meetings, emails) — not just artifacts and worktrees. The shipped design also supports **multi-tenant deployments**: one Karakuri server can host many provider instances per slot, routed per `DigitalTwin` (ADR 006).
 
-**Steps:**
+**What shipped — ten real adapter implementations across seven slots:**
 
-1. **GitHub adapter** (`internal/platform/tools/versioncontrol/github.go`) — PR create/update/comment, issue create/update; uses go-github client; auth via `GITHUB_TOKEN`. Wires into `software.act.create_pr` capability.
-2. **Linear adapter** (`internal/platform/tools/projectmgmt/linear.go`) — issue create/update, status transitions, comments via GraphQL; auth via `LINEAR_API_KEY`.
-3. **Slack adapter** (`internal/platform/tools/messaging/slack.go`) — message post + thread reply via Bot Token; reacts to `checkpoint` and `objective_completed` events.
-4. **Adapter config schema** — extend `config.yaml` with `tools.github.enabled`, `tools.linear.team_id`, `tools.slack.channel`; presence of relevant env var auto-enables.
-5. **Health endpoint** reports each adapter's connection status (token valid? rate-limit headroom?).
-6. **Adapter event hooks** — each adapter emits `tool_event` records to `tool_events` table; queryable via `krk artifact list --kind tool_event`.
+| Slot | Adapter `type:` values | Package(s) |
+|---|---|---|
+| `versioncontrol` | `github` | `tools/versioncontrol/github.go` |
+| `projectmgmt` | `linear` | `tools/projectmgmt/linear.go` |
+| `messaging` | `slack` | `tools/messaging/slack.go` |
+| `design` | `figma` | `tools/design/figma.go` |
+| `testing` | `playwright` | `tools/testing/playwright.go` |
+| `calendar` | `google` (Google Calendar v3) | `tools/calendar/google.go` |
+| `email` | `gmail`, `outlook`, `smtp`, `apple_mail` | `tools/email/{gmail,outlook,smtp,applemail}.go` |
 
-**Acceptance:** Full `software.objective.delivery` run with all three adapters configured produces a real PR on a sandbox repo, a Linear ticket update, and a Slack thread — verified by API queries to each service.
+**Implementation notes:**
+
+- **GitHub** — `CreatePR`, `ListPRs`, `GetCommits` via REST API (`api.github.com`); `Authorization: Bearer <token>`; pure `net/http`, no SDK.
+- **Linear** — `GetTicket`, `CreateTicket` via GraphQL (`api.linear.app/graphql`); raw `Authorization: <api_key>` header; `team_id` required for creation.
+- **Slack** — `PostMessage`, `GetMessages` via `chat.postMessage` and `conversations.history`; Bot Token (`xoxb-…`); default channel configurable per instance.
+- **Figma** — `GetFile` via REST API (`api.figma.com`); `X-Figma-Token` header.
+- **Playwright** — `RunTests` subprocesses `npx playwright test --reporter=json` from a configured project dir; flattens the JSON reporter output into `TestResult` records (failure exit codes are data, not adapter errors).
+- **Google Calendar** — `ListEvents`, `CreateEvent` via Calendar API v3; OAuth 2.0 Bearer token (minted upstream — `gcloud`, `oauth2l`, your own OAuth flow); default calendar `primary`.
+- **Email — four interchangeable providers** under the single `email` slot:
+  - `gmail` — Gmail API v1; OAuth Bearer (`gmail.send` + `gmail.readonly` scopes).
+  - `outlook` — Microsoft Graph (`/me/sendMail`, `/me/messages`); OAuth Bearer with `Mail.Send` + `Mail.Read`.
+  - `smtp` — generic `net/smtp`; works with iCloud, Fastmail, ProtonMail Bridge, corporate servers; port picks TLS strategy (`465` implicit TLS, `587` STARTTLS, else plain); send-only (List requires IMAP).
+  - `apple_mail` — drives macOS Mail.app via `osascript`; send-only; active only on `darwin`. Useful when accounts are already configured in Mail.app.
+
+**Multi-instance + multi-tenant config (ADR 006):**
+
+Every slot uses the same shape — a `default:` instance name and a map of named `instances:`. A single Karakuri server can host arbitrarily many provider instances per slot. Each `DigitalTwin` selects which instance answers for it via `AdapterBindings`.
+
+```yaml
+tools:
+  versioncontrol:
+    default: acme_github
+    instances:
+      acme_github:     { type: github, repo: acme/api, token_env: ACME_GITHUB_TOKEN }
+      personal_github: { type: github, repo: bsenel/x, token_env: BSENEL_GH_TOKEN }
+  email:
+    default: acme_outlook
+    instances:
+      acme_outlook:   { type: outlook, from_address: bot@acme.com, oauth_token_env: ACME_MS_TOKEN }
+      personal_gmail: { type: gmail,   from_address: me@x.com,     oauth_token_env: BSENEL_GOOGLE_TOKEN }
+      shared_smtp:    { type: smtp,    host: smtp.example.com, port: 587, username: bot, password_env: SMTP_PASS }
+```
+
+Credentials never sit inline in checked-in YAML — `*_env` siblings (e.g. `token_env: ACME_GITHUB_TOKEN`) are resolved from the environment at config load by `resolveEnvRefs`. Inline literal values stay supported for local development convenience.
+
+Bind a twin to specific instances:
+```bash
+krk twin bindings <twin-id> --set versioncontrol=acme_github --set email=acme_outlook
+```
+Or via API: `PUT /twins/:id/bindings` with `{"adapter_bindings": {"versioncontrol": "acme_github", "email": "acme_outlook"}}`. Twins with no binding for a slot fall back to that slot's `default`.
+
+**Plumbing:**
+
+- **`config.ToolsConfig`** uses a uniform `SlotConfig{Default, Instances}` per slot; `InstanceConfig{Type, Options}` carries provider-specific fields. `resolveEnvRefs` overlays env vars referenced by `*_env` keys.
+- **`tools.Registry`** uses generic `SlotInstances[T]` per slot — typed instance maps with `Resolve(name)` and `DefaultName()`. `NewRegistryFromConfig(cfg.Tools)` dispatches each instance's `Type` to the matching constructor.
+- **`environment.Factory.Build(BuildContext)`** receives `{TwinID, AdapterBindings}` so envs resolve the correct adapter instance at construction time. Software envs (`gitEnv`, `ticketEnv`, `commsEnv`) hold the resolved adapter directly — no per-action lookup.
+- **`DigitalTwin.AdapterBindings map[string]string`** — slot → instance name. Persisted in the `adapter_bindings_json` column on `twins`.
+- **`/health`** returns `adapters` as one row per `(slot, instance, type, active, is_default)` so operators see the full topology.
+
+**Acceptance — met:**
+- Build clean (`go build ./...`); 7 multi-instance registry tests + all existing test suites pass.
+- Twin bindings flow end-to-end (CLI → API → storage → loop runner → env factory → resolved adapter).
+- Empty slots correctly show `<noop>` in `/health`; multi-instance slots show every configured instance with the default flagged.
+- Domain pack conformance unchanged: software pack constructs cleanly via `NewWithTools(reg)`; conformance suite passes.
+- ADR 006 records the rationale, decision, and consequences.
 
 ---
 
@@ -395,12 +452,12 @@ krk loop start <obj-id>
 
 ## Phase Ordering Rationale
 
-Phases 6–13 are **independent except where noted** and can be reordered to match priority. The dependencies that DO exist:
+Phases 7–13 are **independent except where noted** and can be reordered to match priority. The dependencies that DO exist:
 
 - **Phase 11** (distributed execution) benefits from **Phase 8** (Postgres state externalization) but does not strictly require it (Restate has its own state store).
 - **Phase 13** (cross-domain) benefits from **Phase 10** (a second real pack exists to combine with software).
 - **Phase 9** (frontend) can run in parallel with any other phase; the API contract is already stable.
-- **Phases 6, 7, 12** are pure adapter implementations — each can ship independently.
+- **Phases 7, 12** are pure adapter implementations — each can ship independently (Phase 6 already followed this pattern).
 
 ---
 
@@ -723,7 +780,7 @@ Each stub (`domains/agriculture/pack.go`, etc.) implements `DomainPack` interfac
 Checks (run via `krk domain test <id>`):
 1. `DomainPack.ID()` is non-empty, lowercase, no spaces
 2. All `Capability.InputSchema` and `OutputSchema` are valid JSON Schema
-3. All `EnvironmentFactory.Build()` calls return non-nil without panicking on empty config
+3. All `EnvironmentFactory.Build()` calls return non-nil without panicking on a zero-value `BuildContext`
 4. All `AgentDefinition.Capabilities` IDs are registered in the pack's own `Capabilities()`
 5. All `Criterion.Verifier` IDs in objective templates resolve to a registered capability
 6. No capability ID collides with universal capabilities or another registered domain's capabilities
@@ -761,7 +818,7 @@ Checks (run via `krk domain test <id>`):
 | OTel: local file exporter (JSON, NDJSON) | **Fully implemented** |
 | OTel: local file exporter (Parquet, CSV) | Format stubs (Phase 12) |
 | OTel: AWS, Datadog exporters | Interface-defined only (Phase 12) |
-| Tool adapters: GitHub, Linear, Slack, Figma, Playwright | Interface-defined; no-op defaults (Phase 6) |
+| Tool adapters | **Fully implemented** (Phase 6, ADR 006) — multi-instance per slot, twin-bound dispatch: GitHub, Linear, Slack, Figma, Playwright, Google Calendar, Email (Gmail/Outlook/SMTP/Apple Mail) |
 | ResearchAdapter: HTTP scraper + source registry | **Fully implemented** |
 | API: all defined endpoints | **Fully implemented** |
 | CLI `krk`: all defined commands | **Fully implemented** |

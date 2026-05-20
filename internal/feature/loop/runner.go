@@ -67,10 +67,18 @@ func (s *serviceImpl) runLoop(ctx context.Context, loopID string, req loop.Reque
 		return
 	}
 
-	// 4. Build all environments for the domain
+	// 4. Build all environments for the domain. Fetch twin bindings so envs
+	// can resolve the correct adapter instance per tenant (ADR 006).
+	var adapterBindings map[string]string
+	if obj.TwinID != "" {
+		if t, terr := s.store.GetTwin(ctx, obj.TwinID); terr == nil {
+			adapterBindings = t.AdapterBindings
+		}
+	}
+	buildCtx := environment.BuildContext{TwinID: obj.TwinID, AdapterBindings: adapterBindings}
 	var envs []environment.Environment
 	for _, fac := range s.envReg.ListByDomain(obj.Domain) {
-		env, err := fac.Build(nil)
+		env, err := fac.Build(buildCtx)
 		if err != nil {
 			// Log but don't fail — some envs may be optional
 			s.hub.Publish(ctx, event.Event{

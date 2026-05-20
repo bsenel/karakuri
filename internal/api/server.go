@@ -82,6 +82,7 @@ func NewApp(
 			r.Get("/", twinH.List)
 			r.Get("/{id}", twinH.Get)
 			r.Put("/{id}", twinH.Update)
+			r.Put("/{id}/bindings", twinH.SetBindings)
 			r.Get("/{id}/events", evtH.StreamTwin)
 		})
 

@@ -9,6 +9,7 @@ type DesignFile struct {
 }
 
 type DesignAdapter interface {
+	Name() string
 	GetFile(ctx context.Context, id string) (DesignFile, error)
 	Active() bool
 }

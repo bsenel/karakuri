@@ -43,3 +43,13 @@ domains:
 memory:
   consolidation_threshold: 20
   semantic_top_k: 5
+
+# See config/default.yaml for the multi-instance shape (ADR 006).
+tools:
+  versioncontrol: { default: "", instances: {} }
+  projectmgmt:    { default: "", instances: {} }
+  messaging:      { default: "", instances: {} }
+  design:         { default: "", instances: {} }
+  testing:        { default: "", instances: {} }
+  calendar:       { default: "", instances: {} }
+  email:          { default: "", instances: {} }

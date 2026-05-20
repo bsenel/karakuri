@@ -9,6 +9,7 @@ type TestResult struct {
 }
 
 type TestingAdapter interface {
+	Name() string
 	RunTests(ctx context.Context, path string) ([]TestResult, error)
 	Active() bool
 }

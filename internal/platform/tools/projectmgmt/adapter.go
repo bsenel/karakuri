@@ -9,6 +9,7 @@ type Ticket struct {
 }
 
 type ProjectManagementAdapter interface {
+	Name() string
 	GetTicket(ctx context.Context, id string) (Ticket, error)
 	CreateTicket(ctx context.Context, ticket Ticket) (string, error)
 	Active() bool

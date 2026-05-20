@@ -9,6 +9,8 @@ type NoOp struct{}
 
 func NewNoOp() *NoOp { return &NoOp{} }
 
+func (n *NoOp) Name() string { return "noop" }
+
 func (n *NoOp) Active() bool { return false }
 
 func (n *NoOp) RunTests(ctx context.Context, path string) ([]TestResult, error) {

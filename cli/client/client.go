@@ -56,6 +56,9 @@ func (c *Client) Get(path string) ([]byte, int, error)  { return c.do(http.Metho
 func (c *Client) Post(path string, body any) ([]byte, int, error) {
 	return c.do(http.MethodPost, path, body)
 }
+func (c *Client) Put(path string, body any) ([]byte, int, error) {
+	return c.do(http.MethodPut, path, body)
+}
 func (c *Client) Delete(path string) ([]byte, int, error) { return c.do(http.MethodDelete, path, nil) }
 
 func PrintOutput(data []byte, format string) {

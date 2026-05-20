@@ -3,17 +3,18 @@ package schema
 import "time"
 
 type TwinModel struct {
-	ID             string    `gorm:"primaryKey;column:id"`
-	Name           string    `gorm:"column:name;not null"`
-	Kind           string    `gorm:"column:kind;not null"`
-	Domain         string    `gorm:"column:domain;not null"`
-	AgentsJSON     string    `gorm:"column:agents_json;not null;default:'[]'"`
-	EnvsJSON       string    `gorm:"column:envs_json;not null;default:'[]'"`
-	ObjectivesJSON string    `gorm:"column:objectives_json;not null;default:'[]'"`
-	MemoryJSON     string    `gorm:"column:memory_json;not null;default:'{}'"`
-	ChildrenJSON   string    `gorm:"column:children_json;not null;default:'[]'"`
-	CreatedAt      time.Time `gorm:"column:created_at;autoCreateTime"`
-	UpdatedAt      time.Time `gorm:"column:updated_at;autoUpdateTime"`
+	ID                  string    `gorm:"primaryKey;column:id"`
+	Name                string    `gorm:"column:name;not null"`
+	Kind                string    `gorm:"column:kind;not null"`
+	Domain              string    `gorm:"column:domain;not null"`
+	AgentsJSON          string    `gorm:"column:agents_json;not null;default:'[]'"`
+	EnvsJSON            string    `gorm:"column:envs_json;not null;default:'[]'"`
+	ObjectivesJSON      string    `gorm:"column:objectives_json;not null;default:'[]'"`
+	MemoryJSON          string    `gorm:"column:memory_json;not null;default:'{}'"`
+	ChildrenJSON        string    `gorm:"column:children_json;not null;default:'[]'"`
+	AdapterBindingsJSON string    `gorm:"column:adapter_bindings_json;not null;default:'{}'"`
+	CreatedAt           time.Time `gorm:"column:created_at;autoCreateTime"`
+	UpdatedAt           time.Time `gorm:"column:updated_at;autoUpdateTime"`
 }
 
 func (TwinModel) TableName() string { return "twins" }

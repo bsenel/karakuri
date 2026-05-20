@@ -63,6 +63,34 @@ domains/*/           → stubs for healthcare, legal, mechanical, consulting
 
 All packs are validated at startup and on demand via `krk domain test <id>` (7 conformance checks).
 
+## Tool Adapters (Multi-Instance, Twin-Bound)
+
+External integrations live in `internal/platform/tools/` behind per-category **slot** interfaces (`versioncontrol`, `projectmgmt`, `messaging`, `design`, `testing`, `calendar`, `email`). Each slot can hold many named adapter instances simultaneously, and each `DigitalTwin` selects which instance answers for it via `AdapterBindings`.
+
+```
+config.ToolsConfig
+  └── per slot: SlotConfig{ Default, Instances }
+       └── per instance: InstanceConfig{ Type, Options }   // type = "github", "gmail", "slack", …
+
+tools.Registry
+  └── per slot: SlotInstances[T]   // generic, typed instance map
+       └── Resolve(name) → adapter        (empty name → DefaultName())
+
+DigitalTwin.AdapterBindings map[string]string   // slot → instance name (persisted)
+```
+
+At loop start the runner fetches the assigned twin and passes `environment.BuildContext{TwinID, AdapterBindings}` to every env factory. Software envs (`gitEnv`, `ticketEnv`, `commsEnv`) capture the resolved adapter once at construction — `Act()` is a direct call with no per-action lookup. Twins without a binding fall back to the slot's `default` instance; missing default → no-op.
+
+Credentials are referenced from environment variables via `*_env` sibling keys (`token_env: ACME_GITHUB_TOKEN`); `resolveEnvRefs` substitutes the values at config load. Inline plaintext stays supported for local dev.
+
+`/api/v1/health` returns one row per `(slot, instance, type, active, is_default)` so operators see the full topology. See ADR 006 for the rationale.
+
+Operator commands:
+```bash
+krk twin bindings <id>                                                    # show
+krk twin bindings <id> --set versioncontrol=acme_github --set email=...   # replace
+```
+
 ## Performance Baseline
 
 Measured on Apple M1 with no-op environments:
@@ -86,6 +114,8 @@ LLM latency dominates; all other operations are sub-millisecond.
 
 **Async loop execution.** `Run()` returns a loop ID immediately; the loop runs in a background goroutine. `Resume()` unblocks via a buffered channel; `Status()` reads from a protected in-memory state map.
 
-**Interface-first, no-op by default.** Every external adapter (GitHub, Linear, Slack, Gemini) ships as a no-op default. The loop runs to completion with no integrations wired.
+**Interface-first, no-op by default.** Every tool slot ships with a no-op fallback. The loop runs to completion when no instances are configured; configured instances activate real-world side effects (PRs, tickets, messages, emails). LLM providers follow the same pattern (Gemini/Cursor/Copilot currently return `ErrNotImplemented`).
+
+**Multi-tenant by construction.** Tool adapters are multi-instance per slot and twin-bound at dispatch time. One server can host Acme's GitHub + Slack + Outlook alongside a personal GitHub + SMTP — each twin's loop resolves the right instance from its `AdapterBindings`. See the Tool Adapters section above and ADR 006.
 
 See ADRs in `docs/adr/` for design decisions.
