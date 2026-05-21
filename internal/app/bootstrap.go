@@ -11,8 +11,10 @@ import (
 	"github.com/bsenel/karakuri/internal/core/domain"
 	"github.com/bsenel/karakuri/internal/core/environment"
 	"github.com/bsenel/karakuri/internal/core/event"
+	corememory "github.com/bsenel/karakuri/internal/core/memory"
 	objectivepkg "github.com/bsenel/karakuri/internal/core/objective"
 	"github.com/bsenel/karakuri/internal/platform/db"
+	platmem "github.com/bsenel/karakuri/internal/platform/memory"
 	"github.com/bsenel/karakuri/internal/platform/git"
 	"github.com/bsenel/karakuri/internal/platform/llm"
 	"github.com/bsenel/karakuri/internal/platform/observability"
@@ -135,7 +137,24 @@ func BootstrapServer(cfgPath string) (*Bootstrap, error) {
 		allTemplates = append(allTemplates, pack.ObjectiveTemplates()...)
 	}
 
-	apiApp := api.NewApp(cfg, store, providers, toolReg, exporters, wt, hub, otel, capReg, envReg, domReg, allTemplates)
+	// Pick semantic backend per config. Only pgvector requires a non-default
+	// constructor; the SQLite keyword fallback is the default path (nil here).
+	var semanticBackend corememory.Memory
+	if cfg.Memory.VectorBackend == "pgvector" {
+		if cfg.Database.Driver != "postgres" {
+			slog.Warn("memory.vector_backend=pgvector requires database.driver=postgres; falling back to SQLite keyword recall")
+		} else {
+			pgvec, err := platmem.NewSemanticMemoryPgVector(ctx, gormDB, cfg.Memory.EmbeddingDim)
+			if err != nil {
+				slog.Warn("pgvector backend init failed; falling back to SQLite keyword recall", "err", err)
+			} else {
+				semanticBackend = pgvec
+				slog.Info("semantic memory backend: pgvector", "embedding_dim", cfg.Memory.EmbeddingDim)
+			}
+		}
+	}
+
+	apiApp := api.NewApp(cfg, store, providers, toolReg, exporters, wt, hub, otel, capReg, envReg, domReg, allTemplates, semanticBackend)
 	return &Bootstrap{Config: cfg, App: apiApp, Store: store, Worktrees: wt}, nil
 }
 

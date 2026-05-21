@@ -31,3 +31,26 @@ secret:
 probes:
   livenessPath: /api/v1/health
   readinessPath: /api/v1/health
+
+# PostgreSQL backend (Phase 8). When enabled, the chart wires DATABASE_DRIVER=
+# postgres and a DSN constructed from these fields into the Karakuri container,
+# overriding deploy/karakuri.yaml's defaults. The password is pulled from a
+# referenced Secret rather than inlined.
+#
+# Set memory.vectorBackend to "pgvector" to enable real similarity recall;
+# the backend creates the `vector` extension + `memory_semantic_vec` table on
+# first boot (the Postgres role must have CREATE EXTENSION privileges).
+postgresql:
+  enabled: false
+  host: ""
+  port: 5432
+  database: karakuri
+  user: karakuri
+  sslmode: disable
+  passwordSecret:
+    name: ""   # Secret containing the password (created out of band)
+    key: password
+
+memory:
+  vectorBackend: ""   # "" | "sqlite-keyword" | "pgvector"
+  embeddingDim: 1536

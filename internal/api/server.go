@@ -10,6 +10,7 @@ import (
 	"github.com/bsenel/karakuri/internal/core/domain"
 	"github.com/bsenel/karakuri/internal/core/environment"
 	"github.com/bsenel/karakuri/internal/core/event"
+	corememory "github.com/bsenel/karakuri/internal/core/memory"
 	coreobjective "github.com/bsenel/karakuri/internal/core/objective"
 	"github.com/bsenel/karakuri/internal/feature/artifact"
 	"github.com/bsenel/karakuri/internal/feature/checkpoint"
@@ -45,8 +46,14 @@ func NewApp(
 	envReg *environment.Registry,
 	domReg *domain.Registry,
 	templates []coreobjective.Template,
+	semanticBackend corememory.Memory, // optional override; nil → default SQLite keyword
 ) *App {
-	memSvc := memory.NewService(store, cfg.Memory.SemanticTopK)
+	var memSvc *memory.Service
+	if semanticBackend != nil {
+		memSvc = memory.NewServiceWithSemantic(store, cfg.Memory.SemanticTopK, semanticBackend)
+	} else {
+		memSvc = memory.NewService(store, cfg.Memory.SemanticTopK)
+	}
 	twinSvc := twin.NewService(store, hub)
 	objSvc := objective.NewService(store)
 	for _, t := range templates {

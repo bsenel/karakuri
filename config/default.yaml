@@ -43,6 +43,8 @@ domains:
 memory:
   consolidation_threshold: 20
   semantic_top_k: 5
+  vector_backend: sqlite-keyword   # sqlite-keyword | pgvector  (pgvector requires database.driver=postgres)
+  embedding_dim: 1536
 
 # Tool adapters — multi-instance shape (ADR 006).
 # Each slot carries a `default:` instance name and a map of named `instances:`.

@@ -2,6 +2,7 @@ package config
 
 import (
 	"os"
+	"strconv"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -120,8 +121,10 @@ type DomainConfig struct {
 }
 
 type MemoryConfig struct {
-	ConsolidationThreshold int `yaml:"consolidation_threshold"` // episodic entries before consolidation
-	SemanticTopK           int `yaml:"semantic_top_k"`
+	ConsolidationThreshold int    `yaml:"consolidation_threshold"` // episodic entries before consolidation
+	SemanticTopK           int    `yaml:"semantic_top_k"`
+	VectorBackend          string `yaml:"vector_backend"` // "" | "sqlite-keyword" | "pgvector"
+	EmbeddingDim           int    `yaml:"embedding_dim"`  // dimensionality of embeddings (default 1536)
 }
 
 func Load(path string) (*Config, error) {
@@ -135,7 +138,32 @@ func Load(path string) (*Config, error) {
 	}
 	setDefaults(&cfg)
 	resolveEnvRefs(&cfg)
+	overrideFromEnv(&cfg)
 	return &cfg, nil
+}
+
+// overrideFromEnv lets Helm/Compose flip core settings without rewriting the
+// static YAML. Currently honors:
+//
+//	KARAKURI_DATABASE_DRIVER         → cfg.Database.Driver  (e.g. "postgres")
+//	KARAKURI_DATABASE_DSN            → cfg.Database.DSN
+//	KARAKURI_MEMORY_VECTOR_BACKEND   → cfg.Memory.VectorBackend (e.g. "pgvector")
+//	KARAKURI_MEMORY_EMBEDDING_DIM    → cfg.Memory.EmbeddingDim
+func overrideFromEnv(cfg *Config) {
+	if v := os.Getenv("KARAKURI_DATABASE_DRIVER"); v != "" {
+		cfg.Database.Driver = v
+	}
+	if v := os.Getenv("KARAKURI_DATABASE_DSN"); v != "" {
+		cfg.Database.DSN = v
+	}
+	if v := os.Getenv("KARAKURI_MEMORY_VECTOR_BACKEND"); v != "" {
+		cfg.Memory.VectorBackend = v
+	}
+	if v := os.Getenv("KARAKURI_MEMORY_EMBEDDING_DIM"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			cfg.Memory.EmbeddingDim = n
+		}
+	}
 }
 
 // resolveEnvRefs walks every InstanceConfig.Options and, for any key ending
@@ -211,12 +239,19 @@ func setDefaults(cfg *Config) {
 	if cfg.Memory.SemanticTopK == 0 {
 		cfg.Memory.SemanticTopK = 5
 	}
+	if cfg.Memory.VectorBackend == "" {
+		cfg.Memory.VectorBackend = "sqlite-keyword"
+	}
+	if cfg.Memory.EmbeddingDim == 0 {
+		cfg.Memory.EmbeddingDim = 1536
+	}
 }
 
 func Default() *Config {
 	cfg := &Config{}
 	setDefaults(cfg)
 	resolveEnvRefs(cfg)
+	overrideFromEnv(cfg)
 	cfg.Observability.Exporters = []ExporterConfig{{
 		Name: "local", Enabled: true, Path: "./karakuri-obs/",
 		Formats: map[string]string{"metrics": "ndjson", "logs": "ndjson"},

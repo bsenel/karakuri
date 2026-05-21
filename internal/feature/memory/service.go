@@ -13,17 +13,25 @@ import (
 
 type Service struct {
 	episodic   *platmem.EpisodicMemory
-	semantic   *platmem.SemanticMemory
+	semantic   memory.Memory // pluggable: SQLite keyword fallback or pgvector
 	procedural *platmem.ProceduralMemory
 	working    *platmem.WorkingMemory
 	store      storage.StorageAdapter
 	topK       int
 }
 
+// NewService wires the default semantic backend (SQLite keyword fallback).
+// Callers that want pgvector should use NewServiceWithSemantic instead.
 func NewService(store storage.StorageAdapter, topK int) *Service {
+	return NewServiceWithSemantic(store, topK, platmem.NewSemanticMemory(store))
+}
+
+// NewServiceWithSemantic injects a specific semantic-tier backend — used by
+// bootstrap when memory.vector_backend == "pgvector".
+func NewServiceWithSemantic(store storage.StorageAdapter, topK int, semantic memory.Memory) *Service {
 	return &Service{
 		episodic:   platmem.NewEpisodicMemory(store),
-		semantic:   platmem.NewSemanticMemory(store),
+		semantic:   semantic,
 		procedural: platmem.NewProceduralMemory(store),
 		working:    platmem.NewWorkingMemory(),
 		store:      store,

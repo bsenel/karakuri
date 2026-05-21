@@ -42,6 +42,7 @@ func NewRoot() *cobra.Command {
 		domainCmd(),
 		researchCmd(),
 		autoCmd(),
+		migrateCmd(),
 	)
 	return root
 }

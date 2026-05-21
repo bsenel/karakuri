@@ -25,6 +25,26 @@ spec:
           envFrom:
             - secretRef:
                 name: {{ .Values.secret.name }}
+          {{- if or .Values.postgresql.enabled .Values.memory.vectorBackend }}
+          env:
+            {{- if .Values.postgresql.enabled }}
+            - name: KARAKURI_DATABASE_DRIVER
+              value: "postgres"
+            - name: KARAKURI_DATABASE_DSN
+              value: "host={{ .Values.postgresql.host }} port={{ .Values.postgresql.port }} user={{ .Values.postgresql.user }} dbname={{ .Values.postgresql.database }} sslmode={{ .Values.postgresql.sslmode }} password=$(PGPASSWORD)"
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.postgresql.passwordSecret.name }}
+                  key: {{ .Values.postgresql.passwordSecret.key }}
+            {{- end }}
+            {{- if .Values.memory.vectorBackend }}
+            - name: KARAKURI_MEMORY_VECTOR_BACKEND
+              value: {{ .Values.memory.vectorBackend | quote }}
+            - name: KARAKURI_MEMORY_EMBEDDING_DIM
+              value: {{ .Values.memory.embeddingDim | quote }}
+            {{- end }}
+          {{- end }}
           volumeMounts:
             - name: data
               mountPath: /data

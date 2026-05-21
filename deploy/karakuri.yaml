@@ -43,6 +43,8 @@ domains:
 memory:
   consolidation_threshold: 20
   semantic_top_k: 5
+  vector_backend: sqlite-keyword
+  embedding_dim: 1536
 
 # See config/default.yaml for the multi-instance shape (ADR 006).
 tools:

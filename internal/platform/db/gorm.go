@@ -13,7 +13,7 @@ func Open(driver, dsn string) (*gorm.DB, error) {
 	case "sqlite":
 		dialector = sqliteDialector(dsn)
 	case "postgres":
-		return nil, fmt.Errorf("postgres: %w", errNotImpl)
+		dialector = postgresDialector(dsn)
 	case "mysql":
 		return nil, fmt.Errorf("mysql: %w", errNotImpl)
 	default:

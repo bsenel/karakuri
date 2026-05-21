@@ -19,13 +19,14 @@ const (
 type Entry = agent.MemoryEntry
 
 type Query struct {
-	AgentID agent.AgentID `json:"agent_id,omitempty"`
-	TwinID  string        `json:"twin_id,omitempty"`
-	Tiers   []Tier        `json:"tiers,omitempty"`
-	Query   string        `json:"query,omitempty"`
-	TopK    int           `json:"top_k,omitempty"`
-	Since   *time.Time    `json:"since,omitempty"`
-	Domain  string        `json:"domain,omitempty"`
+	AgentID   agent.AgentID `json:"agent_id,omitempty"`
+	TwinID    string        `json:"twin_id,omitempty"`
+	Tiers     []Tier        `json:"tiers,omitempty"`
+	Query     string        `json:"query,omitempty"`
+	Embedding []float32     `json:"embedding,omitempty"` // vector recall; ignored by keyword backends
+	TopK      int           `json:"top_k,omitempty"`
+	Since     *time.Time    `json:"since,omitempty"`
+	Domain    string        `json:"domain,omitempty"`
 }
 
 type RetentionPolicy struct {
