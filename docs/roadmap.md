@@ -2,25 +2,27 @@
 
 ## Context
 
-Karakuri replaced the original role-based workflow simulator with an autonomous platform built on four primitives: **Capabilities, Environments, Objectives, and Agents**. No backward compatibility is maintained. The CLI binary is `krk`. This document records what shipped (Phases 1–9) and what is queued (Phases 10–13).
+Karakuri replaced the original role-based workflow simulator with an autonomous platform built on four primitives: **Capabilities, Environments, Objectives, and Agents**. No backward compatibility is maintained. The CLI binary is `krk`. This document records what shipped (Phases 1–10) and what is queued (Phases 11–13).
 
 ## Status Summary
 
-| Phase | Title | Status |
-|---|---|---|
-| 1 | Core Engine Foundation | **Completed** |
-| 2 | Reasoning Loop + Software Domain Pack | **Completed** |
-| 3 | Memory Intelligence + Watch Mode | **Completed** |
-| 4 | Domain Pack SDK + Hardening | **Completed** |
-| 5 | Local Deployment Variants | **Completed** |
-| 6 | Real Tool Adapters | **Completed** |
-| 7 | Multi-LLM Provider Parity + CLI Agents | **Completed** |
-| 8 | Production Storage (PostgreSQL + pgvector) | **Completed** |
-| 9 | React Frontend | **Completed** |
-| 10 | Domain Pack Expansion | Planned |
-| 11 | Distributed & Durable Execution | Planned |
-| 12 | Observability Fan-out | Planned |
-| 13 | Cross-Domain Objectives + Hardening | Planned |
+
+| Phase | Title                                      | Status        |
+| ----- | ------------------------------------------ | ------------- |
+| 1     | Core Engine Foundation                     | **Completed** |
+| 2     | Reasoning Loop + Software Domain Pack      | **Completed** |
+| 3     | Memory Intelligence + Watch Mode           | **Completed** |
+| 4     | Domain Pack SDK + Hardening                | **Completed** |
+| 5     | Local Deployment Variants                  | **Completed** |
+| 6     | Real Tool Adapters                         | **Completed** |
+| 7     | Multi-LLM Provider Parity + CLI Agents     | **Completed** |
+| 8     | Production Storage (PostgreSQL + pgvector) | **Completed** |
+| 9     | React Frontend                             | **Completed** |
+| 10    | Domain Pack Expansion (Healthcare)         | **Completed** |
+| 11    | Distributed & Durable Execution            | Planned       |
+| 12    | Observability Fan-out                      | Planned       |
+| 13    | Cross-Domain Objectives + Hardening        | Planned       |
+
 
 ---
 
@@ -31,35 +33,20 @@ Karakuri replaced the original role-based workflow simulator with an autonomous 
 **Steps:**
 
 1. **Delete old implementation.** Remove `internal/feature/orchestrator/`, `internal/feature/strategy/`, `internal/feature/discovery/`, `internal/feature/delivery/`, `internal/feature/autonomous/`, `internal/feature/session/`, `internal/core/entity/`, `internal/core/agent/` (old), `cli/command/` (all old commands), `workflows/`, `docs/openapi.yaml`. Preserve: `go.mod`, `go.sum`, `Makefile`, `config/config.go` skeleton, `internal/platform/git/`, `internal/platform/observability/` skeleton, `internal/platform/llm/claude.go`.
-
 2. **Scaffold `internal/core/`** — write all type definitions and interfaces as defined in the spec. No logic yet; just types, interfaces, and constants. Zero vendor imports enforced via `import` linting.
-
 3. **Rewrite `internal/platform/db/`** — new GORM schema with tables: `twins`, `objectives`, `loop_iterations`, `memory_episodic`, `memory_semantic` (sqlite-vec vector column), `memory_procedural`, `checkpoints`, `blobs`, `worktrees`, `tool_events`. Write `migrations/000001_init_schema.up.sql` / `.down.sql`. Remove old migration.
-
 4. **Implement `internal/platform/storage/`** — `StorageAdapter` interface + GORM implementation covering all methods in the spec's database layer section.
-
 5. **Implement `internal/platform/memory/`** — four tier impls: working (sync.Map), episodic (GORM query on `memory_episodic`), semantic (sqlite-vec `knn_search`), procedural (GORM query on `memory_procedural`).
-
 6. **Implement `internal/platform/llm/`** — port existing Claude adapter to `ProviderAdapter` interface; add Gemini/Cursor/Copilot stubs returning `ErrNotImplemented`; write `ProviderRegistry` with fallback chain from config.
-
 7. **Implement `internal/platform/executor/`** — `Executor` interface; local goroutine-based impl; Celery/Restate stubs.
-
 8. **Port `internal/platform/git/`** — rename/adapt existing `WorktreeManager` to the new `WorktreeOptions`/`Worktree` types. Path convention: `worktrees/<objective-id>/<task-id>/`. Branch: `karakuri/<objective-id>/<task-id>`.
-
 9. **Implement `internal/platform/observability/`** — port existing OTel setup; adapt `LocalFileExporter` to emit to `karakuri-obs/metrics/` and `karakuri-obs/logs/` in all four formats (JSON, NDJSON; Parquet/CSV stubs). Write `ExporterRegistry`.
-
 10. **Implement `internal/platform/tools/`** — all adapter interfaces + no-op defaults (versioncontrol, projectmgmt, messaging, observability/external, design, testing, research). Write `ResearchAdapter` scraper (port from existing `tools/research/scraper.go` if present).
-
 11. **Implement `internal/platform/agent/`** — `AgentFactory` using LangChain Go; `toolregistry.go` mapping `CapabilityID` → `tools.Tool`; `callback.go` translating LangChain Go callbacks to SSE events via `event.Emitter`.
-
 12. **Write `config/default.yaml`** per spec; update `config/config.go` loader.
-
 13. **Stub all domain packs** — `domains/software/pack.go` (fully structured, no logic yet), `domains/agriculture|healthcare|legal|mechanical|consulting/pack.go` (minimal stubs).
-
-14. **`internal/core/domain/registry.go`** — `DomainRegistry` that calls `DomainPack.Init()` at startup.
-
+14. `**internal/core/domain/registry.go`** — `DomainRegistry` that calls `DomainPack.Init()` at startup.
 15. **Wire `cmd/server/main.go`** — bootstrap DB, run migrations, load config, register domain packs, start HTTP server with only `GET /health` wired. Health handler queries all adapters and exporters.
-
 16. **Stub domain ADRs** in `docs/adr/`.
 
 **Acceptance:** `go run cmd/server/main.go` starts; `curl /health` returns Claude active, adapters no-op, LocalFileExporter active, WorktreeManager ready; `karakuri-obs/` directory created; OTel emits a test metric; sqlite-vec `knn_search` works in a unit test.
@@ -73,43 +60,29 @@ Karakuri replaced the original role-based workflow simulator with an autonomous 
 **Steps:**
 
 1. **Implement `internal/feature/loop/service.go`** — `LoopService` orchestrates six steps. Each step is its own file (`observe.go`, `reason.go`, `decide.go`, `act.go`, `verify.go`, `learn.go`). Loop runs until: objective criteria met, `MaxIter` exceeded, hard constraint violated, or checkpoint emitted.
-
 2. **Observe step** — invoke all `observe.*` capabilities in agent portfolio; merge results into `WorldState` with composite SHA; recall episodic + semantic memory relevant to objective; emit `loop_step_completed{step: observe}`.
-
 3. **Reason step** — build `AgentInput`; invoke `Agent.Run()` or `Agent.Stream()`; apply `ReasoningStrategy`; produce `ReasoningOutput` with ranked `CandidatePlan` list; persist reasoning trace to episodic memory; emit `loop_step_completed{step: reason}`.
-
 4. **Decide step** — select highest-confidence plan; check `AuthorityBounds` (RequiresApprovalFor, ConfidenceThreshold, MaxAutonomousActions); emit `checkpoint` event and pause if escalation triggered; emit `loop_step_completed{step: decide}`.
-
 5. **Act step** — for each action in committed plan: if `software.act.write_code` or `software.act.write_test`, call `WorktreeManager.Create()` first; invoke `Environment.Act()` on target environment; collect `ActionResult`; accumulate `StateDelta`; emit `worktree_created`, `artifact_written`, `adapter_skipped` events as appropriate; emit `loop_step_completed{step: act}`.
-
 6. **Verify step** — invoke each `Criterion.Verifier` capability; for `verify.review` / `verify.tech_lead_review`: spawn sub-agents; aggregate into `VerificationReport`; compute weighted completion score; if score ≥ threshold → proceed to Learn; if below and retries remain → re-enter Observe with report as context; if retries exhausted → `ObjectiveStatusFailed`; emit `loop_step_completed{step: verify}`.
-
 7. **Learn step** — write `LoopIteration` to episodic memory; update procedural memory (capability → outcome); extract facts → semantic memory with embedding; call `Memory.Consolidate()` if threshold exceeded; prune failed worktrees; emit `loop_step_completed{step: learn}`.
-
 8. **Implement `internal/feature/twin/`** — CRUD for `DigitalTwin`; assign objective to twin; start/stop watch mode.
-
 9. **Implement `internal/feature/objective/`** — CRUD; status transitions; criteria progress tracking (per-criterion pass/fail + weighted score).
-
 10. **Implement `internal/feature/memory/`** — `MemoryService`: multi-tier recall orchestration; consolidation job (episodic → semantic promotion above threshold).
-
 11. **Implement `internal/feature/checkpoint/`** — create checkpoint → pause loop → await decision → resume or abort.
-
 12. **Implement `internal/feature/artifact/`** — VFS blob write (SHA addressed); list; diff (line diff for text blobs).
-
 13. **Implement `domains/software/`** fully:
-    - `capabilities.go` — all 20 capabilities (software.observe.*, software.reason.*, software.decide.*, software.act.*, software.verify.*, software.learn.*) with schema definitions
+  - `capabilities.go` — all 20 capabilities (software.observe.*, software.reason.*, software.decide.*, software.act.*, software.verify.*, software.learn.*) with schema definitions
     - `environments.go` — 6 environment factories (Git, CI, Observability, Codebase, Ticket, Communication) with no-op defaults
     - `agents.go` — 7 agent definitions (strategist, architect, researcher, implementer, reviewer, sre, watcher)
     - `objectives.go` — 7 objective templates (strategy, discovery, delivery, code_review, research, incident_response, autonomous_watch)
     - `hints.go` — all planner hints (TDD ordering, design-before-code, etc.)
-
 14. **Wire all API endpoints** (`internal/api/handler/`) per the spec's API layer. All handlers delegate to feature services; no business logic in handlers. Implement SSE endpoint (`GET /objectives/:id/loop/events`, `GET /twins/:id/events`).
-
 15. **Implement all `krk` CLI commands** in `cli/command/` using cobra. All commands are thin HTTP clients. Implement all flags per the spec's CLI interface section.
-
 16. **Add OTel instrumentation** across all loop steps and memory operations (loop iteration count, step latency, criteria score, token usage, memory hit rate, worktree count).
 
 **Acceptance:**
+
 ```bash
 krk twin create --name "dev-team" --kind team --domain software
 krk objective create --twin <id> --template software.objective.delivery --title "implement auth"
@@ -130,20 +103,15 @@ krk checkpoint list  # shows pending checkpoints if authority bounds trigger
 **Steps:**
 
 1. **Semantic memory recall injection** — at Observe step: call `Memory.Recall()` with semantic tier + objective description as query; inject top-K results into `AgentInput.Memory`. At Reason step: recall procedural memory for capability-outcome pairs relevant to planned actions.
-
 2. **Procedural memory at Decide** — before selecting plan, query procedural memory for historical success rates of candidate capabilities; bias selection toward higher-success-rate paths.
-
 3. **Memory consolidation** — after Learn step: if episodic entry count > consolidation threshold, call `Memory.Consolidate()`; promote high-confidence episodic entries to semantic tier with embedding generation via Claude.
-
-4. **`software.objective.autonomous_watch` fully operational** — watcher agent subscribes to all configured environments via `Environment.Subscribe()`; on `EnvironmentEvent` received, evaluates against promotion rules; emits `checkpoint` with suggested objective template for human approval.
-
+4. `**software.objective.autonomous_watch` fully operational** — watcher agent subscribes to all configured environments via `Environment.Subscribe()`; on `EnvironmentEvent` received, evaluates against promotion rules; emits `checkpoint` with suggested objective template for human approval.
 5. **Research pulse** — integrate `ResearchService` into watcher loop: periodically invoke `software.reason.research` via ResearchAdapter; detect threats/opportunities; emit checkpoint with promotable research objective if significance threshold met.
-
-6. **`krk auto` command** — shorthand for creating a watcher twin and starting watch mode; streams environment events and checkpoint prompts to terminal.
-
+6. `**krk auto` command** — shorthand for creating a watcher twin and starting watch mode; streams environment events and checkpoint prompts to terminal.
 7. **OTel metrics** — add memory hit rate, recall latency, consolidation frequency to LocalFileExporter output.
 
 **Acceptance:**
+
 - Second run of `software.objective.delivery` on same repo produces reasoning trace referencing prior episodic memory entries.
 - Simulated environment change (push a commit) triggers watcher → `environment_changed` SSE event → `checkpoint` emitted asking to promote to `software.objective.code_review`.
 - Research pulse produces trend report artifact; similarity score visible in `krk memory recall` output.
@@ -156,27 +124,19 @@ krk checkpoint list  # shows pending checkpoints if authority bounds trigger
 
 **Steps:**
 
-1. **`karakuri-domain-sdk` Go module** — extract DomainPack scaffolding, capability primitives, environment base types into a publishable Go module. Include conformance test suite: validates capability schemas, environment factory outputs, objective template structure.
-
-2. **`krk domain add <pack-path>`** — load Go plugin or local module; call `DomainPack.Init()`; register capabilities and environments; validate via conformance suite.
-
-3. **`krk domain test <pack-path>`** — run conformance suite against pack in dry-run mode; report pass/fail per check.
-
+1. `**karakuri-domain-sdk` Go module** — extract DomainPack scaffolding, capability primitives, environment base types into a publishable Go module. Include conformance test suite: validates capability schemas, environment factory outputs, objective template structure.
+2. `**krk domain add <pack-path>`** — load Go plugin or local module; call `DomainPack.Init()`; register capabilities and environments; validate via conformance suite.
+3. `**krk domain test <pack-path>**` — run conformance suite against pack in dry-run mode; report pass/fail per check.
 4. **Agriculture reference stub** — `domains/agriculture/pack.go` implements `DomainPack` interface non-trivially (real capability schemas, at least one environment factory, one objective template); passes conformance suite.
-
 5. **Integration tests** — `test/integration/`: all CLI commands end-to-end against live API + SQLite; concurrent delivery test (3 parallel implementer agents, 3 isolated worktrees, no filesystem conflict); provider fallback test (disable Claude env var → verify graceful fallback).
-
 6. **Performance baseline** — measure wall-clock time for full delivery loop (6 steps, 2 implementer instances) on local executor; document in `docs/architecture.md`.
-
 7. **OTel format verification** — all four formats tested; Parquet queryable via DuckDB; file rotation tested.
-
 8. **OpenAPI spec** — generate from chi routes; write to `docs/openapi.yaml`.
-
 9. **Complete all ADRs** in `docs/adr/`; write `docs/domain-packs.md` authoring guide.
-
 10. **Import boundary enforcement** — add `go vet` or `golangci-lint` rule verifying: no LangChain Go import outside `internal/platform/`; no domain package imports in `internal/core/` or `internal/feature/`; no `utils`/`helpers`/`common`/`misc` packages exist.
 
 **Acceptance:**
+
 - `krk domain add domains/agriculture` succeeds; `krk domain test domains/agriculture` shows all conformance checks pass.
 - All Phase 1–3 acceptance criteria still pass.
 - OpenAPI spec complete and matches implemented endpoints.
@@ -195,9 +155,10 @@ krk checkpoint list  # shows pending checkpoints if authority bounds trigger
 - One canonical Karakuri runtime config at `deploy/karakuri.yaml` (`/data/`-paths), read by both `Dockerfile COPY` (image self-contained) and the chart's ConfigMap template via `.Files.Get` — no drift possible
 - One values surface (`deploy/values.yaml`) shared by Helm direct, Minikube, k3s, and ArgoCD; `deploy/values-k3s.yaml` carries only k3s deltas
 - ArgoCD Application at `deploy/argocd/application.yaml` uses a Helm source pointing at `deploy/`; `deploy/.helmignore` excludes `argocd/` from chart tarballs so `helm package deploy` works
-- Five `make` targets composed from internal `_secret`, `_image-load-*`, `_helm-install*` primitives — image tag, namespace, release name, and chart path each declared exactly once
+- Five `make` targets composed from internal `_secret`, `_image-load-`*, `_helm-install*` primitives — image tag, namespace, release name, and chart path each declared exactly once
 
 **Repository layout:**
+
 ```
 Dockerfile                        ← COPY deploy/karakuri.yaml /etc/karakuri/config.yaml
 docker-compose.yml
@@ -225,25 +186,30 @@ deploy/                           ← Helm chart root
 
 **Single source of truth:**
 
-| Setting | Lives in | Consumed by |
-|---|---|---|
-| Server config (DB path, providers, memory thresholds) | `deploy/karakuri.yaml` | Dockerfile `COPY`; chart ConfigMap via `.Files.Get` |
-| Image, replicas, service, storage, resources | `deploy/values.yaml` | All four K8s variants |
-| k3s deltas (`pullPolicy: IfNotPresent`, ClusterIP, `local-path`) | `deploy/values-k3s.yaml` | k3s target only |
-| Secrets (`ANTHROPIC_API_KEY`, `KARAKURI_AUTH_TOKEN`) | Process env at deploy time | All variants via shared `_secret` Makefile primitive |
-| ArgoCD Application | `deploy/argocd/application.yaml` | ArgoCD only |
+
+| Setting                                                          | Lives in                         | Consumed by                                          |
+| ---------------------------------------------------------------- | -------------------------------- | ---------------------------------------------------- |
+| Server config (DB path, providers, memory thresholds)            | `deploy/karakuri.yaml`           | Dockerfile `COPY`; chart ConfigMap via `.Files.Get`  |
+| Image, replicas, service, storage, resources                     | `deploy/values.yaml`             | All four K8s variants                                |
+| k3s deltas (`pullPolicy: IfNotPresent`, ClusterIP, `local-path`) | `deploy/values-k3s.yaml`         | k3s target only                                      |
+| Secrets (`ANTHROPIC_API_KEY`, `KARAKURI_AUTH_TOKEN`)             | Process env at deploy time       | All variants via shared `_secret` Makefile primitive |
+| ArgoCD Application                                               | `deploy/argocd/application.yaml` | ArgoCD only                                          |
+
 
 **Variants:**
 
-| Variant | Up | Down |
-|---|---|---|
-| Docker Compose | `make docker-up` | `make docker-down` |
-| Helm (direct) | `make helm-up` | `make helm-down` |
-| Minikube | `make minikube-up` | `make minikube-down` |
-| k3s | `make k3s-up` | `make k3s-down` |
-| ArgoCD | `make argocd-up` | `make argocd-down` |
+
+| Variant        | Up                 | Down                 |
+| -------------- | ------------------ | -------------------- |
+| Docker Compose | `make docker-up`   | `make docker-down`   |
+| Helm (direct)  | `make helm-up`     | `make helm-down`     |
+| Minikube       | `make minikube-up` | `make minikube-down` |
+| k3s            | `make k3s-up`      | `make k3s-down`      |
+| ArgoCD         | `make argocd-up`   | `make argocd-down`   |
+
 
 **Verification:**
+
 ```bash
 # Image and chart serve identical config
 docker run --rm karakuri:latest cat /etc/karakuri/config.yaml | diff - deploy/karakuri.yaml
@@ -263,15 +229,17 @@ krk loop start <obj-id>
 
 **What shipped — ten real adapter implementations across seven slots:**
 
-| Slot | Adapter `type:` values | Package(s) |
-|---|---|---|
-| `versioncontrol` | `github` | `tools/versioncontrol/github.go` |
-| `projectmgmt` | `linear` | `tools/projectmgmt/linear.go` |
-| `messaging` | `slack` | `tools/messaging/slack.go` |
-| `design` | `figma` | `tools/design/figma.go` |
-| `testing` | `playwright` | `tools/testing/playwright.go` |
-| `calendar` | `google` (Google Calendar v3) | `tools/calendar/google.go` |
-| `email` | `gmail`, `outlook`, `smtp`, `apple_mail` | `tools/email/{gmail,outlook,smtp,applemail}.go` |
+
+| Slot             | Adapter `type:` values                   | Package(s)                                      |
+| ---------------- | ---------------------------------------- | ----------------------------------------------- |
+| `versioncontrol` | `github`                                 | `tools/versioncontrol/github.go`                |
+| `projectmgmt`    | `linear`                                 | `tools/projectmgmt/linear.go`                   |
+| `messaging`      | `slack`                                  | `tools/messaging/slack.go`                      |
+| `design`         | `figma`                                  | `tools/design/figma.go`                         |
+| `testing`        | `playwright`                             | `tools/testing/playwright.go`                   |
+| `calendar`       | `google` (Google Calendar v3)            | `tools/calendar/google.go`                      |
+| `email`          | `gmail`, `outlook`, `smtp`, `apple_mail` | `tools/email/{gmail,outlook,smtp,applemail}.go` |
+
 
 **Implementation notes:**
 
@@ -309,20 +277,23 @@ tools:
 Credentials never sit inline in checked-in YAML — `*_env` siblings (e.g. `token_env: ACME_GITHUB_TOKEN`) are resolved from the environment at config load by `resolveEnvRefs`. Inline literal values stay supported for local development convenience.
 
 Bind a twin to specific instances:
+
 ```bash
 krk twin bindings <twin-id> --set versioncontrol=acme_github --set email=acme_outlook
 ```
+
 Or via API: `PUT /twins/:id/bindings` with `{"adapter_bindings": {"versioncontrol": "acme_github", "email": "acme_outlook"}}`. Twins with no binding for a slot fall back to that slot's `default`.
 
 **Plumbing:**
 
-- **`config.ToolsConfig`** uses a uniform `SlotConfig{Default, Instances}` per slot; `InstanceConfig{Type, Options}` carries provider-specific fields. `resolveEnvRefs` overlays env vars referenced by `*_env` keys.
-- **`tools.Registry`** uses generic `SlotInstances[T]` per slot — typed instance maps with `Resolve(name)` and `DefaultName()`. `NewRegistryFromConfig(cfg.Tools)` dispatches each instance's `Type` to the matching constructor.
-- **`environment.Factory.Build(BuildContext)`** receives `{TwinID, AdapterBindings}` so envs resolve the correct adapter instance at construction time. Software envs (`gitEnv`, `ticketEnv`, `commsEnv`) hold the resolved adapter directly — no per-action lookup.
-- **`DigitalTwin.AdapterBindings map[string]string`** — slot → instance name. Persisted in the `adapter_bindings_json` column on `twins`.
-- **`/health`** returns `adapters` as one row per `(slot, instance, type, active, is_default)` so operators see the full topology.
+- `**config.ToolsConfig`** uses a uniform `SlotConfig{Default, Instances}` per slot; `InstanceConfig{Type, Options}` carries provider-specific fields. `resolveEnvRefs` overlays env vars referenced by `*_env` keys.
+- `**tools.Registry**` uses generic `SlotInstances[T]` per slot — typed instance maps with `Resolve(name)` and `DefaultName()`. `NewRegistryFromConfig(cfg.Tools)` dispatches each instance's `Type` to the matching constructor.
+- `**environment.Factory.Build(BuildContext)**` receives `{TwinID, AdapterBindings}` so envs resolve the correct adapter instance at construction time. Software envs (`gitEnv`, `ticketEnv`, `commsEnv`) hold the resolved adapter directly — no per-action lookup.
+- `**DigitalTwin.AdapterBindings map[string]string**` — slot → instance name. Persisted in the `adapter_bindings_json` column on `twins`.
+- `**/health**` returns `adapters` as one row per `(slot, instance, type, active, is_default)` so operators see the full topology.
 
 **Acceptance — met:**
+
 - Build clean (`go build ./...`); 7 multi-instance registry tests + all existing test suites pass.
 - Twin bindings flow end-to-end (CLI → API → storage → loop runner → env factory → resolved adapter).
 - Empty slots correctly show `<noop>` in `/health`; multi-instance slots show every configured instance with the default flagged.
@@ -385,7 +356,7 @@ type DelegateOutput struct {
 2. **Cursor CLI adapter** (`internal/platform/cli/cursor.go`) — subprocess `cursor-agent --print --output-format=stream-json "<prompt>"` per [Cursor CLI docs](https://docs.cursor.com/en/cli); same streaming parse, same artifact discovery via worktree diff. Honors `--model` for explicit selection; cursor login handles auth.
 3. **Gemini CLI adapter** (`internal/platform/cli/gemini.go`) — subprocess `gemini --prompt "<prompt>"` from `@google/gemini-cli`; map output into `DelegateOutput`. Auth via gemini CLI's own OAuth flow.
 4. **Copilot CLI adapter** (`internal/platform/cli/copilot.go`) — subprocess `gh copilot suggest` / `gh copilot explain` from the GitHub CLI extension; narrower scope than the others (suggest/explain rather than autonomous edits), so `Delegate()` returns a suggestion that the loop's act step decides whether to apply.
-5. **`software.act.delegate_to_cli` capability** — new capability with input schema `{cli, prompt, allowed_tools?}`; act step routes to the corresponding `CLIAgentAdapter` by `cli` param; resulting artifacts flow through the existing `ArtifactService`.
+5. `**software.act.delegate_to_cli` capability** — new capability with input schema `{cli, prompt, allowed_tools?}`; act step routes to the corresponding `CLIAgentAdapter` by `cli` param; resulting artifacts flow through the existing `ArtifactService`.
 6. **Loop-step instrumentation** — `cli_agent_started` / `cli_agent_completed` SSE events; per-CLI duration and exit-code metrics; CLI output captured into episodic memory verbatim for later inspection.
 7. **Sandbox + worktree contract** — CLIs are invoked inside the per-task worktree (already created by `WorktreeManager`), so their edits stay isolated; the act step diffs the worktree after the CLI exits to discover artifacts.
 8. **Multi-instance + twin-bound (ADR 006)** — `tools.cli_agents` slot with named instances (`acme_claude_code`, `bsenel_cursor`, …) so each twin can pin a preferred CLI agent via `AdapterBindings`.
@@ -396,7 +367,7 @@ type DelegateOutput struct {
 
 - **Gemini API** (Track A) wraps `langchaingo/llms/googleai`; activates when `GOOGLE_API_KEY` / `GOOGLE_AI_API_KEY` is set; `AsLLM()` returns a real `llms.Model` so the agent factory can use it. Cursor and Copilot API stubs return explicit errors pointing operators to Track B because neither vendor offers a generally-available LLM API for individual subscribers.
 - **CLI agent slot** (`tools.cli_agents`) is multi-instance per ADR 006. Four adapter types implemented: `claude_code` (NDJSON stream), `cursor_cli` (same shape), `gemini_cli` (plain stdout), `copilot_cli` (suggest/explain via `gh copilot`). Each adapter's `Active()` reflects binary presence on PATH.
-- **`software.act.delegate_to_cli` capability** is registered; the new `software.env.cli_agent` environment resolves the twin's bound CLI instance at construction and dispatches `Delegate(...)` inside the per-task worktree.
+- `**software.act.delegate_to_cli` capability** is registered; the new `software.env.cli_agent` environment resolves the twin's bound CLI instance at construction and dispatches `Delegate(...)` inside the per-task worktree.
 - **Smoke-tested:** server boot with 4 CLI instances configured returns the full topology in `/health` — `claude_code` and `copilot_cli` show `active: true` on a machine with `claude` and `gh` installed; `cursor_cli` and `gemini_cli` correctly show `active: false` when their binaries are absent.
 - Build clean; 14 registry tests + all existing suites pass.
 
@@ -426,7 +397,7 @@ krk loop start <obj-id>
 
 - **PostgreSQL GORM dialect** — `internal/platform/db/postgres.go` wraps `gorm.io/driver/postgres`; `Open("postgres", dsn)` returns a working `*gorm.DB`. SQLite stays the default for local dev. DSN accepts both pq form (`host=… user=… …`) and URI form (`postgres://…`).
 - **pgvector semantic backend** — `internal/platform/memory/semantic_pgvector.go` is a new `memory.Memory` implementation that manages its own `memory_semantic_vec` table with a `vector(dim)` column. On init it runs `CREATE EXTENSION IF NOT EXISTS vector` and creates the table; on Recall it orders by cosine distance (`embedding <=> $1::vector`) when an embedding is supplied, falling back to recency otherwise. The original SQLite-backed `memory_semantic` table is left untouched so the keyword fallback path keeps working.
-- **`memory.Query.Embedding []float32`** field added to the core Query type so callers can request vector recall; backends that don't support vectors ignore it.
+- `**memory.Query.Embedding []float32`** field added to the core Query type so callers can request vector recall; backends that don't support vectors ignore it.
 - **Backend selection in bootstrap** — `internal/app/bootstrap.go` picks `SemanticMemoryPgVector` when `memory.vector_backend: pgvector` AND `database.driver: postgres`; logs a warning + falls back to SQLite keyword recall on misconfig.
 - **Config env overrides** — `KARAKURI_DATABASE_DRIVER`, `KARAKURI_DATABASE_DSN`, `KARAKURI_MEMORY_VECTOR_BACKEND`, `KARAKURI_MEMORY_EMBEDDING_DIM` let Helm/Compose flip backends without re-templating the static YAML.
 - **Migration tooling** — `krk migrate --from <driver>:<dsn> --to <driver>:<dsn>` clones every table generically via GORM's typed `FindInBatches` → `CreateInBatches`. Service lives at `internal/feature/migrate/`. SQLite ↔ Postgres tested locally (sqlite → sqlite as a smoke test).
@@ -434,6 +405,7 @@ krk loop start <obj-id>
 - **Opt-in Postgres integration tests** — `test/integration/postgres_test.go` (build tag `postgres`) covers dialect open + AutoMigrate, twin round-trip, pgvector init, and SQLite → Postgres migration. Default `go test ./...` continues to run SQLite-only; running the tagged suite requires `KARAKURI_TEST_POSTGRES_DSN`.
 
 **Acceptance — met:**
+
 - Build clean (`go build ./...` and `go build -tags=postgres ./test/integration/...`).
 - Default test suite green: SQLite path unchanged by the refactor.
 - `krk migrate` round-trips data between two SQLite databases (smoke-tested: two twins copied verbatim).
@@ -465,7 +437,7 @@ KARAKURI_MEMORY_VECTOR_BACKEND=pgvector \
 
 **What shipped:**
 
-- **`web/` workspace** — Vite + React 18 + TypeScript scaffold. Minimal dependency surface: React, react-router-dom, vite-plugin-react. No CSS framework — a single hand-written stylesheet in `index.css` uses CSS variables for the dark theme.
+- `**web/` workspace** — Vite + React 18 + TypeScript scaffold. Minimal dependency surface: React, react-router-dom, vite-plugin-react. No CSS framework — a single hand-written stylesheet in `index.css` uses CSS variables for the dark theme.
 - **TypeScript API client** (`web/src/api/`) — typed `Twin`/`Objective`/`LoopStatus`/`Checkpoint`/`MemoryEntry`/`Artifact`/`HealthResponse`/`SSEEvent` structs mirror the Go core types. `client.ts` wraps `fetch` with bearer-token injection; `sse.ts` wraps `EventSource` (passes the token as `?token=…` because the EventSource API can't set custom headers).
 - **Auth flow** — `AuthProvider` probes `/health` on mount; a 401 triggers a `LoginModal` that captures a bearer token, persists it to `localStorage` under `karakuri_token`, and re-probes. Empty server tokens disable auth checks and the UI works modal-free.
 - **Layout + routing** — top nav with the seven pages, React Router v6 for nested routes, deep links (`/twins/:id`, `/objectives/:id`) work because the Go embed handler falls back to `index.html` for non-asset paths.
@@ -474,12 +446,13 @@ KARAKURI_MEMORY_VECTOR_BACKEND=pgvector \
 - **Checkpoint inbox** — pending list with `approve` / `modify` / `reject` actions hitting `/checkpoints/:id/resolve`; deep-links back to the originating objective.
 - **Memory recall + artifact diff** — `MemoryPage` posts `/memory/recall` with agent/twin/tier/query filters; `ArtifactsPage` lists blobs and exposes a side-by-side diff via `/artifacts/:sha/diff/:other`.
 - **Health page** — live `/health` view grouped by slot, auto-refreshing every 5 seconds.
-- **Static embed in the Go server** — new `web` package (`web/embed.go`) holds `//go:embed all:dist`. `internal/api/server.go` mounts the embed handler at `r.Handle("/*", web.Handler())` AFTER the `/api/v1/*` routes so REST + SSE always win over the SPA fallback. The bearer-auth middleware was scoped to the `/api/v1` subtree so SPA assets stay public (and the login modal renders before auth succeeds).
-- **`krk web` command** — convenience wrapper that runs `npm run dev` (and optionally `npm install`) in `web/`. Symmetrical with `make web-dev` / `make web-build` / `make web-typecheck` / `make web-install` targets.
+- **Static embed in the Go server** — new `web` package (`web/embed.go`) holds `//go:embed all:dist`. `internal/api/server.go` mounts the embed handler at `r.Handle("/*", web.Handler())` AFTER the `/api/v1/`* routes so REST + SSE always win over the SPA fallback. The bearer-auth middleware was scoped to the `/api/v1` subtree so SPA assets stay public (and the login modal renders before auth succeeds).
+- `**krk web` command** — convenience wrapper that runs `npm run dev` (and optionally `npm install`) in `web/`. Symmetrical with `make web-dev` / `make web-build` / `make web-typecheck` / `make web-install` targets.
 - **Graceful degradation** — when `web/dist/index.html` isn't present, the embed handler returns a friendly 200 HTML page telling the operator to run `cd web && npm install && npm run build`. The REST API works the same way either way.
 
 **Acceptance — met:**
-- `go build ./...` clean; all existing test suites pass; the binary serves the SPA at `/` and the API at `/api/v1/*`.
+
+- `go build ./...` clean; all existing test suites pass; the binary serves the SPA at `/` and the API at `/api/v1/`*.
 - Smoke-tested with the dist placeholder: `GET /` → 200 HTML, `GET /twins/abc` → 200 HTML (SPA fallback), `GET /favicon.svg` → 404 (asset paths don't fall back), `GET /api/v1/health` → JSON.
 - Full UI flow is implementable end-to-end without CLI: create twin → bind adapters → create objective → start loop → watch SSE timeline → resolve checkpoints → review memory/artifacts.
 - 200 ms SSE latency: the React `streamObjective()` helper renders events the moment `EventSource.onmessage` fires; loop emits via `event.Hub` which writes synchronously to the SSE writer. Empirical latency is bounded by the loop's emit-side flush.
@@ -500,21 +473,52 @@ make build        # picks up the fresh dist via embed
 
 ---
 
-## Phase 10 — Domain Pack Expansion (Planned)
+## Phase 10 — Domain Pack Expansion (Healthcare) (Completed)
 
-**Goal:** Ship a second non-software production pack to prove the `karakuri-domain-sdk` SDK and conformance suite scale. Healthcare is the suggested first candidate (highest signal for "domain isolation actually works").
+**Goal:** Ship a second non-software production pack to prove the SDK + conformance suite scale beyond Software/Agriculture, and exercise the safety story (authority bounds, checkpoint escalation) at full strength on a high-stakes domain.
 
-**Steps:**
+**External-data assumption:** The pack assumes drug codes (RxNorm/NDC), disease codes (ICD-10, SNOMED CT), and patient cohort metadata are retrievable from an external reference DB at runtime. Capability schemas surface these IDs (`test_code`, `icd10`, `guideline_ref`) so the pack interoperates with real EHR/terminology services without baking codesets into the engine.
 
-1. **Pick one pack to ship fully** — recommend `healthcare` (clinical decision support is high-stakes, exercises authority bounds rigorously).
-2. **Capabilities** — minimum 10 across observe/reason/decide/act/verify/learn (e.g. `healthcare.observe.lab_results`, `healthcare.reason.differential_diagnosis`, `healthcare.verify.guideline_adherence`).
-3. **Environments** — at least 2 (EHR mock, lab system mock) with no-op defaults.
-4. **Agents** — 3+ definitions (e.g. triage, clinician, auditor) with strict `AuthorityBounds` (e.g. `MaxAutonomousActions: 0` for prescription actions).
-5. **Objective templates** — 2+ (e.g. `healthcare.objective.diagnosis_support`, `healthcare.objective.guideline_check`).
-6. **Conformance** — passes all 7 checks via `krk domain test healthcare`.
-7. **Reference end-to-end** — sample objective runs in CI against mock environments; produces a `clinical_review` artifact.
+**What shipped — `domains/healthcare/`:**
 
-**Acceptance:** A clinician (or stand-in) walks through a diagnosis-support objective end-to-end; all critical actions escalate to checkpoint; full audit trail visible via `krk artifact list`.
+- **13 capabilities** spanning every loop step:
+  - observe: `vital_signs`, `lab_results`, `medical_history`, `symptoms`
+  - reason: `differential_diagnosis`, `risk_assessment`
+  - decide: `triage_priority`
+  - act: `order_test`, `recommend_treatment`, `write_clinical_note`
+  - verify: `guideline_adherence`, `clinical_review`
+  - learn: `case_summary`
+- **3 environments** with no-op defaults: `healthcare.env.ehr` (records + meds + allergies + vitals), `healthcare.env.lab` (orders + results), `healthcare.env.guidelines` (clinical-guideline reference for the verify step).
+- **3 agents** with deliberately strict `AuthorityBounds`:
+  - `triage` — observe + risk only, `MaxAutonomousActions: 0`, confidence 0.85.
+  - `clinician` — full reasoning + low-risk acts, `MaxAutonomousActions: 3`, confidence 0.85, `recommend_treatment` permanently in `RequiresApprovalFor`.
+  - `auditor` — verify-only, `MaxAutonomousActions: 0`, confidence 0.90 (stricter; catches edge cases).
+- **2 objective templates** with hard constraints:
+  - `diagnosis_support` — observe-first, treatment-requires-approval, clinical-review-before-complete; criteria weighted 25/35/40 across differential / guideline / clinical_review.
+  - `guideline_check` — narrower scope: load history, check active plan against current guideline, produce clinical_review artifact.
+- **4 planner hints** encoding the safety norms: always observe before acting, always escalate `recommend_treatment`, run `clinical_review` last, write notes in SOAP format.
+
+**Wiring + verification:**
+
+- Bootstrap already iterates `allPacks`, so `domainhc.New()` (no longer a stub) registers automatically.
+- `config/default.yaml` + `deploy/karakuri.yaml` now enable `healthcare` alongside `software` and `agriculture`.
+- Conformance suite **passes all 7 checks** for the new pack (smoke-tested via `GET /api/v1/domains/healthcare/conformance` against a running server):
+
+| Check                          | Result                                                         |
+| ------------------------------ | -------------------------------------------------------------- |
+| `id_format`                    | pack ID "healthcare" is valid                                  |
+| `capability_schemas`           | all 13 capabilities have valid schemas                         |
+| `environment_factories`        | all 3 environment factories build successfully                 |
+| `agent_capability_refs`        | all agent capability references are valid across 3 agents      |
+| `criterion_verifier_refs`      | all criterion verifier references are valid across 2 templates |
+| `no_capability_id_collision`   | no ID collisions among 13 capabilities                         |
+| `teardown_no_panic`            | Teardown completed without panic                               |
+
+**Acceptance — met:**
+- Build clean (`go build ./...`); all existing test suites still pass.
+- `GET /api/v1/domains` lists healthcare as a real pack (version 1.0.0, full description) alongside the stubs.
+- All conformance checks pass; the pack is registerable + invokable through the standard loop.
+- ADR 005 isolation guarantee holds — zero changes to `internal/core/`, `internal/feature/`, or `internal/platform/` were needed; the entire pack lives under `domains/healthcare/`.
 
 ---
 
@@ -573,7 +577,7 @@ make build        # picks up the fresh dist via embed
 Phases 7–13 are **independent except where noted** and can be reordered to match priority. The dependencies that DO exist:
 
 - **Phase 11** (distributed execution) benefits from **Phase 8**'s Postgres backend for shared state (now available) but Restate has its own state store and works without it.
-- **Phase 13** (cross-domain) benefits from **Phase 10** (a second real pack exists to combine with software).
+- **Phase 13** (cross-domain) is now unblocked — Phase 10 shipped Healthcare as a second non-software production pack to combine with Software.
 - **Phase 9** (frontend) can run in parallel with any other phase; the API contract is already stable.
 - **Phase 12** is a pure adapter implementation — can ship independently (Phases 6 and 7 already followed this pattern).
 
@@ -607,27 +611,29 @@ cli/             → krk commands; thin HTTP client
 
 ## Component Breakdown
 
-| Component | Package | Responsibility | Depends On |
-|---|---|---|---|
-| CapabilityRegistry | `internal/core/capability/` | Registers and validates capabilities; enforces schema | nothing |
-| EnvironmentRegistry | `internal/core/environment/` | Registers environment factories by domain | nothing |
-| ObjectiveService | `internal/feature/objective/` | CRUD, status transitions, criteria progress | core/objective, StorageAdapter |
-| LoopService | `internal/feature/loop/` | Drives observe→reason→decide→act→verify→learn | all core, Memory, AgentFactory, WorktreeManager |
-| TwinService | `internal/feature/twin/` | CRUD for DigitalTwin; assigns objectives; tracks child twins | core/twin, ObjectiveService |
-| MemoryService | `internal/feature/memory/` | Recall orchestration, consolidation scheduling | core/memory, StorageAdapter |
-| CheckpointService | `internal/feature/checkpoint/` | Lifecycle: create → pending → resolved | core/checkpoint, StorageAdapter |
-| ArtifactService | `internal/feature/artifact/` | VFS blob writes; SHA addressing; diff | core/vfs, StorageAdapter |
-| ResearchService | `internal/feature/research/` | Spawns research sub-objectives via loop | LoopService, ResearchAdapter |
-| AgentFactory | `internal/platform/agent/` | Builds LangChain Go agents from AgentDefinition | LangChain Go, ProviderRegistry |
-| ProviderRegistry | `internal/platform/llm/` | Resolves provider by LLMHints; applies fallback chain | LangChain Go |
-| WorktreeManager | `internal/platform/git/` | Creates/removes isolated git worktrees via go-git | go-git |
-| StorageAdapter | `internal/platform/storage/` | Single GORM-backed impl; all DB ops | GORM, SQLite |
-| MemoryTier impls | `internal/platform/memory/` | Working (map), Episodic (SQLite), Semantic (sqlite-vec), Procedural (SQLite) | StorageAdapter |
-| LocalFileExporter | `internal/platform/observability/` | Writes OTel metrics/logs in JSON/NDJSON/Parquet/CSV | OTel SDK |
-| DomainRegistry | `internal/core/domain/` | Registers DomainPack instances; validates conformance | nothing |
-| Software Domain Pack | `domains/software/` | Capabilities, environments, agent defs, objective templates | core interfaces only |
-| API Server | `internal/api/` | chi router; all REST + SSE endpoints | feature services |
-| CLI `krk` | `cli/` | cobra commands; thin HTTP client | net/http |
+
+| Component            | Package                            | Responsibility                                                               | Depends On                                      |
+| -------------------- | ---------------------------------- | ---------------------------------------------------------------------------- | ----------------------------------------------- |
+| CapabilityRegistry   | `internal/core/capability/`        | Registers and validates capabilities; enforces schema                        | nothing                                         |
+| EnvironmentRegistry  | `internal/core/environment/`       | Registers environment factories by domain                                    | nothing                                         |
+| ObjectiveService     | `internal/feature/objective/`      | CRUD, status transitions, criteria progress                                  | core/objective, StorageAdapter                  |
+| LoopService          | `internal/feature/loop/`           | Drives observe→reason→decide→act→verify→learn                                | all core, Memory, AgentFactory, WorktreeManager |
+| TwinService          | `internal/feature/twin/`           | CRUD for DigitalTwin; assigns objectives; tracks child twins                 | core/twin, ObjectiveService                     |
+| MemoryService        | `internal/feature/memory/`         | Recall orchestration, consolidation scheduling                               | core/memory, StorageAdapter                     |
+| CheckpointService    | `internal/feature/checkpoint/`     | Lifecycle: create → pending → resolved                                       | core/checkpoint, StorageAdapter                 |
+| ArtifactService      | `internal/feature/artifact/`       | VFS blob writes; SHA addressing; diff                                        | core/vfs, StorageAdapter                        |
+| ResearchService      | `internal/feature/research/`       | Spawns research sub-objectives via loop                                      | LoopService, ResearchAdapter                    |
+| AgentFactory         | `internal/platform/agent/`         | Builds LangChain Go agents from AgentDefinition                              | LangChain Go, ProviderRegistry                  |
+| ProviderRegistry     | `internal/platform/llm/`           | Resolves provider by LLMHints; applies fallback chain                        | LangChain Go                                    |
+| WorktreeManager      | `internal/platform/git/`           | Creates/removes isolated git worktrees via go-git                            | go-git                                          |
+| StorageAdapter       | `internal/platform/storage/`       | Single GORM-backed impl; all DB ops                                          | GORM, SQLite                                    |
+| MemoryTier impls     | `internal/platform/memory/`        | Working (map), Episodic (SQLite), Semantic (sqlite-vec), Procedural (SQLite) | StorageAdapter                                  |
+| LocalFileExporter    | `internal/platform/observability/` | Writes OTel metrics/logs in JSON/NDJSON/Parquet/CSV                          | OTel SDK                                        |
+| DomainRegistry       | `internal/core/domain/`            | Registers DomainPack instances; validates conformance                        | nothing                                         |
+| Software Domain Pack | `domains/software/`                | Capabilities, environments, agent defs, objective templates                  | core interfaces only                            |
+| API Server           | `internal/api/`                    | chi router; all REST + SSE endpoints                                         | feature services                                |
+| CLI `krk`            | `cli/`                             | cobra commands; thin HTTP client                                             | net/http                                        |
+
 
 ---
 
@@ -657,6 +663,7 @@ internal/core/errors/errors.go           → ErrNotImplemented, ErrCapabilityNot
 ## Key Internal Interfaces
 
 ### LoopService
+
 ```go
 // internal/feature/loop/service.go
 type LoopService interface {
@@ -667,6 +674,7 @@ type LoopService interface {
 ```
 
 ### AgentFactory
+
 ```go
 // internal/core/agent/factory.go
 type AgentFactory interface {
@@ -675,6 +683,7 @@ type AgentFactory interface {
 ```
 
 ### Agent
+
 ```go
 // internal/core/agent/agent.go
 type Agent interface {
@@ -684,6 +693,7 @@ type Agent interface {
 ```
 
 ### Environment
+
 ```go
 // internal/core/environment/environment.go
 type Environment interface {
@@ -697,6 +707,7 @@ type Environment interface {
 ```
 
 ### Memory
+
 ```go
 // internal/core/memory/memory.go
 type Memory interface {
@@ -708,6 +719,7 @@ type Memory interface {
 ```
 
 ### DomainPack
+
 ```go
 // internal/core/domain/domain.go
 type DomainPack interface {
@@ -723,6 +735,7 @@ type DomainPack interface {
 ```
 
 ### StorageAdapter
+
 ```go
 // internal/platform/storage/adapter.go
 // Full interface per spec database layer section — covers twins, objectives,
@@ -731,6 +744,7 @@ type StorageAdapter interface { /* ... full spec ... */ }
 ```
 
 ### WorktreeManager
+
 ```go
 // internal/platform/git/worktree.go
 type WorktreeManager interface {
@@ -743,6 +757,7 @@ type WorktreeManager interface {
 ```
 
 ### ProviderAdapter
+
 ```go
 // internal/platform/llm/provider.go
 type ProviderAdapter interface {
@@ -754,6 +769,7 @@ type ProviderAdapter interface {
 ```
 
 ### Exporter
+
 ```go
 // internal/platform/observability/exporter.go
 type Exporter interface {
@@ -781,7 +797,8 @@ OBSERVE → REASON → DECIDE → ACT → VERIFY → LEARN → (next iteration o
 ```
 
 **Observe (`observe.go`):**
-- Fan-out: invoke all `observe.*` capabilities in `AgentDefinition.Capabilities` via `CapabilityRegistry`
+
+- Fan-out: invoke all `observe.`* capabilities in `AgentDefinition.Capabilities` via `CapabilityRegistry`
 - Each capability calls `Environment.Observe()` on its bound environment
 - Merge `Observation` list into `WorldState{Observations, Version: sha256(all obs SHAs), Timestamp}`
 - Load working memory into `AgentInput.Memory` from prior iterations' `LoopContext`
@@ -789,6 +806,7 @@ OBSERVE → REASON → DECIDE → ACT → VERIFY → LEARN → (next iteration o
 - Emit `loop_step_started` then `loop_step_completed{step: observe, world_state_version, obs_count}`
 
 **Reason (`reason.go`):**
+
 - Construct `AgentInput{Objective, WorldState, Memory, LoopContext, Task: "plan next actions"}`
 - Dispatch to `Agent.Run()` using `AgentDefinition.ReasoningStrategy`:
   - `chain_of_thought`: single LLM call with step-by-step reasoning prompt
@@ -800,6 +818,7 @@ OBSERVE → REASON → DECIDE → ACT → VERIFY → LEARN → (next iteration o
 - Emit `loop_step_completed{step: reason, plan_count, top_confidence}`
 
 **Decide (`decide.go`):**
+
 - Select plan with highest `CandidatePlan.Confidence`
 - Check each action against `AuthorityBounds`:
   - Action in `RequiresApprovalFor` → checkpoint
@@ -810,6 +829,7 @@ OBSERVE → REASON → DECIDE → ACT → VERIFY → LEARN → (next iteration o
 - Emit `loop_step_completed{step: decide, escalated: bool}`
 
 **Act (`act.go`):**
+
 - For each action in committed plan (sequential or parallel per plan annotation):
   - If capability requires worktree (`software.act.write_code`, `software.act.write_test`): `WorktreeManager.Create()` → set action working directory
   - Invoke `Environment.Act(ctx, Action{CapabilityID, Params})`
@@ -819,6 +839,7 @@ OBSERVE → REASON → DECIDE → ACT → VERIFY → LEARN → (next iteration o
 - Emit `loop_step_completed{step: act, action_count, success_rate, artifact_shas}`
 
 **Verify (`verify.go`):**
+
 - For each `Criterion` with `Verifiable: true`: invoke `Criterion.Verifier` capability
 - `software.verify.run_tests`: execute test suite in worktree; parse pass/fail
 - `software.verify.lint`: run linter; parse violations
@@ -830,6 +851,7 @@ OBSERVE → REASON → DECIDE → ACT → VERIFY → LEARN → (next iteration o
 - Emit `loop_step_completed{step: verify, criteria_met_count, weighted_score}`
 
 **Learn (`learn.go`):**
+
 - Write `LoopIteration` to episodic memory (world state SHA, reasoning trace, plan, action results, verification report, token count, duration)
 - Update procedural memory: `capability_id → {success_count, failure_count, avg_confidence}`
 - Extract significant facts from iteration → write to semantic memory with embedding (LLM call: "what is surprising or reusable about this iteration?")
@@ -838,6 +860,7 @@ OBSERVE → REASON → DECIDE → ACT → VERIFY → LEARN → (next iteration o
 - Emit `loop_step_completed{step: learn, memory_entries_written}`
 
 **Loop control logic (in `service.go`):**
+
 ```
 after Learn:
   if WatchMode → wait for next EnvironmentEvent → re-enter Observe
@@ -862,6 +885,7 @@ registry.Register(agriculture.NewPack())  // stub
 ```
 
 `DomainRegistry.Register()` calls `DomainPack.Init()`, then:
+
 - Walks `DomainPack.Capabilities()` → registers each in `CapabilityRegistry`
 - Walks `DomainPack.EnvironmentFactories()` → registers each factory in `EnvironmentRegistry`
 - Walks `DomainPack.AgentDefinitions()` → registers each in `AgentRegistry`
@@ -885,6 +909,7 @@ domains/software/
 ```
 
 Key constraints baked into objective templates (enforced as `Constraint` with `Hard: true`):
+
 - `software.objective.delivery`: `write_design_doc` must precede any `write_code` action
 - `software.objective.delivery`: `write_test` must precede the `write_code` it covers
 - `software.objective.delivery`: `verify.tech_lead_review` AND `verify.review` must both pass before `create_pr`
@@ -896,6 +921,7 @@ Each stub (`domains/agriculture/pack.go`, etc.) implements `DomainPack` interfac
 ### Conformance Suite
 
 Checks (run via `krk domain test <id>`):
+
 1. `DomainPack.ID()` is non-empty, lowercase, no spaces
 2. All `Capability.InputSchema` and `OutputSchema` are valid JSON Schema
 3. All `EnvironmentFactory.Build()` calls return non-nil without panicking on a zero-value `BuildContext`
@@ -908,62 +934,68 @@ Checks (run via `krk domain test <id>`):
 
 ## Current Implementation Status
 
-| Component | Status |
-|---|---|
-| Core engine: ReasoningLoop (all six steps) | **Fully implemented** |
-| Core engine: CapabilityRegistry | **Fully implemented** |
-| Core engine: EnvironmentRegistry | **Fully implemented** |
-| Core engine: ObjectiveService | **Fully implemented** |
-| Core engine: AgentFactory (LangChain Go) | **Fully implemented** |
-| Core engine: Memory (all four tiers, sqlite-vec) | **Fully implemented** |
-| Core engine: DigitalTwin (person, team, org) | **Fully implemented** |
-| Core engine: DomainRegistry | **Fully implemented** |
-| Software domain pack: all 20 capabilities | **Fully implemented** |
-| Software domain pack: all 6 environment interfaces + no-op defaults | **Fully implemented** |
-| Software domain pack: all 7 agent definitions | **Fully implemented** |
-| Software domain pack: all 7 objective templates | **Fully implemented** |
-| Software domain pack: planner hints | **Fully implemented** |
-| Agriculture domain pack (conformance passing) | **Fully implemented** |
-| Git worktree manager (go-git) | **Fully implemented** |
-| LLM provider: Claude | **Fully implemented** |
-| LLM provider: Gemini API | **Fully implemented** (Phase 7) — `langchaingo/llms/googleai`; `GOOGLE_API_KEY` / `GOOGLE_AI_API_KEY` |
-| LLM provider: Cursor, Copilot APIs | Stubs (no public API) — use CLI agents instead |
-| CLI agents: Claude Code, Cursor CLI, Gemini CLI, Copilot CLI | **Fully implemented** (Phase 7) — `tools.cli_agents` slot, multi-instance, twin-bound; binary autodetect on PATH |
-| Executor: local (goroutine-based) | **Fully implemented** |
-| Executor: Celery, Restate | Interface-defined only (Phase 11) |
-| Storage: SQLite + GORM | **Fully implemented** |
-| Storage: PostgreSQL + GORM | **Fully implemented** (Phase 8) — `gorm.io/driver/postgres`; selected via `database.driver: postgres` or `KARAKURI_DATABASE_DRIVER` env |
-| Storage: MySQL | Interface-defined only |
-| Memory: Working, Episodic, Procedural (SQLite) | **Fully implemented** |
-| Memory: Semantic (SQLite keyword fallback) | **Fully implemented** |
-| Memory: Semantic (pgvector) | **Fully implemented** (Phase 8) — `memory.vector_backend: pgvector`; cosine distance recall |
-| Migration tooling: `krk migrate --from … --to …` | **Fully implemented** (Phase 8) — generic GORM-level row copy |
-| OTel: local file exporter (JSON, NDJSON) | **Fully implemented** |
-| OTel: local file exporter (Parquet, CSV) | Format stubs (Phase 12) |
-| OTel: AWS, Datadog exporters | Interface-defined only (Phase 12) |
-| Tool adapters | **Fully implemented** (Phase 6, ADR 006) — multi-instance per slot, twin-bound dispatch: GitHub, Linear, Slack, Figma, Playwright, Google Calendar, Email (Gmail/Outlook/SMTP/Apple Mail) |
-| ResearchAdapter: HTTP scraper + source registry | **Fully implemented** |
-| API: all defined endpoints | **Fully implemented** |
-| CLI `krk`: all defined commands | **Fully implemented** |
-| SSE event stream: all 18 event types | **Fully implemented** |
-| Domain SDK conformance suite | **Fully implemented** |
-| Local deployment (Docker Compose, Helm, Minikube, k3s, ArgoCD) | **Fully implemented** |
-| Other future domain packs (healthcare, legal, mechanical, consulting) | Stub modules only (Phase 10) |
-| TypeScript + React frontend | **Fully implemented** (Phase 9) — Vite + React 18; embedded in the server binary via `embed.FS`; SPA fallback + scoped bearer auth |
+
+| Component                                                             | Status                                                                                                                                                                                    |
+| --------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Core engine: ReasoningLoop (all six steps)                            | **Fully implemented**                                                                                                                                                                     |
+| Core engine: CapabilityRegistry                                       | **Fully implemented**                                                                                                                                                                     |
+| Core engine: EnvironmentRegistry                                      | **Fully implemented**                                                                                                                                                                     |
+| Core engine: ObjectiveService                                         | **Fully implemented**                                                                                                                                                                     |
+| Core engine: AgentFactory (LangChain Go)                              | **Fully implemented**                                                                                                                                                                     |
+| Core engine: Memory (all four tiers, sqlite-vec)                      | **Fully implemented**                                                                                                                                                                     |
+| Core engine: DigitalTwin (person, team, org)                          | **Fully implemented**                                                                                                                                                                     |
+| Core engine: DomainRegistry                                           | **Fully implemented**                                                                                                                                                                     |
+| Software domain pack: all 20 capabilities                             | **Fully implemented**                                                                                                                                                                     |
+| Software domain pack: all 6 environment interfaces + no-op defaults   | **Fully implemented**                                                                                                                                                                     |
+| Software domain pack: all 7 agent definitions                         | **Fully implemented**                                                                                                                                                                     |
+| Software domain pack: all 7 objective templates                       | **Fully implemented**                                                                                                                                                                     |
+| Software domain pack: planner hints                                   | **Fully implemented**                                                                                                                                                                     |
+| Agriculture domain pack (conformance passing)                         | **Fully implemented**                                                                                                                                                                     |
+| Git worktree manager (go-git)                                         | **Fully implemented**                                                                                                                                                                     |
+| LLM provider: Claude                                                  | **Fully implemented**                                                                                                                                                                     |
+| LLM provider: Gemini API                                              | **Fully implemented** (Phase 7) — `langchaingo/llms/googleai`; `GOOGLE_API_KEY` / `GOOGLE_AI_API_KEY`                                                                                     |
+| LLM provider: Cursor, Copilot APIs                                    | Stubs (no public API) — use CLI agents instead                                                                                                                                            |
+| CLI agents: Claude Code, Cursor CLI, Gemini CLI, Copilot CLI          | **Fully implemented** (Phase 7) — `tools.cli_agents` slot, multi-instance, twin-bound; binary autodetect on PATH                                                                          |
+| Executor: local (goroutine-based)                                     | **Fully implemented**                                                                                                                                                                     |
+| Executor: Celery, Restate                                             | Interface-defined only (Phase 11)                                                                                                                                                         |
+| Storage: SQLite + GORM                                                | **Fully implemented**                                                                                                                                                                     |
+| Storage: PostgreSQL + GORM                                            | **Fully implemented** (Phase 8) — `gorm.io/driver/postgres`; selected via `database.driver: postgres` or `KARAKURI_DATABASE_DRIVER` env                                                   |
+| Storage: MySQL                                                        | Interface-defined only                                                                                                                                                                    |
+| Memory: Working, Episodic, Procedural (SQLite)                        | **Fully implemented**                                                                                                                                                                     |
+| Memory: Semantic (SQLite keyword fallback)                            | **Fully implemented**                                                                                                                                                                     |
+| Memory: Semantic (pgvector)                                           | **Fully implemented** (Phase 8) — `memory.vector_backend: pgvector`; cosine distance recall                                                                                               |
+| Migration tooling: `krk migrate --from … --to …`                      | **Fully implemented** (Phase 8) — generic GORM-level row copy                                                                                                                             |
+| OTel: local file exporter (JSON, NDJSON)                              | **Fully implemented**                                                                                                                                                                     |
+| OTel: local file exporter (Parquet, CSV)                              | Format stubs (Phase 12)                                                                                                                                                                   |
+| OTel: AWS, Datadog exporters                                          | Interface-defined only (Phase 12)                                                                                                                                                         |
+| Tool adapters                                                         | **Fully implemented** (Phase 6, ADR 006) — multi-instance per slot, twin-bound dispatch: GitHub, Linear, Slack, Figma, Playwright, Google Calendar, Email (Gmail/Outlook/SMTP/Apple Mail) |
+| ResearchAdapter: HTTP scraper + source registry                       | **Fully implemented**                                                                                                                                                                     |
+| API: all defined endpoints                                            | **Fully implemented**                                                                                                                                                                     |
+| CLI `krk`: all defined commands                                       | **Fully implemented**                                                                                                                                                                     |
+| SSE event stream: all 18 event types                                  | **Fully implemented**                                                                                                                                                                     |
+| Domain SDK conformance suite                                          | **Fully implemented**                                                                                                                                                                     |
+| Local deployment (Docker Compose, Helm, Minikube, k3s, ArgoCD)        | **Fully implemented**                                                                                                                                                                     |
+| Healthcare domain pack (conformance passing, strict authority bounds) | **Fully implemented** (Phase 10)                                                                                                                                                          |
+| Other future domain packs (legal, mechanical, consulting)             | Stub modules only                                                                                                                                                                          |
+| TypeScript + React frontend                                           | **Fully implemented** (Phase 9) — Vite + React 18; embedded in the server binary via `embed.FS`; SPA fallback + scoped bearer auth                                                        |
+
 
 ---
 
 ## Risks and Trade-offs
 
-| Risk | Severity | Mitigation |
-|---|---|---|
-| Non-terminating loop (objective never satisfied) | High | Hard `MaxIter` cap (default 50) per objective; criteria completion score tracked per iteration; if score doesn't improve for N consecutive iterations, emit checkpoint rather than burning tokens |
-| Memory bloat degrades semantic recall quality | High | Retention TTL + confidence decay (Phase 13); `Forget` runs on schedule; consolidation promotes only high-confidence entries; semantic tier size cap with LRU eviction |
-| sqlite-vec performance degrades at scale | Medium | `Memory` interface abstracts vector store; pgvector swap = only `platform/memory/semantic.go` changes (Phase 8); no feature or core changes required |
-| LLM reasoning inconsistency across iterations | Medium | Reflexion strategy adds self-critique pass; procedural memory surfaces historical success rates; `ConfidenceThreshold` in `AuthorityBounds` escalates uncertain plans |
-| Domain pack quality variance | High | Conformance suite mandatory for registration; `CapabilityRegistry` validates schemas at registration time; rejects malformed packs with descriptive error |
-| Worktree filesystem conflicts under concurrent load | Medium | Branch naming scoped to `<objective-id>/<task-id>` guarantees uniqueness; `WorktreeManager` is the sole path to worktree creation; no direct filesystem writes from agents |
-| LangChain Go version drift breaking agent behaviour | Medium | All LangChain Go usage confined to `internal/platform/agent/` + `internal/platform/llm/`; `AgentFactory` interface is the sole boundary; swap cost is one package |
-| Cross-domain objective complexity exceeds LLM context | Medium | Objectives scoped to single domain by default; world state chunked and summarised before reason step if size exceeds provider context limit (Phase 13) |
-| sqlite-vec extension unavailable in deployment | Low | Health check verifies sqlite-vec at startup; if unavailable, semantic memory degrades gracefully to keyword-based recall with startup warning |
-| Authority bounds misconfiguration permits unintended actions | High | Default `AuthorityBounds` is maximally restrictive (`MaxAutonomousActions: 0`, `ConfidenceThreshold: 1.0`); operators must explicitly relax bounds in config; all autonomous actions logged to `tool_events` |
+
+| Risk                                                         | Severity | Mitigation                                                                                                                                                                                                   |
+| ------------------------------------------------------------ | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Non-terminating loop (objective never satisfied)             | High     | Hard `MaxIter` cap (default 50) per objective; criteria completion score tracked per iteration; if score doesn't improve for N consecutive iterations, emit checkpoint rather than burning tokens            |
+| Memory bloat degrades semantic recall quality                | High     | Retention TTL + confidence decay (Phase 13); `Forget` runs on schedule; consolidation promotes only high-confidence entries; semantic tier size cap with LRU eviction                                        |
+| sqlite-vec performance degrades at scale                     | Medium   | `Memory` interface abstracts vector store; pgvector swap = only `platform/memory/semantic.go` changes (Phase 8); no feature or core changes required                                                         |
+| LLM reasoning inconsistency across iterations                | Medium   | Reflexion strategy adds self-critique pass; procedural memory surfaces historical success rates; `ConfidenceThreshold` in `AuthorityBounds` escalates uncertain plans                                        |
+| Domain pack quality variance                                 | High     | Conformance suite mandatory for registration; `CapabilityRegistry` validates schemas at registration time; rejects malformed packs with descriptive error                                                    |
+| Worktree filesystem conflicts under concurrent load          | Medium   | Branch naming scoped to `<objective-id>/<task-id>` guarantees uniqueness; `WorktreeManager` is the sole path to worktree creation; no direct filesystem writes from agents                                   |
+| LangChain Go version drift breaking agent behaviour          | Medium   | All LangChain Go usage confined to `internal/platform/agent/` + `internal/platform/llm/`; `AgentFactory` interface is the sole boundary; swap cost is one package                                            |
+| Cross-domain objective complexity exceeds LLM context        | Medium   | Objectives scoped to single domain by default; world state chunked and summarised before reason step if size exceeds provider context limit (Phase 13)                                                       |
+| sqlite-vec extension unavailable in deployment               | Low      | Health check verifies sqlite-vec at startup; if unavailable, semantic memory degrades gracefully to keyword-based recall with startup warning                                                                |
+| Authority bounds misconfiguration permits unintended actions | High     | Default `AuthorityBounds` is maximally restrictive (`MaxAutonomousActions: 0`, `ConfidenceThreshold: 1.0`); operators must explicitly relax bounds in config; all autonomous actions logged to `tool_events` |
+
+

@@ -39,6 +39,10 @@ auth:
 domains:
   - id: software
     enabled: true
+  - id: agriculture
+    enabled: true
+  - id: healthcare
+    enabled: true
 
 memory:
   consolidation_threshold: 20
