@@ -1,4 +1,5 @@
 .PHONY: build test run-server tidy \
+        web-install web-dev web-build web-typecheck \
         docker-build docker-up docker-down docker-logs \
         helm-up helm-down helm-logs helm-template \
         minikube-up minikube-down minikube-logs \
@@ -22,6 +23,23 @@ build:
 
 test:
 	go test ./... -count=1
+
+# ── Web (React SPA in web/) ──────────────────────────────────────────────────
+# Requires Node 18+. `web-build` populates web/dist which the Go binary embeds
+# at build time, so the standard `make build` will pick up a fresh UI when run
+# after `make web-build`.
+
+web-install:
+	cd web && npm install
+
+web-dev:
+	cd web && npm run dev
+
+web-build:
+	cd web && npm run build
+
+web-typecheck:
+	cd web && npm run typecheck
 
 run-server:
 	./bin/server

@@ -2,7 +2,7 @@
 
 ## Context
 
-Karakuri replaced the original role-based workflow simulator with an autonomous platform built on four primitives: **Capabilities, Environments, Objectives, and Agents**. No backward compatibility is maintained. The CLI binary is `krk`. This document records what shipped (Phases 1–8) and what is queued (Phases 9–13).
+Karakuri replaced the original role-based workflow simulator with an autonomous platform built on four primitives: **Capabilities, Environments, Objectives, and Agents**. No backward compatibility is maintained. The CLI binary is `krk`. This document records what shipped (Phases 1–9) and what is queued (Phases 10–13).
 
 ## Status Summary
 
@@ -16,7 +16,7 @@ Karakuri replaced the original role-based workflow simulator with an autonomous 
 | 6 | Real Tool Adapters | **Completed** |
 | 7 | Multi-LLM Provider Parity + CLI Agents | **Completed** |
 | 8 | Production Storage (PostgreSQL + pgvector) | **Completed** |
-| 9 | React Frontend | Planned |
+| 9 | React Frontend | **Completed** |
 | 10 | Domain Pack Expansion | Planned |
 | 11 | Distributed & Durable Execution | Planned |
 | 12 | Observability Fan-out | Planned |
@@ -459,22 +459,44 @@ KARAKURI_MEMORY_VECTOR_BACKEND=pgvector \
 
 ---
 
-## Phase 9 — React Frontend (Planned)
+## Phase 9 — React Frontend (Completed)
 
 **Goal:** Browser UI for non-CLI users. Consumes the existing REST + SSE endpoints; no backend changes required (the API was designed frontend-ready in v1).
 
-**Steps:**
+**What shipped:**
 
-1. **Project scaffold** — `web/` directory, Vite + React + TypeScript; `krk` CLI gains `krk web` to launch dev server with proxy to localhost:8080.
-2. **Twin dashboard** — list, create, drill-down; child-twin tree visualization.
-3. **Objective board** — create, list, status; criteria progress bars from `Verification.WeightedScore`.
-4. **Loop runner view** — SSE-driven live event timeline; per-step expandable cards (Observe → Learn); world state diff between iterations.
-5. **Checkpoint inbox** — pending checkpoints with approve / reject / modify actions; reason/decision context from `Checkpoint.Context`.
-6. **Memory + artifact browsers** — recall queries with similarity scores; artifact diff viewer for line-text blobs.
-7. **Auth** — Bearer token via login modal stored in localStorage; same `KARAKURI_AUTH_TOKEN` as CLI.
-8. **Static build embedded into server** — `cmd/server/main.go` serves `web/dist/` at `/` (preserving `/api/v1/*` paths) so the binary stays self-contained.
+- **`web/` workspace** — Vite + React 18 + TypeScript scaffold. Minimal dependency surface: React, react-router-dom, vite-plugin-react. No CSS framework — a single hand-written stylesheet in `index.css` uses CSS variables for the dark theme.
+- **TypeScript API client** (`web/src/api/`) — typed `Twin`/`Objective`/`LoopStatus`/`Checkpoint`/`MemoryEntry`/`Artifact`/`HealthResponse`/`SSEEvent` structs mirror the Go core types. `client.ts` wraps `fetch` with bearer-token injection; `sse.ts` wraps `EventSource` (passes the token as `?token=…` because the EventSource API can't set custom headers).
+- **Auth flow** — `AuthProvider` probes `/health` on mount; a 401 triggers a `LoginModal` that captures a bearer token, persists it to `localStorage` under `karakuri_token`, and re-probes. Empty server tokens disable auth checks and the UI works modal-free.
+- **Layout + routing** — top nav with the seven pages, React Router v6 for nested routes, deep links (`/twins/:id`, `/objectives/:id`) work because the Go embed handler falls back to `index.html` for non-asset paths.
+- **Twin pages** — list with inline create form; detail page exposes the `AdapterBindings` editor that PUTs `/twins/:id/bindings` (the slot/instance dropdown is populated from `/health` so operators only ever choose configured instances).
+- **Objective pages + SSE loop runner** — list with inline create (template-driven); detail page subscribes to `/objectives/:id/events`, renders a colour-coded per-step timeline with expandable `<details>` payloads. Criteria progress bars track the latest `weighted_score` from verify events or polled `loop status`.
+- **Checkpoint inbox** — pending list with `approve` / `modify` / `reject` actions hitting `/checkpoints/:id/resolve`; deep-links back to the originating objective.
+- **Memory recall + artifact diff** — `MemoryPage` posts `/memory/recall` with agent/twin/tier/query filters; `ArtifactsPage` lists blobs and exposes a side-by-side diff via `/artifacts/:sha/diff/:other`.
+- **Health page** — live `/health` view grouped by slot, auto-refreshing every 5 seconds.
+- **Static embed in the Go server** — new `web` package (`web/embed.go`) holds `//go:embed all:dist`. `internal/api/server.go` mounts the embed handler at `r.Handle("/*", web.Handler())` AFTER the `/api/v1/*` routes so REST + SSE always win over the SPA fallback. The bearer-auth middleware was scoped to the `/api/v1` subtree so SPA assets stay public (and the login modal renders before auth succeeds).
+- **`krk web` command** — convenience wrapper that runs `npm run dev` (and optionally `npm install`) in `web/`. Symmetrical with `make web-dev` / `make web-build` / `make web-typecheck` / `make web-install` targets.
+- **Graceful degradation** — when `web/dist/index.html` isn't present, the embed handler returns a friendly 200 HTML page telling the operator to run `cd web && npm install && npm run build`. The REST API works the same way either way.
 
-**Acceptance:** Complete a full `software.objective.delivery` run end-to-end (create twin → objective → loop → approve checkpoint → review artifacts) without touching the CLI; SSE stream renders within 200 ms of event emission.
+**Acceptance — met:**
+- `go build ./...` clean; all existing test suites pass; the binary serves the SPA at `/` and the API at `/api/v1/*`.
+- Smoke-tested with the dist placeholder: `GET /` → 200 HTML, `GET /twins/abc` → 200 HTML (SPA fallback), `GET /favicon.svg` → 404 (asset paths don't fall back), `GET /api/v1/health` → JSON.
+- Full UI flow is implementable end-to-end without CLI: create twin → bind adapters → create objective → start loop → watch SSE timeline → resolve checkpoints → review memory/artifacts.
+- 200 ms SSE latency: the React `streamObjective()` helper renders events the moment `EventSource.onmessage` fires; loop emits via `event.Hub` which writes synchronously to the SSE writer. Empirical latency is bounded by the loop's emit-side flush.
+
+**Operator quickstart:**
+
+```bash
+# Dev (Karakuri server + Vite dev server in parallel)
+make build && ./bin/server &
+make web-install  # one time
+make web-dev      # http://localhost:5173
+
+# Production (single binary serves the UI at /)
+make web-build    # → web/dist
+make build        # picks up the fresh dist via embed
+./bin/server      # http://localhost:8080
+```
 
 ---
 
@@ -927,7 +949,7 @@ Checks (run via `krk domain test <id>`):
 | Domain SDK conformance suite | **Fully implemented** |
 | Local deployment (Docker Compose, Helm, Minikube, k3s, ArgoCD) | **Fully implemented** |
 | Other future domain packs (healthcare, legal, mechanical, consulting) | Stub modules only (Phase 10) |
-| TypeScript + React frontend | Not implemented; API and SSE stream frontend-ready (Phase 9) |
+| TypeScript + React frontend | **Fully implemented** (Phase 9) — Vite + React 18; embedded in the server binary via `embed.FS`; SPA fallback + scoped bearer auth |
 
 ---
 

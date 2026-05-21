@@ -6,6 +6,7 @@ import (
 	"github.com/bsenel/karakuri/config"
 	"github.com/bsenel/karakuri/internal/api/handler"
 	"github.com/bsenel/karakuri/internal/api/middleware"
+	"github.com/bsenel/karakuri/web"
 	"github.com/bsenel/karakuri/internal/core/capability"
 	"github.com/bsenel/karakuri/internal/core/domain"
 	"github.com/bsenel/karakuri/internal/core/environment"
@@ -68,7 +69,8 @@ func NewApp(
 	r := chi.NewRouter()
 	r.Use(chimw.Recoverer)
 	r.Use(middleware.Logging)
-	r.Use(middleware.BearerAuth(cfg.Auth.Token))
+	// BearerAuth is scoped to /api/v1 only — the SPA itself (HTML + assets) is
+	// public so unauthenticated visitors can see the login modal.
 
 	healthH := &handler.HealthHandler{Providers: providers, Tools: toolReg, Exporters: exporters, Worktrees: wt, RepoPath: cfg.Git.RepoPath}
 	twinH := &handler.TwinHandler{Twins: twinSvc}
@@ -82,6 +84,7 @@ func NewApp(
 	evtH := &handler.EventsHandler{Hub: hub}
 
 	r.Route("/api/v1", func(r chi.Router) {
+		r.Use(middleware.BearerAuth(cfg.Auth.Token))
 		r.Get("/health", healthH.ServeHTTP)
 
 		r.Route("/twins", func(r chi.Router) {
@@ -135,6 +138,10 @@ func NewApp(
 
 		r.Post("/research", resH.Run)
 	})
+
+	// Mount the embedded React SPA at the root, AFTER /api/v1 has been
+	// registered so REST + SSE win over the catch-all SPA fallback.
+	r.Handle("/*", web.Handler())
 
 	return &App{Router: r}
 }
