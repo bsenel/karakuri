@@ -147,3 +147,26 @@ type ToolEventModel struct {
 }
 
 func (ToolEventModel) TableName() string { return "tool_events" }
+
+// LoopStateModel persists the per-loop progress slice that survives server
+// restarts (Phase 11). Transient per-process resources — the checkpoint
+// decision channel, the live agent — are NOT persisted; they're rebuilt by
+// the runner when a loop resumes.
+type LoopStateModel struct {
+	LoopID       string    `gorm:"primaryKey;column:loop_id"`
+	ObjectiveID  string    `gorm:"column:objective_id;not null;index"`
+	TwinID       string    `gorm:"column:twin_id;not null;default:''"`
+	AgentID      string    `gorm:"column:agent_id;not null;default:''"`
+	Iteration    int       `gorm:"column:iteration;not null;default:0"`
+	Paused       bool      `gorm:"column:paused;not null;default:false"`
+	Completed    bool      `gorm:"column:completed;not null;default:false;index"`
+	LastStep     string    `gorm:"column:last_step;not null;default:''"`
+	Status       string    `gorm:"column:status;not null;default:''"`
+	CriteriaMet  float64   `gorm:"column:criteria_met;not null;default:0.0"`
+	CheckpointID string    `gorm:"column:checkpoint_id;not null;default:''"`
+	RequestJSON  string    `gorm:"column:request_json;not null;default:'{}'"`
+	CreatedAt    time.Time `gorm:"column:created_at;autoCreateTime"`
+	UpdatedAt    time.Time `gorm:"column:updated_at;autoUpdateTime"`
+}
+
+func (LoopStateModel) TableName() string { return "loop_states" }

@@ -9,6 +9,7 @@ import (
 	"github.com/bsenel/karakuri/internal/core/agent"
 	"github.com/bsenel/karakuri/internal/core/checkpoint"
 	coreerrors "github.com/bsenel/karakuri/internal/core/errors"
+	coreloop "github.com/bsenel/karakuri/internal/core/loop"
 	"github.com/bsenel/karakuri/internal/core/memory"
 	"github.com/bsenel/karakuri/internal/core/objective"
 	"github.com/bsenel/karakuri/internal/core/twin"
@@ -467,6 +468,72 @@ func (s *GORMStorage) SaveToolEvent(ctx context.Context, e ToolEvent) error {
 		ID: e.ID, ObjectiveID: e.ObjectiveID, AgentID: e.AgentID, Capability: e.Capability,
 		Adapter: e.Adapter, Success: e.Success, Confidence: e.Confidence, PayloadJSON: e.PayloadJSON,
 	}).Error
+}
+
+// ── Loop state (Phase 11) ─────────────────────────────────────────────────
+
+func (s *GORMStorage) SaveLoopState(ctx context.Context, st coreloop.State) error {
+	m := schema.LoopStateModel{
+		LoopID:       st.LoopID,
+		ObjectiveID:  string(st.ObjectiveID),
+		TwinID:       st.TwinID,
+		AgentID:      st.AgentID,
+		Iteration:    st.Iteration,
+		Paused:       st.Paused,
+		Completed:    st.Completed,
+		LastStep:     string(st.LastStep),
+		Status:       string(st.Status),
+		CriteriaMet:  st.CriteriaMet,
+		CheckpointID: st.CheckpointID,
+		RequestJSON:  st.RequestJSON,
+	}
+	if m.RequestJSON == "" {
+		m.RequestJSON = "{}"
+	}
+	return s.db.WithContext(ctx).Save(&m).Error
+}
+
+func (s *GORMStorage) GetLoopState(ctx context.Context, loopID string) (coreloop.State, error) {
+	var m schema.LoopStateModel
+	if err := s.db.WithContext(ctx).First(&m, "loop_id = ?", loopID).Error; err != nil {
+		return coreloop.State{}, err
+	}
+	return loopStateFromModel(m), nil
+}
+
+func (s *GORMStorage) ListActiveLoopStates(ctx context.Context) ([]coreloop.State, error) {
+	var models []schema.LoopStateModel
+	if err := s.db.WithContext(ctx).Where("completed = ?", false).Find(&models).Error; err != nil {
+		return nil, err
+	}
+	out := make([]coreloop.State, len(models))
+	for i, m := range models {
+		out[i] = loopStateFromModel(m)
+	}
+	return out, nil
+}
+
+func (s *GORMStorage) DeleteLoopState(ctx context.Context, loopID string) error {
+	return s.db.WithContext(ctx).Delete(&schema.LoopStateModel{}, "loop_id = ?", loopID).Error
+}
+
+func loopStateFromModel(m schema.LoopStateModel) coreloop.State {
+	return coreloop.State{
+		LoopID:       m.LoopID,
+		ObjectiveID:  objective.ObjectiveID(m.ObjectiveID),
+		TwinID:       m.TwinID,
+		AgentID:      m.AgentID,
+		Iteration:    m.Iteration,
+		Paused:       m.Paused,
+		Completed:    m.Completed,
+		LastStep:     coreloop.Step(m.LastStep),
+		Status:       objective.ObjectiveStatus(m.Status),
+		CriteriaMet:  m.CriteriaMet,
+		CheckpointID: m.CheckpointID,
+		RequestJSON:  m.RequestJSON,
+		CreatedAt:    m.CreatedAt,
+		UpdatedAt:    m.UpdatedAt,
+	}
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────

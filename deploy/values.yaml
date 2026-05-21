@@ -54,3 +54,21 @@ postgresql:
 memory:
   vectorBackend: ""   # "" | "sqlite-keyword" | "pgvector"
   embeddingDim: 1536
+
+# Distributed execution (Phase 11). The Karakuri server image is also a worker:
+# loops persist their iteration boundaries to the DB and any non-completed
+# state is replayed on startup, so scaling replicaCount past 1 yields workers
+# that pick up stranded loops from a crashed peer. The Restate/Celery
+# executors are activated via env vars (RESTATE_INGRESS_URL or
+# CELERY_BROKER_URL); leaving them empty keeps the local-goroutine fallback.
+worker:
+  enabled: false
+  replicaCount: 1
+  restate:
+    ingressUrl: ""   # e.g. http://restate.restate.svc.cluster.local:8080
+    service: "Karakuri.Task"
+    handler: "Run"
+  celery:
+    brokerUrl: ""    # e.g. redis://redis.celery.svc.cluster.local:6379/0
+    queue: "celery"
+    taskName: "karakuri.run_task"

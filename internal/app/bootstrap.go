@@ -155,6 +155,14 @@ func BootstrapServer(cfgPath string) (*Bootstrap, error) {
 	}
 
 	apiApp := api.NewApp(cfg, store, providers, toolReg, exporters, wt, hub, otel, capReg, envReg, domReg, allTemplates, semanticBackend)
+
+	// Resume any non-completed loops left behind by a previous server process
+	// (Phase 11). Failures are logged but don't block startup — a working
+	// REST API is more valuable than a clean replay on a corrupt state row.
+	if err := apiApp.Loop.ResumeStoredLoops(ctx); err != nil {
+		slog.Warn("loop resume failed at startup", "err", err)
+	}
+
 	return &Bootstrap{Config: cfg, App: apiApp, Store: store, Worktrees: wt}, nil
 }
 

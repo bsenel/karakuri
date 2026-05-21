@@ -6,7 +6,7 @@ metadata:
   labels:
     {{- include "karakuri.labels" . | nindent 4 }}
 spec:
-  replicas: {{ .Values.replicaCount }}
+  replicas: {{ if .Values.worker.enabled }}{{ .Values.worker.replicaCount }}{{ else }}{{ .Values.replicaCount }}{{ end }}
   selector:
     matchLabels:
       {{- include "karakuri.selectorLabels" . | nindent 6 }}
@@ -25,8 +25,24 @@ spec:
           envFrom:
             - secretRef:
                 name: {{ .Values.secret.name }}
-          {{- if or .Values.postgresql.enabled .Values.memory.vectorBackend }}
+          {{- if or .Values.postgresql.enabled .Values.memory.vectorBackend .Values.worker.restate.ingressUrl .Values.worker.celery.brokerUrl }}
           env:
+            {{- if .Values.worker.restate.ingressUrl }}
+            - name: RESTATE_INGRESS_URL
+              value: {{ .Values.worker.restate.ingressUrl | quote }}
+            - name: RESTATE_SERVICE
+              value: {{ .Values.worker.restate.service | quote }}
+            - name: RESTATE_HANDLER
+              value: {{ .Values.worker.restate.handler | quote }}
+            {{- end }}
+            {{- if .Values.worker.celery.brokerUrl }}
+            - name: CELERY_BROKER_URL
+              value: {{ .Values.worker.celery.brokerUrl | quote }}
+            - name: CELERY_QUEUE
+              value: {{ .Values.worker.celery.queue | quote }}
+            - name: CELERY_TASK_NAME
+              value: {{ .Values.worker.celery.taskName | quote }}
+            {{- end }}
             {{- if .Values.postgresql.enabled }}
             - name: KARAKURI_DATABASE_DRIVER
               value: "postgres"

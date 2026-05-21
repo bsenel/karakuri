@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/bsenel/karakuri/internal/core/checkpoint"
+	coreloop "github.com/bsenel/karakuri/internal/core/loop"
 	"github.com/bsenel/karakuri/internal/core/memory"
 	"github.com/bsenel/karakuri/internal/core/objective"
 	"github.com/bsenel/karakuri/internal/core/twin"
@@ -116,6 +117,12 @@ type StorageAdapter interface {
 
 	// Tool events
 	SaveToolEvent(ctx context.Context, e ToolEvent) error
+
+	// Loop state (Phase 11 — durable execution across server restarts)
+	SaveLoopState(ctx context.Context, s coreloop.State) error
+	GetLoopState(ctx context.Context, loopID string) (coreloop.State, error)
+	ListActiveLoopStates(ctx context.Context) ([]coreloop.State, error)
+	DeleteLoopState(ctx context.Context, loopID string) error
 }
 
 func Now() time.Time { return time.Now().UTC() }

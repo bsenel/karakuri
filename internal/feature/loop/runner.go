@@ -167,6 +167,11 @@ func (s *serviceImpl) runLoop(ctx context.Context, loopID string, req loop.Reque
 			state.status.Paused = true
 			state.mu.Unlock()
 
+			// Persist the paused state so a server restart picks up the loop
+			// in the right shape (Phase 11). The decision channel itself
+			// remains in-memory — a new Resume() call will recreate it.
+			s.persistState(ctx, state, false)
+
 			// Wait for resume signal
 			select {
 			case <-ctx.Done():
@@ -220,6 +225,10 @@ func (s *serviceImpl) runLoop(ctx context.Context, loopID string, req loop.Reque
 
 		stepLearn(ctx, sc, ws, p, results, score)
 
+		// Persist progress at iteration boundary so a server crash never loses
+		// more than one iteration of work (Phase 11).
+		s.persistState(ctx, state, false)
+
 		if score >= 1.0 {
 			break
 		}
@@ -257,6 +266,10 @@ func (s *serviceImpl) finalizeLoop(ctx context.Context, state *loopState, obj ob
 	state.result = result
 	state.status.Step = loop.StepLearn
 	state.mu.Unlock()
+
+	// Persist the terminal state (Phase 11): Completed=true keeps it out of
+	// the ListActiveLoopStates set used by the restart-resume path.
+	s.persistState(ctx, state, true)
 
 	if obj.ID != "" {
 		s.hub.Publish(ctx, event.Event{

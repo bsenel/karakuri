@@ -5,14 +5,16 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"sync"
 
-	corecheckpoint "github.com/bsenel/karakuri/internal/core/checkpoint"
 	"github.com/bsenel/karakuri/internal/core/capability"
+	corecheckpoint "github.com/bsenel/karakuri/internal/core/checkpoint"
 	"github.com/bsenel/karakuri/internal/core/domain"
 	"github.com/bsenel/karakuri/internal/core/environment"
 	"github.com/bsenel/karakuri/internal/core/event"
+	coreloop "github.com/bsenel/karakuri/internal/core/loop"
 	"github.com/bsenel/karakuri/internal/core/loop"
 	"github.com/bsenel/karakuri/internal/core/objective"
 	featureart "github.com/bsenel/karakuri/internal/feature/artifact"
@@ -29,6 +31,10 @@ type Service interface {
 	Run(ctx context.Context, req loop.Request) (loop.Result, error)
 	Resume(ctx context.Context, loopID string, decision corecheckpoint.Decision) (loop.Result, error)
 	Status(ctx context.Context, loopID string) (loop.Status, error)
+	// ResumeStoredLoops re-launches non-completed loops persisted by a
+	// previous server process. Bootstrap calls this once at startup so loops
+	// continue across server restarts (Phase 11).
+	ResumeStoredLoops(ctx context.Context) error
 }
 
 type loopState struct {
@@ -36,6 +42,7 @@ type loopState struct {
 	status     loop.Status
 	result     loop.Result
 	decisionCh chan corecheckpoint.Decision
+	request    loop.Request // captured for durable replay on server restart
 	mu         sync.RWMutex
 }
 
@@ -94,6 +101,7 @@ func (s *serviceImpl) Run(ctx context.Context, req loop.Request) (loop.Result, e
 	state := &loopState{
 		id:         id,
 		decisionCh: make(chan corecheckpoint.Decision, 1),
+		request:    req,
 		result: loop.Result{
 			LoopID:      id,
 			ObjectiveID: req.Objective.ID,
@@ -110,6 +118,9 @@ func (s *serviceImpl) Run(ctx context.Context, req loop.Request) (loop.Result, e
 	s.mu.Lock()
 	s.states[id] = state
 	s.mu.Unlock()
+
+	// Persist initial state so a server restart can identify + resume the loop.
+	s.persistState(ctx, state, false)
 
 	// Run the loop in background goroutine
 	go s.runLoop(context.Background(), id, req)
@@ -164,5 +175,96 @@ func newLoopID() (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(b), nil
+}
+
+// persistState writes the current loop state slice to durable storage. Called
+// at every iteration boundary so a server crash never loses more than one
+// iteration of progress. Storage errors are swallowed — in-memory state is
+// always the source of truth for the running process; persistence is a
+// best-effort durability layer.
+func (s *serviceImpl) persistState(ctx context.Context, state *loopState, completed bool) {
+	if state == nil {
+		return
+	}
+	state.mu.RLock()
+	status := state.status
+	req := state.request
+	result := state.result
+	state.mu.RUnlock()
+
+	reqJSON, _ := json.Marshal(req)
+	cpID := ""
+	if result.CheckpointID != nil {
+		cpID = *result.CheckpointID
+	}
+	persisted := coreloop.State{
+		LoopID:       state.id,
+		ObjectiveID:  status.ObjectiveID,
+		TwinID:       req.Twin.ID,
+		AgentID:      string(req.Agent.ID),
+		Iteration:    status.Iteration,
+		Paused:       status.Paused,
+		Completed:    completed,
+		LastStep:     status.Step,
+		Status:       result.Status,
+		CriteriaMet:  status.CriteriaMet,
+		CheckpointID: cpID,
+		RequestJSON:  string(reqJSON),
+	}
+	_ = s.store.SaveLoopState(ctx, persisted)
+}
+
+// ResumeStoredLoops re-launches background goroutines for every non-completed
+// loop state in storage. Invoked by bootstrap on server start; idempotent on a
+// freshly-started server because no goroutines exist yet. Paused loops are
+// re-registered in the in-memory map and stay waiting for a Resume() call;
+// active loops are re-launched and replay observe → reason → decide from the
+// next iteration (mid-iteration progress is lost, but iteration boundaries
+// are durable).
+func (s *serviceImpl) ResumeStoredLoops(ctx context.Context) error {
+	states, err := s.store.ListActiveLoopStates(ctx)
+	if err != nil {
+		return err
+	}
+	for _, st := range states {
+		var req loop.Request
+		if err := json.Unmarshal([]byte(st.RequestJSON), &req); err != nil {
+			continue // skip un-resumable rows but keep going
+		}
+		ls := &loopState{
+			id:         st.LoopID,
+			decisionCh: make(chan corecheckpoint.Decision, 1),
+			request:    req,
+			result: loop.Result{
+				LoopID:      st.LoopID,
+				ObjectiveID: st.ObjectiveID,
+				Status:      st.Status,
+			},
+			status: loop.Status{
+				LoopID:      st.LoopID,
+				ObjectiveID: st.ObjectiveID,
+				Step:        st.LastStep,
+				Iteration:   st.Iteration,
+				CriteriaMet: st.CriteriaMet,
+				Paused:      st.Paused,
+			},
+		}
+		s.mu.Lock()
+		s.states[st.LoopID] = ls
+		s.mu.Unlock()
+
+		if !st.Paused {
+			go s.runLoop(context.Background(), st.LoopID, req)
+		}
+	}
+	return nil
+}
+
+// Resumer is the optional capability bootstrap looks for at startup to revive
+// stored loops. Implementations may live elsewhere if the executor strategy
+// changes (Restate, Celery, …) — Phase 11 implements it on the local-goroutine
+// service.
+type Resumer interface {
+	ResumeStoredLoops(ctx context.Context) error
 }
 

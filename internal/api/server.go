@@ -32,6 +32,7 @@ import (
 
 type App struct {
 	Router *chi.Mux
+	Loop   featureloop.Service // exposed so bootstrap can call ResumeStoredLoops post-construction
 }
 
 func NewApp(
@@ -143,7 +144,7 @@ func NewApp(
 	// registered so REST + SSE win over the catch-all SPA fallback.
 	r.Handle("/*", web.Handler())
 
-	return &App{Router: r}
+	return &App{Router: r, Loop: loopSvc}
 }
 
 func (a *App) Handler() http.Handler { return a.Router }

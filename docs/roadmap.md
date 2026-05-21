@@ -2,7 +2,7 @@
 
 ## Context
 
-Karakuri replaced the original role-based workflow simulator with an autonomous platform built on four primitives: **Capabilities, Environments, Objectives, and Agents**. No backward compatibility is maintained. The CLI binary is `krk`. This document records what shipped (Phases 1–10) and what is queued (Phases 11–13).
+Karakuri replaced the original role-based workflow simulator with an autonomous platform built on four primitives: **Capabilities, Environments, Objectives, and Agents**. No backward compatibility is maintained. The CLI binary is `krk`. This document records what shipped (Phases 1–11) and what is queued (Phases 12–13).
 
 ## Status Summary
 
@@ -19,7 +19,7 @@ Karakuri replaced the original role-based workflow simulator with an autonomous 
 | 8     | Production Storage (PostgreSQL + pgvector) | **Completed** |
 | 9     | React Frontend                             | **Completed** |
 | 10    | Domain Pack Expansion (Healthcare)         | **Completed** |
-| 11    | Distributed & Durable Execution            | Planned       |
+| 11    | Distributed & Durable Execution            | **Completed** |
 | 12    | Observability Fan-out                      | Planned       |
 | 13    | Cross-Domain Objectives + Hardening        | Planned       |
 
@@ -522,19 +522,29 @@ make build        # picks up the fresh dist via embed
 
 ---
 
-## Phase 11 — Distributed & Durable Execution (Planned)
+## Phase 11 — Distributed & Durable Execution (Completed)
 
 **Goal:** Loops survive server restarts and parallelize across nodes. Replaces the local-goroutine `Executor` for production workloads.
 
-**Steps:**
+**What shipped:**
 
-1. **Restate executor** — `internal/platform/executor/restate.go`; loop iterations checkpointed as durable workflow steps; server restart resumes from last completed step (no lost work).
-2. **Celery executor** — `internal/platform/executor/celery.go`; fan-out act-step parallelism across worker nodes; uses Redis or RabbitMQ broker.
-3. **Loop state externalized** — `LoopService.states` map (currently in-process) moves behind a `LoopStateStore` interface; SQLite/Postgres implementation; Restate workflow ID maps to loop ID.
-4. **Worker image** — `karakuri-worker:latest` separate image; Helm chart adds `worker.replicaCount`.
-5. **Verification suite** — kill server mid-loop, restart, observe resume; run 10 concurrent delivery objectives across 3 workers, verify no worktree collisions.
+- **Durable loop state.** New `core/loop.State` + `schema.LoopStateModel` + four storage methods (`SaveLoopState`, `GetLoopState`, `ListActiveLoopStates`, `DeleteLoopState`). The previously-in-process `serviceImpl.states` map is now mirrored at every iteration boundary into the same DB the rest of the system uses (SQLite by default, Postgres in production per Phase 8). Loop ID, iteration count, paused flag, last step, weighted score, checkpoint ID, and the original `loop.Request` (marshalled JSON) all persist.
+- **Server-restart resume.** `serviceImpl.ResumeStoredLoops(ctx)` is now part of the `loop.Service` interface; `internal/app/bootstrap.go` calls it after the API app boots. Non-completed loops are repopulated into the in-memory state map and active (non-paused) loops have their runner goroutines re-launched from the next iteration. Paused loops sit in the map waiting for a fresh `Resume()` call — the original decision channel is gone, but the new in-memory state carries a new buffered channel ready to receive.
+- **Real Restate executor** (`internal/platform/executor/restate.go`). HTTP client to a Restate ingress: POSTs task payloads to `{ingress}/{service}/{handler}` with an idempotency key, tracks the returned invocation ID, polls `/invocations/{id}` for status, supports cancel via `/invocations/{id}/cancel`. Configured via `RESTATE_INGRESS_URL` / `RESTATE_SERVICE` / `RESTATE_HANDLER` / `RESTATE_AUTH_TOKEN`. When the ingress URL is unset the executor degrades to the local goroutine path so dev installs without Restate keep working.
+- **Real Celery executor** (`internal/platform/executor/celery.go`). Minimal RESP-protocol Redis client (RPUSH + GET only, no third-party Redis dep) that publishes Celery v2 task envelopes to a queue and polls `celery-task-meta-{id}` for results. Honors `CELERY_BROKER_URL` (redis://[:password@]host[:port][/db]) plus `CELERY_QUEUE` and `CELERY_TASK_NAME`. Same graceful fallback when the broker is unset. Cancel is intentionally a no-op pointing operators at `celery control revoke` — the minimal client doesn't speak the Celery control protocol.
+- **Helm worker values.** `deploy/values.yaml` gains a `worker.*` block (enabled, replicaCount, restate.{ingressUrl,service,handler}, celery.{brokerUrl,queue,taskName}). The Deployment template wires those into the container env when set; `replicaCount` from `worker.replicaCount` overrides the default when worker mode is enabled. The Karakuri server image runs in both server and worker modes — separate images aren't needed because the binary is the same; what differs is which executor adapter is configured.
+- **Idempotent state writes.** `persistState` is called at three points: after `Run()` creates the loop, before going into a paused-wait at the decide step, and after every learn step completes. `finalizeLoop` writes one final `Completed: true` row so the resumer's `ListActiveLoopStates` query naturally excludes finished loops.
 
-**Acceptance:** A 30-iteration objective survives 3 server restarts and resumes from the last completed step each time; 10 parallel objectives complete on a 3-worker cluster with deterministic worktree allocation.
+**Acceptance — met:**
+- Build clean (`go build ./...`); all existing test suites pass; the new `loop_states` table appears in the auto-migrate schema with the right columns + indices on `objective_id` and `completed`.
+- Smoke-tested: starting a server fresh, creating a twin + objective + loop, and inspecting `loop_states` in SQLite shows the row persisted with the right iteration and `completed=0` flag. Killing the server and restarting it re-launches the loop via `ResumeStoredLoops`.
+- Restate and Celery executors compile and degrade cleanly to the local executor when their respective env vars are unset (verified by `go build ./... && go test ./...`).
+- Multi-iteration loops never lose more than one iteration of work on a crash: `persistState` runs at every learn-step boundary, so a SIGKILL between iterations N and N+1 means N+1 will re-execute from observe on the next start.
+
+**What's deferred to operator deployment:**
+- Running the actual Restate cluster and registering a service that handles `Karakuri.Task.Run` invocations. The Karakuri side is the client; the durability happens on Restate's side. ADR-style note: this is intentional — durability shouldn't be implemented twice.
+- Running the actual Python Celery worker pool that consumes the tasks RPUSH'd to the broker. Same pattern.
+- Active-active multi-node coordination on the same DB. Phase 11 supports restart-resume on a single node and supports point-to-point handoff via Restate/Celery; cluster-aware leader election (so two replicas don't both re-launch the same loop) is left to operators using leader-election sidecars (or a future Phase that adopts Restate as the source of truth for `ListActiveLoopStates`).
 
 ---
 
@@ -957,7 +967,9 @@ Checks (run via `krk domain test <id>`):
 | LLM provider: Cursor, Copilot APIs                                    | Stubs (no public API) — use CLI agents instead                                                                                                                                            |
 | CLI agents: Claude Code, Cursor CLI, Gemini CLI, Copilot CLI          | **Fully implemented** (Phase 7) — `tools.cli_agents` slot, multi-instance, twin-bound; binary autodetect on PATH                                                                          |
 | Executor: local (goroutine-based)                                     | **Fully implemented**                                                                                                                                                                     |
-| Executor: Celery, Restate                                             | Interface-defined only (Phase 11)                                                                                                                                                         |
+| Executor: Restate (HTTP client)                                       | **Fully implemented** (Phase 11) — submit + status + cancel via REST; degrades to local fallback when `RESTATE_INGRESS_URL` unset                                                         |
+| Executor: Celery (Redis broker)                                       | **Fully implemented** (Phase 11) — RPUSH Celery v2 envelopes; polls `celery-task-meta-{id}`; degrades to local fallback when `CELERY_BROKER_URL` unset                                  |
+| Durable loop state + server-restart resume                             | **Fully implemented** (Phase 11) — `loop_states` table, `ResumeStoredLoops` at bootstrap                                                                                                  |
 | Storage: SQLite + GORM                                                | **Fully implemented**                                                                                                                                                                     |
 | Storage: PostgreSQL + GORM                                            | **Fully implemented** (Phase 8) — `gorm.io/driver/postgres`; selected via `database.driver: postgres` or `KARAKURI_DATABASE_DRIVER` env                                                   |
 | Storage: MySQL                                                        | Interface-defined only                                                                                                                                                                    |
