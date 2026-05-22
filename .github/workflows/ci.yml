@@ -10,7 +10,6 @@ on:
   push:
     branches: [main]
 
-# Reduce noise: cancel superseded PR runs but always finish runs on main.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -19,11 +18,42 @@ permissions:
   contents: read
 
 jobs:
-  build:
-    name: Build
+  # The Go binary embeds the React SPA via //go:embed all:dist (web/embed.go).
+  # web/dist/ is gitignored, so CI must build the frontend before any Go
+  # target compiles. We do it once here and share the result with the three
+  # Go jobs below via an artifact.
+  frontend:
+    name: Frontend
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      # No lockfile committed yet; install resolves fresh each run. Once a
+      # package-lock.json is generated against a modern Node and committed,
+      # switch this back to `npm ci` + `cache: npm` for reproducibility.
+      - run: npm install --no-audit --no-fund
+        working-directory: web
+      - run: npm run build
+        working-directory: web
+      - uses: actions/upload-artifact@v4
+        with:
+          name: web-dist
+          path: web/dist
+          retention-days: 1
+          if-no-files-found: error
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    needs: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: web-dist
+          path: web/dist
       - uses: actions/setup-go@v5
         with:
           go-version: "1.25.x"
@@ -33,8 +63,13 @@ jobs:
   vet:
     name: Vet
     runs-on: ubuntu-latest
+    needs: frontend
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: web-dist
+          path: web/dist
       - uses: actions/setup-go@v5
         with:
           go-version: "1.25.x"
@@ -44,8 +79,13 @@ jobs:
   test:
     name: Test
     runs-on: ubuntu-latest
+    needs: frontend
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: web-dist
+          path: web/dist
       - uses: actions/setup-go@v5
         with:
           go-version: "1.25.x"
