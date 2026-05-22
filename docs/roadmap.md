@@ -2,7 +2,7 @@
 
 ## Context
 
-Karakuri replaced the original role-based workflow simulator with an autonomous platform built on four primitives: **Capabilities, Environments, Objectives, and Agents**. No backward compatibility is maintained. The CLI binary is `krk`. This document records what shipped (Phases 1–13).
+Karakuri replaced the original role-based workflow simulator with an autonomous platform built on four primitives: **Capabilities, Environments, Objectives, and Agents**. No backward compatibility is maintained. The CLI binary is `krk`. This document records what shipped (Phases 1–13) and what is queued (Phases 14–19). Starting with Phase 14, the auth and quota engines ship as standalone Go modules under `github.com/bsenel/karakuri/{auth,quota}` and their submodules — fully reusable by other repos without pulling Karakuri itself.
 
 ## Status Summary
 
@@ -21,7 +21,13 @@ Karakuri replaced the original role-based workflow simulator with an autonomous 
 | 10    | Domain Pack Expansion (Healthcare)         | **Completed** |
 | 11    | Distributed & Durable Execution            | **Completed** |
 | 12    | Observability Fan-out                      | **Completed** |
-| 13    | Cross-Domain Objectives + Hardening        | Planned       |
+| 13    | Cross-Domain Objectives + Hardening        | **Completed** |
+| 14    | RBAC + Fine-Grained Authorization (core)   | Planned       |
+| 15    | API Rate Limiting + Quota Management (core)| Planned       |
+| 16    | Federated Identity (OIDC + SAML)           | Planned       |
+| 17    | Hierarchical Resources + Org Units         | Planned       |
+| 18    | Quota Self-Service + Cost Attribution      | Planned       |
+| 19    | Frontend for Auth, Quota, Cost, Audit      | Planned       |
 
 
 ---
@@ -676,6 +682,114 @@ helm install karakuri oci://ghcr.io/bsenel/charts/karakuri --version 0.1.0
 
 ---
 
+## Phase 14 — RBAC + Fine-Grained Authorization (Planned)
+
+**Goal:** Replace Karakuri's single bearer token with role-based access control, shipped as a standalone Go module (`github.com/bsenel/karakuri/auth`) reusable by any `net/http` or `chi` server without dragging in Karakuri itself.
+
+**Steps:**
+
+1. **Standalone module** `github.com/bsenel/karakuri/auth` — multi-module monorepo entry with its own `go.mod` (stdlib + `golang.org/x/time` only). Exposes `Principal`, `Policy`, `Authorizer`, `TokenResolver`, plus a `RequirePermission(action, resourceFn)` chi/net-http middleware and `PrincipalFromContext(ctx)` accessor for downstream handlers. Ships an in-memory `Store` reference implementation.
+2. **Sister module** `github.com/bsenel/karakuri/auth/sql` — `database/sql`-backed `Store` (no ORM dep) so external repos pick their own DB driver.
+3. **Karakuri integration shim** (`internal/auth/karakuri.go`) — canonical role catalog (`admin`, `operator`, `viewer`, `auditor`) + resource catalog (`twin:*`, `objective:*`, `loop:*`, `checkpoint:*`, `artifact:*`, `audit:*`, `domain:*`, `quota:*`). Mounts `auth.RequirePermission(...)` after `BearerAuth` in `internal/api/server.go` per route group.
+4. **Twin ownership** — new `DigitalTwin.OwnerID string` field + nullable `twins.owner_id` column. `NULL` = legacy org-scoped, non-NULL scopes via `twin:owned` pattern.
+5. **CLI** — `krk auth users add/list`, `krk auth roles list`, `krk auth policies list`, `krk auth check <user> <action> <resource>` (policy debug helper).
+6. **Backward compat** — `cfg.Auth.RBAC.Enabled` off by default; legacy bearer token resolves to `Principal{ID:"legacy", Roles:["admin"]}` so existing deployments upgrade unchanged.
+7. **Release workflow** — `.github/workflows/release-auth.yml` triggered on `auth/v*.*.*` tags to publish independently of Karakuri's main version.
+
+**Acceptance:** Standalone module hits ≥95% line coverage with no Karakuri imports; `go run ./auth/examples/server` runs a 50-line demo independently. Three integration tests (admin/operator/viewer tokens) pass on every `/api/v1/*` route with correct 200/403 outcomes; Deny-wins precedence verified. The High-severity "Authority bounds misconfiguration" risk is mitigated at the routing layer, not just at the loop's decide step.
+
+---
+
+## Phase 15 — API Rate Limiting + Quota Management (Planned)
+
+**Goal:** Add per-twin / per-capability / per-LLM-budget rate limiting + quota enforcement, shipped as a standalone Go module (`github.com/bsenel/karakuri/quota`) reusable by any `net/http` or `chi` server.
+
+**Steps:**
+
+1. **Standalone module** `github.com/bsenel/karakuri/quota` — own `go.mod` (stdlib + `golang.org/x/time/rate`). Exposes three algorithms (TokenBucket, FixedWindow, SlidingLog), a `KeyExtractor` callback so callers compose keys from any request attribute, a `Limit(...)` chi/net-http middleware, and a separate `Quota` type for hard caps over long windows (hourly/daily/monthly). In-memory `Backend` ships in the core module.
+2. **Sister submodules** — `github.com/bsenel/karakuri/quota/redis` (sorted-set sliding window via go-redis + Lua) and `github.com/bsenel/karakuri/quota/sql` (`database/sql` long-window counters with `FOR UPDATE`). Each gets its own go.mod so callers only pull deps they use.
+3. **Karakuri integration shim** (`internal/quota/karakuri.go`) — four canonical tiers: per-twin request rate (60/min, burst 20), per-capability daily cap (1000/day per twin per capability), LLM-token budget per twin per day (hooks the existing `TokensUsed` field from each LLM provider), and per-adapter defaults matching documented public rates.
+4. **Distributed mode** — `cfg.Quota.Backend = memory | redis | sql`; Redis is the only one consistent across replicas.
+5. **Pressure events** — new `Quota.Pressure` event on the SSE hub when usage crosses 80%.
+6. **LLM-budget checkpoint** — exhaustion produces a Phase 13-style checkpoint (human approval to continue) instead of a 500 — the loop pauses rather than fails.
+7. **CLI** — `krk quota show --twin <id>`, `krk quota reset --twin <id> --capability <cap>` (admin override gated by Phase 14's `quota:admin` permission), `krk quota config`.
+8. **Release workflow** — `.github/workflows/release-quota.yml` triggered on `quota/v*.*.*` tags.
+
+**Acceptance:** Property-based test proves TokenBucket never exceeds `rate*elapsed + burst` over any window. 100 req/s × 5 fake twins at a 60/min limit yields exactly 60×200 + 40×429 each. LLM-budget exhaustion produces a checkpoint event verified end-to-end with a fake provider returning inflated `TokensUsed`. All three backends pass `go test -race`. External repo can `go get github.com/bsenel/karakuri/quota@v0.1.0` and build without pulling Karakuri.
+
+---
+
+## Phase 16 — Federated Identity (OIDC + SAML) (Planned)
+
+**Goal:** Plug enterprise IdPs (Keycloak, Okta, Auth0, Azure AD, ADFS) into Karakuri via OIDC and SAML, with each protocol implemented as an independent submodule of the Phase 14 `auth` module.
+
+**Steps:**
+
+1. **OIDC submodule** `github.com/bsenel/karakuri/auth/oidc` — depends on `github.com/coreos/go-oidc/v3` + `golang.org/x/oauth2`. Implements `auth.TokenResolver` against any OIDC-discovery endpoint; validates ID tokens via cached JWKS; maps a configurable `RoleClaim` JSON path to `Principal.Roles`. Browser flow via `LoginHandler` + `CallbackHandler` (auth-code + PKCE); machine-to-machine flow via bearer tokens unchanged.
+2. **SAML submodule** `github.com/bsenel/karakuri/auth/saml` — depends on `github.com/crewjam/saml`. Implements `auth.TokenResolver` from SAML assertions; maps configurable `RoleAttribute` to `Principal.Roles`. Returns SP ACS + SSO endpoint handlers for the caller to mount.
+3. **Karakuri integration shims** (`internal/auth/oidc.go`, `internal/auth/saml.go`) — config block `cfg.Auth.Provider = bearer | oidc | saml`; bootstrap selects + wires the appropriate resolver.
+4. **CLI login flow** — `krk auth login` opens the browser to the IdP, listens on `localhost:8765` for the callback, persists the token to `~/.config/karakuri/token`. Subsequent CLI calls read that file.
+5. **Frontend `/login` route** — redirects unauthenticated users to the configured IdP. Lands at `/auth/callback`. Existing bearer flow keeps working when provider is `bearer`.
+6. **Break-glass admin** — `cfg.Auth.BreakGlass.Token` allows a single static bearer token to bypass IdP for emergency operator access during IdP outages; logged at WARN every use; tagged in the audit log with `kind=break_glass`.
+7. **Release workflows** — `release-auth-oidc.yml`, `release-auth-saml.yml` on respective tag patterns.
+
+**Acceptance:** End-to-end test stands up Keycloak in `dockertest`; logging in yields a `Principal` with `Roles` derived from the IdP's `groups` claim; JWKS rotation works without service restart. SAML round-trip exercised via `crewjam/saml`'s `samltest` helpers. CLI `krk auth login` completes against a test OIDC provider. Break-glass token works when IdP is unreachable and produces audit records.
+
+---
+
+## Phase 17 — Hierarchical Resources + Org Units (Planned)
+
+**Goal:** Extend Phase 14's flat resource model (`twin:abc`) to a path model (`org:acme/team:eng/twin:abc`) so multi-team and multi-org deployments isolate access naturally.
+
+**Steps:**
+
+1. **`auth` module v0.2.0** — additive extension. New `HierarchicalAuthorizer` (wraps `Store`) treats resource strings as paths; policy on `org:acme/*` covers all descendants. New utilities `IsAncestor(ancestor, descendant)` and `ParentOf(resource)`. Flat `Authorizer` keeps working — integration shim picks via `cfg.Auth.RBAC.Hierarchical`.
+2. **Domain types** — `Org { ID, Name, ParentOrgID, CreatedAt }` (orgs nest), `Team { ID, Name, OrgID, CreatedAt }`, `Membership { PrincipalID, OrgID, TeamID, Role }`.
+3. **Schema** — new `orgs`, `teams`, `memberships` tables; `twins.team_id` nullable column. Migration: existing twins remain `TeamID=NULL` (org-scoped, legacy behavior).
+4. **Resolver chain** — `TeamID → OrgID → ParentOrgID` walks build the resource path; cached per request.
+5. **CLI** — `krk org create/list`, `krk team create/list`, `krk membership add/remove`. `krk auth users add` gets `--org` / `--team` flags.
+6. **API endpoints** — `GET/POST /api/v1/orgs`, `GET/POST /api/v1/teams`, `GET/POST /api/v1/memberships`, all gated by Phase 14 permissions.
+
+**Acceptance:** Hierarchical Authorizer unit tests cover ancestor walking, deny-wins precedence across hierarchy levels, and path validation. Integration test: Alice (operator in `team:eng`) reads `team:eng/twin:abc` but not `team:hr/twin:xyz`; admin in `org:acme` reads both. Migration test loads a v0.1.0 SQLite snapshot, applies the hierarchical migration, and verifies all flat policies still pass without rewrites.
+
+---
+
+## Phase 18 — Quota Self-Service + Cost Attribution (Planned)
+
+**Goal:** Let users request quota increases through an approval workflow, and give operators per-team / per-twin / per-provider cost attribution so spend is visible before the bill arrives.
+
+**Steps:**
+
+1. **`quota` module v0.2.0** — adds `Request { ID, PrincipalID, Key, NewLimit, NewWindow, Reason, Status, CreatedAt, DecidedBy, DecidedAt }` + `RequestStore` interface with `Submit/Decide/List`. Ships `MemoryRequestStore`; `quota/sql` gets corresponding SQL impl.
+2. **Cost-attribution submodule** `github.com/bsenel/karakuri/quota/cost` — own `go.mod`. Provider-agnostic `CostEvent { PrincipalID, ResourceKey, Provider, Units, UnitKind, OccurredAt, Metadata }` and `Ledger` interface (`Record`, `Aggregate`). Pluggable `Pricer` interface; default `StaticPricer` reads a YAML table of `(provider, model) → cost-per-unit`.
+3. **Karakuri integration** (`internal/quota/requests.go`, `internal/quota/cost.go`) — LLM provider registry hooked to record `CostEvent`s on every call. Tool adapter wrappers (`internal/platform/tools/*`) record per-adapter call costs.
+4. **API endpoints** — `POST/GET /api/v1/quota/requests`, `POST /api/v1/quota/requests/{id}/decide` (admin), `GET /api/v1/cost/aggregate` (buckets by principal/team/twin/provider/day with drill-down).
+5. **CLI** — `krk quota request --key <k> --new-limit <n> --window 24h --reason "ramping prod"`, `krk quota requests list/approve/reject`, `krk cost report --team eng --since 30d --group-by provider`.
+6. **Hub events** — `Cost.Recorded` published per ledger write; powers the Phase 19 dashboard live updates.
+7. **Release workflow** — `.github/workflows/release-quota-cost.yml`.
+
+**Acceptance:** Self-service workflow integration: Alice submits a request, Bob (admin) approves, Alice's effective quota reflects the new limit within 60 seconds. Cost report matches scripted `TokensUsed` values from a controlled loop run within ±0.01% floating-point tolerance. Concurrent ledger writes verified race-free.
+
+---
+
+## Phase 19 — Frontend for Auth, Quota, Cost, Audit (Planned)
+
+**Goal:** Surface Phases 14–18 (and the Phase 13 audit log) in the React frontend so operators don't depend on the CLI for daily admin work.
+
+**Steps:**
+
+1. **Login page** (`/login`) — redirects to IdP via Phase 16; existing bearer flow stays when provider is `bearer`.
+2. **Auth pages** — `/auth/users`, `/auth/roles`, `/auth/orgs` consume Phase 14 + Phase 17 endpoints with create/edit/delete forms and a role → permission matrix viewer.
+3. **Quota pages** — `/quota/usage` (per-twin/cap/budget breakdowns), `/quota/requests` (submit + approve workflow from Phase 18), `/quota/settings` (admin config editor for the canonical tiers).
+4. **Cost dashboard** — `/cost` time series + stacked bar by provider (Recharts, already a Phase 9 dep); `/cost/breakdown` drill-down by twin/team/provider. Live updates via SSE on `Cost.Recorded` + `Quota.Pressure` events.
+5. **Audit pages** — `/audit` log viewer with the same filters as `krk audit` (objective, agent, kind, bounds-violation, since); `/audit/{id}` single-event detail with linked checkpoint + policy decision context.
+6. **Permission-aware navigation** — sidebar reads the current user's roles from a new `GET /api/v1/auth/me` endpoint (Phase 14) and hides menu items the user can't reach.
+7. **Tests** — Vitest unit tests for hooks + data transforms per page; Playwright end-to-end covers the login → quota request → admin approve → cost dashboard update flow.
+
+**Acceptance:** Playwright e2e: login → org/team setup → quota request + approve → cost dashboard updates within 30s. Permission-aware sidebar passes a role-matrix test (a `viewer` sees only the audit log + their own quota usage; admin sees everything). Vitest unit suite covers ≥80% of new page hooks. SSE live updates verified by injecting a fake `Cost.Recorded` event and asserting the UI updates within 1s.
+
+---
+
 ## Phase Ordering Rationale
 
 Phases 7–13 are **independent except where noted** and can be reordered to match priority. The dependencies that DO exist:
@@ -684,6 +798,13 @@ Phases 7–13 are **independent except where noted** and can be reordered to mat
 - **Phase 13** (cross-domain) is now unblocked — Phase 10 shipped Healthcare as a second non-software production pack to combine with Software.
 - **Phase 9** (frontend) can run in parallel with any other phase; the API contract is already stable.
 - **Phase 12** is a pure adapter implementation — can ship independently (Phases 6 and 7 already followed this pattern).
+
+Phases 14–19 introduce a new architectural pattern: **the auth and quota engines ship as standalone Go modules** in this same monorepo (`auth/`, `auth/sql/`, `auth/oidc/`, `auth/saml/`, `quota/`, `quota/redis/`, `quota/sql/`, `quota/cost/`), each with its own `go.mod` and independent semver tag namespace (`auth/v0.1.0`, `quota/v0.1.0`, etc.). External Go repos consume them without pulling in Karakuri. Karakuri itself is the first reference consumer, wired in via thin integration shims under `internal/auth/` and `internal/quota/`.
+
+- **Phases 14 and 15** are independent of each other — RBAC and quota can ship in either order. Both are also independent of the existing tree because the standalone modules touch nothing under `internal/` until the integration shims land.
+- **Phase 16** depends on Phase 14 (OIDC/SAML resolvers implement `auth.TokenResolver`). **Phase 17** also depends on Phase 14 (extends `auth.Authorizer` with hierarchical path semantics). 16 and 17 are parallelisable — they extend Phase 14 along different axes and don't touch each other's code.
+- **Phase 18** depends on Phase 15 — extends the quota module with a self-service workflow and adds a sister cost-attribution module.
+- **Phase 19** lands last; it surfaces Phases 14, 15, 17, and 18 in the React frontend and reuses the Phase 13 audit endpoint.
 
 ---
 
@@ -1117,6 +1238,9 @@ Checks (run via `krk domain test <id>`):
 | LangChain Go version drift breaking agent behaviour          | Medium   | All LangChain Go usage confined to `internal/platform/agent/` + `internal/platform/llm/`; `AgentFactory` interface is the sole boundary; swap cost is one package                                            |
 | Cross-domain objective complexity exceeds LLM context        | Medium   | Objectives scoped to single domain by default; world state chunked and summarised before reason step if size exceeds provider context limit (Phase 13)                                                       |
 | sqlite-vec extension unavailable in deployment               | Low      | Health check verifies sqlite-vec at startup; if unavailable, semantic memory degrades gracefully to keyword-based recall with startup warning                                                                |
-| Authority bounds misconfiguration permits unintended actions | High     | Default `AuthorityBounds` is maximally restrictive (`MaxAutonomousActions: 0`, `ConfidenceThreshold: 1.0`); operators must explicitly relax bounds in config; all autonomous actions logged to `tool_events` |
+| Authority bounds misconfiguration permits unintended actions | High     | Default `AuthorityBounds` is maximally restrictive (`MaxAutonomousActions: 0`, `ConfidenceThreshold: 1.0`); operators must explicitly relax bounds in config; all autonomous actions logged to `tool_events`; **Phase 14 RBAC enforces permissions at the request-routing layer** so a misconfigured agent can't even reach a protected endpoint                                                                                                |
+| Cost runaway from unbounded LLM use                          | High     | Phase 15 introduces per-twin LLM token budgets; exhaustion produces a checkpoint event (human approval) rather than a 500 or silent overrun. Phase 18 layers cost attribution + `Cost.Recorded` events so operators see spend per twin / team / provider before the bill arrives                                                                                                                                                              |
+| IdP outage locks operators out of Karakuri                    | High     | Phase 16 ships a break-glass static bearer token (`cfg.Auth.BreakGlass.Token`) that bypasses the IdP for emergency admin access; every use logged at WARN and tagged in the Phase 13 audit log with `kind=break_glass`. The legacy single-bearer path (pre-Phase 14) remains available when `cfg.Auth.Provider = bearer`                                                                                                                       |
+| Hierarchical-resource bypass via flat policy grants           | Medium   | Phase 17's `HierarchicalAuthorizer` rejects flat resource matches when the configured mode is hierarchical; `IsAncestor` checks gate every permission decision; migrations from v0.1.0 are tested with a fixed snapshot to guarantee no flat grant silently widens to a path-style descendant                                                                                                                                                |
 
 
