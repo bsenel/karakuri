@@ -215,6 +215,22 @@ Import boundary rules are enforced by golangci-lint (see `.golangci.yml`):
 - LangChain Go only in `internal/platform/`
 - Domain packs only in `cmd/` and `internal/app/`
 
+## Philosophy
+
+Karakuri is built for **human augmentation**.
+
+The project is free for organizations using AI to
+empower employees and improve productivity.
+
+Use intended primarily for workforce replacement
+is restricted under the
+[Karakuri Human Augmentation License Addendum (HALA)](./HALA.md).
+
 ## License
 
-Apache 2.0 — see [LICENSE](LICENSE).
+Licensed under Apache 2.0.
+
+See:
+
+- [LICENSE](./LICENSE)
+- [HALA.md](./HALA.md)
