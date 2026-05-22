@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"log/slog"
+	"net/http"
 	"os"
 
 	"github.com/bsenel/karakuri/config"
@@ -62,6 +63,14 @@ func BootstrapServer(cfgPath string) (*Bootstrap, error) {
 	providers.Register(llm.NewCopilotProvider())
 
 	exporters := observability.NewExporterRegistry()
+	// Hoisted so api.NewApp can mount /metrics when prometheus is registered.
+	var promExporter *observability.PrometheusExporter
+
+	// registerRemote wraps a remote (network-backed) exporter in
+	// RetryExporter so transient blips don't drop a batch.
+	registerRemote := func(e observability.Exporter) {
+		exporters.Register(observability.NewRetryExporter(e, observability.RetryConfig{}))
+	}
 	for _, ec := range cfg.Observability.Exporters {
 		if !ec.Enabled {
 			continue
@@ -77,9 +86,58 @@ func BootstrapServer(cfgPath string) (*Bootstrap, error) {
 					lfmt = v
 				}
 			}
-			exporters.Register(observability.NewLocalFileExporter(ec.Path, mfmt, lfmt))
+			// Local file writes are synchronous to disk — no retry wrapper.
+			exporters.Register(observability.NewLocalFileExporter(ec.Path, mfmt, lfmt).
+				WithRotation(ec.Rotation.MaxSizeMB, ec.Rotation.MaxAgeDays))
 		case "aws":
-			exporters.Register(observability.NewAWSExporter())
+			aws := observability.NewAWSExporter()
+			if aws.Active() {
+				registerRemote(aws)
+			} else {
+				slog.Warn("aws exporter declared but inactive — AWS_REGION not set or credentials missing")
+			}
+		case "datadog":
+			dd := observability.NewDatadogExporter()
+			if dd.Active() {
+				registerRemote(dd)
+			} else {
+				slog.Warn("datadog exporter declared but inactive — DD_API_KEY not set")
+			}
+		case "newrelic":
+			nr := observability.NewNewRelicExporter()
+			if nr.Active() {
+				registerRemote(nr)
+			} else {
+				slog.Warn("newrelic exporter declared but inactive — NEW_RELIC_LICENSE_KEY not set")
+			}
+		case "elasticsearch":
+			es := observability.NewElasticsearchExporter()
+			if es.Active() {
+				registerRemote(es)
+			} else {
+				slog.Warn("elasticsearch exporter declared but inactive — ELASTICSEARCH_URL not set")
+			}
+		case "loki":
+			lk := observability.NewLokiExporter()
+			if lk.Active() {
+				registerRemote(lk)
+			} else {
+				slog.Warn("loki exporter declared but inactive — LOKI_URL not set")
+			}
+		case "otlp":
+			ot := observability.NewOTLPExporter()
+			if ot.Active() {
+				registerRemote(ot)
+			} else {
+				slog.Warn("otlp exporter declared but inactive — OTEL_EXPORTER_OTLP_ENDPOINT not set")
+			}
+		case "prometheus":
+			promExporter = observability.NewPrometheusExporter()
+			// Prometheus is always active once registered (scrape mode has no
+			// credential requirement). Push mode adds an outbound POST that
+			// gets the retry wrapper benefits via the chain like any other
+			// remote, so we register the raw exporter and skip the wrapper.
+			exporters.Register(promExporter)
 		}
 	}
 	otel := observability.NewOTel(exporters)
@@ -154,7 +212,11 @@ func BootstrapServer(cfgPath string) (*Bootstrap, error) {
 		}
 	}
 
-	apiApp := api.NewApp(cfg, store, providers, toolReg, exporters, wt, hub, otel, capReg, envReg, domReg, allTemplates, semanticBackend)
+	var promHandler http.Handler
+	if promExporter != nil {
+		promHandler = promExporter
+	}
+	apiApp := api.NewApp(cfg, store, providers, toolReg, exporters, wt, hub, otel, capReg, envReg, domReg, allTemplates, semanticBackend, promHandler)
 
 	// Resume any non-completed loops left behind by a previous server process
 	// (Phase 11). Failures are logged but don't block startup — a working

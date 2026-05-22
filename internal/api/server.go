@@ -6,7 +6,7 @@ import (
 	"github.com/bsenel/karakuri/config"
 	"github.com/bsenel/karakuri/internal/api/handler"
 	"github.com/bsenel/karakuri/internal/api/middleware"
-	"github.com/bsenel/karakuri/web"
+	karakuriweb "github.com/bsenel/karakuri/web"
 	"github.com/bsenel/karakuri/internal/core/capability"
 	"github.com/bsenel/karakuri/internal/core/domain"
 	"github.com/bsenel/karakuri/internal/core/environment"
@@ -49,6 +49,7 @@ func NewApp(
 	domReg *domain.Registry,
 	templates []coreobjective.Template,
 	semanticBackend corememory.Memory, // optional override; nil → default SQLite keyword
+	prometheusHandler http.Handler,    // optional; mounted at /metrics outside bearer-auth when non-nil
 ) *App {
 	var memSvc *memory.Service
 	if semanticBackend != nil {
@@ -72,6 +73,13 @@ func NewApp(
 	r.Use(middleware.Logging)
 	// BearerAuth is scoped to /api/v1 only — the SPA itself (HTML + assets) is
 	// public so unauthenticated visitors can see the login modal.
+
+	// Prometheus scrape endpoint at /metrics, mounted at the router root
+	// outside the bearer-auth scope. Prometheus scrapers don't authenticate,
+	// so /metrics has to be publicly readable when the exporter is enabled.
+	if prometheusHandler != nil {
+		r.Handle("/metrics", prometheusHandler)
+	}
 
 	healthH := &handler.HealthHandler{Providers: providers, Tools: toolReg, Exporters: exporters, Worktrees: wt, RepoPath: cfg.Git.RepoPath}
 	twinH := &handler.TwinHandler{Twins: twinSvc}
@@ -142,7 +150,7 @@ func NewApp(
 
 	// Mount the embedded React SPA at the root, AFTER /api/v1 has been
 	// registered so REST + SSE win over the catch-all SPA fallback.
-	r.Handle("/*", web.Handler())
+	r.Handle("/*", karakuriweb.Handler())
 
 	return &App{Router: r, Loop: loopSvc}
 }

@@ -72,3 +72,36 @@ worker:
     brokerUrl: ""    # e.g. redis://redis.celery.svc.cluster.local:6379/0
     queue: "celery"
     taskName: "karakuri.run_task"
+
+# Observability fan-out (Phase 12 + extensions). The local file exporter is
+# always on and writes to /data/obs/{metrics,logs}/<YYYY-MM-DD>/<kind>-NNNNN.<ext>
+# with the rotation limits from observability.rotation. Remote exporters
+# activate when the matching credential env vars are present in karakuri-secrets:
+#
+#   DD_API_KEY                          → Datadog metrics + logs
+#   AWS_REGION + AWS_S3_LOG_BUCKET      → CloudWatch metrics + S3 log archive
+#   NEW_RELIC_LICENSE_KEY               → New Relic metrics + logs
+#   ELASTICSEARCH_URL + USERNAME/PASS   → Elasticsearch _bulk (ELK stack)
+#   LOKI_URL + (USERNAME/PASS|TOKEN)    → Grafana Loki logs
+#   OTEL_EXPORTER_OTLP_ENDPOINT         → OpenTelemetry Collector (OTLP/HTTP)
+#
+# All remote exporters are wrapped in RetryExporter (3 attempts, exp backoff)
+# so transient blips don't drop batches. Prometheus is pull-based: enabling
+# it exposes GET /metrics publicly on the server port (Prometheus scrapers
+# don't authenticate). Optional PROMETHEUS_PUSHGATEWAY_URL adds push mode.
+observability:
+  formats:
+    metrics: ndjson      # ndjson | csv | parquet | json
+    logs:    ndjson
+  rotation:
+    maxSizeMB:  100
+    maxAgeDays: 30
+  exporters:
+    local:         { enabled: true }
+    aws:           { enabled: false }
+    datadog:       { enabled: false }
+    newrelic:      { enabled: false }
+    elasticsearch: { enabled: false }
+    loki:          { enabled: false }
+    otlp:          { enabled: false }
+    prometheus:    { enabled: false }

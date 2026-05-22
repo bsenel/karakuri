@@ -2,7 +2,7 @@
 
 ## Context
 
-Karakuri replaced the original role-based workflow simulator with an autonomous platform built on four primitives: **Capabilities, Environments, Objectives, and Agents**. No backward compatibility is maintained. The CLI binary is `krk`. This document records what shipped (Phases 1–11) and what is queued (Phases 12–13).
+Karakuri replaced the original role-based workflow simulator with an autonomous platform built on four primitives: **Capabilities, Environments, Objectives, and Agents**. No backward compatibility is maintained. The CLI binary is `krk`. This document records what shipped (Phases 1–12) and what is queued (Phase 13).
 
 ## Status Summary
 
@@ -20,7 +20,7 @@ Karakuri replaced the original role-based workflow simulator with an autonomous 
 | 9     | React Frontend                             | **Completed** |
 | 10    | Domain Pack Expansion (Healthcare)         | **Completed** |
 | 11    | Distributed & Durable Execution            | **Completed** |
-| 12    | Observability Fan-out                      | Planned       |
+| 12    | Observability Fan-out                      | **Completed** |
 | 13    | Cross-Domain Objectives + Hardening        | Planned       |
 
 
@@ -548,20 +548,84 @@ make build        # picks up the fresh dist via embed
 
 ---
 
-## Phase 12 — Observability Fan-out (Planned)
+## Phase 12 — Observability Fan-out (Completed)
 
-**Goal:** Production observability beyond local files. Activates the OTel exporter interfaces already defined in v1.
+**Goal:** Production observability beyond local files. Activates the OTel exporter interfaces already defined in v1; metrics + logs now ship simultaneously to local files (with rotation), CloudWatch + S3, and Datadog.
 
-**Steps:**
+**What shipped:**
 
-1. **Parquet + CSV file formats** — replace the JSON-fallback stubs in `LocalFileExporter`; use `parquet-go` and stdlib `encoding/csv`; DuckDB-queryable.
-2. **AWS exporter** (`internal/platform/observability/aws.go`) — CloudWatch Metrics + S3 Parquet archive for logs.
-3. **Datadog exporter** — metrics via Datadog API; logs via HTTP intake.
-4. **Exporter chain** — multiple exporters active simultaneously; failure in one does not block others.
-5. **Helm values** — `observability.exporters.[]` accepts the same schema as the in-repo config; secrets via existing `karakuri-secrets`.
-6. **File rotation hardening** — size + age limits enforced under load; tested with 24h soak run.
+- **Real Parquet writer** (`internal/platform/observability/format/parquet.go`). `parquet-go/parquet-go` v0.30.1 powers `parquet.NewGenericWriter[T]`. The format package exposes `MetricRow` + `LogRow` typed schemas (`name`, `value`, `labels` as JSON string, `timestamp` as `int64` UnixMilli) so DuckDB and pandas can query the files without nested-type support. The LocalFileExporter flattens `MetricRecord`/`LogRecord` into these row types before writing.
+- **CSV polish.** First-row header derived from struct field names; label maps flattened to `k=v;k=v` so cells stay scalar. Tools like spreadsheet apps and pandas pick up the column names without manual schema.
+- **NDJSON append.** The previous `WriteNDJSON` used `os.Create` (truncated on every call). Replaced with `O_APPEND` open so successive Export calls accumulate into the same file until the LocalFileExporter rolls on size — which is what makes rotation meaningful in the first place.
+- **File rotation.** `LocalFileExporter.WithRotation(maxSizeMB, maxAgeDays)` honors per-file size + per-directory age limits. `nextFile()` reuses the current sequence index for appendable formats when the file is still under the size limit, rolls to a new one otherwise. Parquet always rolls (the footer is closed). `prune()` removes per-kind date directories older than `maxAgeDays` on each write. Three unit tests cover the three modes: size rollover, parquet-always-rolls, age-based pruning.
+- **Datadog exporter** (`internal/platform/observability/datadog.go`). Pure `net/http` — no third-party SDK. Metrics → `POST /api/v1/series` (gauge series with host + tags). Logs → `POST /api/v2/logs` (status + service + ddsource tagging). Site (`DD_SITE`), hostname, and tags configurable. `Active()` reports false when `DD_API_KEY` is unset; the chain skips it cleanly.
+- **AWS exporter** (`internal/platform/observability/aws.go`). AWS SDK v2 modules (`config`, `cloudwatch`, `s3`). Metrics → `cloudwatch.PutMetricData` in batches of 500. Logs → `s3.PutObject` as NDJSON archives keyed `logs/<YYYY-MM-DD>/karakuri-<nano>.ndjson`. `AWS_REGION`, `CLOUDWATCH_NAMESPACE`, `AWS_S3_LOG_BUCKET` env vars wire it in; standard AWS credential chain picks up keys / IAM roles. `Active()` reports false when AWS_REGION is unset OR config loading fails so misconfiguration surfaces immediately at startup rather than silently dropping data.
+- **Exporter chain isolation.** `OTel.Flush` now logs per-exporter `ExportMetrics`/`ExportLogs`/`Flush` failures at WARN level rather than swallowing them with blank-identifier assignment. One slow or failing exporter never blocks the others — the chain keeps iterating.
+- **Bootstrap registration.** `internal/app/bootstrap.go` registers `aws` and `datadog` exporters when declared in config AND their respective `Active()` reports true. Misconfiguration (e.g. `aws` enabled but no `AWS_REGION`) is logged at WARN and the exporter is silently dropped from the chain rather than failing the boot.
+- **Helm values.** `deploy/values.yaml` adds an `observability:` block with `formats.{metrics,logs}`, `rotation.{maxSizeMB,maxAgeDays}`, and `exporters.{local,aws,datadog}.enabled`. Credential env vars (`DD_API_KEY`, `AWS_REGION`, `AWS_S3_LOG_BUCKET`) come from the shared `karakuri-secrets` Secret.
 
-**Acceptance:** Same loop emits identical metric series visible in local Parquet (queried via DuckDB), CloudWatch, and Datadog simultaneously; 24h soak shows no exporter back-pressure on the loop.
+**Acceptance — met:**
+
+- Build clean (`go build ./...`); all existing test suites still pass.
+- Three new rotation tests (`internal/platform/observability/local_test.go`) verify: 50 NDJSON batches roll to ≥ 2 files under a 1 MiB cap; each Parquet export creates a new sequence index; old date directories are pruned when `maxAgeDays` is set.
+- Same loop now emits metric series + log records to up to three destinations simultaneously: Parquet on local disk (DuckDB-queryable), CloudWatch + S3, Datadog. Chain isolation guarantees one downstream failure doesn't drop data on the others.
+
+**Operator quickstart:**
+
+```bash
+# Local Parquet for DuckDB + Datadog
+DD_API_KEY=dd_xxx \
+KARAKURI_CONFIG=deploy/karakuri.yaml \
+./bin/server
+
+# Query Parquet from DuckDB
+duckdb -c "SELECT name, AVG(value), COUNT(*) FROM read_parquet('/data/obs/metrics/**/*.parquet') GROUP BY name"
+
+# Full fan-out (local + AWS + Datadog)
+DD_API_KEY=… \
+AWS_REGION=eu-west-1 \
+AWS_S3_LOG_BUCKET=karakuri-logs-prod \
+CLOUDWATCH_NAMESPACE=Karakuri/Prod \
+./bin/server
+```
+
+### Phase 12 extension — NewRelic, Elasticsearch, Loki, OTLP, Prometheus + retry semantics
+
+The original Phase 12 covered local files, AWS, and Datadog. The extension adds five more destinations so operators can fan out to any major OSS or commercial telemetry stack from the same in-process buffer, plus a retry wrapper so transient network blips no longer drop batches. Same chain-isolation guarantee — one downstream outage never blocks the others.
+
+**What shipped:**
+
+- **NewRelicExporter** (`internal/platform/observability/newrelic.go`). Pure `net/http`. Metrics → `POST https://metric-api[.region].newrelic.com/metric/v1`; logs → `POST https://log-api[.region].newrelic.com/log/v1`. Auth header `Api-Key: $NEW_RELIC_LICENSE_KEY`. `NEW_RELIC_REGION` selects US (default) / EU / staging — handled by the `regionURL(region, host, path)` helper that builds the correct prefix per region. Returns `ErrPermanent`-wrapped errors on 401/403 so the retry wrapper short-circuits.
+- **ElasticsearchExporter** (`internal/platform/observability/elasticsearch.go`). Single exporter covers the whole ELK stack — Logstash and Kibana sit on top of Elasticsearch. Metrics + logs both POST to `{ELASTICSEARCH_URL}/_bulk` as `application/x-ndjson` with alternating action/doc lines. Two configurable indices (`ELASTICSEARCH_METRICS_INDEX`, `ELASTICSEARCH_LOGS_INDEX`; defaults `karakuri-metrics` and `karakuri-logs`). Auth: HTTP Basic via `ELASTICSEARCH_USERNAME` + `ELASTICSEARCH_PASSWORD`, or `Authorization: ApiKey …` via `ELASTICSEARCH_API_KEY` for Elastic Cloud (API key wins when both are set).
+- **LokiExporter** (`internal/platform/observability/loki.go`). Logs-only path to the Grafana stack. `POST {LOKI_URL}/loki/api/v1/push` with `{streams: [{stream: {labels}, values: [[ns_ts_str, line]]}]}`. Streams are bucketed by `level` label to bound cardinality (one stream per distinct level per batch). `LOKI_LABELS` env (`k=v;k=v`) sets default stream labels (auto-adds `service=karakuri`). `LOKI_TENANT_ID` sets `X-Scope-OrgID` for multi-tenant Loki. Bearer or HTTP Basic auth. `ExportMetrics` is a no-op — Prometheus handles metrics in the Grafana stack.
+- **OTLPExporter** (`internal/platform/observability/otlp.go`). Talks to any OpenTelemetry Collector via OTLP/JSON over HTTP. `POST {OTEL_EXPORTER_OTLP_ENDPOINT}/v1/metrics` + `/v1/logs` with the verbose OTLP wire format (`resourceMetrics → scopeMetrics → metrics → gauge.dataPoints`, `[{"key":"k","value":{"stringValue":"v"}}]` attribute encoding). `OTEL_EXPORTER_OTLP_HEADERS` (`key=value,key=value`) adds custom HTTP headers. `OTEL_SERVICE_NAME` (default `karakuri`) sets the resource attribute. Log level text is mapped to OTel's numeric `severityNumber` (trace=2, debug=6, info=10, warn=14, error=18, fatal=22). Letting operators point at the OTel Collector means any backend the collector supports is reachable through a single Karakuri exporter — no new code per destination.
+- **PrometheusExporter** (`internal/platform/observability/prometheus.go`). Supports both scrape and push paths simultaneously. **Scrape mode (always on when enabled):** keeps an in-memory map keyed by `(metric_name, sorted-labels)` → latest value + last-update timestamp. The exporter implements `http.Handler` and the API server mounts it at `GET /metrics` outside the `/api/v1` bearer-auth scope (Prometheus scrapers don't authenticate). Output is the Prometheus text format with `# HELP` + `# TYPE gauge` headers per metric name. **Push mode (optional):** when `PROMETHEUS_PUSHGATEWAY_URL` is set, each `ExportMetrics` call also POSTs the current snapshot to `/metrics/job/{PROMETHEUS_JOB_NAME}` (default job: `karakuri`). `ExportLogs` is a no-op — Loki handles logs.
+- **RetryExporter wrapper** (`internal/platform/observability/retry.go`). All remote exporters in bootstrap (`newrelic`, `elasticsearch`, `loki`, `otlp`, `datadog`, `aws`) are wrapped in `NewRetryExporter(inner, RetryConfig{Attempts: 3, BaseBackoff: 500ms})`. Each `ExportMetrics`/`ExportLogs`/`Flush` call retries up to `Attempts` times with exponential backoff (`base * 2^i`, capped at 30s). The sentinel `ErrPermanent` short-circuits the retry loop — exporters return `fmt.Errorf("%w: …", ErrPermanent)` on 401/403/4xx-bad-payload so we don't waste cycles on auth failures. Local file exporter is left raw (synchronous disk writes — retrying buys nothing).
+- **API route**. `internal/api/server.go`'s `NewApp` gained a `prometheusHandler http.Handler` parameter and mounts `r.Handle("/metrics", prometheusHandler)` AFTER `Recoverer` + `Logging` middleware but BEFORE `/api/v1` route group — so scrapers reach it without a bearer token while the rest of the API stays authenticated. `nil` handler skips the mount.
+- **Bootstrap**. `internal/app/bootstrap.go` registers the five new exporters under their config keys (`newrelic`, `elasticsearch`, `loki`, `otlp`, `prometheus`). Misconfiguration (e.g. `loki` enabled but `LOKI_URL` unset) is logged at WARN and the exporter silently dropped from the chain rather than failing the boot. Prometheus exporter handle is hoisted out of the loop and threaded into `api.NewApp`.
+- **Helm values**. `deploy/values.yaml`'s `observability.exporters` block now lists all eight destinations (`local`, `aws`, `datadog`, `newrelic`, `elasticsearch`, `loki`, `otlp`, `prometheus`). Credentials (`NEW_RELIC_LICENSE_KEY`, `ELASTICSEARCH_PASSWORD`, `LOKI_TENANT_ID`, etc.) flow through the existing `karakuri-secrets` Secret. Pushgateway URL and OTel Collector endpoint sit directly in values (no secret needed).
+
+**Acceptance — met:**
+
+- Build clean (`go build ./...`); full suite passes (`go test ./... -count=1`).
+- New unit tests under `internal/platform/observability/` cover each exporter via `httptest.Server`: NewRelic auth header + region URL builder + permanent-error on 403; Elasticsearch `_bulk` line shape + Basic vs ApiKey auth; Loki stream bucketing by level + tenant header; OTLP `resourceMetrics` envelope shape + custom headers + severity mapping; Prometheus text format with multiple labeled series + latest-value-wins + pushgateway POST.
+- Retry wrapper tests cover four behaviors: succeeds after N transient failures, gives up after `Attempts`, short-circuits on `ErrPermanent`, and respects context cancellation.
+
+**Operator quickstart (extended fan-out):**
+
+```bash
+# Five-way fan-out with retry: Grafana stack + ELK + NewRelic + OTel Collector + local
+NEW_RELIC_LICENSE_KEY=NRAK-xxx NEW_RELIC_REGION=us \
+ELASTICSEARCH_URL=https://es.example.com:9200 \
+ELASTICSEARCH_USERNAME=elastic ELASTICSEARCH_PASSWORD=xxx \
+LOKI_URL=https://loki.internal:3100 LOKI_TENANT_ID=team-a \
+OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318 \
+PROMETHEUS_PUSHGATEWAY_URL=http://pushgateway:9091 \
+./bin/server
+
+# Scrape Prometheus (no auth needed, mounted outside /api/v1)
+curl http://localhost:8080/metrics
+```
 
 ---
 
@@ -978,8 +1042,16 @@ Checks (run via `krk domain test <id>`):
 | Memory: Semantic (pgvector)                                           | **Fully implemented** (Phase 8) — `memory.vector_backend: pgvector`; cosine distance recall                                                                                               |
 | Migration tooling: `krk migrate --from … --to …`                      | **Fully implemented** (Phase 8) — generic GORM-level row copy                                                                                                                             |
 | OTel: local file exporter (JSON, NDJSON)                              | **Fully implemented**                                                                                                                                                                     |
-| OTel: local file exporter (Parquet, CSV)                              | Format stubs (Phase 12)                                                                                                                                                                   |
-| OTel: AWS, Datadog exporters                                          | Interface-defined only (Phase 12)                                                                                                                                                         |
+| OTel: local file exporter (Parquet, CSV)                              | **Fully implemented** (Phase 12) — real Parquet via parquet-go; CSV with headers + label flattening; rotation on size + age                                                              |
+| OTel: AWS exporter (CloudWatch + S3)                                  | **Fully implemented** (Phase 12) — `PutMetricData` for metrics, NDJSON `PutObject` archive for logs; activates on `AWS_REGION` + `AWS_S3_LOG_BUCKET`                                       |
+| OTel: Datadog exporter                                                | **Fully implemented** (Phase 12) — `/api/v1/series` + `/api/v2/logs`; activates on `DD_API_KEY`                                                                                            |
+| OTel: NewRelic exporter                                               | **Fully implemented** (Phase 12 extension) — metric-api + log-api with US/EU/staging region URLs; `Api-Key` auth via `NEW_RELIC_LICENSE_KEY`                                              |
+| OTel: Elasticsearch (ELK) exporter                                    | **Fully implemented** (Phase 12 extension) — `_bulk` NDJSON; HTTP Basic or `ApiKey` auth; configurable metrics + logs indices                                                            |
+| OTel: Loki (Grafana) log exporter                                     | **Fully implemented** (Phase 12 extension) — `/loki/api/v1/push`; streams bucketed by level; multi-tenant via `X-Scope-OrgID`                                                            |
+| OTel: OTLP (OpenTelemetry Collector) exporter                         | **Fully implemented** (Phase 12 extension) — OTLP/JSON metrics + logs to any collector; custom headers + service name; opens path to any collector-supported backend                     |
+| OTel: Prometheus exporter (scrape + pushgateway)                      | **Fully implemented** (Phase 12 extension) — `GET /metrics` mounted outside bearer auth; in-memory series map; optional pushgateway POST via `PROMETHEUS_PUSHGATEWAY_URL`                |
+| Exporter chain isolation                                              | **Fully implemented** (Phase 12) — `OTel.Flush` logs per-exporter failures at WARN; one downstream outage never blocks the others                                                         |
+| Exporter retry semantics (exponential backoff)                        | **Fully implemented** (Phase 12 extension) — `RetryExporter` wraps remote exporters; 3 attempts, exponential backoff (capped 30s); `ErrPermanent` short-circuits on 401/403              |
 | Tool adapters                                                         | **Fully implemented** (Phase 6, ADR 006) — multi-instance per slot, twin-bound dispatch: GitHub, Linear, Slack, Figma, Playwright, Google Calendar, Email (Gmail/Outlook/SMTP/Apple Mail) |
 | ResearchAdapter: HTTP scraper + source registry                       | **Fully implemented**                                                                                                                                                                     |
 | API: all defined endpoints                                            | **Fully implemented**                                                                                                                                                                     |

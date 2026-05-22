@@ -109,7 +109,7 @@ func startServer(t *testing.T) (baseURL string, cleanup func()) {
 	var templates []objectivepkg.Template
 	templates = append(templates, swPack.ObjectiveTemplates()...)
 
-	apiApp := api.NewApp(cfg, store, providers, toolReg, exporters, wt, hub, otel, capReg, envReg, domReg, templates, nil)
+	apiApp := api.NewApp(cfg, store, providers, toolReg, exporters, wt, hub, otel, capReg, envReg, domReg, templates, nil, nil)
 
 	// Listen on a random port
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
