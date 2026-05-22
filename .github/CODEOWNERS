@@ -1,0 +1,6 @@
+# Karakuri code owners
+#
+# Lines later in the file take precedence. The catch-all rule covers the whole
+# tree; add more specific rules above this comment as the project grows.
+
+* @bsenel

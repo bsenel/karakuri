@@ -1,0 +1,46 @@
+name: CodeQL
+
+# Static analysis for Go (server + CLI) and JavaScript/TypeScript (web/).
+# Findings appear under the repo's Security tab; high-severity alerts gate
+# branch protection alongside CI.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Weekly full scan on Monday 09:00 UTC — catches new CVEs against unchanged
+    # code without waiting for the next PR.
+    - cron: "0 9 * * 1"
+
+permissions:
+  contents: read
+  security-events: write
+  actions: read
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [go, javascript]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+          queries: security-and-quality
+      - name: Build (Go only)
+        if: matrix.language == 'go'
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.x"
+          cache: true
+      - if: matrix.language == 'go'
+        run: go build ./...
+      - uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:${{ matrix.language }}"
