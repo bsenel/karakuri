@@ -1,7 +1,9 @@
 version: 2
+# Strategy: Dependabot opens PRs only for non-breaking updates. Major-version
+# bumps require manual review (compat testing, peer-dep sweeps, migration
+# notes) and are handled by maintainers rather than automated PRs.
 updates:
-  # Go modules — main Karakuri module and any sub-modules added in Phase 14+.
-  # The list expands as new modules ship (auth/, quota/, etc.).
+  # Go modules — main Karakuri module plus any sub-modules added in Phase 14+.
   - package-ecosystem: gomod
     directory: "/"
     schedule:
@@ -19,8 +21,11 @@ updates:
         update-types:
           - minor
           - patch
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
 
-  # NPM / pnpm for the embedded React frontend.
+  # NPM for the embedded React frontend.
   - package-ecosystem: npm
     directory: "/web"
     schedule:
@@ -38,8 +43,11 @@ updates:
         update-types:
           - minor
           - patch
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
 
-  # GitHub Actions workflows.
+  # GitHub Actions — pin to non-major bumps so action behavior stays stable.
   - package-ecosystem: github-actions
     directory: "/"
     schedule:
@@ -52,3 +60,6 @@ updates:
     labels:
       - dependencies
       - ci
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
