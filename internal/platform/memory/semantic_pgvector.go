@@ -173,15 +173,26 @@ func (m *SemanticMemoryPgVector) Recall(ctx context.Context, q memory.Query) ([]
 }
 
 func (m *SemanticMemoryPgVector) Forget(ctx context.Context, p memory.RetentionPolicy) error {
-	if p.Before == nil {
+	if p.Before == nil && p.MinScore <= 0 {
 		return nil
 	}
 	var (
 		where []string
 		args  []any
 	)
-	where = append(where, fmt.Sprintf("created_at < $%d", len(args)+1))
-	args = append(args, *p.Before)
+	// Age and confidence are OR'd: an entry too old OR with too low a score
+	// is purged. The whole filter is AND'd with agent/twin scoping so the
+	// caller can confine the sweep to a single tenant.
+	var orParts []string
+	if p.Before != nil {
+		orParts = append(orParts, fmt.Sprintf("created_at < $%d", len(args)+1))
+		args = append(args, *p.Before)
+	}
+	if p.MinScore > 0 {
+		orParts = append(orParts, fmt.Sprintf("confidence < $%d", len(args)+1))
+		args = append(args, p.MinScore)
+	}
+	where = append(where, "("+strings.Join(orParts, " OR ")+")")
 	if p.AgentID != "" {
 		where = append(where, fmt.Sprintf("agent_id = $%d", len(args)+1))
 		args = append(args, string(p.AgentID))

@@ -40,23 +40,35 @@ func (s *serviceImpl) runLoop(ctx context.Context, loopID string, req loop.Reque
 		return
 	}
 
-	// 2. Select agent definition
+	// 2. Select agent definition. For cross-domain objectives, walk the
+	// declared domains in order and pick the first pack that exposes an
+	// agent. If none do, fall back to a minimal default tagged with the
+	// primary domain.
 	var agentDef coreagent.Definition
 	if req.Agent.ID != "" {
 		agentDef = req.Agent
 	} else {
-		// Pick first agent from domain pack matching obj.Domain
-		pack, ok := s.domReg.Get(obj.Domain)
-		if !ok || len(pack.AgentDefinitions()) == 0 {
-			// Use a default minimal agent definition
+		domains := obj.AllDomains()
+		if len(domains) == 0 {
+			domains = []string{obj.Domain}
+		}
+		var picked bool
+		for _, d := range domains {
+			pack, ok := s.domReg.Get(d)
+			if !ok || len(pack.AgentDefinitions()) == 0 {
+				continue
+			}
+			agentDef = pack.AgentDefinitions()[0]
+			picked = true
+			break
+		}
+		if !picked {
 			agentDef = coreagent.Definition{
 				ID:                coreagent.AgentID(obj.Domain + "-default"),
 				Name:              obj.Domain + " Agent",
 				Domain:            obj.Domain,
 				ReasoningStrategy: coreagent.ReasoningReAct,
 			}
-		} else {
-			agentDef = pack.AgentDefinitions()[0]
 		}
 	}
 
@@ -77,19 +89,27 @@ func (s *serviceImpl) runLoop(ctx context.Context, loopID string, req loop.Reque
 	}
 	buildCtx := environment.BuildContext{TwinID: obj.TwinID, AdapterBindings: adapterBindings}
 	var envs []environment.Environment
-	for _, fac := range s.envReg.ListByDomain(obj.Domain) {
-		env, err := fac.Build(buildCtx)
-		if err != nil {
-			// Log but don't fail — some envs may be optional
-			s.hub.Publish(ctx, event.Event{
-				Type:        event.TypeAdapterSkipped,
-				ObjectiveID: string(obj.ID),
-				Payload:     map[string]any{"env_id": string(fac.EnvID), "error": err.Error()},
-				Timestamp:   time.Now().UTC(),
-			})
-			continue
+	seenEnv := make(map[string]bool)
+	for _, d := range obj.AllDomains() {
+		for _, fac := range s.envReg.ListByDomain(d) {
+			key := string(fac.EnvID)
+			if seenEnv[key] {
+				continue
+			}
+			seenEnv[key] = true
+			env, err := fac.Build(buildCtx)
+			if err != nil {
+				// Log but don't fail — some envs may be optional
+				s.hub.Publish(ctx, event.Event{
+					Type:        event.TypeAdapterSkipped,
+					ObjectiveID: string(obj.ID),
+					Payload:     map[string]any{"env_id": string(fac.EnvID), "error": err.Error()},
+					Timestamp:   time.Now().UTC(),
+				})
+				continue
+			}
+			envs = append(envs, env)
 		}
-		envs = append(envs, env)
 	}
 
 	// 5. Set objective status to active

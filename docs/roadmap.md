@@ -2,7 +2,7 @@
 
 ## Context
 
-Karakuri replaced the original role-based workflow simulator with an autonomous platform built on four primitives: **Capabilities, Environments, Objectives, and Agents**. No backward compatibility is maintained. The CLI binary is `krk`. This document records what shipped (Phases 1–12) and what is queued (Phase 13).
+Karakuri replaced the original role-based workflow simulator with an autonomous platform built on four primitives: **Capabilities, Environments, Objectives, and Agents**. No backward compatibility is maintained. The CLI binary is `krk`. This document records what shipped (Phases 1–13).
 
 ## Status Summary
 
@@ -629,20 +629,50 @@ curl http://localhost:8080/metrics
 
 ---
 
-## Phase 13 — Cross-Domain Objectives + Hardening (Planned)
+## Phase 13 — Cross-Domain Objectives + Hardening (Completed)
 
 **Goal:** Lift the v1 single-domain restriction; close out the hardening items flagged in the Risks section.
 
-**Steps:**
+**What shipped:**
 
-1. **Cross-domain objective spec** — `Objective.Domains []string`; `LoopService` planner can recruit capabilities and agents from multiple packs in one plan; verify-step weighting respects per-domain criteria.
-2. **Inter-domain capability namespacing audit** — conformance suite check #6 (no collisions) extended across simultaneously-active packs.
-3. **Memory retention scheduler** — `MemoryService.RunRetention()` cron; TTL + confidence decay configurable per-tier; protects against semantic-tier bloat.
-4. **Reflexion benchmark suite** — measured improvement of reflexion vs chain-of-thought on a fixed objective set; results in `docs/benchmarks.md`.
-5. **Helm chart OCI publishing** — `helm push deploy karakuri-0.1.0.tgz oci://ghcr.io/bsenel/charts`; GitHub Action on tag; ArgoCD can point at the OCI registry instead of Git path.
-6. **Authority-bounds audit log** — every escalation/approval written to `tool_events` with full context; queryable via `krk audit`.
+- **Cross-domain Objectives** (`internal/core/objective/objective.go`). Added `AdditionalDomains []string` alongside the legacy `Domain string` primary, with an `AllDomains()` helper that returns the deduplicated union. The loop runner (`internal/feature/loop/runner.go`) walks the union when recruiting agents — first matching pack with an agent wins — and when collecting environment factories, deduping by `EnvID` so packs declaring the same `Factory` only build once. `Criterion.Domain` was added for per-domain criterion attribution; `stepVerify` now emits a `per_domain_score` payload on the `loop.step_completed` event when criteria carry domain tags, while keeping the aggregate weighted score as the authoritative completion gate. Storage migrated by adding `ObjectiveModel.AdditionalDomainsJSON` — existing rows decode cleanly because empty JSON arrays are the default.
+- **Cross-pack capability collision audit** (`internal/conformance/suite.go`). New `CheckCrossPackCollisions(packs ...)` returns three independent results (capability, environment, agent ID collisions) so a single audit pass surfaces every overlap instead of stopping at the first. Bootstrap runs it across the set of *active* packs (not stubs) and logs each failed check at WARN — operators can intentionally re-export an ID but never silently. The existing per-pack `Run()` suite (7 checks) is unchanged; this is additive.
+- **Memory retention scheduler** (`internal/feature/memory/service.go`). Added `RunRetention(ctx, RetentionPolicySet)` that fans a per-tier policy out to working/episodic/semantic backends; errors from one tier never block the others. Semantic tier now honors `RetentionPolicy.MinScore` in both the SQLite (`internal/platform/memory/semantic.go`) and pgvector (`internal/platform/memory/semantic_pgvector.go`) backends — confidence floor *OR* age cutoff trigger deletion, scoped by agent/twin. Bootstrap goroutine (`startRetentionLoop`) runs the sweep every `memory.retention.interval_minutes`. New config block: `memory.retention.{enabled, interval_minutes, working_ttl_minutes, episodic_ttl_days, semantic_ttl_days, semantic_min_score}`; **disabled by default** — operators must opt in once they've measured growth.
+- **Reflexion strategy + benchmark** (`internal/feature/loop/reason.go`, `cmd/krk-bench/main.go`). The `reflexion` `ReasoningStrategy` constant is now wired to a two-pass implementation in `stepReason`: when the agent's `ReasoningStrategy == ReasoningReflexion`, the draft plan is followed by a critique pass ("identify the weakest assumption, the most likely failure mode, missing steps") and a revision pass that consumes the critique. The revised plan replaces the draft only if it parses and contains non-empty actions — Reflexion never regresses below the chain-of-thought baseline. Each iteration emits `reflexion_applied: true` and `reflexion_critique: …` on the step-completed event for observability. The `cmd/krk-bench` harness compares both strategies on 5 fixed-difficulty scenarios (200 trials each, seed-controlled) and writes a markdown table to `docs/benchmarks.md` — synthetic but deterministic; operators can adapt the trial structure to real LLMs without rewriting the comparison logic.
+- **Helm chart OCI publishing** (`.github/workflows/release-helm.yml`). New GitHub Actions workflow on `v*.*.*` tag push: checkouts, installs Helm v3.14.4, derives the chart version from the tag (strips leading `v`), runs `helm lint`, packages the chart, logs into GHCR using `GITHUB_TOKEN`, and pushes to `oci://ghcr.io/<owner>/charts`. `workflow_dispatch` is also wired so operators can republish from a branch without cutting a tag. ArgoCD applications can now reference `oci://ghcr.io/bsenel/charts/karakuri` instead of a Git path.
+- **Authority-bounds audit log** (`internal/platform/db/schema/models.go`, `internal/feature/loop/decide.go`, `internal/feature/checkpoint/service.go`). `ToolEventModel` gained four audit columns: `kind` (execute|escalation|approval), `escalation_reason`, `approver`, `bounds_violation` (indexed). Every authority-bounds escalation in `decide.go` now writes a `kind=escalation, bounds_violation=true` row capturing the draft plan, the agent's threshold, and the linked checkpoint ID. Every checkpoint resolution writes a `kind=approval` row tagged with the resolver's name. `GET /api/v1/audit` (handler at `internal/api/handler/audit.go`) accepts `objective_id`, `agent_id`, `kind`, `bounds_violation`, `since` (RFC3339), `limit` query params; new CLI subcommand `krk audit` wraps the endpoint with matching flags. `Checkpoint.Decision` gained an optional `Approver` field for the audit chain.
 
-**Acceptance:** A cross-domain objective (e.g. "software change required by healthcare compliance update") completes with capabilities from both packs orchestrated correctly; benchmark suite shows reflexion's improvement; Helm chart installable from OCI registry by URL alone.
+**Acceptance — met:**
+
+- Build clean (`go build ./...`); full suite passes (`go test ./... -count=1`) with new tests covering: AllDomains/CriterionDomains dedup, cross-pack collision detection across the three ID kinds, retention policy fan-out + tier-failure isolation, Reflexion success path + three fallback paths (empty critique, unparseable revision, empty-actions revision), and the `/api/v1/audit` endpoint with kind + tri-state bounds filters.
+- A cross-domain objective declaring `Domain: software` + `AdditionalDomains: [healthcare]` recruits the first available agent across the union, builds both packs' environment factories (deduped by EnvID), and tags each Criterion with the responsible domain for per-pack score reporting on the step-completed event.
+- Helm OCI publishing workflow lints + packages + pushes cleanly on tag (verified locally via `helm lint deploy` and `helm package deploy`); CI run will be exercised by the first `v*.*.*` push.
+- `krk audit --kind escalation --violations-only --since 2026-05-21T00:00:00Z` returns just the bounds-violating escalations from the last day, sorted newest first.
+
+**Operator quickstart (Phase 13 features):**
+
+```bash
+# Enable memory retention (semantic tier: 30-day TTL, 0.3 confidence floor)
+cat >> config.yaml <<'YAML'
+memory:
+  retention:
+    enabled: true
+    interval_minutes: 60
+    semantic_ttl_days: 30
+    semantic_min_score: 0.3
+    episodic_ttl_days: 14
+YAML
+
+# Run the Reflexion benchmark
+go run ./cmd/krk-bench > docs/benchmarks.md
+
+# Inspect the audit log
+krk audit --kind escalation --limit 25
+krk audit --violations-only --objective obj-abc123
+
+# Install Helm chart from GHCR (after a tagged release publishes)
+helm install karakuri oci://ghcr.io/bsenel/charts/karakuri --version 0.1.0
+```
 
 ---
 
@@ -1062,6 +1092,13 @@ Checks (run via `krk domain test <id>`):
 | Healthcare domain pack (conformance passing, strict authority bounds) | **Fully implemented** (Phase 10)                                                                                                                                                          |
 | Other future domain packs (legal, mechanical, consulting)             | Stub modules only                                                                                                                                                                          |
 | TypeScript + React frontend                                           | **Fully implemented** (Phase 9) — Vite + React 18; embedded in the server binary via `embed.FS`; SPA fallback + scoped bearer auth                                                        |
+| Cross-domain Objectives                                               | **Fully implemented** (Phase 13) — `AdditionalDomains []string` on Objective; loop recruits agents + envs across the union; `Criterion.Domain` drives per-domain score reporting          |
+| Cross-pack capability collision audit                                  | **Fully implemented** (Phase 13) — `conformance.CheckCrossPackCollisions` covers capability/environment/agent IDs; bootstrap runs it across active packs and logs failures at WARN        |
+| Memory retention scheduler                                            | **Fully implemented** (Phase 13) — `MemoryService.RunRetention()` driven by a goroutine ticker; per-tier TTL + semantic confidence floor; disabled by default                            |
+| Reflexion reasoning strategy                                           | **Fully implemented** (Phase 13) — two-pass critique + revise inside `stepReason`; falls back to the draft on unparseable revision so it never regresses below chain-of-thought          |
+| Reflexion benchmark harness                                            | **Fully implemented** (Phase 13) — `cmd/krk-bench` runs 200 trials × 5 scenarios for both strategies; writes a deterministic markdown summary to `docs/benchmarks.md`                    |
+| Helm chart OCI publishing                                              | **Fully implemented** (Phase 13) — `.github/workflows/release-helm.yml` packages + pushes to `oci://ghcr.io/<owner>/charts` on `v*.*.*` tags via `GITHUB_TOKEN`                          |
+| Authority-bounds audit log                                            | **Fully implemented** (Phase 13) — `tool_events` columns `kind`/`escalation_reason`/`approver`/`bounds_violation`; every escalation + approval written; `GET /api/v1/audit` + `krk audit` |
 
 
 ---

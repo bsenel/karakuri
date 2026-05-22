@@ -121,10 +121,25 @@ type DomainConfig struct {
 }
 
 type MemoryConfig struct {
-	ConsolidationThreshold int    `yaml:"consolidation_threshold"` // episodic entries before consolidation
-	SemanticTopK           int    `yaml:"semantic_top_k"`
-	VectorBackend          string `yaml:"vector_backend"` // "" | "sqlite-keyword" | "pgvector"
-	EmbeddingDim           int    `yaml:"embedding_dim"`  // dimensionality of embeddings (default 1536)
+	ConsolidationThreshold int                   `yaml:"consolidation_threshold"` // episodic entries before consolidation
+	SemanticTopK           int                   `yaml:"semantic_top_k"`
+	VectorBackend          string                `yaml:"vector_backend"` // "" | "sqlite-keyword" | "pgvector"
+	EmbeddingDim           int                   `yaml:"embedding_dim"`  // dimensionality of embeddings (default 1536)
+	Retention              MemoryRetentionConfig `yaml:"retention"`
+}
+
+// MemoryRetentionConfig controls the periodic retention sweep. When Enabled
+// is true, MemoryService.RunRetention runs every IntervalMinutes and drops
+// entries older than the per-tier TTLs or below the semantic confidence
+// floor. Disabled by default — leave it off unless you've measured memory
+// growth — once on, the deletions are irreversible.
+type MemoryRetentionConfig struct {
+	Enabled          bool    `yaml:"enabled"`
+	IntervalMinutes  int     `yaml:"interval_minutes"`   // sweep interval; default 60
+	WorkingTTLMinutes int    `yaml:"working_ttl_minutes"` // 0 = never
+	EpisodicTTLDays  int     `yaml:"episodic_ttl_days"`  // 0 = never
+	SemanticTTLDays  int     `yaml:"semantic_ttl_days"`  // 0 = never
+	SemanticMinScore float64 `yaml:"semantic_min_score"` // drop semantic entries with confidence below this; 0 = no floor
 }
 
 func Load(path string) (*Config, error) {

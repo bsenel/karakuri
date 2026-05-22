@@ -187,3 +187,86 @@ func checkTeardownNoPanic(ctx context.Context, p domain.Pack) (res Result) {
 	_ = p.Teardown(ctx)
 	return res
 }
+
+// CheckCrossPackCollisions verifies no two packs share the same capability ID,
+// environment ID, or agent ID. Run this against the set of packs that will be
+// active simultaneously — at minimum the union of domains referenced by any
+// cross-domain objective. Returns a slice of Result so a single audit pass can
+// surface every collision instead of stopping at the first.
+//
+// Each check is independent of the per-pack Run() — Run() rejects collisions
+// within one pack; this rejects them across packs.
+func CheckCrossPackCollisions(packs ...domain.Pack) []Result {
+	if len(packs) < 2 {
+		return []Result{{
+			Check:   "cross_pack_capability_collision",
+			Passed:  true,
+			Message: "fewer than two packs supplied; nothing to compare",
+		}}
+	}
+
+	var results []Result
+
+	results = append(results, collisionCheck(
+		"cross_pack_capability_collision",
+		packs,
+		func(p domain.Pack) []string {
+			out := make([]string, 0, len(p.Capabilities()))
+			for _, c := range p.Capabilities() {
+				out = append(out, string(c.ID))
+			}
+			return out
+		},
+	))
+	results = append(results, collisionCheck(
+		"cross_pack_environment_collision",
+		packs,
+		func(p domain.Pack) []string {
+			facs := p.EnvironmentFactories()
+			out := make([]string, 0, len(facs))
+			for _, f := range facs {
+				out = append(out, string(f.EnvID))
+			}
+			return out
+		},
+	))
+	results = append(results, collisionCheck(
+		"cross_pack_agent_collision",
+		packs,
+		func(p domain.Pack) []string {
+			defs := p.AgentDefinitions()
+			out := make([]string, 0, len(defs))
+			for _, d := range defs {
+				out = append(out, string(d.ID))
+			}
+			return out
+		},
+	))
+
+	return results
+}
+
+// collisionCheck builds a {ID → packs that declare it} map and reports any
+// ID claimed by more than one pack. Pack IDs in the failure message are
+// sorted for stable, diffable output.
+func collisionCheck(name string, packs []domain.Pack, extract func(domain.Pack) []string) Result {
+	owners := make(map[string][]string)
+	for _, p := range packs {
+		for _, id := range extract(p) {
+			if id == "" {
+				continue
+			}
+			owners[id] = append(owners[id], p.ID())
+		}
+	}
+	for id, ps := range owners {
+		if len(ps) > 1 {
+			return Result{
+				Check:   name,
+				Passed:  false,
+				Message: fmt.Sprintf("id %q declared by multiple packs: %s", id, strings.Join(ps, ", ")),
+			}
+		}
+	}
+	return Result{Check: name, Passed: true, Message: fmt.Sprintf("no collisions across %d packs", len(packs))}
+}

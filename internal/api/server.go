@@ -33,6 +33,7 @@ import (
 type App struct {
 	Router *chi.Mux
 	Loop   featureloop.Service // exposed so bootstrap can call ResumeStoredLoops post-construction
+	Memory *memory.Service     // exposed so bootstrap can drive the retention scheduler
 }
 
 func NewApp(
@@ -91,6 +92,7 @@ func NewApp(
 	domH := &handler.DomainHandler{Domains: domReg, Capabilities: capReg}
 	resH := &handler.ResearchHandler{Research: resSvc}
 	evtH := &handler.EventsHandler{Hub: hub}
+	audH := &handler.AuditHandler{Store: store}
 
 	r.Route("/api/v1", func(r chi.Router) {
 		r.Use(middleware.BearerAuth(cfg.Auth.Token))
@@ -146,13 +148,18 @@ func NewApp(
 		})
 
 		r.Post("/research", resH.Run)
+
+		// Authority-bounds audit log (Phase 13). Supports objective_id,
+		// agent_id, kind (execute|escalation|approval), bounds_violation,
+		// since (RFC3339), and limit query params.
+		r.Get("/audit", audH.List)
 	})
 
 	// Mount the embedded React SPA at the root, AFTER /api/v1 has been
 	// registered so REST + SSE win over the catch-all SPA fallback.
 	r.Handle("/*", karakuriweb.Handler())
 
-	return &App{Router: r, Loop: loopSvc}
+	return &App{Router: r, Loop: loopSvc, Memory: memSvc}
 }
 
 func (a *App) Handler() http.Handler { return a.Router }

@@ -42,7 +42,14 @@ func (m *SemanticMemory) Forget(ctx context.Context, p memory.RetentionPolicy) e
 		return err
 	}
 	for _, e := range entries {
+		drop := false
 		if p.Before != nil && e.CreatedAt.Before(*p.Before) {
+			drop = true
+		}
+		if !drop && p.MinScore > 0 && e.Confidence < p.MinScore {
+			drop = true
+		}
+		if drop {
 			_ = m.store.DeleteMemoryEntry(ctx, e.ID)
 		}
 	}

@@ -12,12 +12,13 @@ import (
 )
 
 type CreateRequest struct {
-	Title       string
-	Description string
-	Domain      string
-	Priority    int
-	TwinID      string
-	TemplateID  string // optional; populates criteria/constraints if set
+	Title             string
+	Description       string
+	Domain            string
+	AdditionalDomains []string
+	Priority          int
+	TwinID            string
+	TemplateID        string // optional; populates criteria/constraints if set
 }
 
 type Service struct {
@@ -37,8 +38,9 @@ func (s *Service) Create(ctx context.Context, req CreateRequest) (objective.Obje
 	id, _ := newID()
 	o := objective.Objective{
 		ID: objective.ObjectiveID(id), Title: req.Title, Description: req.Description,
-		Domain: req.Domain, TwinID: req.TwinID, Priority: req.Priority,
-		Status: objective.StatusPending,
+		Domain: req.Domain, AdditionalDomains: req.AdditionalDomains,
+		TwinID: req.TwinID, Priority: req.Priority,
+		Status:    objective.StatusPending,
 		CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC(),
 	}
 	if req.TemplateID != "" {

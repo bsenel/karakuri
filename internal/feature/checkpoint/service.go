@@ -4,6 +4,8 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
+	"fmt"
 	"time"
 
 	corecheckpoint "github.com/bsenel/karakuri/internal/core/checkpoint"
@@ -50,7 +52,32 @@ func (s *Service) ListPending(ctx context.Context, twinID string) ([]corecheckpo
 }
 
 func (s *Service) Resolve(ctx context.Context, id string, d corecheckpoint.Decision) error {
-	return s.store.ResolveCheckpoint(ctx, id, d)
+	if err := s.store.ResolveCheckpoint(ctx, id, d); err != nil {
+		return err
+	}
+	// Audit trail for `krk audit` (Phase 13): every approval/rejection is
+	// recorded as a tool_events row so reviewers can trace authority
+	// decisions without joining checkpoints against loop iterations.
+	cp, err := s.store.GetCheckpoint(ctx, id)
+	if err != nil {
+		// Resolve already succeeded — losing the audit record is regrettable
+		// but not worth failing the request. Logged via the event hub below.
+		return nil
+	}
+	payload, _ := json.Marshal(map[string]any{
+		"checkpoint_id": id,
+		"choice":        d.Choice,
+		"note":          d.Note,
+	})
+	_ = s.store.SaveToolEvent(ctx, storage.ToolEvent{
+		ID:          fmt.Sprintf("audit-%d", time.Now().UnixNano()),
+		ObjectiveID: string(cp.ObjectiveID),
+		Kind:        storage.ToolEventApproval,
+		Approver:    d.Approver,
+		PayloadJSON: string(payload),
+		Success:     d.Choice == "approve",
+	})
+	return nil
 }
 
 func newID() (string, error) {

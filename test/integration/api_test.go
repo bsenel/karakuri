@@ -517,3 +517,18 @@ func TestCheckpointList(t *testing.T) {
 	// May be empty — that's fine
 	_ = items
 }
+
+func TestAuditEndpoint(t *testing.T) {
+	baseURL, cleanup := startServer(t)
+	defer cleanup()
+
+	// Empty audit log returns 200 + empty array — the endpoint must exist
+	// and accept the filter query params introduced in Phase 13.
+	resp := doJSON(t, http.MethodGet, baseURL+"/api/v1/audit?kind=escalation&limit=10", nil)
+	assertStatus(t, resp, http.StatusOK)
+	_ = decodeJSONSlice(t, resp)
+
+	// bounds_violation tri-state must parse without error
+	resp = doJSON(t, http.MethodGet, baseURL+"/api/v1/audit?bounds_violation=true", nil)
+	assertStatus(t, resp, http.StatusOK)
+}

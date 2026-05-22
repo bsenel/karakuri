@@ -89,6 +89,46 @@ func (s *Service) Forget(ctx context.Context, p memory.RetentionPolicy) error {
 	return s.episodic.Forget(ctx, p)
 }
 
+// RetentionPolicySet bundles per-tier policies for a single retention sweep.
+// Each tier's policy is optional — a zero policy is treated as "skip this
+// tier". This is the contract MemoryService.RunRetention executes on; the
+// scheduler in bootstrap simply translates config into this shape and calls.
+type RetentionPolicySet struct {
+	Working  memory.RetentionPolicy
+	Episodic memory.RetentionPolicy
+	Semantic memory.RetentionPolicy
+}
+
+// RunRetention executes a single retention sweep across all configured tiers.
+// Errors from one tier do not stop the others — the sweep is best-effort by
+// design: a bad query against semantic shouldn't block episodic cleanup. The
+// returned error wraps the last failure for surfacing in logs.
+func (s *Service) RunRetention(ctx context.Context, set RetentionPolicySet) error {
+	var lastErr error
+	if !isEmptyPolicy(set.Working) {
+		if err := s.working.Forget(ctx, set.Working); err != nil {
+			lastErr = fmt.Errorf("working tier retention: %w", err)
+		}
+	}
+	if !isEmptyPolicy(set.Episodic) {
+		if err := s.episodic.Forget(ctx, set.Episodic); err != nil {
+			lastErr = fmt.Errorf("episodic tier retention: %w", err)
+		}
+	}
+	if !isEmptyPolicy(set.Semantic) {
+		if err := s.semantic.Forget(ctx, set.Semantic); err != nil {
+			lastErr = fmt.Errorf("semantic tier retention: %w", err)
+		}
+	}
+	return lastErr
+}
+
+// isEmptyPolicy reports whether p would have no effect — no age cutoff and
+// no confidence floor. Skipping these saves a pointless table scan.
+func isEmptyPolicy(p memory.RetentionPolicy) bool {
+	return p.Before == nil && p.MinScore <= 0
+}
+
 // Consolidate promotes high-confidence episodic entries to semantic memory.
 func (s *Service) Consolidate(ctx context.Context, agentID coreagent.AgentID, threshold int) error {
 	q := memory.Query{AgentID: agentID, Tiers: []memory.Tier{memory.TierEpisodic}, TopK: threshold * 2}

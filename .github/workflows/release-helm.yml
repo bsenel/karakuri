@@ -1,0 +1,64 @@
+name: Release Helm chart to GHCR
+
+# Publishes the Helm chart under deploy/ to GitHub Container Registry as an
+# OCI artifact whenever a tag matching v*.*.* is pushed. ArgoCD and `helm
+# install` consumers can then point at oci://ghcr.io/bsenel/charts/karakuri
+# instead of cloning the repo.
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.14.4
+
+      - name: Derive chart version from tag
+        id: version
+        run: |
+          # Strip the leading 'v' so the chart version matches semver style
+          # ('0.1.0', not 'v0.1.0') — required by Helm OCI semantics.
+          REF="${GITHUB_REF#refs/tags/}"
+          VERSION="${REF#v}"
+          # For workflow_dispatch runs (no tag) fall back to Chart.yaml.
+          if [ -z "${VERSION}" ] || [ "${VERSION}" = "${GITHUB_REF}" ]; then
+            VERSION=$(grep '^version:' deploy/Chart.yaml | awk '{print $2}')
+          fi
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "Resolved chart version: ${VERSION}"
+
+      - name: Lint chart
+        run: helm lint deploy
+
+      - name: Package chart
+        run: |
+          helm package deploy \
+            --version "${{ steps.version.outputs.version }}" \
+            --app-version "${{ steps.version.outputs.version }}" \
+            --destination "${RUNNER_TEMP}/dist"
+
+      - name: Log in to GHCR
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" \
+            | helm registry login ghcr.io --username "${{ github.actor }}" --password-stdin
+
+      - name: Push chart to GHCR
+        run: |
+          # Pushes to oci://ghcr.io/<owner>/charts. The chart filename embeds
+          # the version, so a single push covers the tagged release.
+          helm push \
+            "${RUNNER_TEMP}/dist/karakuri-${{ steps.version.outputs.version }}.tgz" \
+            "oci://ghcr.io/${{ github.repository_owner }}/charts"

@@ -30,8 +30,9 @@ type Checkpoint struct {
 }
 
 type Decision struct {
-	Choice string `json:"choice"`
-	Note   string `json:"note,omitempty"`
+	Choice   string `json:"choice"`
+	Note     string `json:"note,omitempty"`
+	Approver string `json:"approver,omitempty"` // operator name/id for the audit trail
 }
 
 type Event struct {

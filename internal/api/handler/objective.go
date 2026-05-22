@@ -15,24 +15,26 @@ type ObjectiveHandler struct {
 
 func (h *ObjectiveHandler) Create(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Title       string `json:"title"`
-		Description string `json:"description"`
-		Domain      string `json:"domain"`
-		Priority    int    `json:"priority"`
-		TwinID      string `json:"twin_id"`
-		TemplateID  string `json:"template_id"`
+		Title             string   `json:"title"`
+		Description       string   `json:"description"`
+		Domain            string   `json:"domain"`
+		AdditionalDomains []string `json:"additional_domains"`
+		Priority          int      `json:"priority"`
+		TwinID            string   `json:"twin_id"`
+		TemplateID        string   `json:"template_id"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 	obj, err := h.Objectives.Create(r.Context(), featureobj.CreateRequest{
-		Title:       req.Title,
-		Description: req.Description,
-		Domain:      req.Domain,
-		Priority:    req.Priority,
-		TwinID:      req.TwinID,
-		TemplateID:  req.TemplateID,
+		Title:             req.Title,
+		Description:       req.Description,
+		Domain:            req.Domain,
+		AdditionalDomains: req.AdditionalDomains,
+		Priority:          req.Priority,
+		TwinID:            req.TwinID,
+		TemplateID:        req.TemplateID,
 	})
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)

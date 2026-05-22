@@ -55,7 +55,31 @@ type ToolEvent struct {
 	Success     bool
 	Confidence  float64
 	PayloadJSON string
-	CreatedAt   time.Time
+	// Audit fields (Phase 13). Default Kind is "execute"; escalation
+	// records use "escalation" and human approvals use "approval".
+	Kind             string
+	EscalationReason string
+	Approver         string
+	BoundsViolation  bool
+	CreatedAt        time.Time
+}
+
+// ToolEventKind enumerates the audit-relevant event types.
+const (
+	ToolEventExecute    = "execute"
+	ToolEventEscalation = "escalation"
+	ToolEventApproval   = "approval"
+)
+
+// ToolEventFilter narrows the audit log query. All fields are optional;
+// CreatedAtSince applies an inclusive lower bound on event timestamps.
+type ToolEventFilter struct {
+	ObjectiveID     string
+	AgentID         string
+	Kind            string
+	BoundsViolation *bool      // tri-state: nil = ignore, &true = only violations, &false = only clean
+	CreatedAtSince  *time.Time // events at or after this time only
+	Limit           int        // 0 = no cap (caller should usually set this)
 }
 
 // Worktree is the storage DTO for worktree records.
@@ -117,6 +141,7 @@ type StorageAdapter interface {
 
 	// Tool events
 	SaveToolEvent(ctx context.Context, e ToolEvent) error
+	ListToolEvents(ctx context.Context, f ToolEventFilter) ([]ToolEvent, error)
 
 	// Loop state (Phase 11 — durable execution across server restarts)
 	SaveLoopState(ctx context.Context, s coreloop.State) error

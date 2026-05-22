@@ -44,6 +44,7 @@ func NewRoot() *cobra.Command {
 		autoCmd(),
 		migrateCmd(),
 		webCmd(),
+		auditCmd(),
 	)
 	return root
 }

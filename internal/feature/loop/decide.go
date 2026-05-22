@@ -2,12 +2,14 @@ package loop
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
 	"github.com/bsenel/karakuri/internal/core/capability"
 	"github.com/bsenel/karakuri/internal/core/event"
 	"github.com/bsenel/karakuri/internal/core/loop"
+	"github.com/bsenel/karakuri/internal/platform/storage"
 )
 
 // biasConfidenceFromHistory adjusts plan confidence based on procedural memory success rates.
@@ -110,6 +112,30 @@ func stepDecide(ctx context.Context, sc *stepContext, p plan) (plan, bool) {
 		if err == nil {
 			cpID = cp.ID
 		}
+
+		// 3b. Write an audit record so `krk audit` can surface this
+		// escalation later without scraping checkpoint history. The payload
+		// captures the planner's draft (actions + confidence) at the moment
+		// of escalation, which is what a reviewer needs to judge whether
+		// the bounds were tuned correctly.
+		auditPayload, _ := json.Marshal(map[string]any{
+			"actions":              p.Actions,
+			"confidence":           p.Confidence,
+			"confidence_threshold": authority.ConfidenceThreshold,
+			"max_autonomous":       authority.MaxAutonomousActions,
+			"checkpoint_id":        cpID,
+		})
+		_ = sc.svc.store.SaveToolEvent(ctx, storage.ToolEvent{
+			ID:               fmt.Sprintf("audit-%d", time.Now().UnixNano()),
+			ObjectiveID:      string(sc.obj.ID),
+			AgentID:          string(sc.agentDef.ID),
+			Success:          false,
+			Confidence:       p.Confidence,
+			Kind:             storage.ToolEventEscalation,
+			EscalationReason: escalateReason,
+			BoundsViolation:  true,
+			PayloadJSON:      string(auditPayload),
+		})
 
 		// Update state
 		sc.state.mu.Lock()

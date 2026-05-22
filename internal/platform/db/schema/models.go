@@ -20,20 +20,21 @@ type TwinModel struct {
 func (TwinModel) TableName() string { return "twins" }
 
 type ObjectiveModel struct {
-	ID              string     `gorm:"primaryKey;column:id"`
-	Title           string     `gorm:"column:title;not null"`
-	Description     string     `gorm:"column:description;not null;default:''"`
-	Domain          string     `gorm:"column:domain;not null"`
-	Priority        int        `gorm:"column:priority;not null;default:0"`
-	MaxIterations   int        `gorm:"column:max_iterations;not null;default:0"`
-	Deadline        *time.Time `gorm:"column:deadline"`
-	CriteriaJSON    string     `gorm:"column:criteria_json;not null;default:'[]'"`
-	ConstraintsJSON string     `gorm:"column:constraints_json;not null;default:'[]'"`
-	ParentID        *string    `gorm:"column:parent_id"`
-	Status          string     `gorm:"column:status;not null;default:'pending'"`
-	TwinID          string     `gorm:"column:twin_id;index"`
-	CreatedAt       time.Time  `gorm:"column:created_at;autoCreateTime"`
-	UpdatedAt       time.Time  `gorm:"column:updated_at;autoUpdateTime"`
+	ID                    string     `gorm:"primaryKey;column:id"`
+	Title                 string     `gorm:"column:title;not null"`
+	Description           string     `gorm:"column:description;not null;default:''"`
+	Domain                string     `gorm:"column:domain;not null"`
+	AdditionalDomainsJSON string     `gorm:"column:additional_domains_json;not null;default:'[]'"`
+	Priority              int        `gorm:"column:priority;not null;default:0"`
+	MaxIterations         int        `gorm:"column:max_iterations;not null;default:0"`
+	Deadline              *time.Time `gorm:"column:deadline"`
+	CriteriaJSON          string     `gorm:"column:criteria_json;not null;default:'[]'"`
+	ConstraintsJSON       string     `gorm:"column:constraints_json;not null;default:'[]'"`
+	ParentID              *string    `gorm:"column:parent_id"`
+	Status                string     `gorm:"column:status;not null;default:'pending'"`
+	TwinID                string     `gorm:"column:twin_id;index"`
+	CreatedAt             time.Time  `gorm:"column:created_at;autoCreateTime"`
+	UpdatedAt             time.Time  `gorm:"column:updated_at;autoUpdateTime"`
 }
 
 func (ObjectiveModel) TableName() string { return "objectives" }
@@ -143,7 +144,15 @@ type ToolEventModel struct {
 	Success     bool      `gorm:"column:success;not null;default:false"`
 	Confidence  float64   `gorm:"column:confidence;not null;default:0.0"`
 	PayloadJSON string    `gorm:"column:payload_json"`
-	CreatedAt   time.Time `gorm:"column:created_at;autoCreateTime"`
+	// Audit fields (Phase 13). Kind distinguishes routine execution
+	// ("execute") from escalation events ("escalation") and approval
+	// resolutions ("approval"). Most operators only filter by kind +
+	// objective; the other audit columns surface for forensics.
+	Kind             string `gorm:"column:kind;not null;default:'execute';index"`
+	EscalationReason string `gorm:"column:escalation_reason;not null;default:''"`
+	Approver         string `gorm:"column:approver;not null;default:''"`
+	BoundsViolation  bool   `gorm:"column:bounds_violation;not null;default:false;index"`
+	CreatedAt        time.Time `gorm:"column:created_at;autoCreateTime;index"`
 }
 
 func (ToolEventModel) TableName() string { return "tool_events" }

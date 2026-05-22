@@ -5,15 +5,18 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/bsenel/karakuri/config"
 	"github.com/bsenel/karakuri/internal/api"
+	"github.com/bsenel/karakuri/internal/conformance"
 	"github.com/bsenel/karakuri/internal/core/capability"
 	"github.com/bsenel/karakuri/internal/core/domain"
 	"github.com/bsenel/karakuri/internal/core/environment"
 	"github.com/bsenel/karakuri/internal/core/event"
 	corememory "github.com/bsenel/karakuri/internal/core/memory"
 	objectivepkg "github.com/bsenel/karakuri/internal/core/objective"
+	featurememory "github.com/bsenel/karakuri/internal/feature/memory"
 	"github.com/bsenel/karakuri/internal/platform/db"
 	platmem "github.com/bsenel/karakuri/internal/platform/memory"
 	"github.com/bsenel/karakuri/internal/platform/git"
@@ -175,6 +178,7 @@ func BootstrapServer(cfgPath string) (*Bootstrap, error) {
 		enabledDomains[dc.ID] = dc
 	}
 	var allTemplates []objectivepkg.Template
+	var activePacks []domain.Pack
 	for _, pack := range allPacks {
 		dc, ok := enabledDomains[pack.ID()]
 		if !ok || !dc.Enabled {
@@ -193,6 +197,20 @@ func BootstrapServer(cfgPath string) (*Bootstrap, error) {
 			_ = envReg.Register(factory)
 		}
 		allTemplates = append(allTemplates, pack.ObjectiveTemplates()...)
+		activePacks = append(activePacks, pack)
+	}
+
+	// Cross-pack capability/environment/agent collision audit (Phase 13).
+	// Cross-domain objectives recruit from multiple packs in one loop; a
+	// shared ID across packs would make agent/env resolution ambiguous.
+	// Logged as WARN — operators may intentionally re-export an ID — but
+	// surfaced loudly so it can't go unnoticed.
+	if len(activePacks) >= 2 {
+		for _, res := range conformance.CheckCrossPackCollisions(activePacks...) {
+			if !res.Passed {
+				slog.Warn("cross-pack conformance check failed", "check", res.Check, "msg", res.Message)
+			}
+		}
 	}
 
 	// Pick semantic backend per config. Only pgvector requires a non-default
@@ -225,7 +243,69 @@ func BootstrapServer(cfgPath string) (*Bootstrap, error) {
 		slog.Warn("loop resume failed at startup", "err", err)
 	}
 
+	// Memory retention scheduler (Phase 13). Off by default; enable in config
+	// once the operator has measured growth and decided on per-tier TTLs.
+	if cfg.Memory.Retention.Enabled {
+		startRetentionLoop(ctx, apiApp.Memory, cfg.Memory.Retention)
+	}
+
 	return &Bootstrap{Config: cfg, App: apiApp, Store: store, Worktrees: wt}, nil
+}
+
+// startRetentionLoop launches a background goroutine that periodically calls
+// MemoryService.RunRetention with the per-tier policies derived from config.
+// The goroutine exits when ctx is cancelled (process shutdown).
+func startRetentionLoop(ctx context.Context, memSvc *featurememory.Service, rc config.MemoryRetentionConfig) {
+	interval := time.Duration(rc.IntervalMinutes) * time.Minute
+	if interval <= 0 {
+		interval = time.Hour
+	}
+	slog.Info("memory retention scheduler enabled",
+		"interval_minutes", int(interval.Minutes()),
+		"working_ttl_minutes", rc.WorkingTTLMinutes,
+		"episodic_ttl_days", rc.EpisodicTTLDays,
+		"semantic_ttl_days", rc.SemanticTTLDays,
+		"semantic_min_score", rc.SemanticMinScore,
+	)
+	go func() {
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				set := buildRetentionSet(rc)
+				if err := memSvc.RunRetention(ctx, set); err != nil {
+					slog.Warn("memory retention sweep failed", "err", err)
+				}
+			}
+		}
+	}()
+}
+
+// buildRetentionSet translates the static config into a per-tier policy at
+// the moment of each sweep. Building it fresh on every tick is intentional —
+// the "before" cutoffs must advance with wall time, not stay frozen at boot.
+func buildRetentionSet(rc config.MemoryRetentionConfig) featurememory.RetentionPolicySet {
+	now := time.Now().UTC()
+	var set featurememory.RetentionPolicySet
+	if rc.WorkingTTLMinutes > 0 {
+		before := now.Add(-time.Duration(rc.WorkingTTLMinutes) * time.Minute)
+		set.Working.Before = &before
+	}
+	if rc.EpisodicTTLDays > 0 {
+		before := now.AddDate(0, 0, -rc.EpisodicTTLDays)
+		set.Episodic.Before = &before
+	}
+	if rc.SemanticTTLDays > 0 {
+		before := now.AddDate(0, 0, -rc.SemanticTTLDays)
+		set.Semantic.Before = &before
+	}
+	if rc.SemanticMinScore > 0 {
+		set.Semantic.MinScore = rc.SemanticMinScore
+	}
+	return set
 }
 
 func ConfigPath() string {

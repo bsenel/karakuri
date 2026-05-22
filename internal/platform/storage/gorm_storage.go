@@ -152,6 +152,7 @@ func twinFromModel(m schema.TwinModel) twin.DigitalTwin {
 func (s *GORMStorage) SaveObjective(ctx context.Context, o objective.Objective) error {
 	critJ, _ := json.Marshal(o.SuccessCriteria)
 	constrJ, _ := json.Marshal(o.Constraints)
+	addJ, _ := json.Marshal(o.AdditionalDomains)
 	var parentID *string
 	if o.ParentID != nil {
 		pid := string(*o.ParentID)
@@ -159,7 +160,8 @@ func (s *GORMStorage) SaveObjective(ctx context.Context, o objective.Objective) 
 	}
 	return s.db.WithContext(ctx).Save(&schema.ObjectiveModel{
 		ID: string(o.ID), Title: o.Title, Description: o.Description, Domain: o.Domain,
-		TwinID: o.TwinID, Priority: o.Priority, MaxIterations: o.MaxIterations, Deadline: o.Deadline,
+		AdditionalDomainsJSON: string(addJ),
+		TwinID:                o.TwinID, Priority: o.Priority, MaxIterations: o.MaxIterations, Deadline: o.Deadline,
 		CriteriaJSON: string(critJ), ConstraintsJSON: string(constrJ), ParentID: parentID,
 		Status: string(o.Status),
 	}).Error
@@ -200,8 +202,12 @@ func (s *GORMStorage) UpdateObjectiveStatus(ctx context.Context, id objective.Ob
 func objectiveFromModel(m schema.ObjectiveModel) objective.Objective {
 	var criteria []objective.Criterion
 	var constraints []objective.Constraint
+	var additionalDomains []string
 	_ = json.Unmarshal([]byte(m.CriteriaJSON), &criteria)
 	_ = json.Unmarshal([]byte(m.ConstraintsJSON), &constraints)
+	if m.AdditionalDomainsJSON != "" {
+		_ = json.Unmarshal([]byte(m.AdditionalDomainsJSON), &additionalDomains)
+	}
 	var parentID *objective.ObjectiveID
 	if m.ParentID != nil {
 		pid := objective.ObjectiveID(*m.ParentID)
@@ -209,9 +215,10 @@ func objectiveFromModel(m schema.ObjectiveModel) objective.Objective {
 	}
 	return objective.Objective{
 		ID: objective.ObjectiveID(m.ID), Title: m.Title, Description: m.Description,
-		Domain: m.Domain, TwinID: m.TwinID, Priority: m.Priority, MaxIterations: m.MaxIterations, Deadline: m.Deadline,
+		Domain: m.Domain, AdditionalDomains: additionalDomains,
+		TwinID: m.TwinID, Priority: m.Priority, MaxIterations: m.MaxIterations, Deadline: m.Deadline,
 		SuccessCriteria: criteria, Constraints: constraints, ParentID: parentID,
-		Status: objective.ObjectiveStatus(m.Status),
+		Status:    objective.ObjectiveStatus(m.Status),
 		CreatedAt: m.CreatedAt, UpdatedAt: m.UpdatedAt,
 	}
 }
@@ -464,10 +471,54 @@ func (s *GORMStorage) DeleteWorktree(ctx context.Context, taskID string) error {
 // ── Tool events ───────────────────────────────────────────────────────────
 
 func (s *GORMStorage) SaveToolEvent(ctx context.Context, e ToolEvent) error {
+	kind := e.Kind
+	if kind == "" {
+		kind = ToolEventExecute
+	}
 	return s.db.WithContext(ctx).Save(&schema.ToolEventModel{
 		ID: e.ID, ObjectiveID: e.ObjectiveID, AgentID: e.AgentID, Capability: e.Capability,
 		Adapter: e.Adapter, Success: e.Success, Confidence: e.Confidence, PayloadJSON: e.PayloadJSON,
+		Kind:             kind,
+		EscalationReason: e.EscalationReason,
+		Approver:         e.Approver,
+		BoundsViolation:  e.BoundsViolation,
 	}).Error
+}
+
+func (s *GORMStorage) ListToolEvents(ctx context.Context, f ToolEventFilter) ([]ToolEvent, error) {
+	q := s.db.WithContext(ctx).Order("created_at DESC")
+	if f.ObjectiveID != "" {
+		q = q.Where("objective_id = ?", f.ObjectiveID)
+	}
+	if f.AgentID != "" {
+		q = q.Where("agent_id = ?", f.AgentID)
+	}
+	if f.Kind != "" {
+		q = q.Where("kind = ?", f.Kind)
+	}
+	if f.BoundsViolation != nil {
+		q = q.Where("bounds_violation = ?", *f.BoundsViolation)
+	}
+	if f.CreatedAtSince != nil {
+		q = q.Where("created_at >= ?", *f.CreatedAtSince)
+	}
+	if f.Limit > 0 {
+		q = q.Limit(f.Limit)
+	}
+	var models []schema.ToolEventModel
+	if err := q.Find(&models).Error; err != nil {
+		return nil, err
+	}
+	out := make([]ToolEvent, len(models))
+	for i, m := range models {
+		out[i] = ToolEvent{
+			ID: m.ID, ObjectiveID: m.ObjectiveID, AgentID: m.AgentID, Capability: m.Capability,
+			Adapter: m.Adapter, Success: m.Success, Confidence: m.Confidence, PayloadJSON: m.PayloadJSON,
+			Kind: m.Kind, EscalationReason: m.EscalationReason, Approver: m.Approver,
+			BoundsViolation: m.BoundsViolation, CreatedAt: m.CreatedAt,
+		}
+	}
+	return out, nil
 }
 
 // ── Loop state (Phase 11) ─────────────────────────────────────────────────

@@ -54,12 +54,23 @@ func stepVerify(ctx context.Context, sc *stepContext, results []environment.Acti
 	metWeight := 0.0
 	metCount := 0
 
+	// Per-domain weighted score tracking for cross-domain objectives. A
+	// criterion's Domain field opts it into a sub-bucket; criteria without
+	// a domain only count toward the aggregate. The aggregate is still the
+	// authoritative gate for completion — sub-scores are emitted for
+	// observers (checkpoints, dashboards, learn step).
+	domainTotal := make(map[string]float64)
+	domainMet := make(map[string]float64)
+
 	for i, criterion := range criteria {
 		weight := criterion.Weight
 		if weight == 0 {
 			weight = 1.0
 		}
 		totalWeight += weight
+		if criterion.Domain != "" {
+			domainTotal[criterion.Domain] += weight
+		}
 
 		met := false
 		verifier := string(criterion.Verifier)
@@ -84,6 +95,9 @@ func stepVerify(ctx context.Context, sc *stepContext, results []environment.Acti
 		if met {
 			metWeight += weight
 			metCount++
+			if criterion.Domain != "" {
+				domainMet[criterion.Domain] += weight
+			}
 		}
 	}
 
@@ -95,15 +109,25 @@ func stepVerify(ctx context.Context, sc *stepContext, results []environment.Acti
 	allMet := metCount == len(criteria)
 
 	// 4. Emit step completed
+	payload := map[string]any{
+		"step":               string(loop.StepVerify),
+		"criteria_met_count": metCount,
+		"weighted_score":     score,
+	}
+	if len(domainTotal) > 0 {
+		perDomain := make(map[string]float64, len(domainTotal))
+		for d, total := range domainTotal {
+			if total > 0 {
+				perDomain[d] = domainMet[d] / total
+			}
+		}
+		payload["per_domain_score"] = perDomain
+	}
 	sc.svc.hub.Publish(ctx, event.Event{
 		Type:        event.TypeLoopStepCompleted,
 		ObjectiveID: string(sc.obj.ID),
-		Payload: map[string]any{
-			"step":               string(loop.StepVerify),
-			"criteria_met_count": metCount,
-			"weighted_score":     score,
-		},
-		Timestamp: time.Now().UTC(),
+		Payload:     payload,
+		Timestamp:   time.Now().UTC(),
 	})
 
 	return score, allMet
