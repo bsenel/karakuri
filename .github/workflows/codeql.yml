@@ -1,0 +1,59 @@
+name: CodeQL
+
+# Static analysis for Go (server + CLI) and JavaScript/TypeScript (web/).
+# Findings appear under the repo's Security tab. The workflow runs on PRs +
+# pushes to main and on a weekly schedule so unchanged code is re-scanned
+# against newly-published rules.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: "0 9 * * 1"
+
+permissions:
+  contents: read
+  security-events: write
+  actions: read
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [go, javascript]
+    steps:
+      - uses: actions/checkout@v4
+
+      # The Go binary embeds web/dist via //go:embed, so the Go CodeQL build
+      # needs the frontend output. We do the npm build inline rather than
+      # depending on the CI workflow's artifact — CodeQL runs on a separate
+      # workflow so it can re-analyze on schedule without a fresh CI run.
+      - if: matrix.language == 'go'
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - if: matrix.language == 'go'
+        run: npm install --no-audit --no-fund && npm run build
+        working-directory: web
+
+      - uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+          queries: security-and-quality
+
+      - if: matrix.language == 'go'
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.x"
+          cache: true
+      - if: matrix.language == 'go'
+        run: go build ./...
+
+      - uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:${{ matrix.language }}"
