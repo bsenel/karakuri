@@ -2,6 +2,7 @@ package config
 
 import (
 	"os"
+	"os/exec"
 	"strconv"
 	"strings"
 
@@ -152,9 +153,32 @@ func Load(path string) (*Config, error) {
 		return nil, err
 	}
 	setDefaults(&cfg)
+	ensureGitHubToken()
 	resolveEnvRefs(&cfg)
 	overrideFromEnv(&cfg)
 	return &cfg, nil
+}
+
+// ensureGitHubToken populates GITHUB_TOKEN from `gh auth token` when the
+// env var is unset and the `gh` CLI is installed and authenticated. Runs
+// before resolveEnvRefs so YAML `token_env: GITHUB_TOKEN` references pick
+// up the value naturally. A failure (gh missing, not logged in, etc.) is
+// a no-op — the github tool adapter will surface the missing token at
+// startup the same way it does today.
+func ensureGitHubToken() {
+	if os.Getenv("GITHUB_TOKEN") != "" {
+		return
+	}
+	cmd := exec.Command("gh", "auth", "token")
+	out, err := cmd.Output()
+	if err != nil {
+		return
+	}
+	tok := strings.TrimSpace(string(out))
+	if tok == "" {
+		return
+	}
+	_ = os.Setenv("GITHUB_TOKEN", tok)
 }
 
 // overrideFromEnv lets Helm/Compose flip core settings without rewriting the

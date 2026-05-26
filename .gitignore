@@ -24,8 +24,12 @@ profile.cov
 go.work
 go.work.sum
 
-# env file
+# env files — covers .env, .env.local, .env.production, .envrc, etc.
+# .env.example stays tracked so contributors see the expected keys.
 .env
+.env.*
+.envrc
+!.env.example
 
 # Karakuri runtime artifacts
 bin/
