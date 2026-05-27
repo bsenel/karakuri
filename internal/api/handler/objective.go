@@ -20,6 +20,7 @@ func (h *ObjectiveHandler) Create(w http.ResponseWriter, r *http.Request) {
 		Domain            string   `json:"domain"`
 		AdditionalDomains []string `json:"additional_domains"`
 		Priority          int      `json:"priority"`
+		MaxIterations     int      `json:"max_iterations"`
 		TwinID            string   `json:"twin_id"`
 		TemplateID        string   `json:"template_id"`
 	}
@@ -33,6 +34,7 @@ func (h *ObjectiveHandler) Create(w http.ResponseWriter, r *http.Request) {
 		Domain:            req.Domain,
 		AdditionalDomains: req.AdditionalDomains,
 		Priority:          req.Priority,
+		MaxIterations:     req.MaxIterations,
 		TwinID:            req.TwinID,
 		TemplateID:        req.TemplateID,
 	})

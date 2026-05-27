@@ -53,7 +53,7 @@ func checkpointGetCmd() *cobra.Command {
 }
 
 func checkpointResolveCmd() *cobra.Command {
-	var decision string
+	var decision, note, approver string
 	cmd := &cobra.Command{
 		Use:   "resolve <id>",
 		Short: "Resolve a checkpoint with a decision",
@@ -61,6 +61,8 @@ func checkpointResolveCmd() *cobra.Command {
 		RunE: func(_ *cobra.Command, args []string) error {
 			data, _, err := api.Post("/checkpoints/"+args[0]+"/resolve", map[string]string{
 				"decision": decision,
+				"note":     note,
+				"approver": approver,
 			})
 			if err != nil {
 				return err
@@ -70,6 +72,8 @@ func checkpointResolveCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&decision, "decision", "", "Decision choice (required)")
+	cmd.Flags().StringVar(&note, "note", "", "Free-form rationale stored on the audit row")
+	cmd.Flags().StringVar(&approver, "approver", "", "Identifier of the operator approving/rejecting (audit attribution)")
 	_ = cmd.MarkFlagRequired("decision")
 	return cmd
 }

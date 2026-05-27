@@ -16,14 +16,16 @@ func objectiveCmd() *cobra.Command {
 
 func objectiveCreateCmd() *cobra.Command {
 	var title, description, domain, twinID, templateID string
-	var priority int
+	var priority, maxIter int
 	cmd := &cobra.Command{
 		Use:   "create",
 		Short: "Create an objective",
 		RunE: func(_ *cobra.Command, _ []string) error {
 			data, _, err := api.Post("/objectives", map[string]any{
 				"title": title, "description": description, "domain": domain,
-				"twin_id": twinID, "template_id": templateID, "priority": priority,
+				"twin_id": twinID, "template_id": templateID,
+				"priority":       priority,
+				"max_iterations": maxIter,
 			})
 			if err != nil {
 				return err
@@ -38,6 +40,7 @@ func objectiveCreateCmd() *cobra.Command {
 	cmd.Flags().StringVar(&twinID, "twin", "", "Twin ID")
 	cmd.Flags().StringVar(&templateID, "template", "", "Template ID (e.g. software.objective.delivery)")
 	cmd.Flags().IntVar(&priority, "priority", 0, "Priority (0=low, higher=more urgent)")
+	cmd.Flags().IntVar(&maxIter, "max-iter", 0, "Max loop iterations baked into the objective (0 = use the loop-start default)")
 	_ = cmd.MarkFlagRequired("title")
 	return cmd
 }
