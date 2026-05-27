@@ -8,7 +8,11 @@ An autonomous decision-making platform built on four primitives: **Capabilities*
 # Build
 make build
 
-# Start the server (requires ANTHROPIC_API_KEY)
+# Start the server.
+# Auth: set ANTHROPIC_API_KEY (or GOOGLE_API_KEY for Gemini). If unset and
+# the matching CLI (`claude` / `gemini`) is installed and authenticated,
+# Karakuri routes through the CLI as a transparent fallback — operators
+# with `claude /login` already done can skip the env var entirely.
 ./bin/server
 
 # Create a twin and objective, then run the loop
