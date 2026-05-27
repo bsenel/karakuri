@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	coreagent "github.com/bsenel/karakuri/internal/core/agent"
@@ -48,7 +49,8 @@ func stepReason(ctx context.Context, sc *stepContext, ws loop.WorldState) plan {
 		Memory:     memEntries,
 		Task: "Plan the next actions to make progress on this objective. " +
 			"Return a JSON object with 'actions' (array of {capability, params, reason, env_id}), " +
-			"'confidence' (0.0-1.0), and 'reasoning' (string).",
+			"'confidence' (0.0-1.0), and 'reasoning' (string). " +
+			"Return raw JSON only — no Markdown code fences, no commentary before or after.",
 	}
 
 	// 3. Call agent
@@ -56,8 +58,11 @@ func stepReason(ctx context.Context, sc *stepContext, ws loop.WorldState) plan {
 
 	var p plan
 	if err == nil {
-		// 4. Try to parse output as JSON plan
-		if jsonErr := json.Unmarshal([]byte(output.Content), &p); jsonErr != nil {
+		// 4. Try to parse output as JSON plan. Tolerates Markdown code
+		// fences and leading/trailing prose — most chat models default to
+		// wrapping JSON in ```json … ``` even when asked not to.
+		cleaned := extractJSON(output.Content)
+		if jsonErr := json.Unmarshal([]byte(cleaned), &p); jsonErr != nil {
 			// Fallback: create default plan
 			p = plan{
 				Actions: []plannedAction{
@@ -170,7 +175,8 @@ func reflexionPass(ctx context.Context, sc *stepContext, draft plan) (plan, stri
 		return draft, critOut.Content, false
 	}
 	var revised plan
-	if jsonErr := json.Unmarshal([]byte(revOut.Content), &revised); jsonErr != nil {
+	cleanedRev := extractJSON(revOut.Content)
+	if jsonErr := json.Unmarshal([]byte(cleanedRev), &revised); jsonErr != nil {
 		return draft, critOut.Content, false
 	}
 	if len(revised.Actions) == 0 {
@@ -181,4 +187,50 @@ func reflexionPass(ctx context.Context, sc *stepContext, draft plan) (plan, stri
 		revised.Confidence = revOut.Confidence
 	}
 	return revised, critOut.Content, true
+}
+
+// extractJSON returns the JSON payload from agent output, tolerating
+// Markdown code fences and surrounding prose. Two stages:
+//
+//  1. If the content starts with a Markdown fence (```json … ``` or
+//     ``` … ```), strip the opening fence + language tag and the
+//     closing fence.
+//  2. If the remaining content has prose around a JSON object/array,
+//     find the first { or [ and the matching last } or ] and return
+//     just that substring.
+//
+// Returns the original (trimmed) input when neither pattern matches, so
+// downstream json.Unmarshal can still produce a meaningful parse error
+// that surfaces to the fallback path.
+func extractJSON(s string) string {
+	s = strings.TrimSpace(s)
+	if strings.HasPrefix(s, "```") {
+		rest := strings.TrimPrefix(s, "```")
+		// Drop the optional language tag — either everything up to the
+		// first newline (``` json\n{…}\n``` style) or, when the entire
+		// fence is on one line, a leading "json" / "JSON" token.
+		if nl := strings.IndexByte(rest, '\n'); nl >= 0 {
+			rest = rest[nl+1:]
+		} else {
+			rest = strings.TrimPrefix(rest, "json")
+			rest = strings.TrimPrefix(rest, "JSON")
+		}
+		if end := strings.LastIndex(rest, "```"); end >= 0 {
+			rest = rest[:end]
+		}
+		s = strings.TrimSpace(rest)
+	}
+	// Fallback: scan for the first { or [ and its matching closing brace
+	// in case the model wrapped JSON in prose without a fence.
+	if i := strings.IndexAny(s, "{["); i > 0 {
+		open := s[i]
+		close := byte('}')
+		if open == '[' {
+			close = ']'
+		}
+		if j := strings.LastIndexByte(s, close); j > i {
+			return s[i : j+1]
+		}
+	}
+	return s
 }
