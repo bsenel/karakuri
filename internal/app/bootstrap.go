@@ -61,7 +61,14 @@ func BootstrapServer(cfgPath string) (*Bootstrap, error) {
 		return nil, err
 	}
 	providers.Register(claude)
-	providers.Register(llm.NewGeminiProvider())
+	if claude.UsingCLIFallback() {
+		slog.Info("llm provider using CLI fallback", "provider", "claude", "reason", "ANTHROPIC_API_KEY unset; routing through `claude` CLI")
+	}
+	gemini := llm.NewGeminiProvider()
+	providers.Register(gemini)
+	if gemini.UsingCLIFallback() {
+		slog.Info("llm provider using CLI fallback", "provider", "gemini", "reason", "GOOGLE_API_KEY/GOOGLE_AI_API_KEY unset; routing through `gemini` CLI")
+	}
 	providers.Register(llm.NewCursorProvider())
 	providers.Register(llm.NewCopilotProvider())
 
