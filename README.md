@@ -104,20 +104,24 @@ krk twin list
 krk twin get <id>
 
 # Objectives
-krk objective create --twin <id> --title <title> --domain <id> [--max-iter N]
-krk objective list [--twin <id>]
+krk objective create --twin <id> --title <title> --domain <id> \
+                     [--description <text>] [--max-iter N] [--priority N] \
+                     [--template <id>]
+krk objective list [--twin <id>] [--status <pending|active|completed|failed>]
 krk objective get <id>
-krk objective status <id> <status>
 
-# Loop
+# Loop (start returns JSON `{"loop_id":"..."}` with --output json; jq
+# selector is `.loop_id`, not `.id`)
 krk loop start <objective-id> --twin <id> [--max-iter N] [--watch]
 krk loop status <loop-id>
-krk loop resume <loop-id> --decision <approve|reject|modify>
+krk loop resume <loop-id> --decision <approve|reject|modify> \
+                          [--note <text>] [--approver <id>]
 
-# Checkpoints
-krk checkpoint list
+# Checkpoints — --note + --approver populate the Phase 13 audit row
+krk checkpoint list [--twin <id>]
 krk checkpoint get <id>
-krk checkpoint resolve <id> --decision <approve|reject|modify>
+krk checkpoint resolve <id> --decision <approve|reject|modify> \
+                            [--note <text>] [--approver <id>]
 
 # Memory
 krk memory store --agent <id> --tier episodic --content "..."

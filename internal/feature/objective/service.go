@@ -17,6 +17,7 @@ type CreateRequest struct {
 	Domain            string
 	AdditionalDomains []string
 	Priority          int
+	MaxIterations     int    // 0 = use server default at loop-start time
 	TwinID            string
 	TemplateID        string // optional; populates criteria/constraints if set
 }
@@ -39,7 +40,7 @@ func (s *Service) Create(ctx context.Context, req CreateRequest) (objective.Obje
 	o := objective.Objective{
 		ID: objective.ObjectiveID(id), Title: req.Title, Description: req.Description,
 		Domain: req.Domain, AdditionalDomains: req.AdditionalDomains,
-		TwinID: req.TwinID, Priority: req.Priority,
+		TwinID: req.TwinID, Priority: req.Priority, MaxIterations: req.MaxIterations,
 		Status:    objective.StatusPending,
 		CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC(),
 	}

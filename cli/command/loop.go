@@ -59,7 +59,7 @@ func loopStatusCmd() *cobra.Command {
 }
 
 func loopResumeCmd() *cobra.Command {
-	var decision string
+	var decision, note, approver string
 	cmd := &cobra.Command{
 		Use:   "resume <loop-id>",
 		Short: "Resume a paused loop with a checkpoint decision",
@@ -67,6 +67,8 @@ func loopResumeCmd() *cobra.Command {
 		RunE: func(_ *cobra.Command, args []string) error {
 			data, _, err := api.Post("/loops/"+args[0]+"/resume", map[string]string{
 				"decision": decision,
+				"note":     note,
+				"approver": approver,
 			})
 			if err != nil {
 				return err
@@ -76,6 +78,8 @@ func loopResumeCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&decision, "decision", "", "Decision choice (required)")
+	cmd.Flags().StringVar(&note, "note", "", "Free-form rationale stored on the audit row")
+	cmd.Flags().StringVar(&approver, "approver", "", "Identifier of the operator approving/rejecting (audit attribution)")
 	_ = cmd.MarkFlagRequired("decision")
 	return cmd
 }
