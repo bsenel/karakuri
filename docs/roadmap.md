@@ -682,6 +682,47 @@ helm install karakuri oci://ghcr.io/bsenel/charts/karakuri --version 0.1.0
 
 ---
 
+## Phase 13.5 — Actionable Checkpoints (Planned)
+
+**Goal:** Close a wired-but-non-functional path in the reasoning loop: today the runner accepts `approve | reject | modify` but only branches on the presence of a signal — `Decision.Choice` is never read, and `modify` behaves identically to `approve`. Phase 13.5 makes the human note a first-class loop input by (a) carrying the planner's draft on the checkpoint so reviewers see what they're approving, and (b) feeding modify-notes into a single Reflexion-style revise pass before the act step. Ships the first vertical slice of Phase 19's UI surface (`/checkpoints` modify dialog + `/audit` viewer) without depending on Phases 14–18.
+
+**Steps:**
+
+1. **Checkpoint payload extension** (`internal/core/checkpoint/checkpoint.go`, `internal/feature/checkpoint/service.go`). Populate the already-defined `Capability` and `Confidence` fields, add `Actions []capability.Action` and `AuditEventID string`. `Service.Create` grows the signature to take these from `decide.go` at escalation time. `Checkpoint.Decision` gains a structured `Modifications` field alongside the existing free-text `Note`:
+   ```go
+   type Modifications struct {
+       RemovedActions     []string `json:"removed_actions,omitempty"`     // capability IDs to drop
+       AddedConstraints   []string `json:"added_constraints,omitempty"`   // free-text guidance for revise pass
+       RevisedConfidence  *float64 `json:"revised_confidence,omitempty"`  // operator-asserted floor
+   }
+   ```
+2. **Runner consumes the Decision** (`internal/feature/loop/runner.go`). After `<-state.decisionCh`, switch on `decision.Choice`:
+   - `approve` → fall through unchanged (current behavior).
+   - `reject` → emit a `kind=rejection` audit row, finalize the loop with `Status=stopped, Reason=rejected_at_checkpoint`. No silent re-loop.
+   - `modify` → drop any actions in `Modifications.RemovedActions`, then call a new `stepReasonRevise(ctx, sc, draft, decision)` that runs one Reflexion revise pass using the note + constraints as the critique input. Falls back to the trimmed draft if the revise output is unparseable or empty — same never-regress guarantee as Phase 13 Reflexion. The revised plan goes through `stepDecide` *once more* — a modify may itself need re-approval if it raises the action count above bounds. Hard-cap re-approvals at one to prevent ping-pong; second escalation auto-rejects with `Reason=modify_loop_exceeded`.
+3. **CLI surface** (`cli/command/checkpoint.go`, `cli/command/loop.go`). Existing `--note` stays. Add `--remove-action <capability-id>` (repeatable), `--constraint <text>` (repeatable), `--revised-confidence <float>` to populate `Modifications` from the shell:
+   ```bash
+   krk checkpoint resolve <id> --decision modify --approver bsenel \
+     --remove-action code.write \
+     --constraint "scaffold the go.mod and CI workflow only this iteration" \
+     --revised-confidence 0.75
+   ```
+4. **API + audit wiring** (`internal/api/handler/checkpoint.go`, `internal/feature/loop/decide.go`). `POST /api/v1/checkpoints/{id}/resolve` accepts the new `modifications` block. `decide.go` adds the planner draft + checkpoint ID to the existing `kind=escalation` audit payload (already partially there — confirm and tighten). `checkpoint.Service.Resolve` writes a `kind=modification` audit row when `Choice == modify`, capturing the structured diff so the audit log shows *what changed*, not just *that something changed*.
+5. **Frontend — `/checkpoints` modify dialog** (`web/src/pages/CheckpointsPage.tsx`, new `web/src/components/ModifyCheckpointDialog.tsx`). The pending-checkpoint card grows: planner-draft section (capability, confidence vs threshold, action list with per-action drop checkboxes) plus a Modify button that opens the dialog. Dialog submits the structured `Modifications` to the resolve endpoint. Approve/Reject remain one-click.
+6. **Frontend — `/audit` page** (new `web/src/pages/AuditPage.tsx`, new route in `App.tsx`, nav entry in `Layout.tsx`). List view with the same filters as `krk audit` (`objective`, `agent`, `kind`, `bounds-violation`, `since`). Row click expands the payload JSON inline. Bounds-violation rows link to their checkpoint; modification rows link to the resolved checkpoint they amended. No new endpoint required — reuses Phase 13's `GET /api/v1/audit`.
+7. **Tests.** Go: runner test covers all three decision branches with a stubbed agent; revise-fallback paths (empty critique, unparseable revision, empty actions) mirror the Phase 13 Reflexion test matrix; modify-loop-exceeded guard verified with a deliberately-broken modification that re-escalates. Frontend: Vitest unit test for the dialog's structured-payload assembly; Playwright e2e for the full `escalate → modify → resume → act` flow against a stubbed loop service.
+
+**Acceptance:**
+
+- A loop that escalates with `confidence 0.84 below threshold 0.90` (the case observed during dogfooding on 2026-06-09) can be resolved with `--decision modify --remove-action code.write --constraint "scaffold only"` and the next act step executes a plan that omits `code.write` and respects the constraint in the revise pass.
+- Rejecting a checkpoint terminates the loop with `Status=stopped, Reason=rejected_at_checkpoint`; no further iterations, no orphaned goroutines.
+- `GET /api/v1/checkpoints/{id}` returns a payload containing `capability`, `confidence`, `actions`, and `audit_event_id` — a reviewer can decide without leaving the response.
+- `/audit` page renders ≥3 distinct kinds (`escalation`, `approval`, `modification`) with working filters; a modification row's payload diff (`removed_actions`, `added_constraints`, `revised_confidence`) is visible inline.
+- Re-approval ping-pong is impossible: a contrived modification that re-trips bounds auto-rejects on the second escalation; verified by test.
+- Phase 19's audit + checkpoint UX bullets are partially retired by this slice — the remaining Phase 19 work narrows to auth/quota/cost surfaces.
+
+---
+
 ## Phase 14 — RBAC + Fine-Grained Authorization (Planned)
 
 **Goal:** Replace Karakuri's single bearer token with role-based access control, shipped as a standalone Go module (`github.com/bsenel/karakuri/auth`) reusable by any `net/http` or `chi` server without dragging in Karakuri itself.
