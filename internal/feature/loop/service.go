@@ -216,11 +216,14 @@ func (s *serviceImpl) persistState(ctx context.Context, state *loopState, comple
 
 // ResumeStoredLoops re-launches background goroutines for every non-completed
 // loop state in storage. Invoked by bootstrap on server start; idempotent on a
-// freshly-started server because no goroutines exist yet. Paused loops are
-// re-registered in the in-memory map and stay waiting for a Resume() call;
-// active loops are re-launched and replay observe → reason → decide from the
-// next iteration (mid-iteration progress is lost, but iteration boundaries
-// are durable).
+// freshly-started server because no goroutines exist yet. Both paused and
+// active loops get fresh goroutines — the runner replays observe → reason →
+// decide from iteration 0 of the current step, which for a paused loop means
+// it will re-escalate to a new checkpoint and then sit on <-decisionCh ready
+// to receive the operator's resume. Without this, a server restart leaves
+// every paused loop permanently dead: Resume() pushes into the channel
+// buffer but no goroutine reads it (pre-Phase-11 bug surfaced during the
+// Phase 13.5 dogfood).
 func (s *serviceImpl) ResumeStoredLoops(ctx context.Context) error {
 	states, err := s.store.ListActiveLoopStates(ctx)
 	if err != nil {
@@ -253,9 +256,7 @@ func (s *serviceImpl) ResumeStoredLoops(ctx context.Context) error {
 		s.states[st.LoopID] = ls
 		s.mu.Unlock()
 
-		if !st.Paused {
-			go s.runLoop(context.Background(), st.LoopID, req)
-		}
+		go s.runLoop(context.Background(), st.LoopID, req)
 	}
 	return nil
 }
