@@ -10,6 +10,7 @@ export function Layout() {
         <NavLink to="/twins"       className={({ isActive }) => (isActive ? 'active' : '')}>Twins</NavLink>
         <NavLink to="/objectives"  className={({ isActive }) => (isActive ? 'active' : '')}>Objectives</NavLink>
         <NavLink to="/checkpoints" className={({ isActive }) => (isActive ? 'active' : '')}>Checkpoints</NavLink>
+        <NavLink to="/audit"       className={({ isActive }) => (isActive ? 'active' : '')}>Audit</NavLink>
         <NavLink to="/memory"      className={({ isActive }) => (isActive ? 'active' : '')}>Memory</NavLink>
         <NavLink to="/artifacts"   className={({ isActive }) => (isActive ? 'active' : '')}>Artifacts</NavLink>
         <NavLink to="/health"      className={({ isActive }) => (isActive ? 'active' : '')}>Health</NavLink>

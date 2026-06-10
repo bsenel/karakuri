@@ -8,6 +8,7 @@ import (
 	"time"
 
 	coreagent "github.com/bsenel/karakuri/internal/core/agent"
+	corecheckpoint "github.com/bsenel/karakuri/internal/core/checkpoint"
 	"github.com/bsenel/karakuri/internal/core/event"
 	"github.com/bsenel/karakuri/internal/core/loop"
 )
@@ -187,6 +188,112 @@ func reflexionPass(ctx context.Context, sc *stepContext, draft plan) (plan, stri
 		revised.Confidence = revOut.Confidence
 	}
 	return revised, critOut.Content, true
+}
+
+// stepReasonRevise runs a single Reflexion-style revise pass driven by an
+// operator's modify decision (Phase 13.5). The note + AddedConstraints
+// become the critique input — semantically identical to the agent's own
+// self-critique in reflexionPass, but human-authored.
+//
+// Inputs:
+//
+//	draft — the plan the operator was shown, AFTER any RemovedActions
+//	        have been trimmed by the caller.
+//	dec   — the operator decision; must have Choice == "modify".
+//
+// The function:
+//
+//  1. Skips entirely if there's nothing to feed the agent (no note + no
+//     constraints) — returns the trimmed draft unchanged.
+//  2. Calls the agent with the critique prompt, asking for the same
+//     {actions, confidence, reasoning} shape.
+//  3. Falls back to the trimmed draft if the agent errors, returns
+//     unparseable JSON, or returns zero actions. Never-regress: a modify
+//     pass can only improve the plan, never replace it with something
+//     worse than what the operator already saw.
+//  4. Honors Modifications.RevisedConfidence as a floor — if the revise
+//     pass returns a lower number, it's clamped up to the operator's
+//     asserted minimum.
+//
+// The returned bool indicates whether the revision was actually applied
+// (true) or the draft was kept (false); the caller uses this to emit the
+// right telemetry on the step_completed event.
+func stepReasonRevise(ctx context.Context, sc *stepContext, draft plan, dec corecheckpoint.Decision) (plan, bool) {
+	if dec.Choice != "modify" {
+		return draft, false
+	}
+	mods := dec.Modifications
+	hasNote := strings.TrimSpace(dec.Note) != ""
+	hasConstraints := mods != nil && len(mods.AddedConstraints) > 0
+	if !hasNote && !hasConstraints {
+		// Nothing to feed the agent. The caller has already trimmed
+		// RemovedActions; emit the trimmed draft unchanged.
+		return applyConfidenceFloor(draft, mods), false
+	}
+
+	draftJSON, _ := json.Marshal(draft)
+
+	var critique strings.Builder
+	if hasNote {
+		critique.WriteString(strings.TrimSpace(dec.Note))
+	}
+	if hasConstraints {
+		if critique.Len() > 0 {
+			critique.WriteString("\n\n")
+		}
+		critique.WriteString("Additional constraints:")
+		for _, c := range mods.AddedConstraints {
+			critique.WriteString("\n- ")
+			critique.WriteString(strings.TrimSpace(c))
+		}
+	}
+
+	reviseTask := fmt.Sprintf(
+		"You produced this draft plan for the objective %q:\n\n%s\n\n"+
+			"The operator reviewed it and provided this feedback:\n\n%s\n\n"+
+			"Produce a revised plan in the same JSON shape "+
+			"({actions, confidence, reasoning}). Honor the feedback "+
+			"literally — drop or replace actions the operator flagged, "+
+			"respect every stated constraint. Keep what works.",
+		sc.obj.Title, string(draftJSON), critique.String(),
+	)
+	revOut, err := sc.agent.Run(ctx, coreagent.Input{
+		Objective:  sc.obj,
+		WorldState: nil,
+		Memory:     nil,
+		Task:       reviseTask,
+	})
+	if err != nil {
+		return applyConfidenceFloor(draft, mods), false
+	}
+	var revised plan
+	cleaned := extractJSON(revOut.Content)
+	if jsonErr := json.Unmarshal([]byte(cleaned), &revised); jsonErr != nil {
+		return applyConfidenceFloor(draft, mods), false
+	}
+	if len(revised.Actions) == 0 {
+		return applyConfidenceFloor(draft, mods), false
+	}
+	if revised.Confidence == 0 {
+		revised.Confidence = revOut.Confidence
+	}
+	revised = applyConfidenceFloor(revised, mods)
+	return revised, true
+}
+
+// applyConfidenceFloor clamps the plan's confidence up to the operator's
+// RevisedConfidence assertion when one is set. Used by both the
+// successful-revise and fallback paths so the floor is honored even when
+// the revise pass falls back to the draft.
+func applyConfidenceFloor(p plan, mods *corecheckpoint.Modifications) plan {
+	if mods == nil || mods.RevisedConfidence == nil {
+		return p
+	}
+	floor := *mods.RevisedConfidence
+	if p.Confidence < floor {
+		p.Confidence = floor
+	}
+	return p
 }
 
 // extractJSON returns the JSON payload from agent output, tolerating

@@ -96,14 +96,20 @@ type MemorySemanticModel struct {
 func (MemorySemanticModel) TableName() string { return "memory_semantic" }
 
 type CheckpointModel struct {
-	ID           string     `gorm:"primaryKey;column:id"`
-	ObjectiveID  string     `gorm:"column:objective_id;not null;index"`
-	TwinID       string     `gorm:"column:twin_id;not null"`
-	Reason       string     `gorm:"column:reason;not null;default:''"`
-	Summary      string     `gorm:"column:summary;not null;default:''"`
-	OptionsJSON  string     `gorm:"column:options_json;not null;default:'[]'"`
-	Capability   string     `gorm:"column:capability;not null;default:''"`
-	Confidence   float64    `gorm:"column:confidence;not null;default:0.0"`
+	ID           string `gorm:"primaryKey;column:id"`
+	ObjectiveID  string `gorm:"column:objective_id;not null;index"`
+	TwinID       string `gorm:"column:twin_id;not null"`
+	Reason       string `gorm:"column:reason;not null;default:''"`
+	Summary      string `gorm:"column:summary;not null;default:''"`
+	OptionsJSON  string `gorm:"column:options_json;not null;default:'[]'"`
+	Capability   string `gorm:"column:capability;not null;default:''"`
+	Confidence   float64 `gorm:"column:confidence;not null;default:0.0"`
+	// ActionsJSON serializes the planner draft surfaced to reviewers
+	// (Phase 13.5). Empty array is the default for older rows.
+	ActionsJSON string `gorm:"column:actions_json;not null;default:'[]'"`
+	// AuditEventID links the checkpoint to its kind=escalation audit row
+	// (Phase 13.5). Empty when the audit write failed at escalation time.
+	AuditEventID string     `gorm:"column:audit_event_id;not null;default:''"`
 	Status       string     `gorm:"column:status;not null;default:'pending';index"`
 	DecisionJSON string     `gorm:"column:decision_json"`
 	CreatedAt    time.Time  `gorm:"column:created_at;autoCreateTime"`

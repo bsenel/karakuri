@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/bsenel/karakuri/internal/core/agent"
+	"github.com/bsenel/karakuri/internal/core/capability"
 	"github.com/bsenel/karakuri/internal/core/checkpoint"
 	coreerrors "github.com/bsenel/karakuri/internal/core/errors"
 	coreloop "github.com/bsenel/karakuri/internal/core/loop"
@@ -374,6 +375,7 @@ func (s *GORMStorage) QueryProcedural(ctx context.Context, agentID, capabilityID
 
 func (s *GORMStorage) SaveCheckpoint(ctx context.Context, c checkpoint.Checkpoint) error {
 	optsJ, _ := json.Marshal(c.Options)
+	actsJ, _ := json.Marshal(c.Actions)
 	var decJ string
 	if c.Decision != nil {
 		b, _ := json.Marshal(c.Decision)
@@ -382,8 +384,11 @@ func (s *GORMStorage) SaveCheckpoint(ctx context.Context, c checkpoint.Checkpoin
 	return s.db.WithContext(ctx).Save(&schema.CheckpointModel{
 		ID: c.ID, ObjectiveID: string(c.ObjectiveID), TwinID: c.TwinID,
 		Reason: c.Reason, Summary: c.Summary, OptionsJSON: string(optsJ),
-		Capability: string(c.Capability), Confidence: c.Confidence,
-		Status: string(c.Status), DecisionJSON: decJ, ResolvedAt: c.ResolvedAt,
+		Capability:   string(c.Capability),
+		Confidence:   c.Confidence,
+		ActionsJSON:  string(actsJ),
+		AuditEventID: c.AuditEventID,
+		Status:       string(c.Status), DecisionJSON: decJ, ResolvedAt: c.ResolvedAt,
 	}).Error
 }
 
@@ -422,6 +427,10 @@ func (s *GORMStorage) ListPendingCheckpoints(ctx context.Context, twinID string)
 func checkpointFromModel(m schema.CheckpointModel) checkpoint.Checkpoint {
 	var opts []string
 	_ = json.Unmarshal([]byte(m.OptionsJSON), &opts)
+	var acts []checkpoint.Action
+	if m.ActionsJSON != "" {
+		_ = json.Unmarshal([]byte(m.ActionsJSON), &acts)
+	}
 	var dec *checkpoint.Decision
 	if m.DecisionJSON != "" {
 		var d checkpoint.Decision
@@ -431,7 +440,11 @@ func checkpointFromModel(m schema.CheckpointModel) checkpoint.Checkpoint {
 	return checkpoint.Checkpoint{
 		ID: m.ID, ObjectiveID: objective.ObjectiveID(m.ObjectiveID), TwinID: m.TwinID,
 		Reason: m.Reason, Summary: m.Summary, Options: opts,
-		Status: checkpoint.Status(m.Status), Decision: dec,
+		Capability:   capability.CapabilityID(m.Capability),
+		Confidence:   m.Confidence,
+		Actions:      acts,
+		AuditEventID: m.AuditEventID,
+		Status:       checkpoint.Status(m.Status), Decision: dec,
 		CreatedAt: m.CreatedAt, ResolvedAt: m.ResolvedAt,
 	}
 }

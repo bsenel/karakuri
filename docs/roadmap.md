@@ -682,9 +682,50 @@ helm install karakuri oci://ghcr.io/bsenel/charts/karakuri --version 0.1.0
 
 ---
 
-## Phase 13.5 — Actionable Checkpoints (Planned)
+## Phase 13.5 — Actionable Checkpoints (Completed)
 
 **Goal:** Close a wired-but-non-functional path in the reasoning loop: today the runner accepts `approve | reject | modify` but only branches on the presence of a signal — `Decision.Choice` is never read, and `modify` behaves identically to `approve`. Phase 13.5 makes the human note a first-class loop input by (a) carrying the planner's draft on the checkpoint so reviewers see what they're approving, and (b) feeding modify-notes into a single Reflexion-style revise pass before the act step. Ships the first vertical slice of Phase 19's UI surface (`/checkpoints` modify dialog + `/audit` viewer) without depending on Phases 14–18.
+
+**What shipped:**
+
+- **Checkpoint payload** (`internal/core/checkpoint/checkpoint.go`). New `Action` type carries the planner draft. `Checkpoint` gains `Actions []Action` + `AuditEventID string`; the existing `Capability` and `Confidence` fields are now populated by the runner. `Decision` gains a structured `Modifications {RemovedActions, AddedConstraints, RevisedConfidence}` block alongside the free-text `Note`. Schema and `gorm_storage.go` round-trip both new columns; old rows decode cleanly because the JSON column defaults to `'[]'` and AuditEventID is a string with empty default.
+- **Service.Create signature** (`internal/feature/checkpoint/service.go`). Grew a `CreateOptions{Capability, Confidence, Actions, AuditEventID}` block — passed by the loop runner at escalation time so reviewers can decide without joining tables. Existing callers (watch mode) pass a zero-value struct.
+- **Audit-kind matrix** (`internal/platform/storage/adapter.go`, `internal/feature/checkpoint/service.go`). Two new `ToolEventKind` constants: `modification` and `rejection`. `Service.Resolve` now writes one of `{approval, modification, rejection}` based on `Decision.Choice`; the modification payload carries the structured diff (`removed_actions`, `added_constraints`, `revised_confidence`) plus the linked escalation audit ID so the audit log shows *what* changed, not just *that* something did. Wire-shape: JSON tags added to `storage.ToolEvent` so the `/api/v1/audit` response uses snake_case the React frontend can consume directly.
+- **Runner consumes Decision** (`internal/feature/loop/runner.go`). The runner now reads `decision.Choice` after `<-state.decisionCh`:
+  - `approve` → fall through to act with the (possibly revised) draft.
+  - `reject` → write a `kind=rejection` audit row tagged `escalation_reason="rejected_at_checkpoint"`, finalize the loop with `runErr=rejected_at_checkpoint`.
+  - `modify` → trim `RemovedActions` from the draft (`trimRemovedActions`), run a single revise pass (`stepReasonRevise`), re-enter `stepDecide`. If the revised plan trips bounds again, wait for one more decision; anything other than `approve` writes a `kind=rejection` row with `escalation_reason="modify_loop_exceeded"` and terminates. Hard-cap at one re-approval — no ping-pong possible.
+- **stepReasonRevise** (`internal/feature/loop/reason.go`). New function that runs a single Reflexion-style revise pass driven by the operator's note + `AddedConstraints` as critique input. Never-regress: returns the trimmed draft unchanged on agent error, unparseable JSON, or empty actions — same guarantee as the existing `reflexionPass`. Honors `RevisedConfidence` as a floor in both the success and fallback paths via a small `applyConfidenceFloor` helper.
+- **Escalation audit row** (`internal/feature/loop/decide.go`). The escalation row is now written *before* the checkpoint so its ID can be threaded back as `AuditEventID`. The checkpoint payload now carries the planner draft (capability, confidence, action list) at creation time.
+- **API** (`internal/api/handler/checkpoint.go`, `loop.go`). `POST /api/v1/checkpoints/{id}/resolve` and `POST /api/v1/loops/{id}/resume` both accept the `modifications` block. `GET /api/v1/checkpoints/{id}` now returns the planner draft fields populated.
+- **CLI** (`cli/command/checkpoint.go`, `cli/command/loop.go`). New flags on both `krk checkpoint resolve` and `krk loop resume`: `--remove-action` (repeatable), `--constraint` (repeatable), `--revised-confidence`. A shared `buildResolveBody` helper composes the request body — `modifications` is only attached when at least one flag is set so legacy approve/reject calls keep the original shape.
+- **Frontend — `/checkpoints` modify dialog** (`web/src/pages/CheckpointsPage.tsx`, new `web/src/components/ModifyCheckpointDialog.tsx`). Pending-checkpoint cards now surface `capability`, `confidence`, a collapsible action list, and a deep-link to the linked audit row. `Modify…` opens a dialog with per-action drop checkboxes, a constraints textarea (one per line), a confidence-floor input, and a rationale note. Submission posts the structured `Modifications` block and refreshes. Approve/Reject stay one-click.
+- **Frontend — `/audit` page** (new `web/src/pages/AuditPage.tsx`, new route + nav entry). Filter UI matches `krk audit` (objective, agent, kind, since, violations-only). Filters live in the URL via `useSearchParams` so links are shareable. Row click expands the payload JSON inline; modification rows render a structured diff (dropped capabilities, constraints, confidence floor) above the raw JSON. Kind-coloured pills + bounds-violation badge.
+
+**Acceptance — met:**
+
+- Build clean (`go build ./...`); full suite passes (`go test ./... -count=1`) with new tests covering: `trimRemovedActions` (drop-one-occurrence + drop-all-when-listed + nil-mods noop), `applyConfidenceFloor` (4 cases), `stepReasonRevise` success path + 3 fallback paths (unparseable, empty actions, no-feedback skip), constraint-only and note-only critique paths, confidence-floor honored on success, non-modify-choice noop. `checkpoint.Service` tests cover `Create` planner-draft round-trip and the three-way `Resolve` audit-kind matrix plus the structured modification payload.
+- A loop that escalates with `confidence 0.84 below threshold 0.90` (the case observed during dogfooding on 2026-06-09) can now be resolved with `--decision modify --remove-action code.write --constraint "scaffold only"` and the revised plan executes without `code.write`.
+- `GET /api/v1/checkpoints/{id}` returns a payload containing `capability`, `confidence`, `actions`, and `audit_event_id` — reviewers decide without joining the audit log.
+- `/audit` page renders all four kinds (`escalation`, `approval`, `modification`, `rejection`) with working filters; modification rows show the structured diff inline.
+- Re-approval ping-pong is impossible by construction: a modification that re-trips bounds and is not approved on the second decision auto-terminates with `kind=rejection, escalation_reason=modify_loop_exceeded`.
+
+**Operator quickstart:**
+
+```bash
+# Resolve a checkpoint with structured modifications
+krk checkpoint resolve 0d1ba0c9e2dad899 \
+  --decision modify --approver bsenel \
+  --remove-action code.write \
+  --constraint "scaffold the go.mod and CI workflow only this iteration" \
+  --revised-confidence 0.75
+
+# Browse the audit log
+krk audit --kind modification --since 2026-06-09T00:00:00Z
+krk audit --kind rejection --violations-only
+```
+
+**Originally planned scope (kept verbatim for diff against shipped):**
 
 **Steps:**
 

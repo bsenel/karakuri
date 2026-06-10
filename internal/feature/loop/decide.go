@@ -7,8 +7,10 @@ import (
 	"time"
 
 	"github.com/bsenel/karakuri/internal/core/capability"
+	corecheckpoint "github.com/bsenel/karakuri/internal/core/checkpoint"
 	"github.com/bsenel/karakuri/internal/core/event"
 	"github.com/bsenel/karakuri/internal/core/loop"
+	featurecp "github.com/bsenel/karakuri/internal/feature/checkpoint"
 	"github.com/bsenel/karakuri/internal/platform/storage"
 )
 
@@ -96,37 +98,18 @@ func stepDecide(ctx context.Context, sc *stepContext, p plan) (plan, bool) {
 	paused := false
 
 	if escalate {
-		// 3. Create checkpoint
-		options := []string{"approve", "reject", "modify"}
-		summary := fmt.Sprintf("Loop %s iteration %d requires human decision: %s", sc.loopID, sc.iteration, escalateReason)
-
-		cp, err := sc.svc.cpSvc.Create(ctx,
-			sc.obj.ID,
-			sc.twinID,
-			escalateReason,
-			summary,
-			options,
-		)
-
-		cpID := ""
-		if err == nil {
-			cpID = cp.ID
-		}
-
-		// 3b. Write an audit record so `krk audit` can surface this
-		// escalation later without scraping checkpoint history. The payload
-		// captures the planner's draft (actions + confidence) at the moment
-		// of escalation, which is what a reviewer needs to judge whether
-		// the bounds were tuned correctly.
+		// 3. Write the audit row first so the checkpoint payload can
+		// reference its ID — reviewers deep-link from /checkpoints into
+		// /audit without joining tables.
 		auditPayload, _ := json.Marshal(map[string]any{
 			"actions":              p.Actions,
 			"confidence":           p.Confidence,
 			"confidence_threshold": authority.ConfidenceThreshold,
 			"max_autonomous":       authority.MaxAutonomousActions,
-			"checkpoint_id":        cpID,
 		})
+		auditID := fmt.Sprintf("audit-%d", time.Now().UnixNano())
 		_ = sc.svc.store.SaveToolEvent(ctx, storage.ToolEvent{
-			ID:               fmt.Sprintf("audit-%d", time.Now().UnixNano()),
+			ID:               auditID,
 			ObjectiveID:      string(sc.obj.ID),
 			AgentID:          string(sc.agentDef.ID),
 			Success:          false,
@@ -136,6 +119,44 @@ func stepDecide(ctx context.Context, sc *stepContext, p plan) (plan, bool) {
 			BoundsViolation:  true,
 			PayloadJSON:      string(auditPayload),
 		})
+
+		// 4. Create checkpoint carrying the planner draft so reviewers
+		// see what they're approving without leaving the response.
+		options := []string{"approve", "reject", "modify"}
+		summary := fmt.Sprintf("Loop %s iteration %d requires human decision: %s", sc.loopID, sc.iteration, escalateReason)
+
+		actions := make([]corecheckpoint.Action, 0, len(p.Actions))
+		var primaryCap string
+		for i, a := range p.Actions {
+			if i == 0 {
+				primaryCap = a.CapabilityID
+			}
+			actions = append(actions, corecheckpoint.Action{
+				CapabilityID: a.CapabilityID,
+				Params:       a.Params,
+				Reason:       a.Reason,
+				EnvID:        a.EnvID,
+			})
+		}
+
+		cp, err := sc.svc.cpSvc.Create(ctx,
+			sc.obj.ID,
+			sc.twinID,
+			escalateReason,
+			summary,
+			options,
+			featurecp.CreateOptions{
+				Capability:   capability.CapabilityID(primaryCap),
+				Confidence:   p.Confidence,
+				Actions:      actions,
+				AuditEventID: auditID,
+			},
+		)
+
+		cpID := ""
+		if err == nil {
+			cpID = cp.ID
+		}
 
 		// Update state
 		sc.state.mu.Lock()

@@ -7,6 +7,7 @@ import { TwinDetailPage }    from '@/pages/TwinDetailPage';
 import { ObjectivesPage }    from '@/pages/ObjectivesPage';
 import { ObjectiveDetailPage } from '@/pages/ObjectiveDetailPage';
 import { CheckpointsPage }   from '@/pages/CheckpointsPage';
+import { AuditPage }         from '@/pages/AuditPage';
 import { MemoryPage }        from '@/pages/MemoryPage';
 import { ArtifactsPage }     from '@/pages/ArtifactsPage';
 import { HealthPage }        from '@/pages/HealthPage';
@@ -34,6 +35,7 @@ function Shell() {
         <Route path="objectives" element={<ObjectivesPage />} />
         <Route path="objectives/:id" element={<ObjectiveDetailPage />} />
         <Route path="checkpoints" element={<CheckpointsPage />} />
+        <Route path="audit" element={<AuditPage />} />
         <Route path="memory" element={<MemoryPage />} />
         <Route path="artifacts" element={<ArtifactsPage />} />
         <Route path="health" element={<HealthPage />} />
