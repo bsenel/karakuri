@@ -46,22 +46,26 @@ type ProceduralRecord struct {
 }
 
 // ToolEvent is the storage DTO for tool operation audit records.
+// JSON tags align the wire shape with the frontend AuditEvent type
+// (snake_case) so the /api/v1/audit response and the React /audit page
+// share one schema.
 type ToolEvent struct {
-	ID          string
-	ObjectiveID string
-	AgentID     string
-	Capability  string
-	Adapter     string
-	Success     bool
-	Confidence  float64
-	PayloadJSON string
+	ID          string  `json:"id"`
+	ObjectiveID string  `json:"objective_id"`
+	AgentID     string  `json:"agent_id,omitempty"`
+	Capability  string  `json:"capability,omitempty"`
+	Adapter     string  `json:"adapter,omitempty"`
+	Success     bool    `json:"success"`
+	Confidence  float64 `json:"confidence,omitempty"`
+	PayloadJSON string  `json:"payload_json,omitempty"`
 	// Audit fields (Phase 13). Default Kind is "execute"; escalation
 	// records use "escalation" and human approvals use "approval".
-	Kind             string
-	EscalationReason string
-	Approver         string
-	BoundsViolation  bool
-	CreatedAt        time.Time
+	// Phase 13.5 adds "modification" + "rejection".
+	Kind             string    `json:"kind"`
+	EscalationReason string    `json:"escalation_reason,omitempty"`
+	Approver         string    `json:"approver,omitempty"`
+	BoundsViolation  bool      `json:"bounds_violation,omitempty"`
+	CreatedAt        time.Time `json:"created_at"`
 }
 
 // ToolEventKind enumerates the audit-relevant event types.
@@ -69,6 +73,13 @@ const (
 	ToolEventExecute    = "execute"
 	ToolEventEscalation = "escalation"
 	ToolEventApproval   = "approval"
+	// ToolEventModification (Phase 13.5) records a checkpoint resolved with
+	// Decision.Choice = "modify". Payload carries the structured diff so
+	// reviewers see what changed, not just that something changed.
+	ToolEventModification = "modification"
+	// ToolEventRejection (Phase 13.5) records a checkpoint resolved with
+	// Decision.Choice = "reject". The loop terminates on this kind.
+	ToolEventRejection = "rejection"
 )
 
 // ToolEventFilter narrows the audit log query. All fields are optional;

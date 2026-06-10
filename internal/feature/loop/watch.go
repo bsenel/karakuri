@@ -8,6 +8,7 @@ import (
 	"github.com/bsenel/karakuri/internal/core/environment"
 	"github.com/bsenel/karakuri/internal/core/event"
 	"github.com/bsenel/karakuri/internal/core/objective"
+	featurecp "github.com/bsenel/karakuri/internal/feature/checkpoint"
 )
 
 func (s *serviceImpl) runWatchMode(ctx context.Context, state *loopState, obj objective.Objective, envs []environment.Environment, sc *stepContext) {
@@ -64,7 +65,7 @@ func (s *serviceImpl) runWatchMode(ctx context.Context, state *loopState, obj ob
 }
 
 func (s *serviceImpl) emitWatchCheckpoint(ctx context.Context, state *loopState, obj objective.Objective, sc *stepContext, trigger, summary string) {
-	cp, err := s.cpSvc.Create(ctx, obj.ID, obj.TwinID, trigger, summary, []string{"promote", "dismiss", "investigate"})
+	cp, err := s.cpSvc.Create(ctx, obj.ID, obj.TwinID, trigger, summary, []string{"promote", "dismiss", "investigate"}, featurecp.CreateOptions{})
 	if err != nil {
 		return
 	}

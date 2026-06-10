@@ -66,19 +66,66 @@ export interface LoopStatus {
   last_step?: LoopStep;
 }
 
+// CheckpointAction mirrors internal/core/checkpoint.Action — the planner
+// draft surfaced to reviewers on a pending checkpoint (Phase 13.5).
+export interface CheckpointAction {
+  capability: string;
+  params?: Record<string, unknown>;
+  reason?: string;
+  env_id?: string;
+}
+
+// CheckpointModifications mirrors internal/core/checkpoint.Modifications
+// — the structured edits an operator can submit when resolving with
+// decision="modify" (Phase 13.5).
+export interface CheckpointModifications {
+  removed_actions?: string[];
+  added_constraints?: string[];
+  revised_confidence?: number;
+}
+
+export interface CheckpointDecision {
+  choice: string;
+  note?: string;
+  approver?: string;
+  modifications?: CheckpointModifications;
+}
+
 export interface Checkpoint {
   id: string;
   objective_id: string;
-  agent_id: string;
+  agent_id?: string;
   twin_id?: string;
   reason: string;
-  context?: Record<string, unknown>;
+  summary?: string;
   options?: string[];
+  capability?: string;
+  confidence?: number;
+  actions?: CheckpointAction[];
+  audit_event_id?: string;
+  context?: Record<string, unknown>;
   status: 'pending' | 'resolved';
-  decision?: string;
-  notes?: string;
+  decision?: CheckpointDecision;
   created_at: string;
   resolved_at?: string;
+}
+
+// AuditEvent mirrors storage.ToolEvent — the audit log row served by
+// GET /api/v1/audit (Phase 13 + Phase 13.5).
+export interface AuditEvent {
+  id: string;
+  objective_id: string;
+  agent_id?: string;
+  capability?: string;
+  adapter?: string;
+  success: boolean;
+  confidence?: number;
+  kind: 'execute' | 'escalation' | 'approval' | 'modification' | 'rejection' | string;
+  escalation_reason?: string;
+  approver?: string;
+  bounds_violation?: boolean;
+  payload_json?: string;
+  created_at: string;
 }
 
 export interface Artifact {

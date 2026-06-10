@@ -60,16 +60,15 @@ func loopStatusCmd() *cobra.Command {
 
 func loopResumeCmd() *cobra.Command {
 	var decision, note, approver string
+	var removeActions, constraints []string
+	var revisedConfidence float64
 	cmd := &cobra.Command{
 		Use:   "resume <loop-id>",
 		Short: "Resume a paused loop with a checkpoint decision",
 		Args:  cobra.ExactArgs(1),
-		RunE: func(_ *cobra.Command, args []string) error {
-			data, _, err := api.Post("/loops/"+args[0]+"/resume", map[string]string{
-				"decision": decision,
-				"note":     note,
-				"approver": approver,
-			})
+		RunE: func(c *cobra.Command, args []string) error {
+			body := buildResolveBody(c, decision, note, approver, removeActions, constraints, revisedConfidence)
+			data, _, err := api.Post("/loops/"+args[0]+"/resume", body)
 			if err != nil {
 				return err
 			}
@@ -80,6 +79,9 @@ func loopResumeCmd() *cobra.Command {
 	cmd.Flags().StringVar(&decision, "decision", "", "Decision choice (required)")
 	cmd.Flags().StringVar(&note, "note", "", "Free-form rationale stored on the audit row")
 	cmd.Flags().StringVar(&approver, "approver", "", "Identifier of the operator approving/rejecting (audit attribution)")
+	cmd.Flags().StringSliceVar(&removeActions, "remove-action", nil, "Capability ID to drop from the draft (repeatable; only valid with --decision modify)")
+	cmd.Flags().StringSliceVar(&constraints, "constraint", nil, "Constraint to feed into the revise pass (repeatable; only valid with --decision modify)")
+	cmd.Flags().Float64Var(&revisedConfidence, "revised-confidence", -1, "Floor for the revised plan's confidence (only valid with --decision modify)")
 	_ = cmd.MarkFlagRequired("decision")
 	return cmd
 }

@@ -53,16 +53,20 @@ func (h *LoopHandler) Status(w http.ResponseWriter, r *http.Request) {
 func (h *LoopHandler) Resume(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	var req struct {
-		Decision string `json:"decision"`
-		Note     string `json:"note"`
-		Approver string `json:"approver"`
+		Decision      string                        `json:"decision"`
+		Note          string                        `json:"note"`
+		Approver      string                        `json:"approver"`
+		Modifications *corecheckpoint.Modifications `json:"modifications,omitempty"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 	result, err := h.Loop.Resume(r.Context(), id, corecheckpoint.Decision{
-		Choice: req.Decision, Note: req.Note, Approver: req.Approver,
+		Choice:        req.Decision,
+		Note:          req.Note,
+		Approver:      req.Approver,
+		Modifications: req.Modifications,
 	})
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
