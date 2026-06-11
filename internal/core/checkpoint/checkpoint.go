@@ -60,8 +60,15 @@ type Modifications struct {
 	// AddedConstraints is free-text guidance fed into the revise pass as
 	// critique input. One bullet per entry.
 	AddedConstraints []string `json:"added_constraints,omitempty"`
-	// RevisedConfidence, when non-nil, asserts an operator-set floor for
-	// the revised plan. The bias step does not lower it below this value.
+	// RevisedConfidence, when non-nil, asserts an operator-set confidence
+	// for THIS iteration. The runner treats this as both the plan's
+	// effective confidence (bypassing the procedural-memory bias) AND a
+	// per-iteration lowering of the bounds-check threshold. Together
+	// these two semantics let an operator say "I'll accept this plan at
+	// 0.85 — let it run" even when the agent's authority threshold is
+	// 0.90. The override is per-iteration only; the agent's stated
+	// threshold returns on the next iteration. Recorded on the
+	// kind=modification audit row for attribution.
 	RevisedConfidence *float64 `json:"revised_confidence,omitempty"`
 }
 

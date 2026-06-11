@@ -183,7 +183,7 @@ func (s *serviceImpl) runLoop(ctx context.Context, loopID string, req loop.Reque
 		state.status.Step = loop.StepDecide
 		state.mu.Unlock()
 
-		p, paused := stepDecide(ctx, sc, p)
+		p, paused := stepDecide(ctx, sc, p, nil)
 		if paused {
 			state.mu.Lock()
 			state.status.Paused = true
@@ -316,7 +316,7 @@ func (s *serviceImpl) runLoop(ctx context.Context, loopID string, req loop.Reque
 func (s *serviceImpl) applyModification(ctx context.Context, sc *stepContext, draft plan, decision corecheckpoint.Decision) (plan, bool) {
 	draft = trimRemovedActions(draft, decision.Modifications)
 	revised, applied := stepReasonRevise(ctx, sc, draft, decision)
-	revised, paused := stepDecide(ctx, sc, revised)
+	revised, paused := stepDecide(ctx, sc, revised, decision.Modifications)
 
 	sc.svc.hub.Publish(ctx, event.Event{
 		Type:        event.TypeLoopStepCompleted,

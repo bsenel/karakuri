@@ -211,9 +211,10 @@ func reflexionPass(ctx context.Context, sc *stepContext, draft plan) (plan, stri
 //     unparseable JSON, or returns zero actions. Never-regress: a modify
 //     pass can only improve the plan, never replace it with something
 //     worse than what the operator already saw.
-//  4. Honors Modifications.RevisedConfidence as a floor — if the revise
-//     pass returns a lower number, it's clamped up to the operator's
-//     asserted minimum.
+//
+// Note: RevisedConfidence does NOT touch the plan's confidence here.
+// It's consumed by stepDecide as a per-iteration threshold override —
+// see effectiveThreshold in decide.go.
 //
 // The returned bool indicates whether the revision was actually applied
 // (true) or the draft was kept (false); the caller uses this to emit the
@@ -228,7 +229,7 @@ func stepReasonRevise(ctx context.Context, sc *stepContext, draft plan, dec core
 	if !hasNote && !hasConstraints {
 		// Nothing to feed the agent. The caller has already trimmed
 		// RemovedActions; emit the trimmed draft unchanged.
-		return applyConfidenceFloor(draft, mods), false
+		return draft, false
 	}
 
 	draftJSON, _ := json.Marshal(draft)
@@ -264,36 +265,20 @@ func stepReasonRevise(ctx context.Context, sc *stepContext, draft plan, dec core
 		Task:       reviseTask,
 	})
 	if err != nil {
-		return applyConfidenceFloor(draft, mods), false
+		return draft, false
 	}
 	var revised plan
 	cleaned := extractJSON(revOut.Content)
 	if jsonErr := json.Unmarshal([]byte(cleaned), &revised); jsonErr != nil {
-		return applyConfidenceFloor(draft, mods), false
+		return draft, false
 	}
 	if len(revised.Actions) == 0 {
-		return applyConfidenceFloor(draft, mods), false
+		return draft, false
 	}
 	if revised.Confidence == 0 {
 		revised.Confidence = revOut.Confidence
 	}
-	revised = applyConfidenceFloor(revised, mods)
 	return revised, true
-}
-
-// applyConfidenceFloor clamps the plan's confidence up to the operator's
-// RevisedConfidence assertion when one is set. Used by both the
-// successful-revise and fallback paths so the floor is honored even when
-// the revise pass falls back to the draft.
-func applyConfidenceFloor(p plan, mods *corecheckpoint.Modifications) plan {
-	if mods == nil || mods.RevisedConfidence == nil {
-		return p
-	}
-	floor := *mods.RevisedConfidence
-	if p.Confidence < floor {
-		p.Confidence = floor
-	}
-	return p
 }
 
 // extractJSON returns the JSON payload from agent output, tolerating

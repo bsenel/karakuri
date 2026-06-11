@@ -48,7 +48,25 @@ func biasConfidenceFromHistory(ctx context.Context, sc *stepContext, p plan) (fl
 	return confidence, capHistory
 }
 
-func stepDecide(ctx context.Context, sc *stepContext, p plan) (plan, bool) {
+// effectiveThreshold returns the bounds-check threshold for this
+// iteration, lowered by an operator's Decision.Modifications.RevisedConfidence
+// when present (Phase 13.5 follow-up). The operator can only LOWER the
+// threshold via modify, never raise it — raising would just escalate
+// plans the agent already considered acceptable, which is pointless.
+// The override is per-iteration: the agent's stated threshold returns
+// on the next iteration.
+func effectiveThreshold(authorityThreshold float64, mods *corecheckpoint.Modifications) float64 {
+	if mods == nil || mods.RevisedConfidence == nil {
+		return authorityThreshold
+	}
+	override := *mods.RevisedConfidence
+	if override < authorityThreshold {
+		return override
+	}
+	return authorityThreshold
+}
+
+func stepDecide(ctx context.Context, sc *stepContext, p plan, mods *corecheckpoint.Modifications) (plan, bool) {
 	// 1. Emit step started
 	sc.svc.hub.Publish(ctx, event.Event{
 		Type:        event.TypeLoopStepStarted,
@@ -64,15 +82,31 @@ func stepDecide(ctx context.Context, sc *stepContext, p plan) (plan, bool) {
 	escalate := false
 	escalateReason := ""
 
-	// 2a. Bias plan confidence from procedural memory history (before authority check)
-	adjustedConfidence, capHistory := biasConfidenceFromHistory(ctx, sc, p)
-	p.Confidence = adjustedConfidence
+	threshold := effectiveThreshold(authority.ConfidenceThreshold, mods)
+	var capHistory map[string]float64
 
-	// 2. Check confidence threshold
-	if authority.ConfidenceThreshold > 0 && p.Confidence < authority.ConfidenceThreshold {
+	if mods != nil && mods.RevisedConfidence != nil {
+		// 2a. Operator override (Phase 13.5 follow-up): the operator has
+		// reviewed the plan and attested a confidence value. Skip the
+		// procedural-memory bias — the operator has the final word for
+		// this iteration. Bounds are checked against the lowered
+		// threshold; effectively, RevisedConfidence is both the asserted
+		// confidence AND the per-iteration acceptance bar.
+		p.Confidence = *mods.RevisedConfidence
+		capHistory = map[string]float64{}
+	} else {
+		// 2a. Standard path: bias plan confidence from procedural memory
+		// history (before authority check).
+		adjustedConfidence, ch := biasConfidenceFromHistory(ctx, sc, p)
+		p.Confidence = adjustedConfidence
+		capHistory = ch
+	}
+
+	// 2. Check confidence threshold (lowered if operator override is set).
+	if threshold > 0 && p.Confidence < threshold {
 		escalate = true
 		escalateReason = fmt.Sprintf("confidence %.2f below threshold %.2f",
-			p.Confidence, authority.ConfidenceThreshold)
+			p.Confidence, threshold)
 	}
 
 	// Check if any action requires approval
@@ -102,10 +136,11 @@ func stepDecide(ctx context.Context, sc *stepContext, p plan) (plan, bool) {
 		// reference its ID — reviewers deep-link from /checkpoints into
 		// /audit without joining tables.
 		auditPayload, _ := json.Marshal(map[string]any{
-			"actions":              p.Actions,
-			"confidence":           p.Confidence,
-			"confidence_threshold": authority.ConfidenceThreshold,
-			"max_autonomous":       authority.MaxAutonomousActions,
+			"actions":                p.Actions,
+			"confidence":             p.Confidence,
+			"confidence_threshold":   authority.ConfidenceThreshold,
+			"effective_threshold":    threshold,
+			"max_autonomous":         authority.MaxAutonomousActions,
 		})
 		auditID := fmt.Sprintf("audit-%d", time.Now().UnixNano())
 		_ = sc.svc.store.SaveToolEvent(ctx, storage.ToolEvent{

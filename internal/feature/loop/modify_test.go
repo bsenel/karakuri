@@ -69,27 +69,28 @@ func TestTrimRemovedActions_NilModsIsNoop(t *testing.T) {
 	}
 }
 
-func TestApplyConfidenceFloor(t *testing.T) {
+func TestEffectiveThreshold(t *testing.T) {
 	cases := []struct {
-		name     string
-		conf     float64
-		floor    *float64
-		expected float64
+		name             string
+		authority        float64
+		override         *float64
+		expectedEffective float64
 	}{
-		{"nil floor is noop", 0.5, nil, 0.5},
-		{"floor raises", 0.5, ptr(0.8), 0.8},
-		{"floor below confidence keeps higher", 0.9, ptr(0.7), 0.9},
-		{"floor equals confidence", 0.7, ptr(0.7), 0.7},
+		{"nil mods returns authority threshold", 0.90, nil, 0.90},
+		{"override below threshold lowers it", 0.90, ptr(0.85), 0.85},
+		{"override equal to threshold is noop", 0.90, ptr(0.90), 0.90},
+		{"override above threshold is rejected (no raise)", 0.90, ptr(0.95), 0.90},
+		{"zero authority threshold passes through", 0.0, ptr(0.85), 0.0},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			var mods *corecheckpoint.Modifications
-			if c.floor != nil {
-				mods = &corecheckpoint.Modifications{RevisedConfidence: c.floor}
+			if c.override != nil {
+				mods = &corecheckpoint.Modifications{RevisedConfidence: c.override}
 			}
-			out := applyConfidenceFloor(plan{Confidence: c.conf}, mods)
-			if out.Confidence != c.expected {
-				t.Errorf("expected confidence=%v, got %v", c.expected, out.Confidence)
+			got := effectiveThreshold(c.authority, mods)
+			if got != c.expectedEffective {
+				t.Errorf("expected effective threshold %v, got %v", c.expectedEffective, got)
 			}
 		})
 	}
@@ -195,7 +196,11 @@ func TestStepReasonRevise_FallsBackOnEmptyActions(t *testing.T) {
 	}
 }
 
-func TestStepReasonRevise_HonorsConfidenceFloor(t *testing.T) {
+func TestStepReasonRevise_DoesNotTouchConfidence(t *testing.T) {
+	// RevisedConfidence is a threshold override (consumed by stepDecide),
+	// not a floor on the plan's confidence. The revise pass must report
+	// the agent's reported confidence verbatim — the operator's
+	// assertion takes effect at the bounds check, not here.
 	agent := &scriptedAgent{scripted: []coreagent.Output{
 		{Content: `{"actions":[{"capability":"x"}],"confidence":0.3,"reasoning":"low"}`, Confidence: 0.3},
 	}}
@@ -212,8 +217,8 @@ func TestStepReasonRevise_HonorsConfidenceFloor(t *testing.T) {
 	if !applied {
 		t.Fatalf("expected revise to be applied")
 	}
-	if revised.Confidence != 0.75 {
-		t.Errorf("expected confidence floored to 0.75, got %v", revised.Confidence)
+	if revised.Confidence != 0.3 {
+		t.Errorf("expected agent confidence=0.3 preserved (RevisedConfidence is for stepDecide), got %v", revised.Confidence)
 	}
 }
 
