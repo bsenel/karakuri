@@ -2,6 +2,7 @@ package agriculture
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/bsenel/karakuri/internal/core/environment"
@@ -41,10 +42,18 @@ func (e *noopAgricultureEnv) Observe(_ context.Context, _ environment.Observatio
 	}, nil
 }
 
+// Act returns a failure for any capability invocation — the noop env
+// has no implementation. See the analogous comment in the software
+// pack for context on why honest failure beats fake success.
 func (e *noopAgricultureEnv) Act(_ context.Context, a environment.Action) (environment.ActionResult, error) {
 	return environment.ActionResult{
-		Success:    true,
-		StateDelta: map[string]any{"action": string(a.CapabilityID), "status": "noop"},
+		Success: false,
+		Error:   fmt.Sprintf("capability %q has no implementation: agriculture noop environment cannot execute", a.CapabilityID),
+		StateDelta: map[string]any{
+			"action": string(a.CapabilityID),
+			"status": "unimplemented",
+			"env_id": string(e.id),
+		},
 	}, nil
 }
 

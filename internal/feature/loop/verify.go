@@ -27,19 +27,25 @@ func stepVerify(ctx context.Context, sc *stepContext, results []environment.Acti
 
 	criteria := sc.obj.SuccessCriteria
 
-	// No criteria → success
+	// No criteria → refuse to score completion. Previously this path
+	// returned 1.0/true unconditionally, which is how the Phase 13.5
+	// dogfood "completed" an objective whose 17 actions had all been
+	// no-ops: no criteria, trivial pass, falsified status. Honest
+	// failure: returns 0.0/false so the loop iterates (or finalizes
+	// as Failed) and operators add criteria before retrying.
 	if len(criteria) == 0 {
 		sc.svc.hub.Publish(ctx, event.Event{
 			Type:        event.TypeLoopStepCompleted,
 			ObjectiveID: string(sc.obj.ID),
 			Payload: map[string]any{
-				"step":             string(loop.StepVerify),
+				"step":               string(loop.StepVerify),
 				"criteria_met_count": 0,
-				"weighted_score":   1.0,
+				"weighted_score":     0.0,
+				"reason":             "no_success_criteria_defined",
 			},
 			Timestamp: time.Now().UTC(),
 		})
-		return 1.0, true
+		return 0.0, false
 	}
 
 	// Build a results index by capability
