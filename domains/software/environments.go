@@ -110,10 +110,21 @@ func (e *noopEnv) Observe(_ context.Context, _ environment.ObservationQuery) (en
 	}, nil
 }
 
+// Act returns a failure for any capability invocation — the noop env
+// has no implementation. Before this change the noop env returned
+// Success=true, which silently masked the absence of real tool
+// adapters and let downstream verify steps trivially pass with a
+// score of 1.0. Honest failure: operators see the gap and either
+// register an adapter or accept that the action was a no-op.
 func (e *noopEnv) Act(_ context.Context, a environment.Action) (environment.ActionResult, error) {
 	return environment.ActionResult{
-		Success:    true,
-		StateDelta: map[string]any{"action": string(a.CapabilityID), "status": "noop"},
+		Success: false,
+		Error:   fmt.Sprintf("capability %q has no implementation: software noop environment cannot execute", a.CapabilityID),
+		StateDelta: map[string]any{
+			"action": string(a.CapabilityID),
+			"status": "unimplemented",
+			"env_id": string(e.id),
+		},
 	}, nil
 }
 

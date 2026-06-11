@@ -2,6 +2,7 @@ package healthcare
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/bsenel/karakuri/internal/core/environment"
@@ -61,10 +62,19 @@ func (e *noopHealthcareEnv) Observe(_ context.Context, _ environment.Observation
 	}, nil
 }
 
+// Act returns a failure for any capability invocation — the noop env
+// has no implementation. Healthcare authority bounds make this
+// especially important: a fake success here masked compliance-
+// relevant gaps. See the analogous comment in the software pack.
 func (e *noopHealthcareEnv) Act(_ context.Context, a environment.Action) (environment.ActionResult, error) {
 	return environment.ActionResult{
-		Success:    true,
-		StateDelta: map[string]any{"action": string(a.CapabilityID), "status": "noop"},
+		Success: false,
+		Error:   fmt.Sprintf("capability %q has no implementation: healthcare noop environment cannot execute", a.CapabilityID),
+		StateDelta: map[string]any{
+			"action": string(a.CapabilityID),
+			"status": "unimplemented",
+			"env_id": string(e.id),
+		},
 	}, nil
 }
 

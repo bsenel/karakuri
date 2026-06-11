@@ -31,7 +31,13 @@ func stepAct(ctx context.Context, sc *stepContext, p plan) []environment.ActionR
 	successCount := 0
 
 	for i, action := range p.Actions {
-		// a. Find matching environment
+		// a. Find matching environment. If the agent specified an
+		// EnvID, it must match an environment registered by the twin's
+		// active domain packs. Previously an unmatched EnvID fell
+		// through to envs[0] — silently routing the action to whatever
+		// happened to be first in the slice, almost always wrong, and
+		// the main reason the Phase 13.5 dogfood loop "completed" with
+		// every action a noop. Now an unmatched EnvID fails honestly.
 		var targetEnv environment.Environment
 		if action.EnvID != "" {
 			for _, env := range sc.envs {
@@ -40,8 +46,8 @@ func stepAct(ctx context.Context, sc *stepContext, p plan) []environment.ActionR
 					break
 				}
 			}
-		}
-		if targetEnv == nil && len(sc.envs) > 0 {
+		} else if len(sc.envs) == 1 {
+			// No EnvID given but only one env registered — unambiguous.
 			targetEnv = sc.envs[0]
 		}
 
@@ -92,16 +98,35 @@ func stepAct(ctx context.Context, sc *stepContext, p plan) []environment.ActionR
 				}
 			}
 		} else {
-			// No environment available
+			// No environment matched the agent's EnvID (or no EnvID
+			// was given and the twin has multiple envs registered).
+			// Used to silently succeed with Success=true; now fails
+			// honestly so the audit trail and verify step see the
+			// gap instead of treating it as work done.
+			available := make([]string, 0, len(sc.envs))
+			for _, env := range sc.envs {
+				available = append(available, string(env.ID()))
+			}
 			result = environment.ActionResult{
-				Success:    true,
-				StateDelta: map[string]any{"note": "no environment; action recorded only"},
+				Success: false,
+				Error:   fmt.Sprintf("no environment matches env_id=%q (available: %v)", action.EnvID, available),
+				StateDelta: map[string]any{
+					"capability": action.CapabilityID,
+					"status":     "unrouted",
+					"env_id":     action.EnvID,
+					"available":  available,
+				},
 			}
 			sc.svc.hub.Publish(ctx, event.Event{
 				Type:        event.TypeAdapterSkipped,
 				ObjectiveID: string(sc.obj.ID),
-				Payload:     map[string]any{"capability": action.CapabilityID, "reason": "no environment"},
-				Timestamp:   time.Now().UTC(),
+				Payload: map[string]any{
+					"capability": action.CapabilityID,
+					"reason":     "unrouted",
+					"env_id":     action.EnvID,
+					"available":  available,
+				},
+				Timestamp: time.Now().UTC(),
 			})
 		}
 
