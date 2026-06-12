@@ -91,6 +91,14 @@ func softwareEnvironmentFactories(reg *tools.Registry) []environment.Factory {
 		noopFactory("software.env.ci", "CI pipeline: build status, test results, coverage"),
 		noopFactory("software.env.observability", "Runtime: logs, metrics, alerts"),
 		noopFactory("software.env.codebase", "Static analysis: file tree, symbols, dependency graph"),
+		{
+			EnvID:       "software.env.shell",
+			Domain:      "software",
+			Description: "Local shell executor (/bin/sh) — runs software.act.shell_exec actions with timeout, output capture, and safety guardrails. Defaults to the server's CWD; configurable per-deployment.",
+			Build: func(_ environment.BuildContext) (environment.Environment, error) {
+				return newShellEnv("software.env.shell", "", 60*time.Second), nil
+			},
+		},
 	}
 }
 
@@ -431,10 +439,21 @@ func noopObservation(id environment.EnvironmentID) environment.Observation {
 	}
 }
 
+// noopAct used to return Success=true — masking inactive adapters and
+// capabilities routed to the wrong env. Same lie PR #28 fixed for the
+// standalone noopEnv, missed here. Now reports failure honestly so the
+// audit log surfaces both (a) "adapter X is not active" and (b) "agent
+// targeted env Y with a capability Y doesn't handle". Callers (gitEnv,
+// ticketEnv, commsEnv, cliEnv) reach this when their adapter is nil/
+// inactive or when the agent routes an unknown capability.
 func noopAct(a environment.Action) environment.ActionResult {
 	return environment.ActionResult{
-		Success:    true,
-		StateDelta: map[string]any{"action": string(a.CapabilityID), "status": "noop"},
+		Success: false,
+		Error:   fmt.Sprintf("capability %q has no active adapter on this env", a.CapabilityID),
+		StateDelta: map[string]any{
+			"action": string(a.CapabilityID),
+			"status": "no_active_adapter",
+		},
 	}
 }
 

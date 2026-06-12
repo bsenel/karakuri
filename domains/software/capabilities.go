@@ -38,6 +38,7 @@ func softwareCapabilities() []capability.Capability {
 		act("software.act.create_ticket", "Create Ticket", "Create ticket in project management tool", false),
 		act("software.act.send_message", "Send Message", "Send a message via MessagingAdapter", false),
 		act("software.act.delegate_to_cli", "Delegate to CLI Agent", "Hand a task to a coding-agent CLI (Claude Code, Cursor, Gemini, Copilot) in the active worktree", false),
+		act("software.act.shell_exec", "Shell Exec", "Run a /bin/sh command with params.cmd (required), optional params.workdir and params.timeout_sec (max 600). Result includes exit_code, stdout, stderr. Dangerous patterns (rm -rf /, mkfs, sudo, curl|sh) are blocked.", true),
 
 		act("software.verify.run_tests", "Run Tests", "Execute test suite in worktree", true),
 		act("software.verify.lint", "Lint", "Run linter in worktree", true),
