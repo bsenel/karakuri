@@ -235,10 +235,13 @@ func TestShellEnv_WorkdirConfinementAcceptsRelativeInsideRoot(t *testing.T) {
 
 func TestShellEnv_StdoutTruncated(t *testing.T) {
 	e := newTestShellEnv(t)
-	// Print ~5000 bytes to force truncation (limit is 4000).
+	// Print 5000 bytes to force truncation (limit is 4000). POSIX-only
+	// command: macOS /bin/sh is bash-in-sh-mode (brace expansion works)
+	// but Ubuntu /bin/sh is dash (no brace expansion) — head + tr is the
+	// portable path.
 	r, _ := e.Act(context.Background(), environment.Action{
 		CapabilityID: capability.CapabilityID("software.act.shell_exec"),
-		Params:       map[string]any{"cmd": "printf 'x%.0s' {1..5000}"},
+		Params:       map[string]any{"cmd": `head -c 5000 /dev/zero | tr '\0' 'x'`},
 	})
 	got, _ := r.StateDelta["stdout"].(string)
 	if !strings.HasSuffix(got, "…(truncated)") {
