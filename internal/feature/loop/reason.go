@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -44,6 +45,16 @@ func stepReason(ctx context.Context, sc *stepContext, ws loop.WorldState) plan {
 		memEntries[i] = e
 	}
 
+	// Inject the registered env catalog and capability list into the task
+	// instructions. Without this, the agent has to invent env_ids and
+	// capability names, which it does — the Phase 14 dogfood discovered
+	// the strategist consistently hallucinating env_id="local" because
+	// nothing in the prompt told it the real set was
+	// {software.env.codebase, .git, .ticket, …}. Listing them here means
+	// every unrouted/unimplemented failure becomes an agent-prompt-quality
+	// signal instead of just architectural noise.
+	catalog := buildReasonCatalog(sc)
+
 	input := coreagent.Input{
 		Objective:  sc.obj,
 		WorldState: ws,
@@ -51,7 +62,8 @@ func stepReason(ctx context.Context, sc *stepContext, ws loop.WorldState) plan {
 		Task: "Plan the next actions to make progress on this objective. " +
 			"Return a JSON object with 'actions' (array of {capability, params, reason, env_id}), " +
 			"'confidence' (0.0-1.0), and 'reasoning' (string). " +
-			"Return raw JSON only — no Markdown code fences, no commentary before or after.",
+			"Return raw JSON only — no Markdown code fences, no commentary before or after.\n\n" +
+			catalog,
 	}
 
 	// 3. Call agent
@@ -279,6 +291,76 @@ func stepReasonRevise(ctx context.Context, sc *stepContext, draft plan, dec core
 		revised.Confidence = revOut.Confidence
 	}
 	return revised, true
+}
+
+// buildReasonCatalog formats the set of registered environments and
+// capabilities the agent may use in its plan. The catalog appears in
+// every reason-step prompt so the agent stops inventing env_ids that
+// don't exist (the Phase 14 dogfood's load-bearing finding —
+// strategist consistently chose env_id="local" because nothing told
+// it the real set). Cross-domain objectives get the union of
+// per-domain capability lists, deduped.
+//
+// Returns an empty string if no envs and no capabilities are
+// registered — a degenerate setup the agent can't act on anyway.
+func buildReasonCatalog(sc *stepContext) string {
+	if sc == nil || sc.svc == nil {
+		return ""
+	}
+
+	var b strings.Builder
+
+	// 1. Environments.
+	if len(sc.envs) > 0 {
+		b.WriteString("Available environments (use env_id values from this list — no others exist):\n")
+		for _, env := range sc.envs {
+			fmt.Fprintf(&b, "  - %s (domain: %s)\n", env.ID(), env.Domain())
+		}
+	}
+
+	// 2. Capabilities. Walk the objective's domain set so cross-domain
+	// objectives surface their full union. Sort for prompt stability so
+	// the same objective produces the same catalog string across runs
+	// (matters for prompt caching downstream).
+	if sc.svc.capReg != nil {
+		domains := sc.obj.AllDomains()
+		if len(domains) == 0 && sc.agentDef.Domain != "" {
+			domains = []string{sc.agentDef.Domain}
+		}
+		seen := make(map[string]bool)
+		var caps []string
+		for _, d := range domains {
+			for _, c := range sc.svc.capReg.ListByDomain(d) {
+				id := string(c.ID)
+				if seen[id] {
+					continue
+				}
+				seen[id] = true
+				if c.Description != "" {
+					caps = append(caps, fmt.Sprintf("  - %s — %s", id, c.Description))
+				} else {
+					caps = append(caps, "  - "+id)
+				}
+			}
+		}
+		sort.Strings(caps)
+		if len(caps) > 0 {
+			if b.Len() > 0 {
+				b.WriteString("\n")
+			}
+			b.WriteString("Available capabilities (use capability values from this list — no others exist):\n")
+			for _, line := range caps {
+				b.WriteString(line)
+				b.WriteString("\n")
+			}
+		}
+	}
+
+	if b.Len() == 0 {
+		return ""
+	}
+	b.WriteString("\nIf the right tool is not in the lists above, prefer a multi-step plan using available capabilities rather than inventing new ones — invented capabilities and env_ids will fail with 'unimplemented' / 'unrouted' errors.")
+	return b.String()
 }
 
 // extractJSON returns the JSON payload from agent output, tolerating
