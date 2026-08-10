@@ -36,6 +36,12 @@ bin/
 karakuri.db
 karakuri-obs/
 
+# Frontend build output + deps. web/dist is embedded by web/embed.go at compile
+# time (`make web-build` populates it; CI builds it before any Go job), so it is
+# a build artifact rather than source.
+web/dist/
+web/node_modules/
+
 # Editor/IDE
 # .idea/
 # .vscode/

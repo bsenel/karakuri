@@ -76,6 +76,38 @@ jobs:
           cache: true
       - run: go vet ./...
 
+  # The standalone auth modules live in their own go.mod files, so the root
+  # `go build ./...` above never sees them. They also have no frontend
+  # dependency, so this job runs in parallel with `frontend` rather than after
+  # it. Coverage is gated because the module is a security boundary.
+  auth-modules:
+    name: Auth modules
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        module: [auth]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.x"
+          # The core auth module has no external dependencies, so there is no
+          # go.sum for setup-go's cache key to hash.
+          cache: false
+      - run: go build ./...
+        working-directory: ${{ matrix.module }}
+      - run: go vet ./...
+        working-directory: ${{ matrix.module }}
+      - run: go test ./... -race -count=1
+        working-directory: ${{ matrix.module }}
+      - name: Coverage gate (95%)
+        working-directory: ${{ matrix.module }}
+        run: |
+          go test ./... -coverprofile=cover.out >/dev/null
+          total=$(go tool cover -func=cover.out | awk '/^total:/ {print $3}' | tr -d '%')
+          echo "${{ matrix.module }} coverage: ${total}%"
+          awk -v t="${total}" 'BEGIN { if (t+0 < 95) { print "coverage below the 95% gate"; exit 1 } }'
+
   test:
     name: Test
     runs-on: ubuntu-latest
