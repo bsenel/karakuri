@@ -168,8 +168,14 @@ type JWTKeyConfig struct {
 // no principals, the server mints this account so an operator can log in; on
 // every later boot it is a no-op.
 type AuthBootstrapConfig struct {
-	AdminID     string `yaml:"admin_id"`
-	PasswordEnv string `yaml:"password_env"`
+	// AdminID is the identifier given to that first administrator.
+	AdminID string `yaml:"admin_id"`
+
+	// EnvVar names the environment variable the first administrator's password
+	// is read from. It holds the *name* of a variable and never the password
+	// itself — no field on this struct is a credential, which is what makes it
+	// safe to put in an error message telling an operator what to set.
+	EnvVar string `yaml:"password_env"`
 }
 
 // AccessTTLDuration parses AccessTTL, falling back to 15 minutes.
@@ -425,8 +431,8 @@ func setDefaults(cfg *Config) {
 	if cfg.Auth.Bootstrap.AdminID == "" {
 		cfg.Auth.Bootstrap.AdminID = "admin"
 	}
-	if cfg.Auth.Bootstrap.PasswordEnv == "" {
-		cfg.Auth.Bootstrap.PasswordEnv = "KARAKURI_AUTH_BOOTSTRAP_PASSWORD"
+	if cfg.Auth.Bootstrap.EnvVar == "" {
+		cfg.Auth.Bootstrap.EnvVar = "KARAKURI_AUTH_BOOTSTRAP_PASSWORD"
 	}
 	// Note: no default signing key. A server with none refuses to start
 	// (see internal/auth.Keyring) rather than falling back to something

@@ -62,10 +62,10 @@ func seedAdmin(ctx context.Context, store auth.Store, tokens *auth.TokenService,
 	// Datadog, Loki, Elasticsearch and CloudWatch (Phase 12), so "logged once
 	// at WARN" means "copied to every configured log sink" — which is exactly
 	// where a live administrator credential must not end up.
-	password := os.Getenv(cfg.PasswordEnv)
+	password := os.Getenv(cfg.EnvVar)
 	if password == "" {
 		return fmt.Errorf("%w: this database has no principals, so %s must be set to create the first administrator (%q)",
-			ErrNoBootstrapPassword, cfg.PasswordEnv, id)
+			ErrNoBootstrapPassword, cfg.EnvVar, id)
 	}
 
 	if err := store.PutPrincipal(ctx, auth.Principal{ID: id, Name: "Bootstrap administrator", Kind: auth.KindUser}); err != nil {

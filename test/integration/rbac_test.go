@@ -602,7 +602,7 @@ func TestBootstrapRequiresPassword(t *testing.T) {
 		ID: "test", Algorithm: "HS256", Active: true,
 		Secret: strings.Repeat("integration-test-signing-key", 2),
 	}}
-	t.Setenv(cfg.Auth.Bootstrap.PasswordEnv, "")
+	t.Setenv(cfg.Auth.Bootstrap.EnvVar, "")
 
 	gormDB, err := platformdb.Open(cfg.Database.Driver, cfg.Database.DSN)
 	if err != nil {
@@ -622,12 +622,12 @@ func TestBootstrapRequiresPassword(t *testing.T) {
 	}
 	// The message has to tell an operator what to set, not just that something
 	// is missing.
-	if !strings.Contains(err.Error(), cfg.Auth.Bootstrap.PasswordEnv) {
+	if !strings.Contains(err.Error(), cfg.Auth.Bootstrap.EnvVar) {
 		t.Errorf("error does not name the env var to set: %v", err)
 	}
 
 	// With the password supplied, the same empty database bootstraps fine.
-	t.Setenv(cfg.Auth.Bootstrap.PasswordEnv, "a-chosen-password")
+	t.Setenv(cfg.Auth.Bootstrap.EnvVar, "a-chosen-password")
 	if _, err := app.BuildAuth(ctx, gormDB, store, cfg); err != nil {
 		t.Fatalf("BuildAuth with a password: %v", err)
 	}

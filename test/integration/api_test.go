@@ -53,12 +53,12 @@ func startServer(t *testing.T) (baseURL string, adminToken string, cleanup func(
 	cfg.Database.Driver = "sqlite"
 	cfg.Database.DSN = dbPath
 	// A fixed signing key and a known bootstrap password keep the suite
-	// deterministic; the server would otherwise generate a password and log it.
+	// deterministic; without the password the server refuses to start.
 	cfg.Auth.JWT.Keys = []config.JWTKeyConfig{{
 		ID: "test", Algorithm: "HS256", Active: true,
 		Secret: strings.Repeat("integration-test-signing-key", 2),
 	}}
-	t.Setenv(cfg.Auth.Bootstrap.PasswordEnv, testAdminPassword)
+	t.Setenv(cfg.Auth.Bootstrap.EnvVar, testAdminPassword)
 	// httptest serves plain HTTP, and Go's cookie jar — unlike a browser, which
 	// trusts localhost — will not send a Secure cookie over it. Without this the
 	// cookie-session tests would fail for a reason that has nothing to do with

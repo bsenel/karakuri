@@ -378,7 +378,8 @@ func BuildAuth(ctx context.Context, gormDB *gorm.DB, store storage.StorageAdapte
 	// so `krk audit --kind authz_denied` shows attempts alongside approvals.
 	enforcer.OnDeny = karakuriauth.AuditDenial(store)
 	enforcer.OnError = func(r *http.Request, err error) {
-		slog.Error("authorization could not be evaluated", "path", r.URL.Path, "err", err)
+		slog.Error("authorization could not be evaluated",
+			"path", karakuriauth.SanitizeLogValue(r.URL.Path), "err", err)
 	}
 
 	return api.AuthDeps{
