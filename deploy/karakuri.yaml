@@ -34,7 +34,31 @@ providers:
 executor: local
 
 auth:
-  token: ""
+  jwt:
+    issuer: karakuri
+    audience: karakuri-api
+    access_ttl: 15m
+    refresh_ttl: 720h
+    # Signing keys. The server refuses to start without one — there is no
+    # default secret, because a predictable signing key is a backdoor.
+    # The usual deployment sets KARAKURI_AUTH_JWT_SECRET instead of listing
+    # keys here; declare them explicitly when you want to rotate, since a
+    # keyring keeps old tokens verifiable while a new key signs.
+    #
+    # keys:
+    #   - kid: 2026-06
+    #     algorithm: HS256
+    #     active: true
+    #     secret_env: KARAKURI_AUTH_JWT_SECRET
+    #   - kid: 2026-05          # previous signer, still trusted until its
+    #     algorithm: HS256      # tokens expire
+    #     secret_env: KARAKURI_AUTH_JWT_SECRET_PREVIOUS
+    keys: []
+  bootstrap:
+    # On a database with no principals, the server creates this administrator
+    # and logs its password once at WARN. Set the env var to choose your own.
+    admin_id: admin
+    password_env: KARAKURI_AUTH_BOOTSTRAP_PASSWORD
 
 domains:
   - id: software

@@ -1,0 +1,85 @@
+// Package auth wires the standalone github.com/bsenel/karakuri/auth module into
+// Karakuri. The module knows nothing about twins, objectives or loops; this
+// package is where those concepts meet it — the action catalog, the built-in
+// roles, the route→permission table, and first-boot seeding.
+//
+// See ADR 007 for why the engine lives outside the main module.
+package auth
+
+import "github.com/bsenel/karakuri/auth"
+
+// Every action the API exposes. Nothing is implicit: a policy naming an action
+// that is not registered below is rejected when roles are seeded, so a typo in
+// a role definition fails at boot rather than silently granting nothing.
+const (
+	ActionTwinCreate auth.Action = "twin:create"
+	ActionTwinRead   auth.Action = "twin:read"
+	ActionTwinUpdate auth.Action = "twin:update"
+	ActionTwinDelete auth.Action = "twin:delete"
+	ActionTwinBind   auth.Action = "twin:bind"
+
+	ActionObjectiveCreate auth.Action = "objective:create"
+	ActionObjectiveRead   auth.Action = "objective:read"
+	ActionObjectiveUpdate auth.Action = "objective:update"
+
+	ActionLoopStart  auth.Action = "loop:start"
+	ActionLoopRead   auth.Action = "loop:read"
+	ActionLoopResume auth.Action = "loop:resume"
+
+	ActionCheckpointRead    auth.Action = "checkpoint:read"
+	ActionCheckpointResolve auth.Action = "checkpoint:resolve"
+
+	ActionArtifactRead  auth.Action = "artifact:read"
+	ActionArtifactWrite auth.Action = "artifact:write"
+
+	ActionMemoryRead   auth.Action = "memory:read"
+	ActionMemoryWrite  auth.Action = "memory:write"
+	ActionMemoryForget auth.Action = "memory:forget"
+
+	ActionDomainRead  auth.Action = "domain:read"
+	ActionResearchRun auth.Action = "research:run"
+	ActionAuditRead   auth.Action = "audit:read"
+
+	ActionAuthRead  auth.Action = "auth:read"
+	ActionAuthWrite auth.Action = "auth:write"
+)
+
+// NewCatalog returns the Karakuri action catalog.
+func NewCatalog() *auth.Catalog {
+	c := auth.NewCatalog()
+	for action, description := range map[auth.Action]string{
+		ActionTwinCreate: "create a digital twin",
+		ActionTwinRead:   "read twins and their event stream",
+		ActionTwinUpdate: "update a twin",
+		ActionTwinDelete: "delete a twin",
+		ActionTwinBind:   "change a twin's adapter bindings",
+
+		ActionObjectiveCreate: "create an objective",
+		ActionObjectiveRead:   "read objectives, templates and their event stream",
+		ActionObjectiveUpdate: "change an objective's status",
+
+		ActionLoopStart:  "start a reasoning loop",
+		ActionLoopRead:   "read loop status",
+		ActionLoopResume: "resume a paused loop",
+
+		ActionCheckpointRead:    "read pending checkpoints",
+		ActionCheckpointResolve: "approve, modify or reject a checkpoint",
+
+		ActionArtifactRead:  "read and diff artifacts",
+		ActionArtifactWrite: "write an artifact",
+
+		ActionMemoryRead:   "recall memory entries",
+		ActionMemoryWrite:  "store a memory entry",
+		ActionMemoryForget: "delete a memory entry",
+
+		ActionDomainRead:  "list domain packs and run conformance checks",
+		ActionResearchRun: "run a research query",
+		ActionAuditRead:   "read the authority-bounds audit log",
+
+		ActionAuthRead:  "read principals, roles and policies",
+		ActionAuthWrite: "create principals and change role bindings",
+	} {
+		c.MustRegister(action, description)
+	}
+	return c
+}

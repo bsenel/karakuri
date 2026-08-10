@@ -51,9 +51,13 @@ tidy:
 
 _secret:
 	kubectl create namespace $(NAMESPACE) --dry-run=client -o yaml | kubectl apply -f -
+	@if [ -z "$${KARAKURI_AUTH_JWT_SECRET}" ]; then \
+	  echo "KARAKURI_AUTH_JWT_SECRET is required (openssl rand -base64 32)"; exit 1; \
+	fi
 	kubectl create secret generic karakuri-secrets \
 	  --from-literal=ANTHROPIC_API_KEY=$${ANTHROPIC_API_KEY} \
-	  --from-literal=KARAKURI_AUTH_TOKEN=$${KARAKURI_AUTH_TOKEN:-""} \
+	  --from-literal=KARAKURI_AUTH_JWT_SECRET=$${KARAKURI_AUTH_JWT_SECRET} \
+	  --from-literal=KARAKURI_AUTH_BOOTSTRAP_PASSWORD=$${KARAKURI_AUTH_BOOTSTRAP_PASSWORD:-""} \
 	  -n $(NAMESPACE) --dry-run=client -o yaml | kubectl apply -f -
 
 _image-load-minikube:

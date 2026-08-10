@@ -1,12 +1,16 @@
 // EventSource wrapper for the Karakuri SSE endpoints
 // (/api/v1/objectives/:id/events and /api/v1/twins/:id/events).
 //
-// EventSource does not natively support custom headers, so when auth is on we
-// pass the bearer token as a `?token=...` query string and the server reads
-// it from the URL fallback path. (The middleware already handles this for
-// `/events` endpoints.)
+// EventSource cannot set headers, so the access token travels as an
+// `?access_token=...` query parameter. The server accepts that fallback on SSE
+// paths only — query strings end up in access logs, so it is scoped to the one
+// case that has no alternative.
+//
+// The token is fetched (and refreshed if stale) before the stream opens, which
+// is why openStream is async: a 15-minute access token has to be valid at
+// connect time, and EventSource offers no way to re-authenticate mid-stream.
 
-import { getToken } from './client';
+import { accessToken } from './client';
 import type { SSEEvent } from './types';
 
 export type SSEHandler = (event: SSEEvent) => void;
@@ -24,10 +28,32 @@ export function streamTwin(twinID: string, onEvent: SSEHandler): SSEStream {
 }
 
 function openStream(path: string, onEvent: SSEHandler): SSEStream {
-  const token = getToken();
-  const url = token ? `${path}?token=${encodeURIComponent(token)}` : path;
-  const es = new EventSource(url);
+  let es: EventSource | null = null;
+  let closed = false;
 
+  void (async () => {
+    let url = path;
+    try {
+      const token = await accessToken();
+      url = `${path}?access_token=${encodeURIComponent(token)}`;
+    } catch {
+      // Unauthenticated: let the server reject the connection so the caller
+      // surfaces the same error it would for any other 401.
+    }
+    if (closed) return;
+    es = new EventSource(url);
+    attach(es, onEvent);
+  })();
+
+  return {
+    close() {
+      closed = true;
+      es?.close();
+    },
+  };
+}
+
+function attach(es: EventSource, onEvent: SSEHandler): void {
   es.onmessage = (msg) => {
     if (!msg.data) return;
     try {
@@ -42,6 +68,4 @@ function openStream(path: string, onEvent: SSEHandler): SSEStream {
     // EventSource auto-reconnects; surface a one-shot "disconnected" event for UI.
     onEvent({ type: 'stream_error', timestamp: new Date().toISOString() });
   };
-
-  return { close: () => es.close() };
 }

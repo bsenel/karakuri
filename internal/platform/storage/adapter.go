@@ -80,6 +80,10 @@ const (
 	// ToolEventRejection (Phase 13.5) records a checkpoint resolved with
 	// Decision.Choice = "reject". The loop terminates on this kind.
 	ToolEventRejection = "rejection"
+	// ToolEventAuthzDenied (Phase 14) records an API request refused by RBAC.
+	// Attempts belong beside approvals: reviewing who approved what should also
+	// show who was turned away. The payload carries the full decision trace.
+	ToolEventAuthzDenied = "authz_denied"
 )
 
 // ToolEventFilter narrows the audit log query. All fields are optional;

@@ -9,11 +9,14 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/bsenel/karakuri/config"
+	domainsw "github.com/bsenel/karakuri/domains/software"
 	"github.com/bsenel/karakuri/internal/api"
+	"github.com/bsenel/karakuri/internal/app"
 	"github.com/bsenel/karakuri/internal/core/capability"
 	"github.com/bsenel/karakuri/internal/core/domain"
 	"github.com/bsenel/karakuri/internal/core/environment"
@@ -25,11 +28,17 @@ import (
 	"github.com/bsenel/karakuri/internal/platform/observability"
 	"github.com/bsenel/karakuri/internal/platform/storage"
 	"github.com/bsenel/karakuri/internal/platform/tools"
-	domainsw "github.com/bsenel/karakuri/domains/software"
 )
 
 // startServer starts the API server on a random port and returns the base URL + cleanup func.
-func startServer(t *testing.T) (baseURL string, cleanup func()) {
+// testAdminPassword is the bootstrap administrator's password across the suite.
+const testAdminPassword = "integration-test-admin-pw"
+
+// startServer boots the real API app and returns its base URL plus an access
+// token for the bootstrap administrator. Auth is not optional any more, so
+// every test needs a credential; tests that care about authorization mint their
+// own principals from this one.
+func startServer(t *testing.T) (baseURL string, adminToken string, cleanup func()) {
 	t.Helper()
 
 	// Create a temp SQLite file
@@ -40,11 +49,16 @@ func startServer(t *testing.T) (baseURL string, cleanup func()) {
 	dbPath := dbFile.Name()
 	dbFile.Close()
 
-	// Build config with empty auth token so no auth is required
 	cfg := config.Default()
 	cfg.Database.Driver = "sqlite"
 	cfg.Database.DSN = dbPath
-	cfg.Auth.Token = ""
+	// A fixed signing key and a known bootstrap password keep the suite
+	// deterministic; the server would otherwise generate a password and log it.
+	cfg.Auth.JWT.Keys = []config.JWTKeyConfig{{
+		ID: "test", Algorithm: "HS256", Active: true,
+		Secret: strings.Repeat("integration-test-signing-key", 2),
+	}}
+	t.Setenv(cfg.Auth.Bootstrap.PasswordEnv, testAdminPassword)
 	cfg.Git.RepoPath = t.TempDir()
 	cfg.Git.WorktreeBase = "worktrees"
 	cfg.Git.BaseBranch = "main"
@@ -109,7 +123,18 @@ func startServer(t *testing.T) (baseURL string, cleanup func()) {
 	var templates []objectivepkg.Template
 	templates = append(templates, swPack.ObjectiveTemplates()...)
 
-	apiApp := api.NewApp(cfg, store, providers, toolReg, exporters, wt, hub, otel, capReg, envReg, domReg, templates, nil, nil)
+	authDeps, err := app.BuildAuth(ctx, gormDB, store, cfg)
+	if err != nil {
+		os.Remove(dbPath)
+		t.Fatalf("build auth: %v", err)
+	}
+	apiApp := api.NewApp(cfg, store, providers, toolReg, exporters, wt, hub, otel, capReg, envReg, domReg, templates, nil, nil, authDeps)
+
+	pair, err := authDeps.Tokens.IssueForPassword(ctx, cfg.Auth.Bootstrap.AdminID, testAdminPassword)
+	if err != nil {
+		os.Remove(dbPath)
+		t.Fatalf("issue admin token: %v", err)
+	}
 
 	// Listen on a random port
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
@@ -135,14 +160,15 @@ func startServer(t *testing.T) (baseURL string, cleanup func()) {
 		time.Sleep(20 * time.Millisecond)
 	}
 
-	return base, func() {
+	return base, pair.AccessToken, func() {
 		_ = srv.Shutdown(context.Background())
 		os.Remove(dbPath)
 	}
 }
 
-// doJSON is a helper that issues an HTTP request with a JSON body and returns the response.
-func doJSON(t *testing.T, method, url string, body any) *http.Response {
+// doJSON issues an HTTP request with a JSON body. An empty token sends the
+// request unauthenticated, which is what the 401 cases want.
+func doJSON(t *testing.T, token, method, url string, body any) *http.Response {
 	t.Helper()
 	var r io.Reader
 	if body != nil {
@@ -158,6 +184,9 @@ func doJSON(t *testing.T, method, url string, body any) *http.Response {
 	}
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
+	}
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
 	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -218,9 +247,11 @@ func mapKeys(m map[string]any) []string {
 	return keys
 }
 
-// TestHealth verifies GET /api/v1/health returns 200 with status: ok.
+// TestHealth verifies GET /api/v1/health returns 200 with status: ok — and,
+// since Phase 14, that it does so without a credential: a load balancer and the
+// SPA's login screen both have to reach it before they can authenticate.
 func TestHealth(t *testing.T) {
-	baseURL, cleanup := startServer(t)
+	baseURL, _, cleanup := startServer(t)
 	defer cleanup()
 
 	resp, err := http.Get(baseURL + "/api/v1/health")
@@ -236,11 +267,11 @@ func TestHealth(t *testing.T) {
 
 // TestTwinCRUD tests POST /twins, GET /twins/:id, GET /twins, PUT /twins/:id.
 func TestTwinCRUD(t *testing.T) {
-	baseURL, cleanup := startServer(t)
+	baseURL, adminToken, cleanup := startServer(t)
 	defer cleanup()
 
 	t.Run("create", func(t *testing.T) {
-		resp := doJSON(t, http.MethodPost, baseURL+"/api/v1/twins", map[string]any{
+		resp := doJSON(t, adminToken, http.MethodPost, baseURL+"/api/v1/twins", map[string]any{
 			"name":   "test-twin",
 			"kind":   "assistant",
 			"domain": "software",
@@ -252,7 +283,7 @@ func TestTwinCRUD(t *testing.T) {
 	})
 
 	t.Run("create_then_get", func(t *testing.T) {
-		resp := doJSON(t, http.MethodPost, baseURL+"/api/v1/twins", map[string]any{
+		resp := doJSON(t, adminToken, http.MethodPost, baseURL+"/api/v1/twins", map[string]any{
 			"name":   "twin-for-get",
 			"kind":   "executor",
 			"domain": "software",
@@ -261,7 +292,7 @@ func TestTwinCRUD(t *testing.T) {
 		created := decodeJSON(t, resp)
 		id := created["id"].(string)
 
-		resp2 := doJSON(t, http.MethodGet, baseURL+"/api/v1/twins/"+id, nil)
+		resp2 := doJSON(t, adminToken, http.MethodGet, baseURL+"/api/v1/twins/"+id, nil)
 		assertStatus(t, resp2, http.StatusOK)
 		got := decodeJSON(t, resp2)
 		if got["id"] != id {
@@ -270,13 +301,13 @@ func TestTwinCRUD(t *testing.T) {
 	})
 
 	t.Run("list", func(t *testing.T) {
-		resp := doJSON(t, http.MethodGet, baseURL+"/api/v1/twins", nil)
+		resp := doJSON(t, adminToken, http.MethodGet, baseURL+"/api/v1/twins", nil)
 		assertStatus(t, resp, http.StatusOK)
 		_ = decodeJSONSlice(t, resp)
 	})
 
 	t.Run("update", func(t *testing.T) {
-		resp := doJSON(t, http.MethodPost, baseURL+"/api/v1/twins", map[string]any{
+		resp := doJSON(t, adminToken, http.MethodPost, baseURL+"/api/v1/twins", map[string]any{
 			"name":   "original-name",
 			"kind":   "watcher",
 			"domain": "software",
@@ -285,7 +316,7 @@ func TestTwinCRUD(t *testing.T) {
 		created := decodeJSON(t, resp)
 		id := created["id"].(string)
 
-		resp2 := doJSON(t, http.MethodPut, baseURL+"/api/v1/twins/"+id, map[string]any{
+		resp2 := doJSON(t, adminToken, http.MethodPut, baseURL+"/api/v1/twins/"+id, map[string]any{
 			"name": "updated-name",
 		})
 		assertStatus(t, resp2, http.StatusOK)
@@ -298,11 +329,11 @@ func TestTwinCRUD(t *testing.T) {
 
 // TestObjectiveCRUD tests POST /objectives, GET /objectives/:id, GET /objectives, POST /objectives/:id/status.
 func TestObjectiveCRUD(t *testing.T) {
-	baseURL, cleanup := startServer(t)
+	baseURL, adminToken, cleanup := startServer(t)
 	defer cleanup()
 
 	// Create a twin first
-	twinResp := doJSON(t, http.MethodPost, baseURL+"/api/v1/twins", map[string]any{
+	twinResp := doJSON(t, adminToken, http.MethodPost, baseURL+"/api/v1/twins", map[string]any{
 		"name": "obj-twin", "kind": "assistant", "domain": "software",
 	})
 	assertStatus(t, twinResp, http.StatusOK)
@@ -310,7 +341,7 @@ func TestObjectiveCRUD(t *testing.T) {
 	twinID := twinM["id"].(string)
 
 	t.Run("create", func(t *testing.T) {
-		resp := doJSON(t, http.MethodPost, baseURL+"/api/v1/objectives", map[string]any{
+		resp := doJSON(t, adminToken, http.MethodPost, baseURL+"/api/v1/objectives", map[string]any{
 			"title":       "Test Objective",
 			"description": "An integration test objective",
 			"domain":      "software",
@@ -324,7 +355,7 @@ func TestObjectiveCRUD(t *testing.T) {
 	})
 
 	t.Run("create_then_get", func(t *testing.T) {
-		resp := doJSON(t, http.MethodPost, baseURL+"/api/v1/objectives", map[string]any{
+		resp := doJSON(t, adminToken, http.MethodPost, baseURL+"/api/v1/objectives", map[string]any{
 			"title":  "Objective for Get",
 			"domain": "software",
 		})
@@ -332,7 +363,7 @@ func TestObjectiveCRUD(t *testing.T) {
 		created := decodeJSON(t, resp)
 		id := created["id"].(string)
 
-		resp2 := doJSON(t, http.MethodGet, baseURL+"/api/v1/objectives/"+id, nil)
+		resp2 := doJSON(t, adminToken, http.MethodGet, baseURL+"/api/v1/objectives/"+id, nil)
 		assertStatus(t, resp2, http.StatusOK)
 		got := decodeJSON(t, resp2)
 		if got["id"] != id {
@@ -341,13 +372,13 @@ func TestObjectiveCRUD(t *testing.T) {
 	})
 
 	t.Run("list", func(t *testing.T) {
-		resp := doJSON(t, http.MethodGet, baseURL+"/api/v1/objectives", nil)
+		resp := doJSON(t, adminToken, http.MethodGet, baseURL+"/api/v1/objectives", nil)
 		assertStatus(t, resp, http.StatusOK)
 		_ = decodeJSONSlice(t, resp)
 	})
 
 	t.Run("update_status", func(t *testing.T) {
-		resp := doJSON(t, http.MethodPost, baseURL+"/api/v1/objectives", map[string]any{
+		resp := doJSON(t, adminToken, http.MethodPost, baseURL+"/api/v1/objectives", map[string]any{
 			"title":  "Status Objective",
 			"domain": "software",
 		})
@@ -355,7 +386,7 @@ func TestObjectiveCRUD(t *testing.T) {
 		created := decodeJSON(t, resp)
 		id := created["id"].(string)
 
-		resp2 := doJSON(t, http.MethodPost, baseURL+"/api/v1/objectives/"+id+"/status", map[string]any{
+		resp2 := doJSON(t, adminToken, http.MethodPost, baseURL+"/api/v1/objectives/"+id+"/status", map[string]any{
 			"status": "active",
 		})
 		assertStatus(t, resp2, http.StatusOK)
@@ -368,18 +399,18 @@ func TestObjectiveCRUD(t *testing.T) {
 
 // TestLoopStartStatus tests POST /loops (start a loop) and GET /loops/:id/status.
 func TestLoopStartStatus(t *testing.T) {
-	baseURL, cleanup := startServer(t)
+	baseURL, adminToken, cleanup := startServer(t)
 	defer cleanup()
 
 	// Create twin and objective
-	twinResp := doJSON(t, http.MethodPost, baseURL+"/api/v1/twins", map[string]any{
+	twinResp := doJSON(t, adminToken, http.MethodPost, baseURL+"/api/v1/twins", map[string]any{
 		"name": "loop-twin", "kind": "executor", "domain": "software",
 	})
 	assertStatus(t, twinResp, http.StatusOK)
 	twinM := decodeJSON(t, twinResp)
 	twinID := twinM["id"].(string)
 
-	objResp := doJSON(t, http.MethodPost, baseURL+"/api/v1/objectives", map[string]any{
+	objResp := doJSON(t, adminToken, http.MethodPost, baseURL+"/api/v1/objectives", map[string]any{
 		"title": "Loop Objective", "domain": "software",
 	})
 	assertStatus(t, objResp, http.StatusOK)
@@ -387,7 +418,7 @@ func TestLoopStartStatus(t *testing.T) {
 	objID := objM["id"].(string)
 
 	t.Run("start_loop", func(t *testing.T) {
-		resp := doJSON(t, http.MethodPost, baseURL+"/api/v1/loops", map[string]any{
+		resp := doJSON(t, adminToken, http.MethodPost, baseURL+"/api/v1/loops", map[string]any{
 			"objective_id": objID,
 			"twin_id":      twinID,
 			"max_iter":     1,
@@ -402,7 +433,7 @@ func TestLoopStartStatus(t *testing.T) {
 		deadline := time.Now().Add(2 * time.Second)
 		var statusM map[string]any
 		for time.Now().Before(deadline) {
-			statusResp := doJSON(t, http.MethodGet, baseURL+"/api/v1/loops/"+loopID+"/status", nil)
+			statusResp := doJSON(t, adminToken, http.MethodGet, baseURL+"/api/v1/loops/"+loopID+"/status", nil)
 			if statusResp.StatusCode == http.StatusOK {
 				statusM = decodeJSON(t, statusResp)
 				break
@@ -419,15 +450,15 @@ func TestLoopStartStatus(t *testing.T) {
 
 // TestMemoryStoreRecall tests POST /memory/store and POST /memory/recall.
 func TestMemoryStoreRecall(t *testing.T) {
-	baseURL, cleanup := startServer(t)
+	baseURL, adminToken, cleanup := startServer(t)
 	defer cleanup()
 
 	t.Run("store", func(t *testing.T) {
-		resp := doJSON(t, http.MethodPost, baseURL+"/api/v1/memory/store", map[string]any{
-			"id":       "test-entry-1",
-			"agent_id": "test-agent",
-			"tier":     "episodic",
-			"content":  "integration test memory entry",
+		resp := doJSON(t, adminToken, http.MethodPost, baseURL+"/api/v1/memory/store", map[string]any{
+			"id":         "test-entry-1",
+			"agent_id":   "test-agent",
+			"tier":       "episodic",
+			"content":    "integration test memory entry",
 			"confidence": 0.9,
 		})
 		assertStatus(t, resp, http.StatusOK)
@@ -439,7 +470,7 @@ func TestMemoryStoreRecall(t *testing.T) {
 
 	t.Run("recall", func(t *testing.T) {
 		// Store first
-		storeResp := doJSON(t, http.MethodPost, baseURL+"/api/v1/memory/store", map[string]any{
+		storeResp := doJSON(t, adminToken, http.MethodPost, baseURL+"/api/v1/memory/store", map[string]any{
 			"id":         "recall-entry-1",
 			"agent_id":   "recall-agent",
 			"tier":       "episodic",
@@ -450,7 +481,7 @@ func TestMemoryStoreRecall(t *testing.T) {
 		storeResp.Body.Close()
 
 		// Recall
-		resp := doJSON(t, http.MethodPost, baseURL+"/api/v1/memory/recall", map[string]any{
+		resp := doJSON(t, adminToken, http.MethodPost, baseURL+"/api/v1/memory/recall", map[string]any{
 			"agent_id": "recall-agent",
 			"tiers":    []string{"episodic"},
 			"top_k":    5,
@@ -465,11 +496,11 @@ func TestMemoryStoreRecall(t *testing.T) {
 
 // TestArtifactWriteGet tests POST /artifacts and GET /artifacts/:sha.
 func TestArtifactWriteGet(t *testing.T) {
-	baseURL, cleanup := startServer(t)
+	baseURL, adminToken, cleanup := startServer(t)
 	defer cleanup()
 
 	t.Run("write", func(t *testing.T) {
-		resp := doJSON(t, http.MethodPost, baseURL+"/api/v1/artifacts", map[string]any{
+		resp := doJSON(t, adminToken, http.MethodPost, baseURL+"/api/v1/artifacts", map[string]any{
 			"objective_id": "obj-test-123",
 			"agent_id":     "agent-test",
 			"capability":   "software.act.write_code",
@@ -482,7 +513,7 @@ func TestArtifactWriteGet(t *testing.T) {
 
 	t.Run("write_then_get", func(t *testing.T) {
 		content := "# Integration test artifact content"
-		writeResp := doJSON(t, http.MethodPost, baseURL+"/api/v1/artifacts", map[string]any{
+		writeResp := doJSON(t, adminToken, http.MethodPost, baseURL+"/api/v1/artifacts", map[string]any{
 			"objective_id": "obj-get-test",
 			"agent_id":     "agent-get",
 			"capability":   "software.act.write_design_doc",
@@ -492,7 +523,7 @@ func TestArtifactWriteGet(t *testing.T) {
 		m := decodeJSON(t, writeResp)
 		sha := m["sha"].(string)
 
-		getResp := doJSON(t, http.MethodGet, baseURL+"/api/v1/artifacts/"+sha, nil)
+		getResp := doJSON(t, adminToken, http.MethodGet, baseURL+"/api/v1/artifacts/"+sha, nil)
 		assertStatus(t, getResp, http.StatusOK)
 		body, err := io.ReadAll(getResp.Body)
 		getResp.Body.Close()
@@ -507,11 +538,11 @@ func TestArtifactWriteGet(t *testing.T) {
 
 // TestCheckpointList tests GET /checkpoints.
 func TestCheckpointList(t *testing.T) {
-	baseURL, cleanup := startServer(t)
+	baseURL, adminToken, cleanup := startServer(t)
 	defer cleanup()
 
 	// GET /checkpoints should return empty list initially (no error)
-	resp := doJSON(t, http.MethodGet, baseURL+"/api/v1/checkpoints", nil)
+	resp := doJSON(t, adminToken, http.MethodGet, baseURL+"/api/v1/checkpoints", nil)
 	assertStatus(t, resp, http.StatusOK)
 	items := decodeJSONSlice(t, resp)
 	// May be empty — that's fine
@@ -519,16 +550,16 @@ func TestCheckpointList(t *testing.T) {
 }
 
 func TestAuditEndpoint(t *testing.T) {
-	baseURL, cleanup := startServer(t)
+	baseURL, adminToken, cleanup := startServer(t)
 	defer cleanup()
 
 	// Empty audit log returns 200 + empty array — the endpoint must exist
 	// and accept the filter query params introduced in Phase 13.
-	resp := doJSON(t, http.MethodGet, baseURL+"/api/v1/audit?kind=escalation&limit=10", nil)
+	resp := doJSON(t, adminToken, http.MethodGet, baseURL+"/api/v1/audit?kind=escalation&limit=10", nil)
 	assertStatus(t, resp, http.StatusOK)
 	_ = decodeJSONSlice(t, resp)
 
 	// bounds_violation tri-state must parse without error
-	resp = doJSON(t, http.MethodGet, baseURL+"/api/v1/audit?bounds_violation=true", nil)
+	resp = doJSON(t, adminToken, http.MethodGet, baseURL+"/api/v1/audit?bounds_violation=true", nil)
 	assertStatus(t, resp, http.StatusOK)
 }

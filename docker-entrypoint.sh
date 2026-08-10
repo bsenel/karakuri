@@ -9,10 +9,14 @@ if [ ! -d /data/repo/.git ]; then
   git -C /data/repo commit --allow-empty -m "karakuri: init"
 fi
 
-# Copy config to a writable path and optionally patch auth token.
+# Copy config to a writable path. Auth no longer needs patching in: the server
+# reads KARAKURI_AUTH_JWT_SECRET and friends straight from the environment, so
+# no secret is ever written to a file on disk.
 cp /etc/karakuri/config.yaml /tmp/runtime.yaml
-if [ -n "$KARAKURI_AUTH_TOKEN" ]; then
-  sed -i "s/token: \"\"/token: \"$KARAKURI_AUTH_TOKEN\"/" /tmp/runtime.yaml
+
+if [ -z "$KARAKURI_AUTH_JWT_SECRET" ]; then
+  echo "karakuri: KARAKURI_AUTH_JWT_SECRET is not set — the server will refuse to start." >&2
+  echo "karakuri: generate one with: openssl rand -base64 32" >&2
 fi
 
 export KARAKURI_CONFIG=/tmp/runtime.yaml

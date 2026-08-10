@@ -30,7 +30,19 @@ back to `index.html`.
 
 ## Auth
 
-The login modal stores the bearer token in `localStorage` under the
-`karakuri_token` key. Token value must match `auth.token` in the server config
-(or the `KARAKURI_AUTH_TOKEN` env var). An empty server token disables auth
-checks; the UI still works without filling the modal.
+The login form exchanges an ID and password for a short-lived access token and a
+refresh token, stored together in `localStorage` under `karakuri_session`.
+
+`api/client.ts` refreshes transparently: any call made within a minute of the
+access token's expiry refreshes first, and a 401 triggers one retry. Because
+refresh tokens rotate on every use, concurrent calls share a single in-flight
+refresh — letting each 401 refresh independently would spend the token more than
+once, and the server treats a replayed refresh token as a leak and revokes the
+whole session family.
+
+SSE is the one place a token travels in a query string (`?access_token=`), since
+`EventSource` cannot set headers. The server accepts that only on stream
+endpoints.
+
+On a fresh install the server creates an `admin` account and logs its password
+once at startup.

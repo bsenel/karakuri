@@ -198,7 +198,7 @@ deploy/                           ← Helm chart root
 | Server config (DB path, providers, memory thresholds)            | `deploy/karakuri.yaml`           | Dockerfile `COPY`; chart ConfigMap via `.Files.Get`  |
 | Image, replicas, service, storage, resources                     | `deploy/values.yaml`             | All four K8s variants                                |
 | k3s deltas (`pullPolicy: IfNotPresent`, ClusterIP, `local-path`) | `deploy/values-k3s.yaml`         | k3s target only                                      |
-| Secrets (`ANTHROPIC_API_KEY`, `KARAKURI_AUTH_TOKEN`)             | Process env at deploy time       | All variants via shared `_secret` Makefile primitive |
+| Secrets (`ANTHROPIC_API_KEY`, `KARAKURI_AUTH_JWT_SECRET`)         | Process env at deploy time       | All variants via shared `_secret` Makefile primitive |
 | ArgoCD Application                                               | `deploy/argocd/application.yaml` | ArgoCD only                                          |
 
 
