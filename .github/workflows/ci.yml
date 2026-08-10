@@ -103,10 +103,19 @@ jobs:
       - name: Coverage gate (95%)
         working-directory: ${{ matrix.module }}
         run: |
-          go test ./... -coverprofile=cover.out >/dev/null
+          set -euo pipefail
+          # Runnable examples are documentation, not library surface — they are
+          # exercised by `go vet` and by running them, not by unit tests.
+          pkgs=$(go list ./... | grep -v '/examples/')
+          go test ${pkgs} -coverprofile=cover.out >/dev/null
           total=$(go tool cover -func=cover.out | awk '/^total:/ {print $3}' | tr -d '%')
           echo "${{ matrix.module }} coverage: ${total}%"
           awk -v t="${total}" 'BEGIN { if (t+0 < 95) { print "coverage below the 95% gate"; exit 1 } }'
+
+      - name: Example server runs
+        if: matrix.module == 'auth'
+        working-directory: auth
+        run: go run ./examples/server
 
   test:
     name: Test

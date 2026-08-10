@@ -34,18 +34,22 @@ type Store interface {
 // examples and the test suite, and is production-usable for deployments whose
 // principal set is seeded from config at boot.
 type MemoryStore struct {
-	mu         sync.RWMutex
-	principals map[string]Principal
-	roles      map[string]Role
-	bindings   map[string]RoleBinding
+	mu          sync.RWMutex
+	principals  map[string]Principal
+	roles       map[string]Role
+	bindings    map[string]RoleBinding
+	credentials map[string]Credential
+	refresh     map[string]RefreshToken
 }
 
 // NewMemoryStore returns an empty in-memory store.
 func NewMemoryStore() *MemoryStore {
 	return &MemoryStore{
-		principals: map[string]Principal{},
-		roles:      map[string]Role{},
-		bindings:   map[string]RoleBinding{},
+		principals:  map[string]Principal{},
+		roles:       map[string]Role{},
+		bindings:    map[string]RoleBinding{},
+		credentials: map[string]Credential{},
+		refresh:     map[string]RefreshToken{},
 	}
 }
 
@@ -89,10 +93,17 @@ func (s *MemoryStore) DeletePrincipal(_ context.Context, id string) error {
 		return fmt.Errorf("%w: %q", ErrPrincipalNotFound, id)
 	}
 	delete(s.principals, id)
-	// Bindings outlive nothing: a deleted principal must not leave grants behind.
+	// Nothing outlives a deleted principal: neither its grants nor its
+	// credentials, or a re-created ID would inherit them.
 	for bid, b := range s.bindings {
 		if b.PrincipalID == id {
 			delete(s.bindings, bid)
+		}
+	}
+	delete(s.credentials, id)
+	for tid, t := range s.refresh {
+		if t.PrincipalID == id {
+			delete(s.refresh, tid)
 		}
 	}
 	return nil
