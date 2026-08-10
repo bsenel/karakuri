@@ -73,7 +73,11 @@ func autoCmd() *cobra.Command {
 			fmt.Printf("Streaming events for objective %s (Ctrl+C to stop)...\n\n", objResp.ID)
 
 			// 4. Stream SSE events from /objectives/<id>/events
-			return streamSSE(api.BaseURL+"/objectives/"+objResp.ID+"/events", api.Token)
+			token, err := api.AccessToken()
+			if err != nil {
+				return err
+			}
+			return streamSSE(api.BaseURL+"/objectives/"+objResp.ID+"/events", token)
 		},
 	}
 	cmd.Flags().StringVar(&domain, "domain", "software", "Domain for the watcher twin")

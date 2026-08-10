@@ -16,6 +16,9 @@ type CreateRequest struct {
 	Name   string
 	Kind   twin.Kind
 	Domain string
+	// OwnerID records the principal creating the twin, so ownership-scoped
+	// policies have something to match on. Empty leaves the twin unowned.
+	OwnerID string
 }
 
 type Service struct {
@@ -31,6 +34,7 @@ func (s *Service) Create(ctx context.Context, req CreateRequest) (twin.DigitalTw
 	id, _ := newID()
 	t := twin.DigitalTwin{
 		ID: id, Name: req.Name, Kind: req.Kind, Domain: req.Domain,
+		OwnerID:   req.OwnerID,
 		CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC(),
 	}
 	if err := s.store.SaveTwin(ctx, t); err != nil {
@@ -38,7 +42,7 @@ func (s *Service) Create(ctx context.Context, req CreateRequest) (twin.DigitalTw
 	}
 	s.hub.Publish(ctx, event.Event{
 		Type: event.TypeTwinStateUpdated, TwinID: id,
-		Payload: map[string]any{"action": "created", "name": req.Name},
+		Payload:   map[string]any{"action": "created", "name": req.Name},
 		Timestamp: time.Now().UTC(),
 	})
 	return t, nil

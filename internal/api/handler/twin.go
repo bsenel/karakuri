@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"github.com/bsenel/karakuri/auth"
 	"github.com/bsenel/karakuri/internal/core/twin"
 	featuretwin "github.com/bsenel/karakuri/internal/feature/twin"
 	"github.com/go-chi/chi/v5"
@@ -23,10 +24,16 @@ func (h *TwinHandler) Create(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	// Stamp the creator so ownership conditions have something to match. A
+	// request with no principal cannot reach here — every mutating route is
+	// authenticated — but an unowned twin is still a valid state (rows created
+	// before Phase 14), so this does not assert.
+	owner, _ := auth.PrincipalFromContext(r.Context())
 	t, err := h.Twins.Create(r.Context(), featuretwin.CreateRequest{
-		Name:   req.Name,
-		Kind:   twin.Kind(req.Kind),
-		Domain: req.Domain,
+		Name:    req.Name,
+		Kind:    twin.Kind(req.Kind),
+		Domain:  req.Domain,
+		OwnerID: owner.ID,
 	})
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)

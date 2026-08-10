@@ -79,6 +79,7 @@ export function AuditPage() {
               <option value="approval">approval</option>
               <option value="modification">modification</option>
               <option value="rejection">rejection</option>
+              <option value="authz_denied">authz_denied</option>
             </select>
           </label>
           <label className="col" style={{ flex: '1 1 200px' }}>
@@ -170,6 +171,9 @@ function KindPill({ kind, bounds }: { kind: string; bounds?: boolean }) {
     case 'approval': cls += ' green'; break;
     case 'modification': cls += ' blue'; break;
     case 'rejection': cls += ' red'; break;
+    // A refused API request (Phase 14). Same colour as a rejection: both are
+    // "this did not happen, and here is who wanted it to".
+    case 'authz_denied': cls += ' red'; break;
     case 'execute':
     default: cls += ' grey'; break;
   }

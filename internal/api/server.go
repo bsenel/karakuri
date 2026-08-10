@@ -115,6 +115,9 @@ func NewApp(
 	require := func(action auth.Action, resource auth.ResourceFunc) func(http.Handler) http.Handler {
 		return authDeps.Enforcer.Require(action, resource)
 	}
+	// Twin routes resolve the twin's owner so owner_equals conditions can fire;
+	// one read per request, confined to routes that actually name a twin.
+	ownedTwin := karakuriauth.OwnedTwinResource(store)
 
 	healthH := &handler.HealthHandler{Providers: providers, Tools: toolReg, Exporters: exporters, Worktrees: wt, RepoPath: cfg.Git.RepoPath}
 	twinH := &handler.TwinHandler{Twins: twinSvc}
@@ -166,9 +169,9 @@ func NewApp(
 			r.Route("/twins", func(r chi.Router) {
 				r.With(require(karakuriauth.ActionTwinCreate, nil)).Post("/", twinH.Create)
 				r.With(require(karakuriauth.ActionTwinRead, nil)).Get("/", twinH.List)
-				r.With(require(karakuriauth.ActionTwinRead, karakuriauth.TwinResource)).Get("/{id}", twinH.Get)
-				r.With(require(karakuriauth.ActionTwinUpdate, karakuriauth.TwinResource)).Put("/{id}", twinH.Update)
-				r.With(require(karakuriauth.ActionTwinBind, karakuriauth.TwinResource)).Put("/{id}/bindings", twinH.SetBindings)
+				r.With(require(karakuriauth.ActionTwinRead, ownedTwin)).Get("/{id}", twinH.Get)
+				r.With(require(karakuriauth.ActionTwinUpdate, ownedTwin)).Put("/{id}", twinH.Update)
+				r.With(require(karakuriauth.ActionTwinBind, ownedTwin)).Put("/{id}/bindings", twinH.SetBindings)
 				r.With(require(karakuriauth.ActionTwinRead, karakuriauth.TwinResource)).Get("/{id}/events", evtH.StreamTwin)
 			})
 

@@ -9,7 +9,6 @@ import (
 
 var (
 	apiURL string
-	token  string
 	output string
 	api    *client.Client
 )
@@ -24,12 +23,15 @@ func NewRoot() *cobra.Command {
 	root := &cobra.Command{
 		Use:   "krk",
 		Short: "Karakuri CLI — autonomous agent platform",
+		// A rejected API call is not a usage mistake. Dumping the flag list
+		// after "forbidden: no policy grants twin:bind" buries the one line
+		// that explains what happened.
+		SilenceUsage: true,
 		PersistentPreRun: func(_ *cobra.Command, _ []string) {
-			api = client.New(apiURL, token)
+			api = client.New(apiURL)
 		},
 	}
 	root.PersistentFlags().StringVar(&apiURL, "api-url", "http://localhost:8080/api/v1", "API base URL")
-	root.PersistentFlags().StringVar(&token, "token", os.Getenv("KARAKURI_TOKEN"), "Bearer token")
 	root.PersistentFlags().StringVar(&output, "output", "pretty", "Output format: json|pretty|quiet")
 
 	root.AddCommand(
@@ -45,6 +47,7 @@ func NewRoot() *cobra.Command {
 		migrateCmd(),
 		webCmd(),
 		auditCmd(),
+		authCmd(),
 	)
 	return root
 }
