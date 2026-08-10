@@ -84,8 +84,21 @@ jobs:
     name: Auth modules
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
-        module: [auth]
+        include:
+          # The core module is pure logic and a security boundary, so every
+          # branch is reachable from a test and the bar is set accordingly.
+          - module: auth
+            coverage: 95
+          # auth/sql's residual uncovered statements are RowsAffected() and
+          # tx.Commit() error branches, which need a fault-injecting driver to
+          # reach. Behaviour is covered — every method against a closed
+          # database, corrupt JSON columns, and contention on a single refresh
+          # token — so the bar reflects the plumbing rather than being padded
+          # with a driver stub nobody would maintain.
+          - module: auth/sql
+            coverage: 90
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -94,14 +107,18 @@ jobs:
           # The core auth module has no external dependencies, so there is no
           # go.sum for setup-go's cache key to hash.
           cache: false
+      # Nested modules resolve their parent through a replace directive until
+      # auth/v0.1.0 is tagged, so they build straight from the working tree.
       - run: go build ./...
         working-directory: ${{ matrix.module }}
       - run: go vet ./...
         working-directory: ${{ matrix.module }}
       - run: go test ./... -race -count=1
         working-directory: ${{ matrix.module }}
-      - name: Coverage gate (95%)
+      - name: Coverage gate
         working-directory: ${{ matrix.module }}
+        env:
+          MIN_COVERAGE: ${{ matrix.coverage }}
         run: |
           set -euo pipefail
           # Runnable examples are documentation, not library surface — they are
@@ -109,8 +126,9 @@ jobs:
           pkgs=$(go list ./... | grep -v '/examples/')
           go test ${pkgs} -coverprofile=cover.out >/dev/null
           total=$(go tool cover -func=cover.out | awk '/^total:/ {print $3}' | tr -d '%')
-          echo "${{ matrix.module }} coverage: ${total}%"
-          awk -v t="${total}" 'BEGIN { if (t+0 < 95) { print "coverage below the 95% gate"; exit 1 } }'
+          echo "${{ matrix.module }} coverage: ${total}% (gate: ${MIN_COVERAGE}%)"
+          awk -v t="${total}" -v min="${MIN_COVERAGE}" \
+            'BEGIN { if (t+0 < min+0) { printf "coverage %s%% is below the %s%% gate\n", t, min; exit 1 } }'
 
       - name: Example server runs
         if: matrix.module == 'auth'
