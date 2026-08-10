@@ -2,14 +2,21 @@ package integration_test
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
+	"os"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/bsenel/karakuri/config"
+	"github.com/bsenel/karakuri/internal/app"
 	karakuriauth "github.com/bsenel/karakuri/internal/auth"
+	platformdb "github.com/bsenel/karakuri/internal/platform/db"
+	"github.com/bsenel/karakuri/internal/platform/storage"
 )
 
 // login exchanges credentials for an access token.
@@ -431,4 +438,60 @@ func TestRBACSSEQueryToken(t *testing.T) {
 		t.Errorf("REST route accepted a query token: %d", rest.StatusCode)
 	}
 	rest.Body.Close()
+}
+
+// TestBootstrapRequiresPassword pins the fail-closed path added after CodeQL
+// flagged the previous behaviour: a database with no principals used to mint an
+// administrator and log its generated password at WARN.
+//
+// That is worse than it sounds in this codebase — Karakuri fans logs out to
+// Datadog, Loki, Elasticsearch and CloudWatch, so "logged once" meant the
+// credential was copied to every configured sink. The server now refuses to
+// start instead, exactly as it does with no JWT signing key.
+func TestBootstrapRequiresPassword(t *testing.T) {
+	ctx := context.Background()
+	dbFile, err := os.CreateTemp("", "karakuri-bootstrap-*.db")
+	if err != nil {
+		t.Fatalf("temp db: %v", err)
+	}
+	dbPath := dbFile.Name()
+	dbFile.Close()
+	t.Cleanup(func() { os.Remove(dbPath) })
+
+	cfg := config.Default()
+	cfg.Database.Driver = "sqlite"
+	cfg.Database.DSN = dbPath
+	cfg.Auth.JWT.Keys = []config.JWTKeyConfig{{
+		ID: "test", Algorithm: "HS256", Active: true,
+		Secret: strings.Repeat("integration-test-signing-key", 2),
+	}}
+	t.Setenv(cfg.Auth.Bootstrap.PasswordEnv, "")
+
+	gormDB, err := platformdb.Open(cfg.Database.Driver, cfg.Database.DSN)
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	if err := platformdb.RunMigrations(gormDB, cfg.Database.DSN); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	store := storage.NewGORMStorage(gormDB)
+
+	_, err = app.BuildAuth(ctx, gormDB, store, cfg)
+	if err == nil {
+		t.Fatal("BuildAuth succeeded with no bootstrap password on an empty database")
+	}
+	if !errors.Is(err, karakuriauth.ErrNoBootstrapPassword) {
+		t.Fatalf("error = %v, want ErrNoBootstrapPassword", err)
+	}
+	// The message has to tell an operator what to set, not just that something
+	// is missing.
+	if !strings.Contains(err.Error(), cfg.Auth.Bootstrap.PasswordEnv) {
+		t.Errorf("error does not name the env var to set: %v", err)
+	}
+
+	// With the password supplied, the same empty database bootstraps fine.
+	t.Setenv(cfg.Auth.Bootstrap.PasswordEnv, "a-chosen-password")
+	if _, err := app.BuildAuth(ctx, gormDB, store, cfg); err != nil {
+		t.Fatalf("BuildAuth with a password: %v", err)
+	}
 }

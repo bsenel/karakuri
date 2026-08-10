@@ -29,7 +29,8 @@ export function LoginModal() {
         <h2 style={{ marginTop: 0 }}>Karakuri</h2>
         <p className="muted small">
           Sign in to continue. On a fresh install the server creates an{' '}
-          <code>admin</code> account and logs its password once at startup.
+          <code>admin</code> account with the password from{' '}
+          <code>KARAKURI_AUTH_BOOTSTRAP_PASSWORD</code>.
         </p>
         <form onSubmit={submit} className="col">
           <div>

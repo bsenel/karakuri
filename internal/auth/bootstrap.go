@@ -2,8 +2,7 @@ package auth
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/base64"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -46,20 +45,27 @@ func Seed(ctx context.Context, store auth.Store, tokens *auth.TokenService, cata
 	return seedAdmin(ctx, store, tokens, cfg)
 }
 
+// ErrNoBootstrapPassword is returned when a database has no principals and no
+// bootstrap password is configured. It is fatal at startup for the same reason
+// a missing signing key is: continuing would leave a server nobody can log in
+// to, and the alternative — generating a password and logging it — writes a
+// live credential into the log stream.
+var ErrNoBootstrapPassword = errors.New("auth: no bootstrap password configured")
+
 func seedAdmin(ctx context.Context, store auth.Store, tokens *auth.TokenService, cfg config.AuthBootstrapConfig) error {
 	id := cfg.AdminID
 	if id == "" {
 		id = "admin"
 	}
 
+	// Deliberately not generated-and-logged. Karakuri fans its logs out to
+	// Datadog, Loki, Elasticsearch and CloudWatch (Phase 12), so "logged once
+	// at WARN" means "copied to every configured log sink" — which is exactly
+	// where a live administrator credential must not end up.
 	password := os.Getenv(cfg.PasswordEnv)
-	generated := false
 	if password == "" {
-		var err error
-		if password, err = randomPassword(); err != nil {
-			return fmt.Errorf("generate bootstrap password: %w", err)
-		}
-		generated = true
+		return fmt.Errorf("%w: this database has no principals, so %s must be set to create the first administrator (%q)",
+			ErrNoBootstrapPassword, cfg.PasswordEnv, id)
 	}
 
 	if err := store.PutPrincipal(ctx, auth.Principal{ID: id, Name: "Bootstrap administrator", Kind: auth.KindUser}); err != nil {
@@ -77,24 +83,6 @@ func seedAdmin(ctx context.Context, store auth.Store, tokens *auth.TokenService,
 		return fmt.Errorf("set bootstrap admin password: %w", err)
 	}
 
-	if generated {
-		// Logged exactly once, on the boot that created the account. There is
-		// nowhere else to put it: the operator has no other way in, and storing
-		// it anywhere retrievable would defeat hashing it.
-		slog.Warn("created bootstrap administrator — change this password now",
-			"id", id,
-			"password", password,
-			"hint", fmt.Sprintf("set %s to choose your own", cfg.PasswordEnv))
-	} else {
-		slog.Info("created bootstrap administrator from the configured password", "id", id)
-	}
+	slog.Info("created bootstrap administrator", "id", id)
 	return nil
-}
-
-func randomPassword() (string, error) {
-	buf := make([]byte, 18)
-	if _, err := rand.Read(buf); err != nil {
-		return "", err
-	}
-	return base64.RawURLEncoding.EncodeToString(buf), nil
 }

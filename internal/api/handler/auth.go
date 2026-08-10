@@ -36,7 +36,13 @@ func (h *AuthHandler) Token(w http.ResponseWriter, r *http.Request) {
 		// Every failure mode — unknown principal, wrong password, disabled
 		// account, service account with no password — is reported identically
 		// so the endpoint cannot be used to enumerate accounts.
-		slog.Info("login rejected", "principal", body.ID, "remote", r.RemoteAddr)
+		//
+		// The submitted ID is deliberately not logged. This endpoint is
+		// unauthenticated, so that string is attacker-controlled, and writing
+		// it verbatim lets anyone forge lines in a log stream that is shipped
+		// to Datadog/Loki/Elasticsearch. The remote address is enough to spot
+		// a brute-force attempt.
+		slog.Info("login rejected", "remote", r.RemoteAddr)
 		authError(w, http.StatusUnauthorized, "invalid_credentials", "invalid credentials")
 		return
 	}

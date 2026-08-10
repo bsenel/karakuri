@@ -56,7 +56,9 @@ auth:
     keys: []
   bootstrap:
     # On a database with no principals, the server creates this administrator
-    # and logs its password once at WARN. Set the env var to choose your own.
+    # using the password from the named environment variable. If it is unset,
+    # the server refuses to start — generating one and logging it would copy a
+    # live credential into every configured log sink.
     admin_id: admin
     password_env: KARAKURI_AUTH_BOOTSTRAP_PASSWORD
 

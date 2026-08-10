@@ -190,8 +190,9 @@ export ANTHROPIC_API_KEY=sk-ant-...
 # default, because a predictable one would be a backdoor.
 export KARAKURI_AUTH_JWT_SECRET="$(openssl rand -base64 32)"
 
-# Optional. Without it, the first boot generates the administrator's password
-# and logs it once at WARN.
+# Required on first boot only. A database with no principals needs this to
+# create the first administrator; the server refuses to start without it
+# rather than generating a password and writing it to the log stream.
 export KARAKURI_AUTH_BOOTSTRAP_PASSWORD="choose-something"
 ```
 

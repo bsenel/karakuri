@@ -18,6 +18,11 @@ if [ -z "$KARAKURI_AUTH_JWT_SECRET" ]; then
   echo "karakuri: KARAKURI_AUTH_JWT_SECRET is not set — the server will refuse to start." >&2
   echo "karakuri: generate one with: openssl rand -base64 32" >&2
 fi
+if [ -z "$KARAKURI_AUTH_BOOTSTRAP_PASSWORD" ]; then
+  echo "karakuri: KARAKURI_AUTH_BOOTSTRAP_PASSWORD is not set. This is only" >&2
+  echo "karakuri: required on a database with no principals, where it becomes" >&2
+  echo "karakuri: the first administrator's password." >&2
+fi
 
 export KARAKURI_CONFIG=/tmp/runtime.yaml
 exec /usr/local/bin/karakuri "$@"

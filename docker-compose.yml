@@ -8,8 +8,8 @@ services:
     environment:
       # Required: the JWT signing key. `openssl rand -base64 32` will do.
       - KARAKURI_AUTH_JWT_SECRET=${KARAKURI_AUTH_JWT_SECRET:-}
-      # Optional: choose the first administrator's password instead of having
-      # one generated and logged on first boot.
+      # Required on first boot: the password for the administrator created on
+      # a database with no principals.
       - KARAKURI_AUTH_BOOTSTRAP_PASSWORD=${KARAKURI_AUTH_BOOTSTRAP_PASSWORD:-}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
     healthcheck:
