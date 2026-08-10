@@ -22,7 +22,7 @@ Karakuri replaced the original role-based workflow simulator with an autonomous 
 | 11    | Distributed & Durable Execution            | **Completed** |
 | 12    | Observability Fan-out                      | **Completed** |
 | 13    | Cross-Domain Objectives + Hardening        | **Completed** |
-| 14    | RBAC + Fine-Grained Authorization (core)   | Planned       |
+| 14    | RBAC + Fine-Grained Authorization (core)   | **Completed** |
 | 15    | API Rate Limiting + Quota Management (core)| Planned       |
 | 16    | Federated Identity (OIDC + SAML)           | Planned       |
 | 17    | Hierarchical Resources + Org Units         | Planned       |
@@ -766,7 +766,80 @@ krk audit --kind rejection --violations-only
 
 ---
 
-## Phase 14 — RBAC + Fine-Grained Authorization (Planned)
+## Phase 14 — RBAC + Fine-Grained Authorization (Completed)
+
+**Goal:** Replace Karakuri's single bearer token with role-based access control, shipped as a standalone Go module (`github.com/bsenel/karakuri/auth`) reusable by any `net/http` or `chi` server without dragging in Karakuri itself.
+
+**Breaking change, deliberately.** `middleware.BearerAuth`, `cfg.Auth.Token` and `KARAKURI_AUTH_TOKEN` are deleted outright — from the Makefile secret, `docker-compose.yml`, `docker-entrypoint.sh`'s config patch, `deploy/`, both READMEs and the web login modal. There is no compatibility mode and no "RBAC disabled" setting. Existing deployments must set `KARAKURI_AUTH_JWT_SECRET` (the server refuses to boot without one) and existing API clients must obtain a token instead of sending a static one.
+
+**What shipped — three modules and a shim:**
+
+- **`github.com/bsenel/karakuri/auth`** — the authorization engine, with **zero external dependencies**. Principals, a consumer-supplied action catalog, roles with inheritance, policies with typed conditions, scoped role bindings, a deny-wins authorizer that returns a full decision trace, an in-memory reference `Store`, and `chi`-compatible middleware. 99.6% statement coverage.
+- **`auth/jwt`** — HS256 (`crypto/hmac`) and EdDSA (`crypto/ed25519`) over the standard library, behind an algorithm allowlist. `alg: none` never resolves to a key; algorithm confusion is impossible because `kid` selects the key first and the header's `alg` must equal that key's own; signature comparison is constant-time; a token with no `exp` is rejected. A `Keyring` separates the signing key from the accepted verification keys, so rotating the signer does not invalidate tokens already in flight.
+- **`auth/sql`** — `database/sql` persistence, no ORM and no driver dependency outside tests. Six tables, two dialects differing only in placeholder syntax and the boolean column type. Timestamps are epoch milliseconds because drivers disagree about how `DATETIME` round-trips.
+- **`internal/auth`** — the Karakuri shim: the action catalog, the five built-in roles, the route→permission table, the store built on the `*sql.DB` behind GORM, the keyring, and first-boot seeding.
+
+**The authorization model:**
+
+```
+Principal ──has──> RoleBinding{Role, Scope} ──grants──> Role{Policies, Inherits}
+                                                          │
+                                              Policy{Action, Resource, Effect, Conditions}
+```
+
+- **Nothing is implicit.** Every action is registered in a catalog; a policy naming one that is not fails at boot rather than silently granting nothing.
+- **Roles compose.** `viewer` → {`auditor`, `contributor`, `operator`}, plus `admin`. Each permission is stated once.
+- **Conditions are a closed, typed set** (`owner_equals`, `attr_equals`, `attr_in`) rather than an expression language, so every condition stays readable by whoever audits it and evaluation is total — an unresolvable key is an unsatisfied condition with a reason, never a parse error at request time.
+- **Bindings carry a scope**, separating "alice is an operator" from "alice is an operator on `twin:abc`". Phase 17 widens `Scope` into a hierarchical path without changing the shape.
+- **Precedence is exactly `deny > allow > default deny`.** Specificity deliberately does not break ties — ranking by specificity is the IAM footgun where adding a narrow grant silently punches a hole in a blanket restriction.
+
+**Tokens rotate.** Access tokens are short-lived JWTs (15 minutes by default), verified statelessly but with the principal reloaded from the store so disabling an account takes effect on the next request rather than at expiry. Refresh tokens are 256 bits of `crypto/rand`, stored only as a SHA-256 digest, linked into a *family*, and **rotated on every exchange**. Presenting a spent one revokes the entire lineage (OAuth 2.1 BCP §4.14.2): rotation means a legitimate holder never replays, so a replay is evidence the token leaked. Spending is a compare-and-set (`UPDATE … WHERE used_at IS NULL`), because a check-then-write lets two racing clients both succeed and the reuse detector never fires on the case it most needs to catch.
+
+**Credentials.** Humans get passwords hashed with PBKDF2-HMAC-SHA256 (stdlib `crypto/pbkdf2`, 600k iterations, cost encoded in the hash so it can be raised later without invalidating anything). Service accounts get no password at all — an administrator mints their first refresh token, printed once. On a database with no principals the server creates an `admin` and logs its password once at WARN; `KARAKURI_AUTH_BOOTSTRAP_PASSWORD` chooses it instead.
+
+**Ownership.** `DigitalTwin.OwnerID` + a nullable `twins.owner_id` column; the creating principal is stamped at create time. The `contributor` role uses `owner_equals` to allow changing only the twins you created — expressed in policy, so it appears in `krk auth policies list` and in `/auth/me`, rather than as an `if` buried in a handler. Twins predating the column are unowned, and `owner_equals` is never satisfied by an unowned resource, so ownership-scoped grants do not silently cover them.
+
+**Denials are audited.** A refused request writes a `kind=authz_denied` row into the same `tool_events` log as authority-bounds escalations, carrying the decision trace. `krk audit --kind authz_denied` and the `/audit` page surface it with no new endpoint — reviewing who approved what now also shows who was turned away.
+
+**Fixed along the way:** authenticated SSE never worked. `web/src/api/sse.ts` passed `?token=`, which `BearerAuth` never read; and the stream handler set its headers without flushing them, so `net/http` buffered the response and `EventSource.onopen` never fired on an idle stream. Both are fixed — the token travels as `?access_token=`, accepted on stream paths only, and headers flush on connect.
+
+**CLI + frontend.** `krk auth login|logout|whoami|users|roles|policies|bindings|check|catalog`, with credentials cached per API URL under `~/.config/karakuri/credentials.json` (mode 0600) and refreshed automatically, so you log in once rather than per command. Passwords are read from stdin, never flags. The SPA's login form exchanges an ID and password for a token pair; the API client shares a single in-flight refresh, because letting concurrent 401s each refresh would spend the rotating token more than once and trip the server's reuse detector.
+
+**Acceptance — met:**
+
+- `auth` reaches **99.6%** line coverage with **no Karakuri imports and an empty require block**; `go run ./auth/examples/server` runs a self-contained demo of login, ownership conditions, a scoped binding, rotation, reuse detection and an explained denial.
+- The integration suite walks the route→permission table for every built-in role, asserting refused-or-not on each — so a route that loses its permission in `server.go` fails a test rather than quietly opening up. Deny-wins, expired tokens, rotation, reuse detection, scoped bindings, ownership conditions and SSE query-token auth are each covered.
+- CI gates coverage per module (95% for `auth`, 90% for `auth/sql`, whose residue is `RowsAffected`/`Commit` error branches needing a fault-injecting driver) and runs the example server.
+- The High-severity "authority bounds misconfiguration" risk is mitigated at the routing layer, not only at the loop's decide step.
+
+**Deviations from the plan, recorded:**
+
+- The module is **stdlib-only**, not "stdlib + `golang.org/x/time`" as originally written. Nothing in an authorizer needs a rate limiter; that dependency belongs to Phase 15's quota module. The release workflow enforces the empty require block.
+- **No `cfg.Auth.RBAC.Enabled` and no legacy-token principal.** The original plan kept RBAC off by default with the old token resolving to an admin. Shipping it always-on removes the "secure once you remember to turn it on" failure mode, at the cost of a hard upgrade step.
+- The **release workflow refuses to publish a module carrying a `replace` directive**, so `auth/sql` cannot be tagged until `auth/v0.1.0` exists and the directive is dropped. Root `go.mod` carries `replace` directives until then.
+
+**Operator quickstart:**
+
+```bash
+export KARAKURI_AUTH_JWT_SECRET="$(openssl rand -base64 32)"
+./bin/server        # logs the generated admin password once, at WARN
+
+echo "$ADMIN_PW" | krk auth login --id admin --password-stdin
+krk auth whoami
+
+# A contributor manages only what it creates
+echo "$PW" | krk auth users add --id alice --roles contributor --password-stdin
+# An operator scoped to one twin
+echo "$PW" | krk auth users add --id olive --roles operator --scope twin:abc --password-stdin
+# CI gets a rotating refresh token instead of a password
+krk auth users add --id ci --roles operator --service-account
+
+# Why was that refused?
+krk auth check alice twin:update twin:someone-elses
+krk audit --kind authz_denied
+```
+
+**Originally planned scope (kept verbatim for diff against shipped):**
 
 **Goal:** Replace Karakuri's single bearer token with role-based access control, shipped as a standalone Go module (`github.com/bsenel/karakuri/auth`) reusable by any `net/http` or `chi` server without dragging in Karakuri itself.
 
@@ -783,6 +856,7 @@ krk audit --kind rejection --violations-only
 **Acceptance:** Standalone module hits ≥95% line coverage with no Karakuri imports; `go run ./auth/examples/server` runs a 50-line demo independently. Three integration tests (admin/operator/viewer tokens) pass on every `/api/v1/*` route with correct 200/403 outcomes; Deny-wins precedence verified. The High-severity "Authority bounds misconfiguration" risk is mitigated at the routing layer, not just at the loop's decide step.
 
 ---
+
 
 ## Phase 15 — API Rate Limiting + Quota Management (Planned)
 

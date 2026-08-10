@@ -13,6 +13,7 @@ type TwinModel struct {
 	MemoryJSON          string    `gorm:"column:memory_json;not null;default:'{}'"`
 	ChildrenJSON        string    `gorm:"column:children_json;not null;default:'[]'"`
 	AdapterBindingsJSON string    `gorm:"column:adapter_bindings_json;not null;default:'{}'"`
+	OwnerID             string    `gorm:"column:owner_id;index;default:''"`
 	CreatedAt           time.Time `gorm:"column:created_at;autoCreateTime"`
 	UpdatedAt           time.Time `gorm:"column:updated_at;autoUpdateTime"`
 }
@@ -96,14 +97,14 @@ type MemorySemanticModel struct {
 func (MemorySemanticModel) TableName() string { return "memory_semantic" }
 
 type CheckpointModel struct {
-	ID           string `gorm:"primaryKey;column:id"`
-	ObjectiveID  string `gorm:"column:objective_id;not null;index"`
-	TwinID       string `gorm:"column:twin_id;not null"`
-	Reason       string `gorm:"column:reason;not null;default:''"`
-	Summary      string `gorm:"column:summary;not null;default:''"`
-	OptionsJSON  string `gorm:"column:options_json;not null;default:'[]'"`
-	Capability   string `gorm:"column:capability;not null;default:''"`
-	Confidence   float64 `gorm:"column:confidence;not null;default:0.0"`
+	ID          string  `gorm:"primaryKey;column:id"`
+	ObjectiveID string  `gorm:"column:objective_id;not null;index"`
+	TwinID      string  `gorm:"column:twin_id;not null"`
+	Reason      string  `gorm:"column:reason;not null;default:''"`
+	Summary     string  `gorm:"column:summary;not null;default:''"`
+	OptionsJSON string  `gorm:"column:options_json;not null;default:'[]'"`
+	Capability  string  `gorm:"column:capability;not null;default:''"`
+	Confidence  float64 `gorm:"column:confidence;not null;default:0.0"`
 	// ActionsJSON serializes the planner draft surfaced to reviewers
 	// (Phase 13.5). Empty array is the default for older rows.
 	ActionsJSON string `gorm:"column:actions_json;not null;default:'[]'"`
@@ -142,22 +143,22 @@ type WorktreeModel struct {
 func (WorktreeModel) TableName() string { return "worktrees" }
 
 type ToolEventModel struct {
-	ID          string    `gorm:"primaryKey;column:id"`
-	ObjectiveID string    `gorm:"column:objective_id;not null;default:'';index"`
-	AgentID     string    `gorm:"column:agent_id;not null;default:''"`
-	Capability  string    `gorm:"column:capability;not null;default:''"`
-	Adapter     string    `gorm:"column:adapter;not null;default:''"`
-	Success     bool      `gorm:"column:success;not null;default:false"`
-	Confidence  float64   `gorm:"column:confidence;not null;default:0.0"`
-	PayloadJSON string    `gorm:"column:payload_json"`
+	ID          string  `gorm:"primaryKey;column:id"`
+	ObjectiveID string  `gorm:"column:objective_id;not null;default:'';index"`
+	AgentID     string  `gorm:"column:agent_id;not null;default:''"`
+	Capability  string  `gorm:"column:capability;not null;default:''"`
+	Adapter     string  `gorm:"column:adapter;not null;default:''"`
+	Success     bool    `gorm:"column:success;not null;default:false"`
+	Confidence  float64 `gorm:"column:confidence;not null;default:0.0"`
+	PayloadJSON string  `gorm:"column:payload_json"`
 	// Audit fields (Phase 13). Kind distinguishes routine execution
 	// ("execute") from escalation events ("escalation") and approval
 	// resolutions ("approval"). Most operators only filter by kind +
 	// objective; the other audit columns surface for forensics.
-	Kind             string `gorm:"column:kind;not null;default:'execute';index"`
-	EscalationReason string `gorm:"column:escalation_reason;not null;default:''"`
-	Approver         string `gorm:"column:approver;not null;default:''"`
-	BoundsViolation  bool   `gorm:"column:bounds_violation;not null;default:false;index"`
+	Kind             string    `gorm:"column:kind;not null;default:'execute';index"`
+	EscalationReason string    `gorm:"column:escalation_reason;not null;default:''"`
+	Approver         string    `gorm:"column:approver;not null;default:''"`
+	BoundsViolation  bool      `gorm:"column:bounds_violation;not null;default:false;index"`
 	CreatedAt        time.Time `gorm:"column:created_at;autoCreateTime;index"`
 }
 

@@ -89,6 +89,7 @@ func (s *GORMStorage) SaveTwin(ctx context.Context, t twin.DigitalTwin) error {
 		AgentsJSON: string(agentsJ), EnvsJSON: string(envsJ),
 		ObjectivesJSON: string(objsJ), MemoryJSON: string(memJ),
 		ChildrenJSON: string(childJ), AdapterBindingsJSON: string(bindingsJ),
+		OwnerID: t.OwnerID,
 	}).Error
 }
 
@@ -144,6 +145,7 @@ func twinFromModel(m schema.TwinModel) twin.DigitalTwin {
 		ID: m.ID, Name: m.Name, Kind: twin.Kind(m.Kind), Domain: m.Domain,
 		Agents: agents, Children: children, Memory: mem,
 		AdapterBindings: bindings,
+		OwnerID:         m.OwnerID,
 		CreatedAt:       m.CreatedAt, UpdatedAt: m.UpdatedAt,
 	}
 }

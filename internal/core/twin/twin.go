@@ -27,6 +27,11 @@ type DigitalTwin struct {
 	Memory          agent.MemoryConfig          `json:"memory,omitempty"`
 	Children        []string                    `json:"children,omitempty"`
 	AdapterBindings map[string]string           `json:"adapter_bindings,omitempty"` // slot → instance name
-	CreatedAt       time.Time                   `json:"created_at"`
-	UpdatedAt       time.Time                   `json:"updated_at"`
+	// OwnerID is the principal that created the twin. Empty means unowned —
+	// twins that predate Phase 14, or ones created by a process with no
+	// principal. Policy conditions treat unowned resources as never satisfying
+	// owner_equals, so ownership-scoped grants do not silently cover them.
+	OwnerID   string    `json:"owner_id,omitempty"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }

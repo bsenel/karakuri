@@ -1,9 +1,11 @@
 package auth
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/bsenel/karakuri/auth"
+	"github.com/bsenel/karakuri/internal/core/twin"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -16,6 +18,38 @@ import (
 
 func TwinResource(r *http.Request) auth.ResourceRef {
 	return auth.Resource("twin", chi.URLParam(r, "id"))
+}
+
+// TwinOwnerLookup reads a twin's owner. It is an interface rather than the
+// storage adapter itself so this package does not depend on the whole storage
+// surface for one field.
+type TwinOwnerLookup interface {
+	GetTwin(ctx context.Context, id string) (twin.DigitalTwin, error)
+}
+
+// OwnedTwinResource is TwinResource plus the twin's owner, which is what lets
+// an owner_equals condition fire.
+//
+// The lookup costs one read per request on twin routes. That is the price of
+// expressing ownership in policy instead of as an `if` inside every handler —
+// and the reason it is confined to routes that actually name a twin.
+func OwnedTwinResource(lookup TwinOwnerLookup) auth.ResourceFunc {
+	return func(r *http.Request) auth.ResourceRef {
+		id := chi.URLParam(r, "id")
+		ref := auth.Resource("twin", id)
+		if id == "" || lookup == nil {
+			return ref
+		}
+		t, err := lookup.GetTwin(r.Context(), id)
+		if err != nil {
+			// A twin that cannot be read has no owner to match. The request
+			// falls through to whatever unconditional policy applies, and the
+			// handler reports the 404 — an authorization layer should not be
+			// the thing that decides a resource does not exist.
+			return ref
+		}
+		return ref.WithOwner(t.OwnerID)
+	}
 }
 
 func ObjectiveResource(r *http.Request) auth.ResourceRef {

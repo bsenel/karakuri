@@ -4,19 +4,21 @@ import "github.com/bsenel/karakuri/auth"
 
 // Built-in role names.
 const (
-	RoleAdmin    = "admin"
-	RoleOperator = "operator"
-	RoleViewer   = "viewer"
-	RoleAuditor  = "auditor"
+	RoleAdmin       = "admin"
+	RoleOperator    = "operator"
+	RoleContributor = "contributor"
+	RoleViewer      = "viewer"
+	RoleAuditor     = "auditor"
 )
 
-// BuiltinRoles returns the four roles Karakuri ships with, composed by
+// BuiltinRoles returns the five roles Karakuri ships with, composed by
 // inheritance so each permission is stated once:
 //
 //	viewer    read-only across the operational surface
-//	  ├─ auditor   + the authority-bounds audit log
-//	  └─ operator  + everything that drives work: twins, objectives, loops,
-//	               checkpoints, artifacts, memory, research
+//	  ├─ auditor      + the authority-bounds audit log
+//	  ├─ contributor  + creates work, and manages the twins it owns
+//	  └─ operator     + everything that drives work: twins, objectives, loops,
+//	                  checkpoints, artifacts, memory, research
 //	admin     everything, including the auth model itself
 //
 // They are flagged System, so they cannot be edited or deleted through the API —
@@ -24,7 +26,7 @@ const (
 //
 // Note there are no explicit deny policies here. Deny exists for the case where
 // a role would otherwise inherit an allow that must not apply to it, and none of
-// these four do: default-deny already covers everything a role does not name.
+// these do: default-deny already covers everything a role does not name.
 // Adding a deny to `operator` would be actively wrong, because `admin` would
 // inherit it and lose the permission — deny beats allow regardless of which role
 // is nearer. Deployment-specific denies belong on custom roles.
@@ -76,6 +78,29 @@ func BuiltinRoles() []auth.Role {
 		},
 	}
 
+	// contributor is where ownership earns its keep: it can create twins and
+	// change the ones it created, but not anybody else's. Expressing that with
+	// a condition rather than an `if` inside the handler means it shows up in
+	// `krk auth policies list` and in the effective-permissions endpoint,
+	// instead of being invisible until someone reads the code.
+	//
+	// Note this is strictly narrower than operator, which may change any twin.
+	owned := auth.Condition{Kind: auth.CondOwnerEquals}
+	contributor := auth.Role{
+		Name:        RoleContributor,
+		Description: "Creates work and manages the twins it owns, but not other people's.",
+		System:      true,
+		Inherits:    []string{RoleViewer},
+		Policies: []auth.Policy{
+			auth.Allow("contributor-twin-create", ActionTwinCreate, "*"),
+			auth.Allow("contributor-twin-update", ActionTwinUpdate, "twin:*").When(owned),
+			auth.Allow("contributor-twin-delete", ActionTwinDelete, "twin:*").When(owned),
+			auth.Allow("contributor-twin-bind", ActionTwinBind, "twin:*").When(owned),
+			auth.Allow("contributor-objective-create", ActionObjectiveCreate, "*"),
+			auth.Allow("contributor-loop-start", ActionLoopStart, "*"),
+		},
+	}
+
 	admin := auth.Role{
 		Name:        RoleAdmin,
 		Description: "Full control, including principals, roles and role bindings.",
@@ -88,5 +113,5 @@ func BuiltinRoles() []auth.Role {
 		},
 	}
 
-	return []auth.Role{viewer, auditor, operator, admin}
+	return []auth.Role{viewer, auditor, contributor, operator, admin}
 }

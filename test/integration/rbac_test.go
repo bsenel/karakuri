@@ -632,3 +632,73 @@ func TestBootstrapRequiresPassword(t *testing.T) {
 		t.Fatalf("BuildAuth with a password: %v", err)
 	}
 }
+
+// TestRBACOwnership covers the condition layer: a contributor may change the
+// twins it created and no others, expressed in policy rather than in a handler.
+func TestRBACOwnership(t *testing.T) {
+	baseURL, adminToken, cleanup := startServer(t)
+	defer cleanup()
+
+	const password = "correct-horse-battery-staple"
+	for _, id := range []string{"alice", "bob"} {
+		resp := doJSON(t, adminToken, http.MethodPost, baseURL+"/api/v1/auth/users", map[string]any{
+			"id": id, "roles": []string{karakuriauth.RoleContributor}, "password": password,
+		})
+		assertStatus(t, resp, http.StatusCreated)
+		resp.Body.Close()
+	}
+	aliceToken := login(t, baseURL, "alice", password)
+	bobToken := login(t, baseURL, "bob", password)
+
+	// Alice creates a twin; the server stamps her as its owner.
+	resp := doJSON(t, aliceToken, http.MethodPost, baseURL+"/api/v1/twins", map[string]any{
+		"name": "alices-team", "kind": "team", "domain": "software",
+	})
+	assertStatus(t, resp, http.StatusOK)
+	created := decodeJSON(t, resp)
+	twinID, _ := created["id"].(string)
+	if created["owner_id"] != "alice" {
+		t.Fatalf("owner_id = %v, want alice", created["owner_id"])
+	}
+
+	// Both can read it — contributor inherits viewer, which reads everything.
+	for name, token := range map[string]string{"alice": aliceToken, "bob": bobToken} {
+		r := doJSON(t, token, http.MethodGet, baseURL+"/api/v1/twins/"+twinID, nil)
+		if r.StatusCode == http.StatusForbidden {
+			t.Errorf("%s could not read the twin", name)
+		}
+		r.Body.Close()
+	}
+
+	// Only the owner can change it.
+	r := doJSON(t, aliceToken, http.MethodPut, baseURL+"/api/v1/twins/"+twinID+"/bindings",
+		map[string]any{"adapter_bindings": map[string]string{}})
+	if r.StatusCode == http.StatusForbidden {
+		body, _ := io.ReadAll(r.Body)
+		t.Errorf("owner was refused their own twin: %s", body)
+	}
+	r.Body.Close()
+
+	r = doJSON(t, bobToken, http.MethodPut, baseURL+"/api/v1/twins/"+twinID+"/bindings",
+		map[string]any{"adapter_bindings": map[string]string{}})
+	assertStatus(t, r, http.StatusForbidden)
+	r.Body.Close()
+
+	// The trace explains why, naming the condition rather than just refusing.
+	resp = doJSON(t, adminToken, http.MethodPost, baseURL+"/api/v1/auth/check", map[string]any{
+		"principal": "bob", "action": "twin:bind", "resource": "twin:" + twinID, "owner": "alice",
+	})
+	assertStatus(t, resp, http.StatusOK)
+	decision := decodeJSON(t, resp)
+	if allowed, _ := decision["allowed"].(bool); allowed {
+		t.Error("check reported bob as able to bind alice's twin")
+	}
+
+	// And an admin is unaffected by ownership: the wildcard has no condition.
+	r = doJSON(t, adminToken, http.MethodPut, baseURL+"/api/v1/twins/"+twinID+"/bindings",
+		map[string]any{"adapter_bindings": map[string]string{}})
+	if r.StatusCode == http.StatusForbidden {
+		t.Error("admin was blocked by an ownership condition")
+	}
+	r.Body.Close()
+}
