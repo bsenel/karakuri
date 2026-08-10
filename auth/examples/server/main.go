@@ -89,7 +89,7 @@ func main() {
 	}
 
 	authorizer := auth.NewAuthorizer(store)
-	authenticated := auth.Authenticate(auth.NewJWTResolver(tokens))
+	authenticated := auth.Authenticate(auth.NewJWTResolver(tokens, ""))
 
 	mux := http.NewServeMux()
 	mux.Handle("POST /login", loginHandler(tokens))

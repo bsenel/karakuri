@@ -1,57 +1,20 @@
 // REST client for the Karakuri API.
 //
-// Access tokens are short-lived (15 minutes by default), so every call goes
-// through one wrapper that refreshes them transparently. The refresh token
-// rotates on each use, which has two consequences the UI has to respect:
+// The browser never holds a token. Login asks the server for cookie mode, and
+// the access and refresh tokens come back as httpOnly cookies this code cannot
+// read — which is the point: anything reachable from JavaScript is readable by
+// injected script, and a stolen refresh token is a persistent session.
 //
-//   1. Concurrent 401s must not each trigger their own refresh — the first
-//      would spend the token and the rest would look like replays, which the
-//      server treats as a leak and answers by revoking the whole family. A
-//      single in-flight promise is shared instead.
-//   2. Whatever the server returns has to be stored immediately, because the
-//      token just used is now dead.
-
-const STORAGE_KEY = 'karakuri_session';
-
-export interface Session {
-  access_token: string;
-  refresh_token: string;
-  /** Epoch milliseconds at which the access token expires. */
-  expires_at: number;
-}
-
-interface TokenResponse {
-  access_token: string;
-  refresh_token: string;
-  expires_in: number;
-}
-
-/** Refresh this many milliseconds before the access token actually expires. */
-const REFRESH_SKEW_MS = 60_000;
-
-export function getSession(): Session | null {
-  const raw = localStorage.getItem(STORAGE_KEY);
-  if (!raw) return null;
-  try {
-    const parsed = JSON.parse(raw) as Session;
-    return parsed.access_token ? parsed : null;
-  } catch {
-    return null;
-  }
-}
-
-export function setSession(session: Session | null): void {
-  if (session) localStorage.setItem(STORAGE_KEY, JSON.stringify(session));
-  else localStorage.removeItem(STORAGE_KEY);
-}
-
-function toSession(res: TokenResponse): Session {
-  return {
-    access_token: res.access_token,
-    refresh_token: res.refresh_token,
-    expires_at: Date.now() + res.expires_in * 1000,
-  };
-}
+// Consequences worth knowing:
+//
+//   - Every request sets `credentials: 'same-origin'` so the cookies ride along.
+//     Without it fetch omits them and every call 401s.
+//   - There is no expiry to check, because we cannot see the token. Refresh is
+//     reactive: a 401 triggers one refresh and one retry.
+//   - Refresh tokens rotate, so concurrent 401s must share a single in-flight
+//     refresh. Letting each one refresh independently would spend the token
+//     more than once, and the server treats a replayed refresh token as a leak
+//     and revokes the whole session family.
 
 export class APIError extends Error {
   constructor(public status: number, public body: string) {
@@ -66,30 +29,27 @@ export class SessionExpiredError extends Error {
   }
 }
 
-export async function login(id: string, password: string): Promise<Session> {
-  const res = await fetch('/api/v1/auth/token', {
+async function post(path: string, body?: unknown): Promise<Response> {
+  return fetch(`/api/v1${path}`, {
     method: 'POST',
+    credentials: 'same-origin',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ id, password }),
+    body: body === undefined ? '{}' : JSON.stringify(body),
   });
-  const text = await res.text();
-  if (!res.ok) throw new APIError(res.status, text);
-  const session = toSession(JSON.parse(text) as TokenResponse);
-  setSession(session);
-  return session;
+}
+
+export async function login(id: string, password: string): Promise<void> {
+  // `cookie: true` is what makes the server reply with Set-Cookie instead of
+  // tokens in the body.
+  const res = await post('/auth/token', { id, password, cookie: true });
+  if (!res.ok) throw new APIError(res.status, await res.text());
 }
 
 export async function logout(): Promise<void> {
-  const session = getSession();
-  setSession(null);
-  if (!session) return;
-  // Best-effort: the local session is already gone either way.
+  // The server clears the cookies whether or not the revocation succeeds, so a
+  // browser that cannot reach it still ends up logged out.
   try {
-    await fetch('/api/v1/auth/revoke', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ refresh_token: session.refresh_token }),
-    });
+    await post('/auth/revoke');
   } catch {
     /* offline logout is still a logout */
   }
@@ -97,24 +57,14 @@ export async function logout(): Promise<void> {
 
 // Shared so parallel callers refresh once rather than racing each other into
 // the server's reuse detector.
-let inFlightRefresh: Promise<Session> | null = null;
+let inFlightRefresh: Promise<void> | null = null;
 
-async function refreshSession(session: Session): Promise<Session> {
+function refreshSession(): Promise<void> {
   if (!inFlightRefresh) {
     inFlightRefresh = (async () => {
       try {
-        const res = await fetch('/api/v1/auth/refresh', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ refresh_token: session.refresh_token }),
-        });
-        if (!res.ok) {
-          setSession(null);
-          throw new SessionExpiredError();
-        }
-        const next = toSession((await res.json()) as TokenResponse);
-        setSession(next);
-        return next;
+        const res = await post('/auth/refresh');
+        if (!res.ok) throw new SessionExpiredError();
       } finally {
         inFlightRefresh = null;
       }
@@ -124,47 +74,36 @@ async function refreshSession(session: Session): Promise<Session> {
 }
 
 /**
- * Returns a usable access token, refreshing first if the current one is within
- * REFRESH_SKEW_MS of expiry. Throws SessionExpiredError when there is no way
- * back to a valid token.
+ * Ensures the session is currently valid, refreshing if it is not.
+ *
+ * SSE needs this: EventSource sends the cookies but cannot retry a 401, so the
+ * caller has to know the session is good *before* opening the stream.
  */
-export async function accessToken(): Promise<string> {
-  const session = getSession();
-  if (!session) throw new SessionExpiredError('not logged in');
-  if (Date.now() < session.expires_at - REFRESH_SKEW_MS) return session.access_token;
-  const refreshed = await refreshSession(session);
-  return refreshed.access_token;
+export async function ensureSession(): Promise<void> {
+  const res = await fetch('/api/v1/auth/me', { credentials: 'same-origin' });
+  if (res.ok) return;
+  if (res.status !== 401) throw new APIError(res.status, await res.text());
+  await refreshSession();
 }
 
 async function call<T>(method: string, path: string, body?: unknown): Promise<T> {
-  const send = async (token: string | null) => {
+  const send = () => {
     const headers: Record<string, string> = { Accept: 'application/json' };
-    if (token) headers.Authorization = `Bearer ${token}`;
     if (body !== undefined) headers['Content-Type'] = 'application/json';
     return fetch(`/api/v1${path}`, {
       method,
+      credentials: 'same-origin',
       headers,
       body: body !== undefined ? JSON.stringify(body) : undefined,
     });
   };
 
-  // /health is public, so an unauthenticated probe is legitimate.
-  let token: string | null = null;
-  try {
-    token = await accessToken();
-  } catch (err) {
-    if (!(err instanceof SessionExpiredError)) throw err;
-  }
-
-  let res = await send(token);
-  if (res.status === 401 && token) {
-    // The token was rejected despite looking fresh — the signing key rotated,
-    // or the principal was disabled. One retry after a refresh, then give up.
-    const session = getSession();
-    if (session) {
-      const refreshed = await refreshSession(session);
-      res = await send(refreshed.access_token);
-    }
+  let res = await send();
+  if (res.status === 401) {
+    // The access cookie expired, or the signing key rotated. One refresh, one
+    // retry, then give up and let the caller show the login form.
+    await refreshSession();
+    res = await send();
   }
 
   const text = await res.text();

@@ -387,5 +387,6 @@ func BuildAuth(ctx context.Context, gormDB *gorm.DB, store storage.StorageAdapte
 		Authorizer: authorizer,
 		Catalog:    catalog,
 		Enforcer:   enforcer,
+		Cookies:    karakuriauth.CookieConfig(cfg.Auth.JWT),
 	}, nil
 }

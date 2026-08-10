@@ -30,19 +30,32 @@ back to `index.html`.
 
 ## Auth
 
-The login form exchanges an ID and password for a short-lived access token and a
-refresh token, stored together in `localStorage` under `karakuri_session`.
+The browser never holds a token. `login()` asks the server for cookie mode, and
+the access and refresh tokens come back as **httpOnly, SameSite=Strict cookies**
+this code cannot read — which is the point: anything reachable from JavaScript
+is readable by injected script, and a stolen refresh token is a persistent
+session.
 
-`api/client.ts` refreshes transparently: any call made within a minute of the
-access token's expiry refreshes first, and a 401 triggers one retry. Because
-refresh tokens rotate on every use, concurrent calls share a single in-flight
-refresh — letting each 401 refresh independently would spend the token more than
-once, and the server treats a replayed refresh token as a leak and revokes the
-whole session family.
+What follows from that:
 
-SSE is the one place a token travels in a query string (`?access_token=`), since
-`EventSource` cannot set headers. The server accepts that only on stream
-endpoints.
+- Every request sets `credentials: 'same-origin'` so the cookies ride along.
+  Without it `fetch` omits them and every call 401s.
+- There is no expiry to check, because the token is invisible here. Refresh is
+  reactive: a 401 triggers one refresh and one retry.
+- Refresh tokens rotate, so concurrent 401s share a single in-flight refresh.
+  Letting each refresh independently would spend the token more than once, and
+  the server treats a replayed refresh token as a leak and revokes the whole
+  session family.
+- SSE carries no token in the URL. `EventSource` cannot set headers — the usual
+  reason SSE ends up with `?access_token=` — but it does send cookies, so the
+  stream authenticates the same way everything else does. URLs leak into access
+  logs, proxy logs and Referer headers; cookies do not.
 
-On a fresh install the server creates an `admin` account and logs its password
-once at startup.
+CSRF is handled by `SameSite=Strict`: the browser will not attach these cookies
+to any request initiated from another site, which works because the SPA is
+served from the same origin as the API.
+
+API clients (`krk`, CI) are unaffected and still use bearer tokens.
+
+On a fresh install the server creates an `admin` account using
+`KARAKURI_AUTH_BOOTSTRAP_PASSWORD`.

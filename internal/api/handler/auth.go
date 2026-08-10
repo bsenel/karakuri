@@ -3,6 +3,7 @@ package handler
 import (
 	"encoding/json"
 	"errors"
+	"io"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -12,11 +13,41 @@ import (
 
 // AuthHandler serves login, token rotation, and the principal/role/policy
 // surface behind the auth:* permissions.
+//
+// Two kinds of client authenticate here, and they need different things:
+//
+//   - API clients (krk, CI) want the tokens in the response body, to store
+//     wherever they keep credentials.
+//   - Browsers must not be handed a token at all. Anything reachable from
+//     JavaScript is readable by injected script, so the SPA asks for cookie
+//     mode and the tokens go out as httpOnly cookies it can never read.
+//
+// The client says which it wants with `"cookie": true` on the request. Cookie
+// mode omits the tokens from the response body entirely — handing them over
+// and asking the caller not to store them would defeat the point.
 type AuthHandler struct {
 	Store      auth.Store
 	Tokens     *auth.TokenService
 	Authorizer *auth.StoreAuthorizer
 	Catalog    *auth.Catalog
+	Cookies    auth.CookieConfig
+}
+
+// sessionResponse is what cookie-mode clients get back: enough to know the
+// login worked and when to expect expiry, and no credential.
+type sessionResponse struct {
+	TokenType string `json:"token_type"`
+	ExpiresIn int    `json:"expires_in"`
+}
+
+// respondWithPair writes a token pair in whichever form the client asked for.
+func (h *AuthHandler) respondWithPair(w http.ResponseWriter, r *http.Request, pair auth.TokenPair, useCookies bool) {
+	if !useCookies {
+		writeJSON(w, pair)
+		return
+	}
+	h.Cookies.SetSession(w, r, pair)
+	writeJSON(w, sessionResponse{TokenType: pair.TokenType, ExpiresIn: pair.ExpiresIn})
 }
 
 // Token exchanges a password for an access/refresh pair.
@@ -26,6 +57,7 @@ func (h *AuthHandler) Token(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		ID       string `json:"id"`
 		Password string `json:"password"`
+		Cookie   bool   `json:"cookie"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		authError(w, http.StatusBadRequest, "bad_request", "body must be JSON")
@@ -46,7 +78,7 @@ func (h *AuthHandler) Token(w http.ResponseWriter, r *http.Request) {
 		authError(w, http.StatusUnauthorized, "invalid_credentials", "invalid credentials")
 		return
 	}
-	writeJSON(w, pair)
+	h.respondWithPair(w, r, pair, body.Cookie)
 }
 
 // Refresh rotates a refresh token, returning a new pair.
@@ -56,12 +88,24 @@ func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		RefreshToken string `json:"refresh_token"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	// An empty body is normal in cookie mode — the credential is the cookie.
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil && err != io.EOF {
 		authError(w, http.StatusBadRequest, "bad_request", "body must be JSON")
 		return
 	}
-	pair, err := h.Tokens.IssueForRefresh(r.Context(), body.RefreshToken)
+	token, useCookies := body.RefreshToken, false
+	if token == "" {
+		// Cookie mode is inferred rather than declared here: a browser cannot
+		// put the token in the body, because it cannot read the cookie.
+		token, useCookies = h.Cookies.Refresh(r), true
+	}
+	pair, err := h.Tokens.IssueForRefresh(r.Context(), token)
 	if err != nil {
+		if useCookies {
+			// The cookie is spent or revoked; clear it so the browser stops
+			// replaying a credential the server will keep rejecting.
+			h.Cookies.ClearSession(w, r)
+		}
 		if errors.Is(err, auth.ErrRefreshTokenReuse) {
 			// The family is already revoked by the time we get here. Say so
 			// plainly: the holder needs to re-authenticate, and somebody should
@@ -73,7 +117,9 @@ func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 		authError(w, http.StatusUnauthorized, "invalid_refresh_token", err.Error())
 		return
 	}
-	writeJSON(w, pair)
+	// Rotation means the old cookie is now spent: it has to be replaced in the
+	// same response, or the browser is left holding a dead token.
+	h.respondWithPair(w, r, pair, useCookies)
 }
 
 // Revoke invalidates the presented refresh token's whole family — "log out".
@@ -83,11 +129,19 @@ func (h *AuthHandler) Revoke(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		RefreshToken string `json:"refresh_token"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil && err != io.EOF {
 		authError(w, http.StatusBadRequest, "bad_request", "body must be JSON")
 		return
 	}
-	if err := h.Tokens.Revoke(r.Context(), body.RefreshToken); err != nil {
+	token := body.RefreshToken
+	if token == "" {
+		token = h.Cookies.Refresh(r)
+	}
+	// The local session ends either way: a browser that cannot reach the server
+	// must still end up logged out, so the cookies are cleared before the
+	// revocation result is known.
+	h.Cookies.ClearSession(w, r)
+	if err := h.Tokens.Revoke(r.Context(), token); err != nil {
 		authError(w, http.StatusUnauthorized, "invalid_refresh_token", err.Error())
 		return
 	}

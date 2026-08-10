@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
-import { api, getSession, login as apiLogin, logout as apiLogout } from '@/api/client';
+import { api, login as apiLogin, logout as apiLogout } from '@/api/client';
 import type { HealthResponse } from '@/api/types';
 
 /** The calling principal's identity and effective permissions, from /auth/me. */
@@ -44,14 +44,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // logged out; the health page reports it in detail.
       setHealth(null);
     }
-    if (getSession()) {
-      try {
-        setIdentity(await api.get<Identity>('/auth/me'));
-      } catch {
-        // Expired or revoked — fall through to the login form.
-        setIdentity(null);
-      }
-    } else {
+    // There is no local session to inspect — the cookies are httpOnly — so
+    // identity is established by asking the server who we are.
+    try {
+      setIdentity(await api.get<Identity>('/auth/me'));
+    } catch {
+      // No session, expired, or revoked — fall through to the login form.
       setIdentity(null);
     }
     setReady(true);

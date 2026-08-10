@@ -1,16 +1,17 @@
 // EventSource wrapper for the Karakuri SSE endpoints
 // (/api/v1/objectives/:id/events and /api/v1/twins/:id/events).
 //
-// EventSource cannot set headers, so the access token travels as an
-// `?access_token=...` query parameter. The server accepts that fallback on SSE
-// paths only — query strings end up in access logs, so it is scoped to the one
-// case that has no alternative.
+// EventSource cannot set headers, which is the usual reason SSE ends up with a
+// token in the query string. It does send cookies, though, and the session is
+// held in httpOnly cookies — so the stream authenticates with no credential in
+// the URL at all. URLs leak into access logs, proxy logs and Referer headers;
+// cookies do not.
 //
-// The token is fetched (and refreshed if stale) before the stream opens, which
-// is why openStream is async: a 15-minute access token has to be valid at
-// connect time, and EventSource offers no way to re-authenticate mid-stream.
+// The session is refreshed if needed before the stream opens, which is why this
+// is async: EventSource offers no way to re-authenticate mid-stream, so the
+// cookies have to be valid at connect time.
 
-import { accessToken } from './client';
+import { ensureSession } from './client';
 import type { SSEEvent } from './types';
 
 export type SSEHandler = (event: SSEEvent) => void;
@@ -32,16 +33,14 @@ function openStream(path: string, onEvent: SSEHandler): SSEStream {
   let closed = false;
 
   void (async () => {
-    let url = path;
     try {
-      const token = await accessToken();
-      url = `${path}?access_token=${encodeURIComponent(token)}`;
+      await ensureSession();
     } catch {
-      // Unauthenticated: let the server reject the connection so the caller
-      // surfaces the same error it would for any other 401.
+      // Unauthenticated: open anyway and let the server reject the connection,
+      // so the caller surfaces the same error it would for any other 401.
     }
     if (closed) return;
-    es = new EventSource(url);
+    es = new EventSource(path, { withCredentials: true });
     attach(es, onEvent);
   })();
 

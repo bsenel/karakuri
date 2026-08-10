@@ -7,6 +7,8 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"net/http/cookiejar"
+	"net/url"
 	"os"
 	"strings"
 	"testing"
@@ -389,55 +391,190 @@ func TestRBACCheckEndpoint(t *testing.T) {
 	resp.Body.Close()
 }
 
-// TestRBACSSEQueryToken covers the one place a token legitimately travels in a
-// query string: EventSource cannot set an Authorization header.
-func TestRBACSSEQueryToken(t *testing.T) {
+// TestRBACCookieSession covers the browser path end to end: login in cookie
+// mode, an authenticated API call and an SSE stream carrying nothing but
+// cookies, rotation on refresh, and logout.
+//
+// The point of the design is what is *absent* — no token in the response body,
+// no token in any URL, and nothing a script could read.
+func TestRBACCookieSession(t *testing.T) {
 	baseURL, adminToken, cleanup := startServer(t)
 	defer cleanup()
 
-	resp := doJSON(t, adminToken, http.MethodPost, baseURL+"/api/v1/twins", map[string]any{
-		"name": "streamer", "kind": "team", "domain": "software",
+	const password = "correct-horse-battery-staple"
+	resp := doJSON(t, adminToken, http.MethodPost, baseURL+"/api/v1/auth/users", map[string]any{
+		"id": "browser", "roles": []string{karakuriauth.RoleOperator}, "password": password,
+	})
+	assertStatus(t, resp, http.StatusCreated)
+	resp.Body.Close()
+
+	jar, err := cookiejar.New(nil)
+	if err != nil {
+		t.Fatalf("cookie jar: %v", err)
+	}
+	browser := &http.Client{Jar: jar, Timeout: 5 * time.Second}
+
+	post := func(path, body string) *http.Response {
+		t.Helper()
+		req, err := http.NewRequest(http.MethodPost, baseURL+path, strings.NewReader(body))
+		if err != nil {
+			t.Fatalf("new request: %v", err)
+		}
+		req.Header.Set("Content-Type", "application/json")
+		r, err := browser.Do(req)
+		if err != nil {
+			t.Fatalf("POST %s: %v", path, err)
+		}
+		return r
+	}
+	get := func(path string) *http.Response {
+		t.Helper()
+		req, err := http.NewRequest(http.MethodGet, baseURL+path, nil)
+		if err != nil {
+			t.Fatalf("new request: %v", err)
+		}
+		r, err := browser.Do(req)
+		if err != nil {
+			t.Fatalf("GET %s: %v", path, err)
+		}
+		return r
+	}
+
+	resp = post("/api/v1/auth/token", `{"id":"browser","password":"`+password+`","cookie":true}`)
+	assertStatus(t, resp, http.StatusOK)
+	payload := decodeJSON(t, resp)
+
+	// The response must not carry a credential — that is the whole point.
+	for _, k := range []string{"access_token", "refresh_token"} {
+		if _, present := payload[k]; present {
+			t.Errorf("cookie-mode login leaked %s in the response body", k)
+		}
+	}
+	if payload["token_type"] != "Bearer" {
+		t.Errorf("token_type = %v", payload["token_type"])
+	}
+
+	// Cookies are path-scoped, so each has to be looked up under a URL it
+	// actually applies to — the access cookie on the API root, the refresh
+	// cookie on the narrower auth path.
+	base, _ := url.Parse(baseURL)
+	if v := cookieValue(jar, base, "/api/v1", karakuriauth.AccessCookieName); v == "" {
+		t.Fatal("no access cookie was set by cookie-mode login")
+	}
+	if v := cookieValue(jar, base, "/api/v1/twins", karakuriauth.RefreshCookieName); v != "" {
+		t.Error("the refresh cookie is sent to ordinary API routes; it should be scoped to /api/v1/auth")
+	}
+
+	// An ordinary API call authenticates on cookies alone.
+	resp = get("/api/v1/auth/me")
+	assertStatus(t, resp, http.StatusOK)
+	me := decodeJSON(t, resp)
+	principal, _ := me["principal"].(map[string]any)
+	if principal["id"] != "browser" {
+		t.Errorf("/auth/me principal = %v", me["principal"])
+	}
+
+	// SSE too — no token in the URL, which is what EventSource would otherwise
+	// have forced.
+	resp = doJSON(t, adminToken, http.MethodPost, baseURL+"/api/v1/twins", map[string]any{
+		"name": "cookie-stream", "kind": "team", "domain": "software",
 	})
 	assertStatus(t, resp, http.StatusOK)
 	twinID, _ := decodeJSON(t, resp)["id"].(string)
 
-	streamURL := baseURL + "/api/v1/twins/" + twinID + "/events"
+	stream := get("/api/v1/twins/" + twinID + "/events")
+	defer stream.Body.Close()
+	if stream.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(stream.Body)
+		t.Fatalf("cookie-authenticated SSE = %d: %s", stream.StatusCode, body)
+	}
+	if ct := stream.Header.Get("Content-Type"); !strings.Contains(ct, "text/event-stream") {
+		t.Errorf("Content-Type = %q", ct)
+	}
+	_, _ = bufio.NewReader(stream.Body).ReadString('\n')
 
-	// Without a credential the stream is refused.
-	anon := doJSON(t, "", http.MethodGet, streamURL, nil)
+	// A stream with no credential at all is still refused.
+	anon := doJSON(t, "", http.MethodGet, baseURL+"/api/v1/twins/"+twinID+"/events", nil)
 	if anon.StatusCode != http.StatusUnauthorized {
 		t.Errorf("anonymous SSE = %d, want 401", anon.StatusCode)
 	}
 	anon.Body.Close()
 
-	// The query parameter is accepted on this path.
-	req, err := http.NewRequest(http.MethodGet, streamURL+"?access_token="+adminToken, nil)
-	if err != nil {
-		t.Fatalf("new request: %v", err)
+	// Refresh rotates the cookie rather than returning a token.
+	before := refreshCookieValue(jar, base)
+	resp = post("/api/v1/auth/refresh", "{}")
+	assertStatus(t, resp, http.StatusOK)
+	refreshed := decodeJSON(t, resp)
+	if _, present := refreshed["refresh_token"]; present {
+		t.Error("cookie-mode refresh leaked a refresh token in the body")
 	}
-	client := &http.Client{Timeout: 3 * time.Second}
-	streamResp, err := client.Do(req)
-	if err != nil {
-		t.Fatalf("open stream: %v", err)
+	after := refreshCookieValue(jar, base)
+	if before == "" || after == "" || before == after {
+		t.Errorf("refresh cookie did not rotate (%q -> %q)", truncate(before), truncate(after))
 	}
-	defer streamResp.Body.Close()
-	if streamResp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(streamResp.Body)
-		t.Fatalf("SSE with query token = %d: %s", streamResp.StatusCode, body)
-	}
-	if ct := streamResp.Header.Get("Content-Type"); !strings.Contains(ct, "text/event-stream") {
-		t.Errorf("Content-Type = %q", ct)
-	}
-	// Read one line so the handler is genuinely serving, not just accepted.
-	_, _ = bufio.NewReader(streamResp.Body).ReadString('\n')
 
-	// The same trick does not work on an ordinary REST route: query strings end
-	// up in access logs, so the fallback is scoped to streams.
-	rest := doJSON(t, "", http.MethodGet, baseURL+"/api/v1/twins?access_token="+adminToken, nil)
-	if rest.StatusCode != http.StatusUnauthorized {
-		t.Errorf("REST route accepted a query token: %d", rest.StatusCode)
+	// Logout clears the cookies and ends the session.
+	resp = post("/api/v1/auth/revoke", "{}")
+	assertStatus(t, resp, http.StatusOK)
+	resp.Body.Close()
+	if v := refreshCookieValue(jar, base); v != "" {
+		t.Errorf("refresh cookie survived logout: %q", truncate(v))
 	}
-	rest.Body.Close()
+	resp = get("/api/v1/auth/me")
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Errorf("still authenticated after logout: %d", resp.StatusCode)
+	}
+}
+
+// TestRBACNoQueryTokenAccepted pins that a token in a URL is no longer a way in.
+// Removing that fallback is what took the credential out of access logs, proxy
+// logs and Referer headers; cookies cover SSE instead.
+func TestRBACNoQueryTokenAccepted(t *testing.T) {
+	baseURL, adminToken, cleanup := startServer(t)
+	defer cleanup()
+
+	resp := doJSON(t, adminToken, http.MethodPost, baseURL+"/api/v1/twins", map[string]any{
+		"name": "no-query", "kind": "team", "domain": "software",
+	})
+	assertStatus(t, resp, http.StatusOK)
+	twinID, _ := decodeJSON(t, resp)["id"].(string)
+
+	for _, path := range []string{
+		"/api/v1/twins/" + twinID + "/events?access_token=" + adminToken,
+		"/api/v1/twins?access_token=" + adminToken,
+	} {
+		r := doJSON(t, "", http.MethodGet, baseURL+path, nil)
+		if r.StatusCode != http.StatusUnauthorized {
+			t.Errorf("%s = %d, want 401 — the query fallback should be gone", path, r.StatusCode)
+		}
+		r.Body.Close()
+	}
+}
+
+// refreshCookieValue reads the refresh cookie, which is scoped to the auth
+// endpoints and so only visible on a URL under that path.
+func refreshCookieValue(jar *cookiejar.Jar, base *url.URL) string {
+	return cookieValue(jar, base, "/api/v1/auth", karakuriauth.RefreshCookieName)
+}
+
+// cookieValue reports what the browser would send for one cookie at one path.
+func cookieValue(jar *cookiejar.Jar, base *url.URL, path, name string) string {
+	at := *base
+	at.Path = path
+	for _, c := range jar.Cookies(&at) {
+		if c.Name == name {
+			return c.Value
+		}
+	}
+	return ""
+}
+
+func truncate(s string) string {
+	if len(s) <= 12 {
+		return s
+	}
+	return s[:12] + "..."
 }
 
 // TestBootstrapRequiresPassword pins the fail-closed path added after CodeQL

@@ -47,12 +47,19 @@ type AuthDeps struct {
 	Authorizer *auth.StoreAuthorizer
 	Catalog    *auth.Catalog
 	Enforcer   *auth.Enforcer
+	Cookies    auth.CookieConfig
 }
 
-// Resolver authenticates a request from its access token. The query-parameter
-// fallback is restricted to SSE endpoints, because EventSource cannot set an
-// Authorization header and query strings end up in access logs.
-func (d AuthDeps) Resolver() auth.TokenResolver { return auth.NewJWTResolver(d.Tokens) }
+// Resolver authenticates a request from its access token: the Authorization
+// header for API clients, or the access cookie for browsers.
+//
+// There is deliberately no query-parameter fallback. EventSource cannot set a
+// header, which is the usual reason to allow one, but it does send cookies —
+// so the cookie covers SSE too, without writing a credential into URLs that
+// end up in access logs, proxy logs and Referer headers.
+func (d AuthDeps) Resolver() auth.TokenResolver {
+	return auth.NewJWTResolver(d.Tokens, karakuriauth.AccessCookieName)
+}
 
 func NewApp(
 	cfg *config.Config,
@@ -125,6 +132,7 @@ func NewApp(
 		Tokens:     authDeps.Tokens,
 		Authorizer: authDeps.Authorizer,
 		Catalog:    authDeps.Catalog,
+		Cookies:    authDeps.Cookies,
 	}
 
 	r.Route("/api/v1", func(r chi.Router) {
