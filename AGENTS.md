@@ -32,6 +32,7 @@ cmd/ → internal/api/ → internal/feature/ → internal/core/
 
 | Path | Focus |
 |------|--------|
+| [auth/AGENTS.md](auth/AGENTS.md) | Standalone authorization module (own `go.mod`) |
 | [cli/AGENTS.md](cli/AGENTS.md) | HTTP client CLI |
 | [internal/core/AGENTS.md](internal/core/AGENTS.md) | Domain types and ports |
 | [internal/feature/AGENTS.md](internal/feature/AGENTS.md) | Use-case services |
