@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/bsenel/karakuri/auth"
+	karakuriauth "github.com/bsenel/karakuri/internal/auth"
 )
 
 // AuthHandler serves login, token rotation, and the principal/role/policy
@@ -74,7 +75,7 @@ func (h *AuthHandler) Token(w http.ResponseWriter, r *http.Request) {
 		// it verbatim lets anyone forge lines in a log stream that is shipped
 		// to Datadog/Loki/Elasticsearch. The remote address is enough to spot
 		// a brute-force attempt.
-		slog.Info("login rejected", "remote", r.RemoteAddr)
+		slog.Info("login rejected", "remote", karakuriauth.SanitizeLogValue(r.RemoteAddr))
 		authError(w, http.StatusUnauthorized, "invalid_credentials", "invalid credentials")
 		return
 	}
@@ -110,7 +111,7 @@ func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 			// The family is already revoked by the time we get here. Say so
 			// plainly: the holder needs to re-authenticate, and somebody should
 			// look at why a spent token was replayed.
-			slog.Warn("refresh token reuse detected — family revoked", "remote", r.RemoteAddr)
+			slog.Warn("refresh token reuse detected — family revoked", "remote", karakuriauth.SanitizeLogValue(r.RemoteAddr))
 			authError(w, http.StatusUnauthorized, "token_reuse", "refresh token was already used; all sessions in its family have been revoked")
 			return
 		}

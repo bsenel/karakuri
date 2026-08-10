@@ -205,8 +205,8 @@ short-lived access token, and every route is gated by a permission (see
 [ADR 007](docs/adr/007-standalone-auth-module.md)).
 
 ```bash
-# On a database with no principals, the server creates `admin` and logs its
-# password once. Exchange it for a token pair:
+# On a database with no principals, the server creates `admin` with the
+# password from KARAKURI_AUTH_BOOTSTRAP_PASSWORD. Exchange it for a token pair:
 curl -s -XPOST localhost:8080/api/v1/auth/token \
   -H 'Content-Type: application/json' \
   -d '{"id":"admin","password":"..."}'
@@ -238,6 +238,20 @@ curl -s -XPOST localhost:8080/api/v1/auth/check -H "Authorization: Bearer $TOKEN
 Refused requests are recorded in the same audit log as authority-bounds
 escalations, so `krk audit --kind authz_denied` shows who was turned away
 alongside who approved what.
+
+#### Browser sessions
+
+The web UI never receives a token. It posts `{"cookie": true}` to
+`/auth/token` and the server replies with `Set-Cookie` instead — httpOnly, so
+injected script cannot read the session; `SameSite=Strict`, which is what makes
+cookies safe here without a separate CSRF token; and `Secure`, always.
+
+That last one is the only thing you can turn off, with
+`auth.cookies.insecure_allow_http: true` (or `KARAKURI_AUTH_COOKIES_INSECURE=1`).
+It exists for plain-HTTP development where non-browser clients drop Secure
+cookies and a login appears to succeed while doing nothing. Browsers do not need
+it — `http://localhost` is a trustworthy origin and accepts Secure cookies — so
+if you find yourself setting it in front of real users, terminate TLS instead.
 
 ### Helm chart
 

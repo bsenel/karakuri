@@ -33,6 +33,20 @@ type CookieConfig struct {
 
 	AccessTTL  time.Duration
 	RefreshTTL time.Duration
+
+	// InsecureAllowHTTP drops the Secure attribute when a request did not
+	// arrive over TLS. Session cookies are Secure by default and this is the
+	// only way to turn that off.
+	//
+	// It exists for plain-HTTP local development, where Secure cookies are
+	// discarded by non-browser clients and a login appears to succeed while
+	// doing nothing. It must never be set in production: without Secure, a
+	// single downgraded request — a stray http:// link, an attacker forcing a
+	// navigation — is enough to put the session on the wire in the clear.
+	//
+	// Browsers do not need it. Chrome and Firefox treat http://localhost as a
+	// trustworthy origin and accept Secure cookies there.
+	InsecureAllowHTTP bool
 }
 
 // SetSession writes both cookies from a freshly issued pair.
@@ -41,21 +55,23 @@ type CookieConfig struct {
 // must be replaced in the same response that spends the old one, or the browser
 // is left holding a token the server has already marked used.
 func (c CookieConfig) SetSession(w http.ResponseWriter, r *http.Request, pair TokenPair) {
-	secure := requestIsHTTPS(r)
-	http.SetCookie(w, c.cookie(c.AccessName, pair.AccessToken, c.AccessPath, c.AccessTTL, secure))
-	http.SetCookie(w, c.cookie(c.RefreshName, pair.RefreshToken, c.RefreshPath, c.RefreshTTL, secure))
+	access := c.cookie(c.AccessName, pair.AccessToken, c.AccessPath, c.AccessTTL)
+	refresh := c.cookie(c.RefreshName, pair.RefreshToken, c.RefreshPath, c.RefreshTTL)
+	c.relaxForPlainHTTP(r, access, refresh)
+	http.SetCookie(w, access)
+	http.SetCookie(w, refresh)
 }
 
 // ClearSession expires both cookies.
 func (c CookieConfig) ClearSession(w http.ResponseWriter, r *http.Request) {
-	secure := requestIsHTTPS(r)
 	for _, ck := range []struct{ name, path string }{
 		{c.AccessName, c.AccessPath},
 		{c.RefreshName, c.RefreshPath},
 	} {
-		expired := c.cookie(ck.name, "", ck.path, 0, secure)
+		expired := c.cookie(ck.name, "", ck.path, 0)
 		expired.MaxAge = -1
 		expired.Expires = time.Unix(0, 0)
+		c.relaxForPlainHTTP(r, expired)
 		http.SetCookie(w, expired)
 	}
 }
@@ -72,7 +88,7 @@ func (c CookieConfig) Refresh(r *http.Request) string {
 	return ck.Value
 }
 
-func (c CookieConfig) cookie(name, value, path string, ttl time.Duration, secure bool) *http.Cookie {
+func (c CookieConfig) cookie(name, value, path string, ttl time.Duration) *http.Cookie {
 	if path == "" {
 		path = "/"
 	}
@@ -85,12 +101,22 @@ func (c CookieConfig) cookie(name, value, path string, ttl time.Duration, secure
 		// session for this API, and Strict is what makes the cookies safe
 		// without a separate CSRF token.
 		SameSite: http.SameSiteStrictMode,
-		// Only over TLS when the request arrived over TLS. Hard-coding true
-		// would silently break plain-HTTP local development — the browser would
-		// discard the cookie and the login would appear to succeed and do
-		// nothing.
-		Secure: secure,
+		// Secure unconditionally. A session cookie that can travel over plain
+		// HTTP is a session cookie an attacker can read off the wire, so the
+		// default has to be the safe one and the exception has to be asked for
+		// by name — see InsecureAllowHTTP.
+		Secure: true,
 		MaxAge: int(ttl.Seconds()),
+	}
+}
+
+// relaxForPlainHTTP is the single, opt-in escape hatch from Secure cookies.
+func (c CookieConfig) relaxForPlainHTTP(r *http.Request, cookies ...*http.Cookie) {
+	if !c.InsecureAllowHTTP || requestIsHTTPS(r) {
+		return
+	}
+	for _, ck := range cookies {
+		ck.Secure = false
 	}
 }
 

@@ -47,7 +47,8 @@ func AuditDenial(store storage.StorageAdapter) func(*http.Request, auth.Principa
 		// A failed audit write must not turn a 403 into a 500 — the request is
 		// already being refused, and losing the record is the lesser problem.
 		if err := store.SaveToolEvent(r.Context(), event); err != nil {
-			slog.Warn("could not record authorization denial", "principal", p.ID, "action", d.Action, "err", err)
+			slog.Warn("could not record authorization denial",
+				"principal", SanitizeLogValue(p.ID), "action", d.Action, "err", err)
 		}
 	}
 }

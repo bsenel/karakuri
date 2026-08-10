@@ -118,6 +118,22 @@ type ProvidersConfig struct {
 type AuthConfig struct {
 	JWT       JWTConfig           `yaml:"jwt"`
 	Bootstrap AuthBootstrapConfig `yaml:"bootstrap"`
+	Cookies   AuthCookieConfig    `yaml:"cookies"`
+}
+
+// AuthCookieConfig tunes the httpOnly session cookies the browser client uses.
+// Names, paths and lifetimes are derived from the JWT settings; the only thing
+// left to decide is whether the deployment is allowed to weaken them.
+type AuthCookieConfig struct {
+	// InsecureAllowHTTP issues session cookies without the Secure attribute on
+	// requests that did not arrive over TLS. It defaults to false and should
+	// stay that way anywhere real: a session cookie without Secure travels in
+	// the clear the first time anything downgrades a request to http://.
+	//
+	// It exists for plain-HTTP local development and for the integration
+	// suite, whose clients — unlike browsers, which trust localhost — refuse to
+	// send Secure cookies over http and would otherwise fail every login.
+	InsecureAllowHTTP bool `yaml:"insecure_allow_http"`
 }
 
 // JWTConfig parameterises token issuance and verification.
@@ -257,6 +273,8 @@ func ensureGitHubToken() {
 //	KARAKURI_AUTH_JWT_SECRET         → an HS256 signing key, when no keys are
 //	                                   declared in YAML (the common deployment)
 //	KARAKURI_AUTH_BOOTSTRAP_ADMIN    → cfg.Auth.Bootstrap.AdminID
+//	KARAKURI_AUTH_COOKIES_INSECURE   → cfg.Auth.Cookies.InsecureAllowHTTP,
+//	                                   for plain-HTTP local development only
 func overrideFromEnv(cfg *Config) {
 	if v := os.Getenv("KARAKURI_DATABASE_DRIVER"); v != "" {
 		cfg.Database.Driver = v
@@ -286,6 +304,13 @@ func overrideFromEnv(cfg *Config) {
 	}
 	if v := os.Getenv("KARAKURI_AUTH_BOOTSTRAP_ADMIN"); v != "" {
 		cfg.Auth.Bootstrap.AdminID = v
+	}
+	// Only an explicit truthy value turns Secure off; anything unparseable
+	// leaves the safe default in place rather than guessing.
+	if v := os.Getenv("KARAKURI_AUTH_COOKIES_INSECURE"); v != "" {
+		if b, err := strconv.ParseBool(v); err == nil {
+			cfg.Auth.Cookies.InsecureAllowHTTP = b
+		}
 	}
 	// The single-secret path: most deployments set one env var rather than
 	// declaring a keyring. Declared keys win, so an operator who has moved to

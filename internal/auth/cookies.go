@@ -21,13 +21,18 @@ const (
 
 // CookieConfig builds the browser session cookie settings from configuration,
 // so cookie lifetimes track the token lifetimes rather than drifting from them.
-func CookieConfig(jwt config.JWTConfig) auth.CookieConfig {
+//
+// Everything security-relevant is fixed here — HttpOnly, SameSite=Strict and
+// Secure are not configurable — except the one documented development escape
+// hatch, which an operator has to ask for by name.
+func CookieConfig(cfg config.AuthConfig) auth.CookieConfig {
 	return auth.CookieConfig{
-		AccessName:  AccessCookieName,
-		RefreshName: RefreshCookieName,
-		AccessPath:  accessCookiePath,
-		RefreshPath: refreshCookiePath,
-		AccessTTL:   jwt.AccessTTLDuration(),
-		RefreshTTL:  jwt.RefreshTTLDuration(),
+		AccessName:        AccessCookieName,
+		RefreshName:       RefreshCookieName,
+		AccessPath:        accessCookiePath,
+		RefreshPath:       refreshCookiePath,
+		AccessTTL:         cfg.JWT.AccessTTLDuration(),
+		RefreshTTL:        cfg.JWT.RefreshTTLDuration(),
+		InsecureAllowHTTP: cfg.Cookies.InsecureAllowHTTP,
 	}
 }

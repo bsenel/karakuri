@@ -59,6 +59,11 @@ func startServer(t *testing.T) (baseURL string, adminToken string, cleanup func(
 		Secret: strings.Repeat("integration-test-signing-key", 2),
 	}}
 	t.Setenv(cfg.Auth.Bootstrap.PasswordEnv, testAdminPassword)
+	// httptest serves plain HTTP, and Go's cookie jar — unlike a browser, which
+	// trusts localhost — will not send a Secure cookie over it. Without this the
+	// cookie-session tests would fail for a reason that has nothing to do with
+	// what they are testing. It is the same switch a developer flips locally.
+	cfg.Auth.Cookies.InsecureAllowHTTP = true
 	cfg.Git.RepoPath = t.TempDir()
 	cfg.Git.WorktreeBase = "worktrees"
 	cfg.Git.BaseBranch = "main"

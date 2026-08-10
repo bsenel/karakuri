@@ -61,6 +61,13 @@ auth:
     # live credential into every configured log sink.
     admin_id: admin
     password_env: KARAKURI_AUTH_BOOTSTRAP_PASSWORD
+  cookies:
+    # Browser sessions ride in httpOnly, SameSite=Strict, Secure cookies. Only
+    # the last of those is negotiable, and only for plain-HTTP development:
+    # setting this true lets a session cookie travel unencrypted. Leave it
+    # false anywhere a real credential exists. Browsers do not need it —
+    # http://localhost is treated as a secure origin and accepts Secure cookies.
+    insecure_allow_http: false
 
 domains:
   - id: software

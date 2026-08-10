@@ -245,10 +245,13 @@ func TestCookieConfigSession(t *testing.T) {
 		t.Errorf("max-age = %d / %d", access.MaxAge, refresh.MaxAge)
 	}
 
-	// Plain HTTP must not set Secure, or a local development login silently
-	// does nothing: the browser discards the cookie and the server never sees it.
-	if access.Secure {
-		t.Error("Secure set on a plain-HTTP request")
+	// Secure by default, including on a plain-HTTP request: an unencrypted
+	// session cookie is one an attacker can read off the wire, so the default
+	// must not depend on how this particular request happened to arrive.
+	for _, c := range []*http.Cookie{access, refresh} {
+		if !c.Secure {
+			t.Errorf("%s is not Secure", c.Name)
+		}
 	}
 	tlsReq := httptest.NewRequest(http.MethodPost, "/api/v1/auth/token", nil)
 	tlsReq.Header.Set("X-Forwarded-Proto", "https")
@@ -257,6 +260,34 @@ func TestCookieConfigSession(t *testing.T) {
 	for _, c := range rec.Result().Cookies() {
 		if !c.Secure {
 			t.Errorf("%s not Secure behind an HTTPS-terminating proxy", c.Name)
+		}
+	}
+
+	// The one escape hatch, and only where it is asked for: plain-HTTP local
+	// development. Behind TLS the flag changes nothing.
+	dev := cfg
+	dev.InsecureAllowHTTP = true
+	for _, tc := range []struct {
+		name       string
+		req        *http.Request
+		wantSecure bool
+	}{
+		{"plain HTTP", httptest.NewRequest(http.MethodPost, "/api/v1/auth/token", nil), false},
+		{"forwarded HTTPS", tlsReq, true},
+	} {
+		rec = httptest.NewRecorder()
+		dev.SetSession(rec, tc.req, pair)
+		for _, c := range rec.Result().Cookies() {
+			if c.Secure != tc.wantSecure {
+				t.Errorf("InsecureAllowHTTP/%s: %s Secure = %t, want %t", tc.name, c.Name, c.Secure, tc.wantSecure)
+			}
+		}
+		rec = httptest.NewRecorder()
+		dev.ClearSession(rec, tc.req)
+		for _, c := range rec.Result().Cookies() {
+			if c.Secure != tc.wantSecure {
+				t.Errorf("InsecureAllowHTTP/%s: cleared %s Secure = %t, want %t", tc.name, c.Name, c.Secure, tc.wantSecure)
+			}
 		}
 	}
 
@@ -283,6 +314,9 @@ func TestCookieConfigSession(t *testing.T) {
 	for _, c := range cleared {
 		if c.MaxAge >= 0 || c.Value != "" {
 			t.Errorf("%s not expired: value=%q max-age=%d", c.Name, c.Value, c.MaxAge)
+		}
+		if !c.Secure || !c.HttpOnly {
+			t.Errorf("%s cleared with weaker attributes than it was set with", c.Name)
 		}
 	}
 }
