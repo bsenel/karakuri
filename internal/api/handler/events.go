@@ -32,6 +32,12 @@ func (h *EventsHandler) stream(w http.ResponseWriter, r *http.Request, key strin
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
+	// Flush the headers before waiting for the first event. Without this,
+	// net/http buffers the response and the client sees nothing at all until
+	// something happens to be emitted — so EventSource.onopen never fires on an
+	// idle stream, and a plain HTTP client blocks in Do() indefinitely.
+	w.WriteHeader(http.StatusOK)
+	flusher.Flush()
 
 	ch, unsub := h.Hub.Subscribe(r.Context(), key)
 	defer unsub()

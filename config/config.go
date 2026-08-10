@@ -5,6 +5,7 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -111,14 +112,97 @@ type ProvidersConfig struct {
 	Fallback map[string]string `yaml:"fallback"`
 }
 
+// AuthConfig configures JWT-based authentication and RBAC. There is no
+// "disabled" mode and no static shared token: every request to /api/v1 carries
+// a short-lived access token, and every route is gated by a permission.
 type AuthConfig struct {
-	Token string `yaml:"token"`
+	JWT       JWTConfig           `yaml:"jwt"`
+	Bootstrap AuthBootstrapConfig `yaml:"bootstrap"`
+	Cookies   AuthCookieConfig    `yaml:"cookies"`
+}
+
+// AuthCookieConfig tunes the httpOnly session cookies the browser client uses.
+// Names, paths and lifetimes are derived from the JWT settings; the only thing
+// left to decide is whether the deployment is allowed to weaken them.
+type AuthCookieConfig struct {
+	// InsecureAllowHTTP issues session cookies without the Secure attribute on
+	// requests that did not arrive over TLS. It defaults to false and should
+	// stay that way anywhere real: a session cookie without Secure travels in
+	// the clear the first time anything downgrades a request to http://.
+	//
+	// It exists for plain-HTTP local development and for the integration
+	// suite, whose clients — unlike browsers, which trust localhost — refuse to
+	// send Secure cookies over http and would otherwise fail every login.
+	InsecureAllowHTTP bool `yaml:"insecure_allow_http"`
+}
+
+// JWTConfig parameterises token issuance and verification.
+type JWTConfig struct {
+	Issuer   string `yaml:"issuer"`
+	Audience string `yaml:"audience"`
+
+	// AccessTTL and RefreshTTL are Go duration strings ("15m", "720h").
+	AccessTTL  string `yaml:"access_ttl"`
+	RefreshTTL string `yaml:"refresh_ttl"`
+
+	// Keys lists every key a verifier accepts. Exactly one is Active and does
+	// the signing; the rest keep previously-issued tokens verifiable, so
+	// rotating the signer does not log everyone out.
+	Keys []JWTKeyConfig `yaml:"keys"`
+}
+
+// JWTKeyConfig declares one signing or verification key. Secrets are never
+// inlined in checked-in YAML — SecretEnv names an environment variable, matching
+// the `*_env` convention the tool adapters already use (ADR 006).
+type JWTKeyConfig struct {
+	ID             string `yaml:"kid"`
+	Algorithm      string `yaml:"algorithm"` // HS256 (default) or EdDSA
+	Active         bool   `yaml:"active"`
+	Secret         string `yaml:"secret,omitempty"`
+	SecretEnv      string `yaml:"secret_env,omitempty"`
+	PrivateKeyFile string `yaml:"private_key_file,omitempty"`
+	PublicKeyFile  string `yaml:"public_key_file,omitempty"`
+}
+
+// AuthBootstrapConfig controls the first-boot administrator. On a database with
+// no principals, the server mints this account so an operator can log in; on
+// every later boot it is a no-op.
+type AuthBootstrapConfig struct {
+	// AdminID is the identifier given to that first administrator.
+	AdminID string `yaml:"admin_id"`
+
+	// EnvVar names the environment variable the first administrator's password
+	// is read from. It holds the *name* of a variable and never the password
+	// itself — no field on this struct is a credential, which is what makes it
+	// safe to put in an error message telling an operator what to set.
+	EnvVar string `yaml:"password_env"`
+}
+
+// AccessTTLDuration parses AccessTTL, falling back to 15 minutes.
+func (c JWTConfig) AccessTTLDuration() time.Duration {
+	return parseDurationOr(c.AccessTTL, 15*time.Minute)
+}
+
+// RefreshTTLDuration parses RefreshTTL, falling back to 30 days.
+func (c JWTConfig) RefreshTTLDuration() time.Duration {
+	return parseDurationOr(c.RefreshTTL, 30*24*time.Hour)
+}
+
+func parseDurationOr(s string, fallback time.Duration) time.Duration {
+	if s == "" {
+		return fallback
+	}
+	d, err := time.ParseDuration(s)
+	if err != nil || d <= 0 {
+		return fallback
+	}
+	return d
 }
 
 type DomainConfig struct {
-	ID      string            `yaml:"id"`
-	Enabled bool              `yaml:"enabled"`
-	Options map[string]any    `yaml:"options,omitempty"`
+	ID      string         `yaml:"id"`
+	Enabled bool           `yaml:"enabled"`
+	Options map[string]any `yaml:"options,omitempty"`
 }
 
 type MemoryConfig struct {
@@ -135,12 +219,12 @@ type MemoryConfig struct {
 // floor. Disabled by default — leave it off unless you've measured memory
 // growth — once on, the deletions are irreversible.
 type MemoryRetentionConfig struct {
-	Enabled          bool    `yaml:"enabled"`
-	IntervalMinutes  int     `yaml:"interval_minutes"`   // sweep interval; default 60
-	WorkingTTLMinutes int    `yaml:"working_ttl_minutes"` // 0 = never
-	EpisodicTTLDays  int     `yaml:"episodic_ttl_days"`  // 0 = never
-	SemanticTTLDays  int     `yaml:"semantic_ttl_days"`  // 0 = never
-	SemanticMinScore float64 `yaml:"semantic_min_score"` // drop semantic entries with confidence below this; 0 = no floor
+	Enabled           bool    `yaml:"enabled"`
+	IntervalMinutes   int     `yaml:"interval_minutes"`    // sweep interval; default 60
+	WorkingTTLMinutes int     `yaml:"working_ttl_minutes"` // 0 = never
+	EpisodicTTLDays   int     `yaml:"episodic_ttl_days"`   // 0 = never
+	SemanticTTLDays   int     `yaml:"semantic_ttl_days"`   // 0 = never
+	SemanticMinScore  float64 `yaml:"semantic_min_score"`  // drop semantic entries with confidence below this; 0 = no floor
 }
 
 func Load(path string) (*Config, error) {
@@ -188,6 +272,15 @@ func ensureGitHubToken() {
 //	KARAKURI_DATABASE_DSN            → cfg.Database.DSN
 //	KARAKURI_MEMORY_VECTOR_BACKEND   → cfg.Memory.VectorBackend (e.g. "pgvector")
 //	KARAKURI_MEMORY_EMBEDDING_DIM    → cfg.Memory.EmbeddingDim
+//	KARAKURI_AUTH_ISSUER             → cfg.Auth.JWT.Issuer
+//	KARAKURI_AUTH_AUDIENCE           → cfg.Auth.JWT.Audience
+//	KARAKURI_AUTH_ACCESS_TTL         → cfg.Auth.JWT.AccessTTL   (e.g. "15m")
+//	KARAKURI_AUTH_REFRESH_TTL        → cfg.Auth.JWT.RefreshTTL  (e.g. "720h")
+//	KARAKURI_AUTH_JWT_SECRET         → an HS256 signing key, when no keys are
+//	                                   declared in YAML (the common deployment)
+//	KARAKURI_AUTH_BOOTSTRAP_ADMIN    → cfg.Auth.Bootstrap.AdminID
+//	KARAKURI_AUTH_COOKIES_INSECURE   → cfg.Auth.Cookies.InsecureAllowHTTP,
+//	                                   for plain-HTTP local development only
 func overrideFromEnv(cfg *Config) {
 	if v := os.Getenv("KARAKURI_DATABASE_DRIVER"); v != "" {
 		cfg.Database.Driver = v
@@ -201,6 +294,45 @@ func overrideFromEnv(cfg *Config) {
 	if v := os.Getenv("KARAKURI_MEMORY_EMBEDDING_DIM"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n > 0 {
 			cfg.Memory.EmbeddingDim = n
+		}
+	}
+	if v := os.Getenv("KARAKURI_AUTH_ISSUER"); v != "" {
+		cfg.Auth.JWT.Issuer = v
+	}
+	if v := os.Getenv("KARAKURI_AUTH_AUDIENCE"); v != "" {
+		cfg.Auth.JWT.Audience = v
+	}
+	if v := os.Getenv("KARAKURI_AUTH_ACCESS_TTL"); v != "" {
+		cfg.Auth.JWT.AccessTTL = v
+	}
+	if v := os.Getenv("KARAKURI_AUTH_REFRESH_TTL"); v != "" {
+		cfg.Auth.JWT.RefreshTTL = v
+	}
+	if v := os.Getenv("KARAKURI_AUTH_BOOTSTRAP_ADMIN"); v != "" {
+		cfg.Auth.Bootstrap.AdminID = v
+	}
+	// Only an explicit truthy value turns Secure off; anything unparseable
+	// leaves the safe default in place rather than guessing.
+	if v := os.Getenv("KARAKURI_AUTH_COOKIES_INSECURE"); v != "" {
+		if b, err := strconv.ParseBool(v); err == nil {
+			cfg.Auth.Cookies.InsecureAllowHTTP = b
+		}
+	}
+	// The single-secret path: most deployments set one env var rather than
+	// declaring a keyring. Declared keys win, so an operator who has moved to
+	// explicit rotation is not overridden by a leftover variable.
+	if v := os.Getenv("KARAKURI_AUTH_JWT_SECRET"); v != "" && len(cfg.Auth.JWT.Keys) == 0 {
+		cfg.Auth.JWT.Keys = []JWTKeyConfig{{
+			ID:        "env",
+			Algorithm: "HS256",
+			Active:    true,
+			Secret:    v,
+		}}
+	}
+	// Resolve `secret_env` references the same way tool adapters do.
+	for i, k := range cfg.Auth.JWT.Keys {
+		if k.Secret == "" && k.SecretEnv != "" {
+			cfg.Auth.JWT.Keys[i].Secret = os.Getenv(k.SecretEnv)
 		}
 	}
 }
@@ -284,6 +416,27 @@ func setDefaults(cfg *Config) {
 	if cfg.Memory.EmbeddingDim == 0 {
 		cfg.Memory.EmbeddingDim = 1536
 	}
+	if cfg.Auth.JWT.Issuer == "" {
+		cfg.Auth.JWT.Issuer = "karakuri"
+	}
+	if cfg.Auth.JWT.Audience == "" {
+		cfg.Auth.JWT.Audience = "karakuri-api"
+	}
+	if cfg.Auth.JWT.AccessTTL == "" {
+		cfg.Auth.JWT.AccessTTL = "15m"
+	}
+	if cfg.Auth.JWT.RefreshTTL == "" {
+		cfg.Auth.JWT.RefreshTTL = "720h"
+	}
+	if cfg.Auth.Bootstrap.AdminID == "" {
+		cfg.Auth.Bootstrap.AdminID = "admin"
+	}
+	if cfg.Auth.Bootstrap.EnvVar == "" {
+		cfg.Auth.Bootstrap.EnvVar = "KARAKURI_AUTH_BOOTSTRAP_PASSWORD"
+	}
+	// Note: no default signing key. A server with none refuses to start
+	// (see internal/auth.Keyring) rather than falling back to something
+	// predictable — a default JWT secret is a backdoor with a changelog entry.
 }
 
 func Default() *Config {
@@ -293,7 +446,7 @@ func Default() *Config {
 	overrideFromEnv(cfg)
 	cfg.Observability.Exporters = []ExporterConfig{{
 		Name: "local", Enabled: true, Path: "./karakuri-obs/",
-		Formats: map[string]string{"metrics": "ndjson", "logs": "ndjson"},
+		Formats:  map[string]string{"metrics": "ndjson", "logs": "ndjson"},
 		Rotation: RotationConfig{MaxSizeMB: 100, MaxAgeDays: 30},
 	}}
 	cfg.Domains = []DomainConfig{

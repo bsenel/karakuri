@@ -185,10 +185,73 @@ Every variant reaches the API at `localhost:8080` (for Helm/k3s, after `kubectl 
 
 ```bash
 export ANTHROPIC_API_KEY=sk-ant-...
-export KARAKURI_AUTH_TOKEN=""   # optional; empty disables auth
+
+# Required. The server refuses to start without a signing key — there is no
+# default, because a predictable one would be a backdoor.
+export KARAKURI_AUTH_JWT_SECRET="$(openssl rand -base64 32)"
+
+# Required on first boot only. A database with no principals needs this to
+# create the first administrator; the server refuses to start without it
+# rather than generating a password and writing it to the log stream.
+export KARAKURI_AUTH_BOOTSTRAP_PASSWORD="choose-something"
 ```
 
 The Makefile injects these as a Kubernetes Secret (`karakuri-secrets`) for the K8s variants and as Compose environment for Docker.
+
+### Authentication
+
+Every `/api/v1` route except `/health` and the login endpoints requires a
+short-lived access token, and every route is gated by a permission (see
+[ADR 007](docs/adr/007-standalone-auth-module.md)).
+
+```bash
+# On a database with no principals, the server creates `admin` with the
+# password from KARAKURI_AUTH_BOOTSTRAP_PASSWORD. Exchange it for a token pair:
+curl -s -XPOST localhost:8080/api/v1/auth/token \
+  -H 'Content-Type: application/json' \
+  -d '{"id":"admin","password":"..."}'
+# → {"access_token": "...", "refresh_token": "...", "expires_in": 900}
+
+# Access tokens last 15 minutes. Refresh tokens rotate on every use: the one
+# you present is spent, and replaying it revokes every session in its family.
+curl -s -XPOST localhost:8080/api/v1/auth/refresh \
+  -H 'Content-Type: application/json' -d '{"refresh_token":"..."}'
+```
+
+Four built-in roles ship with the server: `viewer` (read-only), `auditor`
+(viewer plus the audit log), `operator` (drives twins, objectives and loops),
+and `admin` (everything, including the auth model). Role bindings carry a
+**scope**, so a role can be granted over a single twin rather than globally:
+
+```bash
+curl -s -XPOST localhost:8080/api/v1/auth/users -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"id":"olive","roles":["operator"],"scope":"twin:abc","password":"..."}'
+
+# Why was something refused? The decision trace answers it directly.
+curl -s -XPOST localhost:8080/api/v1/auth/check -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"principal":"olive","action":"audit:read","resource":"*"}'
+# → {"allowed": false, "reason": "no policy grants audit:read on audit:* (default deny)", ...}
+```
+
+Refused requests are recorded in the same audit log as authority-bounds
+escalations, so `krk audit --kind authz_denied` shows who was turned away
+alongside who approved what.
+
+#### Browser sessions
+
+The web UI never receives a token. It posts `{"cookie": true}` to
+`/auth/token` and the server replies with `Set-Cookie` instead — httpOnly, so
+injected script cannot read the session; `SameSite=Strict`, which is what makes
+cookies safe here without a separate CSRF token; and `Secure`, always.
+
+That last one is the only thing you can turn off, with
+`auth.cookies.insecure_allow_http: true` (or `KARAKURI_AUTH_COOKIES_INSECURE=1`).
+It exists for plain-HTTP development where non-browser clients drop Secure
+cookies and a login appears to succeed while doing nothing. Browsers do not need
+it — `http://localhost` is a trustworthy origin and accepts Secure cookies — so
+if you find yourself setting it in front of real users, terminate TLS instead.
 
 ### Helm chart
 

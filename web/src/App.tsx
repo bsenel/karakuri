@@ -20,12 +20,13 @@ export default function App() {
   );
 }
 
-// Shell decides whether to mount the routed app or block on a login modal.
-// Auth requirement is inferred from /health: 401 → login required.
+// Shell decides whether to mount the routed app or block on the login form.
+// Authentication is never optional now, so the test is simply whether we know
+// who the user is.
 function Shell() {
-  const { ready, error } = useAuth();
+  const { ready, identity } = useAuth();
   if (!ready) return <div style={{ padding: 24 }} className="muted">Loading…</div>;
-  if (error && /401|unauthorized/i.test(error)) return <LoginModal />;
+  if (!identity) return <LoginModal />;
   return (
     <Routes>
       <Route path="/" element={<Layout />}>

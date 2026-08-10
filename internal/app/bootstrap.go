@@ -2,13 +2,22 @@ package app
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
 	"time"
 
+	"github.com/bsenel/karakuri/auth"
 	"github.com/bsenel/karakuri/config"
+	domainagri "github.com/bsenel/karakuri/domains/agriculture"
+	domainconsult "github.com/bsenel/karakuri/domains/consulting"
+	domainhc "github.com/bsenel/karakuri/domains/healthcare"
+	domainlegal "github.com/bsenel/karakuri/domains/legal"
+	domainmech "github.com/bsenel/karakuri/domains/mechanical"
+	domainsw "github.com/bsenel/karakuri/domains/software"
 	"github.com/bsenel/karakuri/internal/api"
+	karakuriauth "github.com/bsenel/karakuri/internal/auth"
 	"github.com/bsenel/karakuri/internal/conformance"
 	"github.com/bsenel/karakuri/internal/core/capability"
 	"github.com/bsenel/karakuri/internal/core/domain"
@@ -18,18 +27,13 @@ import (
 	objectivepkg "github.com/bsenel/karakuri/internal/core/objective"
 	featurememory "github.com/bsenel/karakuri/internal/feature/memory"
 	"github.com/bsenel/karakuri/internal/platform/db"
-	platmem "github.com/bsenel/karakuri/internal/platform/memory"
 	"github.com/bsenel/karakuri/internal/platform/git"
 	"github.com/bsenel/karakuri/internal/platform/llm"
+	platmem "github.com/bsenel/karakuri/internal/platform/memory"
 	"github.com/bsenel/karakuri/internal/platform/observability"
 	"github.com/bsenel/karakuri/internal/platform/storage"
 	"github.com/bsenel/karakuri/internal/platform/tools"
-	domainagri "github.com/bsenel/karakuri/domains/agriculture"
-	domainconsult "github.com/bsenel/karakuri/domains/consulting"
-	domainhc "github.com/bsenel/karakuri/domains/healthcare"
-	domainlegal "github.com/bsenel/karakuri/domains/legal"
-	domainmech "github.com/bsenel/karakuri/domains/mechanical"
-	domainsw "github.com/bsenel/karakuri/domains/software"
+	"gorm.io/gorm"
 )
 
 type Bootstrap struct {
@@ -241,7 +245,13 @@ func BootstrapServer(cfgPath string) (*Bootstrap, error) {
 	if promExporter != nil {
 		promHandler = promExporter
 	}
-	apiApp := api.NewApp(cfg, store, providers, toolReg, exporters, wt, hub, otel, capReg, envReg, domReg, allTemplates, semanticBackend, promHandler)
+
+	authDeps, err := BuildAuth(ctx, gormDB, store, cfg)
+	if err != nil {
+		return nil, err
+	}
+
+	apiApp := api.NewApp(cfg, store, providers, toolReg, exporters, wt, hub, otel, capReg, envReg, domReg, allTemplates, semanticBackend, promHandler, authDeps)
 
 	// Resume any non-completed loops left behind by a previous server process
 	// (Phase 11). Failures are logged but don't block startup — a working
@@ -320,4 +330,64 @@ func ConfigPath() string {
 		return p
 	}
 	return "config/default.yaml"
+}
+
+// BuildAuth assembles the authentication and authorization stack: the store on
+// Karakuri's own database connection, the JWT keyring, the token service, and
+// the enforcer that gates every /api/v1 route.
+//
+// Exported so the integration suite exercises this exact wiring rather than a
+// parallel copy that could drift from what the server actually runs.
+//
+// Every failure here is fatal. There is no degraded mode — a Karakuri that
+// cannot authorize requests must not serve them, and the most likely failure
+// (no signing key configured) is precisely the one where continuing would mean
+// running with predictable tokens.
+func BuildAuth(ctx context.Context, gormDB *gorm.DB, store storage.StorageAdapter, cfg *config.Config) (api.AuthDeps, error) {
+	authStore, err := karakuriauth.NewStore(gormDB)
+	if err != nil {
+		return api.AuthDeps{}, err
+	}
+	if err := authStore.Migrate(ctx); err != nil {
+		return api.AuthDeps{}, fmt.Errorf("auth schema: %w", err)
+	}
+
+	keyring, err := karakuriauth.NewKeyring(cfg.Auth.JWT)
+	if err != nil {
+		return api.AuthDeps{}, err
+	}
+
+	tokens, err := auth.NewTokenService(authStore, authStore, keyring, auth.TokenConfig{
+		Issuer:     cfg.Auth.JWT.Issuer,
+		Audience:   cfg.Auth.JWT.Audience,
+		AccessTTL:  cfg.Auth.JWT.AccessTTLDuration(),
+		RefreshTTL: cfg.Auth.JWT.RefreshTTLDuration(),
+	})
+	if err != nil {
+		return api.AuthDeps{}, fmt.Errorf("token service: %w", err)
+	}
+
+	catalog := karakuriauth.NewCatalog()
+	if err := karakuriauth.Seed(ctx, authStore, tokens, catalog, cfg.Auth.Bootstrap); err != nil {
+		return api.AuthDeps{}, fmt.Errorf("seed auth model: %w", err)
+	}
+
+	authorizer := auth.NewAuthorizer(authStore)
+	enforcer := auth.NewEnforcer(authorizer)
+	// Every denial lands in the same audit log as authority-bounds escalations,
+	// so `krk audit --kind authz_denied` shows attempts alongside approvals.
+	enforcer.OnDeny = karakuriauth.AuditDenial(store)
+	enforcer.OnError = func(r *http.Request, err error) {
+		slog.Error("authorization could not be evaluated",
+			"path", karakuriauth.SanitizeLogValue(r.URL.Path), "err", err)
+	}
+
+	return api.AuthDeps{
+		Store:      authStore,
+		Tokens:     tokens,
+		Authorizer: authorizer,
+		Catalog:    catalog,
+		Enforcer:   enforcer,
+		Cookies:    karakuriauth.CookieConfig(cfg.Auth),
+	}, nil
 }
