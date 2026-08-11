@@ -58,3 +58,10 @@ one backend's own tests.
 (`.github/workflows/ci.yml`, job `modules`). `quotatest` is excluded from the measurement:
 its uncovered statements are assertion branches that only run when a backend is broken, and
 it is executed in full by the package under test.
+
+## Karakuri's own wiring
+
+Everything Karakuri-specific lives outside this module, in `internal/quota`:
+the four tiers, the key extractor, backend selection, and the token budget. If
+a change here would require naming a twin, a capability or a principal, it
+belongs there instead.

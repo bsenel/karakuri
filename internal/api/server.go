@@ -132,6 +132,7 @@ func NewApp(
 	resH := &handler.ResearchHandler{Research: resSvc}
 	evtH := &handler.EventsHandler{Hub: hub}
 	audH := &handler.AuditHandler{Store: store}
+	quotaH := &handler.QuotaHandler{Quota: quotaDeps}
 	authH := &handler.AuthHandler{
 		Store:      authDeps.Store,
 		Tokens:     authDeps.Tokens,
@@ -215,6 +216,14 @@ func NewApp(
 				r.With(require(karakuriauth.ActionMemoryWrite, nil)).Post("/store", memH.Store)
 				r.With(require(karakuriauth.ActionMemoryRead, nil)).Post("/recall", memH.Recall)
 				r.With(require(karakuriauth.ActionMemoryForget, nil)).Post("/forget", memH.Forget)
+			})
+
+			r.Route("/quota", func(r chi.Router) {
+				r.With(require(karakuriauth.ActionQuotaRead, nil)).Get("/", quotaH.Config)
+				r.With(require(karakuriauth.ActionQuotaRead, nil)).Get("/usage", quotaH.Usage)
+				// Resetting somebody's counters is an operator override, not an
+				// ordinary operation.
+				r.With(require(karakuriauth.ActionQuotaAdmin, nil)).Post("/reset", quotaH.Reset)
 			})
 
 			r.Route("/domains", func(r chi.Router) {

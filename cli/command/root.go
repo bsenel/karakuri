@@ -48,6 +48,7 @@ func NewRoot() *cobra.Command {
 		webCmd(),
 		auditCmd(),
 		authCmd(),
+		quotaCmd(),
 	)
 	return root
 }

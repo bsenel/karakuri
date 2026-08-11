@@ -139,3 +139,20 @@ func (d Deps) Usage(ctx context.Context, twinID string, now time.Time) (map[stri
 	}
 	return out, nil
 }
+
+// Reset clears a twin's counters for the current period. An empty capability
+// resets the twin-wide tiers; naming one resets that capability's daily count.
+//
+// It affects the period containing now and nothing else, so an override today
+// cannot hand back yesterday's budget.
+func (d Deps) Reset(ctx context.Context, twinID, capability string, now time.Time) error {
+	if capability != "" {
+		return d.Tiers.Capability.Reset(ctx, d.Backend, CapabilityKey(twinID, capability), now)
+	}
+	for _, q := range []quota.Quota{d.Tiers.LLMTokens, d.Tiers.Adapter} {
+		if err := q.Reset(ctx, d.Backend, TwinKey(twinID), now); err != nil {
+			return err
+		}
+	}
+	return nil
+}
