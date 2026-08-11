@@ -55,6 +55,17 @@ func (c *respClient) Do(_ context.Context, args ...string) (any, error) {
 	return readReply(c.r)
 }
 
+// A reply header states how much is coming, and sizing an allocation directly
+// from it means a hostile or simply broken server can ask this client to
+// reserve as much memory as it likes. Neither bound is reachable by anything
+// these scripts return — the largest reply here is four integers — so a header
+// claiming more is a protocol error, and treating it as one is cheaper than
+// discovering it as an out-of-memory kill.
+const (
+	maxBulkLen  = 8 << 20 // 8 MiB
+	maxArrayLen = 1 << 20
+)
+
 func readReply(r *bufio.Reader) (any, error) {
 	line, err := r.ReadString('\n')
 	if err != nil {
@@ -80,6 +91,9 @@ func readReply(r *bufio.Reader) (any, error) {
 		if n < 0 {
 			return nil, nil // RESP nil bulk string
 		}
+		if n > maxBulkLen {
+			return nil, fmt.Errorf("bulk string of %d bytes exceeds the %d-byte limit", n, maxBulkLen)
+		}
 		buf := make([]byte, n+2)
 		if _, err := io.ReadFull(r, buf); err != nil {
 			return nil, err
@@ -92,6 +106,9 @@ func readReply(r *bufio.Reader) (any, error) {
 		}
 		if n < 0 {
 			return nil, nil
+		}
+		if n > maxArrayLen {
+			return nil, fmt.Errorf("array of %d elements exceeds the %d-element limit", n, maxArrayLen)
 		}
 		out := make([]any, n)
 		for i := range out {
