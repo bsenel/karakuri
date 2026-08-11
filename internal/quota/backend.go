@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log/slog"
+	"os"
 
 	"github.com/bsenel/karakuri/config"
 	"github.com/bsenel/karakuri/internal/core/event"
@@ -28,7 +29,38 @@ func Build(ctx context.Context, cfg config.QuotaConfig, db *sql.DB, hub *event.H
 	if err != nil {
 		return Deps{}, err
 	}
-	return Deps{Backend: backend, Tiers: tiers, Hub: hub, Close: closeFn}, nil
+	deps := Deps{Backend: backend, Tiers: tiers, Hub: hub, Close: closeFn}
+
+	budget, err := buildBudget(cfg, deps)
+	if err != nil {
+		_ = closeFn()
+		return Deps{}, err
+	}
+	deps.TokenBudget = budget
+	return deps, nil
+}
+
+// buildBudget picks who counts model spend.
+func buildBudget(cfg config.QuotaConfig, deps Deps) (TokenBudget, error) {
+	switch cfg.LLMBudgetBackend {
+	case config.LLMBudgetNative, "":
+		return deps.Budget(), nil
+	case config.LLMBudgetLiteLLM:
+		key := ""
+		if cfg.LiteLLMKeyEnv != "" {
+			key = os.Getenv(cfg.LiteLLMKeyEnv)
+		}
+		b, err := NewLiteLLMBudget(cfg.LiteLLMURL, key, deps.Tiers.LLMTokens.Cap, nil)
+		if err != nil {
+			return nil, err
+		}
+		slog.Info("llm spend is counted by a LiteLLM gateway",
+			"url", cfg.LiteLLMURL,
+			"note", "the gateway is the authority on refusals; Karakuri turns them into checkpoints")
+		return b, nil
+	default:
+		return nil, fmt.Errorf("unknown llm budget backend %q (want native or litellm)", cfg.LLMBudgetBackend)
+	}
 }
 
 func buildBackend(ctx context.Context, cfg config.QuotaConfig, db *sql.DB) (quota.Backend, func() error, error) {

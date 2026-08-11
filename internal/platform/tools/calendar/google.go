@@ -15,9 +15,9 @@ import (
 // Auth uses a Bearer OAuth 2.0 access token — minted upstream (gcloud,
 // oauth2l, your own OAuth dance) and supplied via env or config.
 type Google struct {
-	oauthToken         string
-	defaultCalendarID  string
-	client             *http.Client
+	oauthToken        string
+	defaultCalendarID string
+	client            *http.Client
 }
 
 func NewGoogle(oauthToken, defaultCalendarID string) *Google {
@@ -115,13 +115,13 @@ func (g *Google) do(ctx context.Context, method, path string, body any, out any)
 // ── Google Calendar v3 wire types ────────────────────────────────────────────
 
 type googleEvent struct {
-	ID          string             `json:"id,omitempty"`
-	Summary     string             `json:"summary,omitempty"`
-	Description string             `json:"description,omitempty"`
-	Location    string             `json:"location,omitempty"`
-	Start       googleEventTime    `json:"start,omitempty"`
-	End         googleEventTime    `json:"end,omitempty"`
-	Attendees   []googleAttendee   `json:"attendees,omitempty"`
+	ID          string           `json:"id,omitempty"`
+	Summary     string           `json:"summary,omitempty"`
+	Description string           `json:"description,omitempty"`
+	Location    string           `json:"location,omitempty"`
+	Start       googleEventTime  `json:"start,omitempty"`
+	End         googleEventTime  `json:"end,omitempty"`
+	Attendees   []googleAttendee `json:"attendees,omitempty"`
 }
 
 type googleEventTime struct {

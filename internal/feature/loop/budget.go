@@ -10,6 +10,7 @@ import (
 	coreagent "github.com/bsenel/karakuri/internal/core/agent"
 	"github.com/bsenel/karakuri/internal/core/event"
 	featurecp "github.com/bsenel/karakuri/internal/feature/checkpoint"
+	"github.com/bsenel/karakuri/internal/platform/llm"
 	karakuriquota "github.com/bsenel/karakuri/internal/quota"
 )
 
@@ -42,6 +43,9 @@ func withBudget(agent coreagent.Agent, budget karakuriquota.TokenBudget, twinID 
 
 func (a *budgetedAgent) Run(ctx context.Context, input coreagent.Input) (coreagent.Output, error) {
 	now := a.now()
+	// Mark the call as this twin's so a gateway can bill it. Harmless when no
+	// gateway is configured — nothing reads it.
+	ctx = llm.WithTwin(ctx, a.twinID)
 	if err := a.budget.Reserve(ctx, a.twinID, 0, now); err != nil {
 		if errors.Is(err, karakuriquota.ErrBudgetExhausted) {
 			return coreagent.Output{}, err

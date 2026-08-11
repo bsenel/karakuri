@@ -18,9 +18,9 @@ import (
 // without spinning up a real database.
 type fakeStore struct {
 	storage.StorageAdapter // embed for unused methods — calling them panics
-	mu          sync.Mutex
-	checkpoints map[string]corecheckpoint.Checkpoint
-	events      []storage.ToolEvent
+	mu                     sync.Mutex
+	checkpoints            map[string]corecheckpoint.Checkpoint
+	events                 []storage.ToolEvent
 }
 
 func newFakeStore() *fakeStore {

@@ -15,10 +15,10 @@ import (
 // over this type; the runner persists at iteration boundaries so a server
 // crash never loses more than one iteration of progress.
 type State struct {
-	LoopID      string                    `json:"loop_id"`
-	ObjectiveID objective.ObjectiveID     `json:"objective_id"`
-	TwinID      string                    `json:"twin_id,omitempty"`
-	AgentID     string                    `json:"agent_id,omitempty"`
+	LoopID      string                `json:"loop_id"`
+	ObjectiveID objective.ObjectiveID `json:"objective_id"`
+	TwinID      string                `json:"twin_id,omitempty"`
+	AgentID     string                `json:"agent_id,omitempty"`
 
 	Iteration    int                       `json:"iteration"`
 	Paused       bool                      `json:"paused"`

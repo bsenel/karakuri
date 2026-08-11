@@ -24,10 +24,20 @@ type ClaudeProvider struct {
 func NewClaudeProvider() (*ClaudeProvider, error) {
 	apiKey := os.Getenv("ANTHROPIC_API_KEY")
 	if apiKey != "" {
-		model, err := anthropic.New(
+		opts := []anthropic.Option{
 			anthropic.WithModel("claude-sonnet-4-6"),
 			anthropic.WithToken(apiKey),
-		)
+		}
+		// ANTHROPIC_BASE_URL is the same variable Claude Code itself honours,
+		// so pointing both at one gateway takes a single setting. The client
+		// stamps the customer header per call, which is how the gateway
+		// attributes spend to a twin without anything being provisioned.
+		if base := os.Getenv("ANTHROPIC_BASE_URL"); base != "" {
+			opts = append(opts,
+				anthropic.WithBaseURL(base),
+				anthropic.WithHTTPClient(WithCustomerAttribution(nil, customerPrefix)))
+		}
+		model, err := anthropic.New(opts...)
 		if err != nil {
 			return nil, err
 		}

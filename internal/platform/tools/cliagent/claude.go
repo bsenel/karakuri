@@ -146,10 +146,10 @@ func parseClaudeStreamLine(line string, ch chan<- DelegateChunk) {
 }
 
 type claudeEvent struct {
-	Type    string         `json:"type"`
-	Message claudeMessage  `json:"message,omitempty"`
-	Result  string         `json:"result,omitempty"`
-	Subtype string         `json:"subtype,omitempty"`
+	Type    string        `json:"type"`
+	Message claudeMessage `json:"message,omitempty"`
+	Result  string        `json:"result,omitempty"`
+	Subtype string        `json:"subtype,omitempty"`
 }
 
 type claudeMessage struct {

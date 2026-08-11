@@ -6,8 +6,8 @@ import (
 )
 
 type Registry struct {
-	mu      sync.RWMutex
-	agents  map[AgentID]Definition
+	mu     sync.RWMutex
+	agents map[AgentID]Definition
 }
 
 func NewRegistry() *Registry {

@@ -11,11 +11,11 @@ import (
 )
 
 type OTel struct {
-	meter      metric.Meter
-	registry   *ExporterRegistry
-	mu         sync.Mutex
-	buffer     []MetricRecord
-	logBuffer  []LogRecord
+	meter     metric.Meter
+	registry  *ExporterRegistry
+	mu        sync.Mutex
+	buffer    []MetricRecord
+	logBuffer []LogRecord
 }
 
 func NewOTel(registry *ExporterRegistry) *OTel {
@@ -50,8 +50,8 @@ func (o *OTel) Flush(ctx context.Context) error {
 	return nil
 }
 
-func (o *OTel) IncWorktreeCreated()  { o.RecordMetric("worktree_created", 1, nil) }
-func (o *OTel) IncWorktreeRemoved()  { o.RecordMetric("worktree_removed", 1, nil) }
+func (o *OTel) IncWorktreeCreated() { o.RecordMetric("worktree_created", 1, nil) }
+func (o *OTel) IncWorktreeRemoved() { o.RecordMetric("worktree_removed", 1, nil) }
 func (o *OTel) IncAgentInvocation(role string) {
 	o.RecordMetric("agent_invocation", 1, map[string]string{"role": role})
 }

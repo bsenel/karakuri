@@ -21,10 +21,10 @@ import (
 //	NEW_RELIC_REGION       — "us" (default) | "eu"
 //	NEW_RELIC_TAGS         — comma-separated key:value tags applied to all data
 type NewRelicExporter struct {
-	apiKey  string
-	region  string
-	tags    map[string]string
-	client  *http.Client
+	apiKey string
+	region string
+	tags   map[string]string
+	client *http.Client
 }
 
 func NewNewRelicExporter() *NewRelicExporter {

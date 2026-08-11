@@ -38,10 +38,10 @@ func (o *Outlook) Send(ctx context.Context, msg Message) (string, error) {
 	}
 	body := map[string]any{
 		"message": map[string]any{
-			"subject":       msg.Subject,
-			"body":          map[string]string{"contentType": "Text", "content": msg.Body},
-			"toRecipients":  toRecipients(msg.To),
-			"ccRecipients":  toRecipients(msg.Cc),
+			"subject":      msg.Subject,
+			"body":         map[string]string{"contentType": "Text", "content": msg.Body},
+			"toRecipients": toRecipients(msg.To),
+			"ccRecipients": toRecipients(msg.Cc),
 		},
 		"saveToSentItems": true,
 	}

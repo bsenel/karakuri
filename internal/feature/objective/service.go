@@ -17,7 +17,7 @@ type CreateRequest struct {
 	Domain            string
 	AdditionalDomains []string
 	Priority          int
-	MaxIterations     int    // 0 = use server default at loop-start time
+	MaxIterations     int // 0 = use server default at loop-start time
 	TwinID            string
 	TemplateID        string // optional; populates criteria/constraints if set
 }

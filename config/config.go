@@ -53,7 +53,27 @@ type QuotaConfig struct {
 
 	// AdapterPerDay caps calls to one external adapter.
 	AdapterPerDay int `yaml:"adapter_per_day"`
+
+	// LLMBudgetBackend selects who counts model spend: native or litellm.
+	//
+	// native counts tokens through this process and needs nothing else.
+	// litellm delegates to a gateway that counts dollars against a maintained
+	// per-model cost table, which is what most operators actually want to cap
+	// — but it is a service to run, so it is opt-in.
+	LLMBudgetBackend string `yaml:"llm_budget_backend"`
+
+	// LiteLLMURL and LiteLLMKeyEnv locate the gateway. The key is named by
+	// environment variable rather than inlined, matching the `*_env`
+	// convention (ADR 006).
+	LiteLLMURL    string `yaml:"litellm_url"`
+	LiteLLMKeyEnv string `yaml:"litellm_key_env"`
 }
+
+// LLM budget backends for QuotaConfig.LLMBudgetBackend.
+const (
+	LLMBudgetNative  = "native"
+	LLMBudgetLiteLLM = "litellm"
+)
 
 // Backend names for QuotaConfig.Backend.
 const (
@@ -362,6 +382,12 @@ func overrideFromEnv(cfg *Config) {
 	if v := os.Getenv("KARAKURI_QUOTA_VALKEY_URL"); v != "" {
 		cfg.Quota.ValkeyURL = v
 	}
+	if v := os.Getenv("KARAKURI_QUOTA_LLM_BUDGET_BACKEND"); v != "" {
+		cfg.Quota.LLMBudgetBackend = v
+	}
+	if v := os.Getenv("KARAKURI_QUOTA_LITELLM_URL"); v != "" {
+		cfg.Quota.LiteLLMURL = v
+	}
 	// A limit that fails to parse leaves the default in place rather than
 	// becoming zero, which Policy.Validate would reject at boot — a typo in an
 	// env var should not stop the server.
@@ -498,6 +524,12 @@ func setDefaults(cfg *Config) {
 	}
 	if cfg.Auth.Bootstrap.AdminID == "" {
 		cfg.Auth.Bootstrap.AdminID = "admin"
+	}
+	if cfg.Quota.LLMBudgetBackend == "" {
+		cfg.Quota.LLMBudgetBackend = LLMBudgetNative
+	}
+	if cfg.Quota.LiteLLMKeyEnv == "" {
+		cfg.Quota.LiteLLMKeyEnv = "LITELLM_MASTER_KEY"
 	}
 	if cfg.Quota.Backend == "" {
 		// Per-replica, and documented as such. Anything else needs a

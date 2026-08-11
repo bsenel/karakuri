@@ -84,10 +84,10 @@ func TestPrometheusExporter_Pushgateway(t *testing.T) {
 
 func TestEscapeLabelValue(t *testing.T) {
 	cases := map[string]string{
-		`simple`:           `simple`,
-		`with "quote"`:     `with \"quote\"`,
-		`back\slash`:       `back\\slash`,
-		"multi\nline":      `multi\nline`,
+		`simple`:       `simple`,
+		`with "quote"`: `with \"quote\"`,
+		`back\slash`:   `back\\slash`,
+		"multi\nline":  `multi\nline`,
 	}
 	for in, want := range cases {
 		if got := escapeLabelValue(in); got != want {

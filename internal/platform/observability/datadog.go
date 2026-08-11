@@ -68,11 +68,11 @@ func (d *DatadogExporter) ExportMetrics(ctx context.Context, records []MetricRec
 		return nil
 	}
 	type series struct {
-		Metric string     `json:"metric"`
-		Points [][]any    `json:"points"`
-		Type   string     `json:"type"`
-		Host   string     `json:"host,omitempty"`
-		Tags   []string   `json:"tags,omitempty"`
+		Metric string   `json:"metric"`
+		Points [][]any  `json:"points"`
+		Type   string   `json:"type"`
+		Host   string   `json:"host,omitempty"`
+		Tags   []string `json:"tags,omitempty"`
 	}
 	body := struct {
 		Series []series `json:"series"`

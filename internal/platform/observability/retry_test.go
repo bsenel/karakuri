@@ -12,18 +12,18 @@ import (
 type countingExporter struct {
 	noopExporter
 	metricsCalls int32
-	failUntil    int32   // succeed once metricsCalls > failUntil
+	failUntil    int32 // succeed once metricsCalls > failUntil
 	err          error
 	permanent    bool
 }
 
 type noopExporter struct{ name string }
 
-func (n *noopExporter) Name() string                                              { return n.name }
-func (n *noopExporter) ExportMetrics(_ context.Context, _ []MetricRecord) error  { return nil }
-func (n *noopExporter) ExportLogs(_ context.Context, _ []LogRecord) error        { return nil }
-func (n *noopExporter) Flush(_ context.Context) error                            { return nil }
-func (n *noopExporter) Shutdown(_ context.Context) error                         { return nil }
+func (n *noopExporter) Name() string                                            { return n.name }
+func (n *noopExporter) ExportMetrics(_ context.Context, _ []MetricRecord) error { return nil }
+func (n *noopExporter) ExportLogs(_ context.Context, _ []LogRecord) error       { return nil }
+func (n *noopExporter) Flush(_ context.Context) error                           { return nil }
+func (n *noopExporter) Shutdown(_ context.Context) error                        { return nil }
 
 func (c *countingExporter) ExportMetrics(_ context.Context, _ []MetricRecord) error {
 	n := atomic.AddInt32(&c.metricsCalls, 1)
