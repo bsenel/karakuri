@@ -75,9 +75,9 @@ func TestSatisfiesContract(t *testing.T) {
 }
 
 func TestScriptIsCachedAndSurvivesAFlush(t *testing.T) {
-	// The first call has to EVAL, later ones EVALSHA. A SCRIPT FLUSH — or a
-	// server restart, which looks the same — must not turn the limiter into a
-	// source of errors.
+	// The first call registers the script and every later one runs it by digest.
+	// A SCRIPT FLUSH — or a server restart, which looks the same from here —
+	// must not turn the limiter into a source of errors.
 	ctx := context.Background()
 	c, err := dial(addr(t))
 	if err != nil {
@@ -85,13 +85,15 @@ func TestScriptIsCachedAndSurvivesAFlush(t *testing.T) {
 	}
 	defer c.Close()
 
-	var evals, evalshas, noscript atomic.Int64
+	var loads, evalshas, evals, noscript atomic.Int64
 	counting := quotavalkey.DoerFunc(func(ctx context.Context, args ...string) (any, error) {
 		switch args[0] {
-		case "EVAL":
-			evals.Add(1)
+		case "SCRIPT":
+			loads.Add(1)
 		case "EVALSHA":
 			evalshas.Add(1)
+		case "EVAL":
+			evals.Add(1)
 		}
 		reply, err := c.Do(ctx, args...)
 		if err != nil && args[0] == "EVALSHA" {
@@ -111,11 +113,14 @@ func TestScriptIsCachedAndSurvivesAFlush(t *testing.T) {
 			t.Fatalf("Take: %v", err)
 		}
 	}
-	if evals.Load() != 1 {
-		t.Errorf("EVAL called %d times, want once — the digest is not being reused", evals.Load())
+	if loads.Load() != 1 {
+		t.Errorf("SCRIPT LOAD called %d times, want once — the digest is not being reused", loads.Load())
 	}
-	if evalshas.Load() != 2 {
-		t.Errorf("EVALSHA called %d times, want twice", evalshas.Load())
+	if evalshas.Load() != 3 {
+		t.Errorf("EVALSHA called %d times, want three", evalshas.Load())
+	}
+	if evals.Load() != 0 {
+		t.Errorf("EVAL called %d times; the digest path should have covered every take", evals.Load())
 	}
 
 	if _, err := c.Do(ctx, "SCRIPT", "FLUSH"); err != nil {
@@ -125,10 +130,10 @@ func TestScriptIsCachedAndSurvivesAFlush(t *testing.T) {
 		t.Fatalf("Take after SCRIPT FLUSH: %v", err)
 	}
 	if noscript.Load() == 0 {
-		t.Error("no NOSCRIPT was observed, so the fallback path did not run")
+		t.Error("no NOSCRIPT was observed, so the recovery path did not run")
 	}
-	if evals.Load() != 2 {
-		t.Errorf("EVAL called %d times, want a second one after the flush", evals.Load())
+	if loads.Load() != 2 {
+		t.Errorf("SCRIPT LOAD called %d times, want a second one after the flush", loads.Load())
 	}
 }
 

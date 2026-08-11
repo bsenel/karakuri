@@ -3,7 +3,6 @@ package valkey
 import (
 	"context"
 	"crypto/rand"
-	"crypto/sha1"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -153,16 +152,21 @@ func (b *Backend) eval(
 	}.Normalize(), nil
 }
 
-// run invokes a script by digest, loading it first if this process has not
-// already, and falling back to a plain EVAL when the server does not know it.
+// run invokes a script by digest, registering it with the server the first time
+// and recovering when the server has forgotten it.
 //
-// The fallback is not theoretical: a server restart or a SCRIPT FLUSH empties
-// the cache, and a limiter that started returning errors because somebody
-// bounced Valkey would be worse than no limiter at all.
+// The digest comes from SCRIPT LOAD rather than being computed here. It is the
+// server's identifier for the script, so asking for it removes any chance of
+// the two disagreeing — and computing it locally would mean hashing with SHA-1,
+// which is the protocol's choice and not something this package should be seen
+// to be choosing.
+//
+// Recovery is not theoretical: a restart or a SCRIPT FLUSH empties the cache,
+// and a limiter that started returning errors because somebody bounced Valkey
+// would be worse than no limiter at all.
 func (b *Backend) run(ctx context.Context, script, key string, argv []string) (any, error) {
-	digest, ok := b.digest(script)
-	if ok {
-		reply, err := b.doer.Do(ctx, append([]string{"EVALSHA", digest, "1", key}, argv...)...)
+	if digest, ok := b.digest(script); ok {
+		reply, err := b.evalsha(ctx, digest, key, argv)
 		if err == nil {
 			return reply, nil
 		}
@@ -172,14 +176,34 @@ func (b *Backend) run(ctx context.Context, script, key string, argv []string) (a
 		b.forget(script)
 	}
 
-	reply, err := b.doer.Do(ctx, append([]string{"EVAL", script, "1", key}, argv...)...)
+	digest, err := b.load(ctx, script)
 	if err != nil {
-		return nil, err
+		// A server that will not SCRIPT LOAD can still EVAL. Refusing to limit
+		// because an optimisation is unavailable would be the wrong trade.
+		return b.doer.Do(ctx, append([]string{"EVAL", script, "1", key}, argv...)...)
 	}
-	// EVAL leaves the script in the cache, so remember the digest and use the
-	// short form from here on.
-	b.remember(script)
-	return reply, nil
+	b.remember(script, digest)
+	return b.evalsha(ctx, digest, key, argv)
+}
+
+func (b *Backend) evalsha(ctx context.Context, digest, key string, argv []string) (any, error) {
+	return b.doer.Do(ctx, append([]string{"EVALSHA", digest, "1", key}, argv...)...)
+}
+
+// load registers a script and returns the digest the server will answer to.
+func (b *Backend) load(ctx context.Context, script string) (string, error) {
+	reply, err := b.doer.Do(ctx, "SCRIPT", "LOAD", script)
+	if err != nil {
+		return "", err
+	}
+	switch t := reply.(type) {
+	case string:
+		return t, nil
+	case []byte:
+		return string(t), nil
+	default:
+		return "", fmt.Errorf("%w: SCRIPT LOAD returned %T", ErrUnexpectedReply, reply)
+	}
 }
 
 func (b *Backend) digest(script string) (string, bool) {
@@ -189,11 +213,10 @@ func (b *Backend) digest(script string) (string, bool) {
 	return d, ok
 }
 
-func (b *Backend) remember(script string) {
-	sum := sha1.Sum([]byte(script))
+func (b *Backend) remember(script, digest string) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	b.digests[script] = hex.EncodeToString(sum[:])
+	b.digests[script] = digest
 }
 
 func (b *Backend) forget(script string) {
