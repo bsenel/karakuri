@@ -88,6 +88,22 @@ jobs:
   modules:
     name: Modules
     runs-on: ubuntu-latest
+    # quota/valkey's tests need a real server: the algorithms live in Lua, so
+    # the only way to know they behave like the Go ones is to run them. The
+    # container is cheap and shared across the matrix rather than split into a
+    # job of its own; the other modules simply ignore VALKEY_ADDR.
+    services:
+      valkey:
+        image: valkey/valkey:8-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "valkey-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      VALKEY_ADDR: localhost:6379
     strategy:
       fail-fast: false
       matrix:
@@ -112,6 +128,12 @@ jobs:
           # shared contract, a drifted schema, and every method against a closed
           # database.
           - module: quota/sql
+            coverage: 90
+          # quota/valkey reimplements the algorithms in Lua — unavoidably, since
+          # the point is that they run server-side — so it runs the same shared
+          # contract against the service container below. Its residue is reply
+          # shapes no real client produces.
+          - module: quota/valkey
             coverage: 90
     steps:
       - uses: actions/checkout@v4

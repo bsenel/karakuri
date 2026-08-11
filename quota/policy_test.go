@@ -54,11 +54,11 @@ func TestPolicyValidate(t *testing.T) {
 
 func TestPolicyRefillRate(t *testing.T) {
 	// Derived from limit and window when unset...
-	if got := (Policy{TokenBucket, 60, time.Minute, 0}).refillRate(); got != 1 {
+	if got := (Policy{TokenBucket, 60, time.Minute, 0}).RatePerSecond(); got != 1 {
 		t.Errorf("60/min derived rate = %v, want 1/s", got)
 	}
 	// ...and honoured when set, which is what decouples burst from throughput.
-	if got := (Policy{TokenBucket, 60, time.Minute, 5}).refillRate(); got != 5 {
+	if got := (Policy{TokenBucket, 60, time.Minute, 5}).RatePerSecond(); got != 5 {
 		t.Errorf("explicit rate = %v, want 5", got)
 	}
 }
@@ -77,8 +77,8 @@ func TestPolicyHelpers(t *testing.T) {
 	if b.Limit != 20 {
 		t.Errorf("burst limit = %d, want 20", b.Limit)
 	}
-	if b.refillRate() != 1 {
-		t.Errorf("burst rate = %v, want the 1/s the original implied", b.refillRate())
+	if b.RatePerSecond() != 1 {
+		t.Errorf("burst rate = %v, want the 1/s the original implied", b.RatePerSecond())
 	}
 	if err := b.Validate(); err != nil {
 		t.Errorf("burst policy is invalid: %v", err)
