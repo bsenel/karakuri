@@ -43,6 +43,9 @@ func BuiltinRoles() []auth.Role {
 			auth.Allow("viewer-artifact-read", ActionArtifactRead, "*"),
 			auth.Allow("viewer-memory-read", ActionMemoryRead, "*"),
 			auth.Allow("viewer-domain-read", ActionDomainRead, "*"),
+			// Seeing your own ceiling is not privileged: a caller who is being
+			// throttled should be able to find out why without an operator.
+			auth.Allow("viewer-quota-read", ActionQuotaRead, "*"),
 		},
 	}
 

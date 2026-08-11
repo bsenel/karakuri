@@ -42,6 +42,9 @@ const (
 
 	ActionAuthRead  auth.Action = "auth:read"
 	ActionAuthWrite auth.Action = "auth:write"
+
+	ActionQuotaRead  auth.Action = "quota:read"
+	ActionQuotaAdmin auth.Action = "quota:admin"
 )
 
 // NewCatalog returns the Karakuri action catalog.
@@ -78,6 +81,9 @@ func NewCatalog() *auth.Catalog {
 
 		ActionAuthRead:  "read principals, roles and policies",
 		ActionAuthWrite: "create principals and change role bindings",
+
+		ActionQuotaRead:  "read quota configuration and current usage",
+		ActionQuotaAdmin: "reset a twin's quota counters",
 	} {
 		c.MustRegister(action, description)
 	}
