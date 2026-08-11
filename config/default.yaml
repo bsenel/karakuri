@@ -69,6 +69,29 @@ auth:
     # http://localhost is treated as a secure origin and accepts Secure cookies.
     insecure_allow_http: false
 
+quota:
+  # Where counters live: memory, sql or valkey.
+  #
+  # memory is per replica. A limit of 60/min across three replicas admits 180,
+  # and nothing reports a problem — it is the right choice for a single
+  # instance and the wrong one behind a load balancer, where valkey is the only
+  # backend consistent across replicas. sql shares the application database and
+  # suits long-window quotas more than per-request rates.
+  backend: memory
+  # valkey_url: valkey://:password@valkey:6379/0
+
+  # Sustained request rate per principal, and how many may arrive at once. The
+  # defaults are deliberately generous: a limiter that fires during ordinary
+  # use trains operators to raise it without reading it.
+  requests_per_minute: 60
+  request_burst: 20
+
+  # Daily caps. A capability is one twin invoking one capability; llm_tokens is
+  # a twin's model spend; adapter bounds calls to one external service.
+  capability_per_day: 1000
+  llm_tokens_per_day: 1000000
+  adapter_per_day: 5000
+
 domains:
   - id: software
     enabled: true

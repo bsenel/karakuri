@@ -27,6 +27,7 @@ import (
 	"github.com/bsenel/karakuri/internal/platform/observability"
 	"github.com/bsenel/karakuri/internal/platform/storage"
 	"github.com/bsenel/karakuri/internal/platform/tools"
+	karakuriquota "github.com/bsenel/karakuri/internal/quota"
 	karakuriweb "github.com/bsenel/karakuri/web"
 	"github.com/go-chi/chi/v5"
 	chimw "github.com/go-chi/chi/v5/middleware"
@@ -77,6 +78,7 @@ func NewApp(
 	semanticBackend corememory.Memory, // optional override; nil → default SQLite keyword
 	prometheusHandler http.Handler, // optional; mounted at /metrics outside auth when non-nil
 	authDeps AuthDeps,
+	quotaDeps karakuriquota.Deps,
 ) *App {
 	var memSvc *memory.Service
 	if semanticBackend != nil {
@@ -150,6 +152,12 @@ func NewApp(
 
 		r.Group(func(r chi.Router) {
 			r.Use(auth.Authenticate(authDeps.Resolver()))
+			// After Authenticate, because the limiter keys on the principal;
+			// before the permission gates, because refusing on rate is cheaper
+			// than resolving a policy — and a caller who is over their limit
+			// should get the same answer whether or not they would have been
+			// allowed through.
+			r.Use(quotaDeps.Limiter())
 
 			// Available to any authenticated principal: reading your own
 			// identity and ending your own session need no permission.

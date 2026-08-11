@@ -2,17 +2,22 @@ module github.com/bsenel/karakuri
 
 go 1.25.0
 
-// The auth engine and its SQL store are separate modules in this repo (ADR
-// 007). Until auth/v0.1.0 is tagged they resolve from the working tree; drop
-// the replace directives once the tags exist.
+// The auth and quota engines and their backends are separate modules in this
+// repo (ADR 007, ADR 008). Until auth/v0.1.0 and quota/v0.1.0 are tagged they
+// resolve from the working tree; drop the replace directives once the tags
+// exist.
 require (
 	github.com/bsenel/karakuri/auth v0.0.0
 	github.com/bsenel/karakuri/auth/sql v0.0.0
+	github.com/bsenel/karakuri/quota v0.0.0
 )
 
 replace (
 	github.com/bsenel/karakuri/auth => ./auth
 	github.com/bsenel/karakuri/auth/sql => ./auth/sql
+	github.com/bsenel/karakuri/quota => ./quota
+	github.com/bsenel/karakuri/quota/sql => ./quota/sql
+	github.com/bsenel/karakuri/quota/valkey => ./quota/valkey
 )
 
 require (
@@ -20,6 +25,8 @@ require (
 	github.com/aws/aws-sdk-go-v2/config v1.32.35
 	github.com/aws/aws-sdk-go-v2/service/cloudwatch v1.66.3
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.107.0
+	github.com/bsenel/karakuri/quota/sql v0.0.0-00010101000000-000000000000
+	github.com/bsenel/karakuri/quota/valkey v0.0.0-00010101000000-000000000000
 	github.com/glebarez/sqlite v1.11.0
 	github.com/go-chi/chi/v5 v5.3.1
 	github.com/go-git/go-git/v5 v5.19.2

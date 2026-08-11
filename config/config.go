@@ -21,7 +21,46 @@ type Config struct {
 	Domains       []DomainConfig      `yaml:"domains"`
 	Memory        MemoryConfig        `yaml:"memory"`
 	Tools         ToolsConfig         `yaml:"tools"`
+	Quota         QuotaConfig         `yaml:"quota"`
 }
+
+// QuotaConfig configures rate limiting and quotas (ADR 008). Zero values mean
+// "use the shipped default", so a deployment overrides only what it cares
+// about.
+type QuotaConfig struct {
+	// Backend selects where counters live: memory, sql or valkey.
+	//
+	// memory is the default and is **per replica** — a limit of 60/min across
+	// three replicas admits 180. That is fine for a single-instance
+	// deployment and wrong behind a load balancer, where valkey is the only
+	// option that is consistent across replicas.
+	Backend string `yaml:"backend"`
+
+	// ValkeyURL is required when Backend is valkey, e.g.
+	// "valkey://:password@valkey:6379/0".
+	ValkeyURL string `yaml:"valkey_url"`
+
+	// RequestsPerMinute and RequestBurst cap how fast one principal can drive
+	// the API. Burst defaults to RequestsPerMinute when unset.
+	RequestsPerMinute int `yaml:"requests_per_minute"`
+	RequestBurst      int `yaml:"request_burst"`
+
+	// CapabilityPerDay caps invocations of one capability by one twin.
+	CapabilityPerDay int `yaml:"capability_per_day"`
+
+	// LLMTokensPerDay caps a twin's model spend, counted in tokens.
+	LLMTokensPerDay int `yaml:"llm_tokens_per_day"`
+
+	// AdapterPerDay caps calls to one external adapter.
+	AdapterPerDay int `yaml:"adapter_per_day"`
+}
+
+// Backend names for QuotaConfig.Backend.
+const (
+	QuotaBackendMemory = "memory"
+	QuotaBackendSQL    = "sql"
+	QuotaBackendValkey = "valkey"
+)
 
 // ToolsConfig holds a SlotConfig per adapter category. Every slot has the same
 // shape: a Default instance name (used when a twin has no binding for the slot)
@@ -281,6 +320,10 @@ func ensureGitHubToken() {
 //	KARAKURI_AUTH_BOOTSTRAP_ADMIN    → cfg.Auth.Bootstrap.AdminID
 //	KARAKURI_AUTH_COOKIES_INSECURE   → cfg.Auth.Cookies.InsecureAllowHTTP,
 //	                                   for plain-HTTP local development only
+//	KARAKURI_QUOTA_BACKEND           → cfg.Quota.Backend (memory|sql|valkey)
+//	KARAKURI_QUOTA_VALKEY_URL        → cfg.Quota.ValkeyURL
+//	KARAKURI_QUOTA_REQUESTS_PER_MIN  → cfg.Quota.RequestsPerMinute
+//	KARAKURI_QUOTA_LLM_TOKENS_PER_DAY → cfg.Quota.LLMTokensPerDay
 func overrideFromEnv(cfg *Config) {
 	if v := os.Getenv("KARAKURI_DATABASE_DRIVER"); v != "" {
 		cfg.Database.Driver = v
@@ -313,6 +356,31 @@ func overrideFromEnv(cfg *Config) {
 	}
 	// Only an explicit truthy value turns Secure off; anything unparseable
 	// leaves the safe default in place rather than guessing.
+	if v := os.Getenv("KARAKURI_QUOTA_BACKEND"); v != "" {
+		cfg.Quota.Backend = v
+	}
+	if v := os.Getenv("KARAKURI_QUOTA_VALKEY_URL"); v != "" {
+		cfg.Quota.ValkeyURL = v
+	}
+	// A limit that fails to parse leaves the default in place rather than
+	// becoming zero, which Policy.Validate would reject at boot — a typo in an
+	// env var should not stop the server.
+	for _, o := range []struct {
+		env string
+		dst *int
+	}{
+		{"KARAKURI_QUOTA_REQUESTS_PER_MIN", &cfg.Quota.RequestsPerMinute},
+		{"KARAKURI_QUOTA_REQUEST_BURST", &cfg.Quota.RequestBurst},
+		{"KARAKURI_QUOTA_CAPABILITY_PER_DAY", &cfg.Quota.CapabilityPerDay},
+		{"KARAKURI_QUOTA_LLM_TOKENS_PER_DAY", &cfg.Quota.LLMTokensPerDay},
+		{"KARAKURI_QUOTA_ADAPTER_PER_DAY", &cfg.Quota.AdapterPerDay},
+	} {
+		if v := os.Getenv(o.env); v != "" {
+			if n, err := strconv.Atoi(v); err == nil && n > 0 {
+				*o.dst = n
+			}
+		}
+	}
 	if v := os.Getenv("KARAKURI_AUTH_COOKIES_INSECURE"); v != "" {
 		if b, err := strconv.ParseBool(v); err == nil {
 			cfg.Auth.Cookies.InsecureAllowHTTP = b
@@ -430,6 +498,12 @@ func setDefaults(cfg *Config) {
 	}
 	if cfg.Auth.Bootstrap.AdminID == "" {
 		cfg.Auth.Bootstrap.AdminID = "admin"
+	}
+	if cfg.Quota.Backend == "" {
+		// Per-replica, and documented as such. Anything else needs a
+		// deployment decision, and defaulting to a backend that requires
+		// infrastructure would stop a single-binary install from booting.
+		cfg.Quota.Backend = QuotaBackendMemory
 	}
 	if cfg.Auth.Bootstrap.EnvVar == "" {
 		cfg.Auth.Bootstrap.EnvVar = "KARAKURI_AUTH_BOOTSTRAP_PASSWORD"

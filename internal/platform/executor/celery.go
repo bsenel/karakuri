@@ -1,19 +1,16 @@
 package executor
 
 import (
-	"bufio"
 	"context"
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"io"
-	"net"
-	"net/url"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/bsenel/karakuri/internal/platform/valkey"
 )
 
 // CeleryExecutor publishes tasks to a Celery v2 message queue on a Redis
@@ -41,6 +38,9 @@ type CeleryExecutor struct {
 	queue     string
 	taskName  string
 	fallback  *LocalExecutor
+
+	// client is the pooled broker connection, built lazily by broker().
+	client *valkey.Client
 
 	mu    sync.RWMutex
 	tasks map[TaskHandle]*celeryInvocation
@@ -73,14 +73,11 @@ func (c *CeleryExecutor) Submit(ctx context.Context, task Task) (TaskHandle, err
 	celeryID := newCeleryID()
 	envelope := buildCeleryMessage(celeryID, c.taskName, []any{task.ID}, nil)
 
-	conn, err := dialRedis(ctx, c.brokerURL)
+	client, err := c.broker()
 	if err != nil {
-		return "", fmt.Errorf("celery: dial broker: %w", err)
+		return "", fmt.Errorf("celery: broker: %w", err)
 	}
-	defer conn.Close()
-
-	// RPUSH <queue> <message>
-	if err := redisCmd(conn, "RPUSH", c.queue, envelope); err != nil {
+	if _, err := client.Do(ctx, "RPUSH", c.queue, envelope); err != nil {
 		return "", fmt.Errorf("celery: rpush: %w", err)
 	}
 
@@ -130,15 +127,17 @@ func (c *CeleryExecutor) Status(ctx context.Context, handle TaskHandle) (TaskSta
 
 	// Celery writes results to `celery-task-meta-<id>` in the result backend.
 	// We assume the result backend == the broker (common for Redis).
-	conn, err := dialRedis(ctx, c.brokerURL)
+	client, err := c.broker()
 	if err != nil {
 		return TaskPending, err
 	}
-	defer conn.Close()
-	key := "celery-task-meta-" + inv.celeryID
-	val, err := redisGet(conn, key)
+	reply, err := client.Do(ctx, "GET", "celery-task-meta-"+inv.celeryID)
 	if err != nil {
 		return TaskPending, nil // result not yet posted
+	}
+	val, _ := reply.(string)
+	if val == "" {
+		return TaskPending, nil
 	}
 
 	var meta struct {
@@ -171,13 +170,13 @@ func buildCeleryMessage(id, taskName string, args []any, kwargs map[string]any) 
 		kwargs = map[string]any{}
 	}
 	headers := map[string]any{
-		"id":     id,
-		"task":   taskName,
-		"lang":   "py",
-		"shadow": nil,
-		"eta":    nil,
-		"retries": 0,
-		"timelimit": []any{nil, nil},
+		"id":         id,
+		"task":       taskName,
+		"lang":       "py",
+		"shadow":     nil,
+		"eta":        nil,
+		"retries":    0,
+		"timelimit":  []any{nil, nil},
 		"argsrepr":   fmt.Sprintf("(%s,)", joinArgs(args)),
 		"kwargsrepr": "{}",
 		"origin":     "karakuri",
@@ -224,108 +223,23 @@ func newCeleryID() string {
 	return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
 }
 
-// ── Minimal Redis client (RESP protocol over TCP) ───────────────────────────
-
-// dialRedis parses a redis:// URL and opens a TCP connection. The minimal
-// client speaks the RESP protocol directly — enough for RPUSH + GET, which
-// are the only commands we issue. Production deployments that need richer
-// Redis usage can run with go-redis instead by swapping this executor.
-func dialRedis(ctx context.Context, brokerURL string) (net.Conn, error) {
-	u, err := url.Parse(brokerURL)
+// broker returns the pooled connection to the result backend, built on first
+// use so a broker that is not up yet does not stop the process from starting.
+//
+// The client itself lives in internal/platform/valkey, shared with the quota
+// limiter. It replaces the RESP implementation that used to sit at the bottom
+// of this file — which dialled per call, and sized its reads from whatever
+// length the server claimed.
+func (c *CeleryExecutor) broker() (*valkey.Client, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.client != nil {
+		return c.client, nil
+	}
+	client, err := valkey.New(c.brokerURL, valkey.Options{})
 	if err != nil {
 		return nil, err
 	}
-	host := u.Host
-	if !strings.Contains(host, ":") {
-		host += ":6379"
-	}
-	d := net.Dialer{Timeout: 5 * time.Second}
-	conn, err := d.DialContext(ctx, "tcp", host)
-	if err != nil {
-		return nil, err
-	}
-	// AUTH if password supplied
-	if pw, ok := u.User.Password(); ok && pw != "" {
-		if err := redisCmd(conn, "AUTH", pw); err != nil {
-			conn.Close()
-			return nil, fmt.Errorf("auth: %w", err)
-		}
-	}
-	// SELECT db
-	dbStr := strings.TrimPrefix(u.Path, "/")
-	if dbStr != "" {
-		if _, err := strconv.Atoi(dbStr); err == nil {
-			if err := redisCmd(conn, "SELECT", dbStr); err != nil {
-				conn.Close()
-				return nil, fmt.Errorf("select db: %w", err)
-			}
-		}
-	}
-	return conn, nil
+	c.client = client
+	return client, nil
 }
-
-// redisCmd writes a RESP-encoded command and reads/discards the simple reply.
-// Errors include RESP `-ERR` replies.
-func redisCmd(conn net.Conn, args ...string) error {
-	if err := writeRESPArray(conn, args); err != nil {
-		return err
-	}
-	_, err := readRESPReply(bufio.NewReader(conn))
-	return err
-}
-
-// redisGet issues GET <key> and returns the bulk-string reply.
-func redisGet(conn net.Conn, key string) (string, error) {
-	if err := writeRESPArray(conn, []string{"GET", key}); err != nil {
-		return "", err
-	}
-	v, err := readRESPReply(bufio.NewReader(conn))
-	if err != nil {
-		return "", err
-	}
-	return v, nil
-}
-
-func writeRESPArray(conn net.Conn, args []string) error {
-	var b strings.Builder
-	fmt.Fprintf(&b, "*%d\r\n", len(args))
-	for _, a := range args {
-		fmt.Fprintf(&b, "$%d\r\n%s\r\n", len(a), a)
-	}
-	_, err := conn.Write([]byte(b.String()))
-	return err
-}
-
-func readRESPReply(r *bufio.Reader) (string, error) {
-	line, err := r.ReadString('\n')
-	if err != nil {
-		return "", err
-	}
-	if len(line) < 3 {
-		return "", fmt.Errorf("short reply: %q", line)
-	}
-	switch line[0] {
-	case '+': // simple string
-		return strings.TrimRight(line[1:], "\r\n"), nil
-	case '-': // error
-		return "", fmt.Errorf("redis: %s", strings.TrimRight(line[1:], "\r\n"))
-	case ':': // integer
-		return strings.TrimRight(line[1:], "\r\n"), nil
-	case '$': // bulk string
-		n, err := strconv.Atoi(strings.TrimRight(line[1:], "\r\n"))
-		if err != nil {
-			return "", err
-		}
-		if n < 0 {
-			return "", fmt.Errorf("nil")
-		}
-		buf := make([]byte, n+2)
-		if _, err := io.ReadFull(r, buf); err != nil {
-			return "", err
-		}
-		return string(buf[:n]), nil
-	default:
-		return "", fmt.Errorf("unsupported reply: %s", line)
-	}
-}
-

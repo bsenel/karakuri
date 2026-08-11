@@ -39,6 +39,13 @@ const testAdminPassword = "integration-test-admin-pw"
 // every test needs a credential; tests that care about authorization mint their
 // own principals from this one.
 func startServer(t *testing.T) (baseURL string, adminToken string, cleanup func()) {
+	return startServerWith(t, nil)
+}
+
+// startServerWith is startServer with a hook to adjust configuration before the
+// app is built. The quota tests use it to set a limit low enough to trip
+// deliberately; everything else takes the defaults.
+func startServerWith(t *testing.T, configure func(*config.Config)) (baseURL string, adminToken string, cleanup func()) {
 	t.Helper()
 
 	// Create a temp SQLite file
@@ -69,6 +76,13 @@ func startServer(t *testing.T) (baseURL string, adminToken string, cleanup func(
 	cfg.Git.BaseBranch = "main"
 	cfg.Git.BranchPrefix = "karakuri"
 	cfg.Observability.Exporters = nil
+	// The suite makes far more requests in a few seconds than any human would,
+	// so the shipped rate limit would throttle tests that are not about
+	// throttling. Cases that want the limiter set their own.
+	cfg.Quota.RequestsPerMinute = 100000
+	if configure != nil {
+		configure(cfg)
+	}
 
 	// Open DB and run migrations
 	gormDB, err := platformdb.Open(cfg.Database.Driver, cfg.Database.DSN)
@@ -133,7 +147,14 @@ func startServer(t *testing.T) (baseURL string, adminToken string, cleanup func(
 		os.Remove(dbPath)
 		t.Fatalf("build auth: %v", err)
 	}
-	apiApp := api.NewApp(cfg, store, providers, toolReg, exporters, wt, hub, otel, capReg, envReg, domReg, templates, nil, nil, authDeps)
+	quotaDeps, err := app.BuildQuota(ctx, gormDB, cfg, hub)
+	if err != nil {
+		os.Remove(dbPath)
+		t.Fatalf("build quota: %v", err)
+	}
+	t.Cleanup(func() { _ = quotaDeps.Close() })
+
+	apiApp := api.NewApp(cfg, store, providers, toolReg, exporters, wt, hub, otel, capReg, envReg, domReg, templates, nil, nil, authDeps, quotaDeps)
 
 	pair, err := authDeps.Tokens.IssueForPassword(ctx, cfg.Auth.Bootstrap.AdminID, testAdminPassword)
 	if err != nil {

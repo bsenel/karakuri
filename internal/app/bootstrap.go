@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -33,6 +34,7 @@ import (
 	"github.com/bsenel/karakuri/internal/platform/observability"
 	"github.com/bsenel/karakuri/internal/platform/storage"
 	"github.com/bsenel/karakuri/internal/platform/tools"
+	karakuriquota "github.com/bsenel/karakuri/internal/quota"
 	"gorm.io/gorm"
 )
 
@@ -251,7 +253,12 @@ func BootstrapServer(cfgPath string) (*Bootstrap, error) {
 		return nil, err
 	}
 
-	apiApp := api.NewApp(cfg, store, providers, toolReg, exporters, wt, hub, otel, capReg, envReg, domReg, allTemplates, semanticBackend, promHandler, authDeps)
+	quotaDeps, err := BuildQuota(ctx, gormDB, cfg, hub)
+	if err != nil {
+		return nil, err
+	}
+
+	apiApp := api.NewApp(cfg, store, providers, toolReg, exporters, wt, hub, otel, capReg, envReg, domReg, allTemplates, semanticBackend, promHandler, authDeps, quotaDeps)
 
 	// Resume any non-completed loops left behind by a previous server process
 	// (Phase 11). Failures are logged but don't block startup — a working
@@ -390,4 +397,28 @@ func BuildAuth(ctx context.Context, gormDB *gorm.DB, store storage.StorageAdapte
 		Enforcer:   enforcer,
 		Cookies:    karakuriauth.CookieConfig(cfg.Auth),
 	}, nil
+}
+
+// BuildQuota constructs the rate limiter and quota tiers from configuration.
+//
+// Exported alongside BuildAuth and for the same reason: the integration suite
+// exercises this exact wiring rather than a parallel copy that could drift.
+//
+// Failures here are fatal. A limiter that cannot be built is one that would
+// admit everything, and a deployment that asked for a limit and silently did
+// not get one is worse off than one that never configured it — it believes it
+// is protected.
+func BuildQuota(ctx context.Context, gormDB *gorm.DB, cfg *config.Config, hub *event.Hub) (karakuriquota.Deps, error) {
+	// The SQL backend shares the application's pool rather than opening its
+	// own. Only that backend needs it, so the handle is resolved lazily and a
+	// failure here is not fatal for the memory or Valkey paths.
+	var sqlDB *sql.DB
+	if cfg.Quota.Backend == config.QuotaBackendSQL && gormDB != nil {
+		db, err := gormDB.DB()
+		if err != nil {
+			return karakuriquota.Deps{}, fmt.Errorf("quota: %w", err)
+		}
+		sqlDB = db
+	}
+	return karakuriquota.Build(ctx, cfg.Quota, sqlDB, hub)
 }
