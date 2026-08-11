@@ -1,0 +1,102 @@
+name: Release quota module
+
+# The quota engine ships as its own Go module (see ADR 008) with its own tag
+# namespace, so it can be consumed by external repos without pulling Karakuri.
+# Go modules publish by tag rather than to a registry, so this workflow's job is
+# to verify the tagged tree actually builds and passes before the tag becomes
+# permanently resolvable through the module proxy.
+#
+# Tag pattern per Go's multi-module convention:
+#   quota/v0.1.0        → github.com/bsenel/karakuri/quota v0.1.0
+#   quota/valkey/v0.1.0 → github.com/bsenel/karakuri/quota/valkey v0.1.0
+
+on:
+  push:
+    tags:
+      - "quota/v*.*.*"
+      - "quota/*/v*.*.*"
+  workflow_dispatch:
+    inputs:
+      module:
+        description: "Module directory to verify (e.g. quota, quota/sql)"
+        required: true
+        default: quota
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.x"
+          cache: false
+
+      - name: Resolve module directory and version from the tag
+        id: target
+        run: |
+          set -euo pipefail
+          REF="${GITHUB_REF#refs/tags/}"
+          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
+            DIR="${{ github.event.inputs.module }}"
+            VERSION="(unreleased)"
+          else
+            # Strip the trailing /vX.Y.Z to get the module directory.
+            DIR="${REF%/v*}"
+            VERSION="v${REF##*/v}"
+          fi
+          if [ ! -f "${DIR}/go.mod" ]; then
+            echo "no go.mod under '${DIR}' — is the tag prefix a module directory?" >&2
+            exit 1
+          fi
+          echo "dir=${DIR}" >> "$GITHUB_OUTPUT"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "Verifying ${DIR} at ${VERSION}"
+
+      - name: Verify the module is self-contained
+        working-directory: ${{ steps.target.outputs.dir }}
+        run: |
+          set -euo pipefail
+          # A published module must not carry a replace directive pointing back
+          # into this repo — consumers resolving it through the proxy would get
+          # an unbuildable module.
+          if grep -qE '^\s*replace\s|=>' go.mod; then
+            echo "go.mod contains a replace directive; drop it before tagging a release" >&2
+            grep -nE '^\s*replace\s|=>' go.mod >&2
+            exit 1
+          fi
+          # The core module additionally promises zero external dependencies.
+          if [ "${{ steps.target.outputs.dir }}" = "quota" ] && grep -qE '^\s*require' go.mod; then
+            echo "the core quota module must stay dependency-free" >&2
+            exit 1
+          fi
+
+      - name: Build, vet and test
+        working-directory: ${{ steps.target.outputs.dir }}
+        run: |
+          go build ./...
+          go vet ./...
+          go test ./... -race -count=1
+
+      - name: Create GitHub release
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MODULE_DIR: ${{ steps.target.outputs.dir }}
+          MODULE_VERSION: ${{ steps.target.outputs.version }}
+        run: |
+          set -euo pipefail
+          {
+            printf 'Go module `github.com/bsenel/karakuri/%s` %s.\n\n' "${MODULE_DIR}" "${MODULE_VERSION}"
+            printf 'Install:\n\n'
+            printf '```\n'
+            printf 'go get github.com/bsenel/karakuri/%s@%s\n' "${MODULE_DIR}" "${MODULE_VERSION}"
+            printf '```\n'
+          } > "${RUNNER_TEMP}/notes.md"
+          gh release create "${GITHUB_REF#refs/tags/}" \
+            --title "${MODULE_DIR} ${MODULE_VERSION}" \
+            --notes-file "${RUNNER_TEMP}/notes.md"

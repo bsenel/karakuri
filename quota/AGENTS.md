@@ -1,0 +1,60 @@
+# `quota` — standalone rate-limiting and quota module
+
+Overrides parent rules for `quota/` only. This directory is a **separate Go module**
+(`github.com/bsenel/karakuri/quota`), not part of the Karakuri module. See
+[ADR 008](../docs/adr/008-standalone-quota-module.md).
+
+## Hard rules
+
+1. **No Karakuri imports.** Nothing under `github.com/bsenel/karakuri/internal`, `/domains`,
+   `/config` or `/cli` may be imported here. The module has to build for a consumer who has
+   never heard of Karakuri.
+2. **No external dependencies.** `quota/go.mod` has an empty require block and stays that
+   way — including for the token bucket, which is arithmetic rather than a reason to depend
+   on `golang.org/x/time/rate`. A dependency only one submodule needs belongs in that
+   submodule's own `go.mod`.
+3. **No application vocabulary.** This module does not know what a twin, a capability or a
+   loop is. Keys are opaque strings a caller's `KeyExtractor` produces. If a change would
+   require naming a Karakuri concept here, it belongs in `internal/quota/` instead.
+
+## Conventions
+
+- **`Backend` is high-level.** It hands out decisions, not counters. Do not add
+  `Incr`/`ZAdd`-shaped methods: that pushes sorted-set semantics into SQL and mutex
+  semantics into Valkey, and every implementation ends up reinterpreting the algorithms
+  anyway.
+- **Atomicity per key is the contract**, not an implementation detail. A check-then-write
+  backend passes almost every case in `quotatest` and fails the one that matters.
+- **A refusal consumes nothing**, and always carries a positive `RetryAfter`. Zero tells a
+  client to retry immediately, which turns a limiter into a busy loop. `Decision.Normalize`
+  enforces both; call it on the way out of `Take` and `Peek`.
+- **Time is a parameter.** Every backend method takes `now`. Nothing here calls
+  `time.Now` except the middleware's default clock, which is why the tests are
+  deterministic and take milliseconds rather than sleeping.
+- **Exhaustion is a decision, not an error.** Reserve errors for "I could not find out".
+- **Fail open, loudly.** `Limit` lets a request through when its backend is unreachable and
+  reports it via `OnError`. This is the opposite of `auth`, deliberately: an authorizer
+  that cannot answer must refuse, while a limiter that converts its own store's outage
+  into a site outage has done more damage than the traffic it was guarding against.
+  `FailClosed()` is there for the cases where the budget is the point.
+
+## Adding a backend
+
+Implement `Backend`, then run the shared contract from your package:
+
+```go
+func TestContract(t *testing.T) {
+    quotatest.Run(t, func(t *testing.T) quota.Backend { return New(...) })
+}
+```
+
+The suite is the definition of correct. A backend is finished when it passes, and a new
+behavioural rule belongs in `quotatest` — added once, enforced everywhere — rather than in
+one backend's own tests.
+
+## Testing
+
+`go test ./... -race` from this directory. Coverage is gated at 95% in CI
+(`.github/workflows/ci.yml`, job `modules`). `quotatest` is excluded from the measurement:
+its uncovered statements are assertion branches that only run when a backend is broken, and
+it is executed in full by the package under test.
