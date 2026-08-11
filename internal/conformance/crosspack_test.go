@@ -20,17 +20,17 @@ type fakePack struct {
 	agents []agent.Definition
 }
 
-func (p *fakePack) ID() string          { return p.id }
-func (p *fakePack) Name() string        { return p.id }
-func (p *fakePack) Version() string     { return "v0" }
-func (p *fakePack) Description() string { return "" }
-func (p *fakePack) Capabilities() []capability.Capability { return p.caps }
-func (p *fakePack) EnvironmentFactories() []environment.Factory { return p.envs }
-func (p *fakePack) AgentDefinitions() []agent.Definition { return p.agents }
-func (p *fakePack) ObjectiveTemplates() []objective.Template { return nil }
-func (p *fakePack) PlannerHints() []domain.PlannerHint { return nil }
+func (p *fakePack) ID() string                                    { return p.id }
+func (p *fakePack) Name() string                                  { return p.id }
+func (p *fakePack) Version() string                               { return "v0" }
+func (p *fakePack) Description() string                           { return "" }
+func (p *fakePack) Capabilities() []capability.Capability         { return p.caps }
+func (p *fakePack) EnvironmentFactories() []environment.Factory   { return p.envs }
+func (p *fakePack) AgentDefinitions() []agent.Definition          { return p.agents }
+func (p *fakePack) ObjectiveTemplates() []objective.Template      { return nil }
+func (p *fakePack) PlannerHints() []domain.PlannerHint            { return nil }
 func (p *fakePack) Init(_ context.Context, _ domain.Config) error { return nil }
-func (p *fakePack) Teardown(_ context.Context) error { return nil }
+func (p *fakePack) Teardown(_ context.Context) error              { return nil }
 
 func TestCheckCrossPackCollisions_NoCollision(t *testing.T) {
 	a := &fakePack{
@@ -55,11 +55,11 @@ func TestCheckCrossPackCollisions_NoCollision(t *testing.T) {
 
 func TestCheckCrossPackCollisions_CapabilityCollision(t *testing.T) {
 	a := &fakePack{
-		id: "alpha",
+		id:   "alpha",
 		caps: []capability.Capability{{ID: "shared.run"}},
 	}
 	b := &fakePack{
-		id: "beta",
+		id:   "beta",
 		caps: []capability.Capability{{ID: "shared.run"}},
 	}
 	results := CheckCrossPackCollisions(a, b)

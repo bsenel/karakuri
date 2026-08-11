@@ -92,6 +92,21 @@ quota:
   llm_tokens_per_day: 1000000
   adapter_per_day: 5000
 
+  # Who counts model spend: native or litellm.
+  #
+  # native counts tokens through this process and needs nothing else. litellm
+  # delegates to a gateway that counts dollars against a maintained per-model
+  # cost table — closer to what most operators want to cap, but a service to
+  # run, so it is opt-in. Either way an exhausted budget pauses the loop on a
+  # checkpoint rather than failing it.
+  #
+  # With litellm, point ANTHROPIC_BASE_URL (and GOOGLE_GEMINI_BASE_URL for the
+  # Gemini CLI) at the same gateway; Karakuri stamps x-litellm-customer-id so
+  # spend is attributed per twin without provisioning anything.
+  llm_budget_backend: native
+  # litellm_url: http://litellm:4000
+  # litellm_key_env: LITELLM_MASTER_KEY
+
 domains:
   - id: software
     enabled: true

@@ -7,8 +7,8 @@ import (
 
 	coreagent "github.com/bsenel/karakuri/internal/core/agent"
 	"github.com/bsenel/karakuri/internal/core/memory"
-	"github.com/bsenel/karakuri/internal/platform/storage"
 	platmem "github.com/bsenel/karakuri/internal/platform/memory"
+	"github.com/bsenel/karakuri/internal/platform/storage"
 )
 
 type Service struct {

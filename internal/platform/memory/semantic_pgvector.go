@@ -23,9 +23,9 @@ import (
 // `memory_semantic` table (driven by GORM AutoMigrate) is left untouched and
 // SQLite + the keyword fallback continue to work unchanged.
 type SemanticMemoryPgVector struct {
-	db         *sql.DB
-	dim        int
-	tableName  string
+	db        *sql.DB
+	dim       int
+	tableName string
 }
 
 // NewSemanticMemoryPgVector wires the backend against an already-open

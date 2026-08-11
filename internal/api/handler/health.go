@@ -11,11 +11,11 @@ import (
 )
 
 type HealthHandler struct {
-	Providers  *llm.Registry
-	Tools      *tools.Registry
-	Exporters  *observability.ExporterRegistry
-	Worktrees  git.WorktreeManager
-	RepoPath   string
+	Providers *llm.Registry
+	Tools     *tools.Registry
+	Exporters *observability.ExporterRegistry
+	Worktrees git.WorktreeManager
+	RepoPath  string
 }
 
 func (h *HealthHandler) ServeHTTP(w http.ResponseWriter, _ *http.Request) {

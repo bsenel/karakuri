@@ -23,6 +23,10 @@ type Deps struct {
 	// logged and nothing else.
 	Hub *event.Hub
 
+	// TokenBudget bounds model spend. It is the native implementation unless
+	// a gateway is configured; never nil, so callers do not have to check.
+	TokenBudget TokenBudget
+
 	// Close releases whatever the backend holds — a Valkey pool, say. Never
 	// nil, so callers do not have to check.
 	Close func() error

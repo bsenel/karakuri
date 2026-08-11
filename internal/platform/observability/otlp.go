@@ -24,10 +24,10 @@ import (
 //	                                  "Authorization=Bearer abc,X-Tenant=acme"
 //	OTEL_SERVICE_NAME               — resource service.name attribute; default "karakuri"
 type OTLPExporter struct {
-	endpoint  string
-	headers   map[string]string
-	service   string
-	client    *http.Client
+	endpoint string
+	headers  map[string]string
+	service  string
+	client   *http.Client
 }
 
 func NewOTLPExporter() *OTLPExporter {

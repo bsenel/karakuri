@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 )
@@ -47,6 +48,10 @@ func (c *claudeCLI) complete(ctx context.Context, req CompletionRequest) (Comple
 
 	cmd := exec.CommandContext(ctx, c.binary, "--print", "--output-format", "json")
 	cmd.Stdin = strings.NewReader(prompt)
+	// Per invocation, not per process: the CLI is spawned for each call, so
+	// the customer header can vary by twin. Without this the CLI path would be
+	// the one place a gateway could not attribute spend.
+	cmd.Env = gatewayEnv(ctx, os.Environ())
 	out, err := cmd.Output()
 	if err != nil {
 		// `cmd.Output()` populates *exec.ExitError.Stderr on non-zero exit;

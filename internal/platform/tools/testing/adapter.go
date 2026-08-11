@@ -3,9 +3,9 @@ package testing
 import "context"
 
 type TestResult struct {
-	Name    string
-	Passed  bool
-	Output  string
+	Name   string
+	Passed bool
+	Output string
 }
 
 type TestingAdapter interface {

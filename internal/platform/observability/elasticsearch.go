@@ -26,13 +26,13 @@ import (
 //	ELASTICSEARCH_METRICS_INDEX    — defaults to "karakuri-metrics"
 //	ELASTICSEARCH_LOGS_INDEX       — defaults to "karakuri-logs"
 type ElasticsearchExporter struct {
-	url           string
-	username      string
-	password      string
-	apiKey        string
-	metricsIndex  string
-	logsIndex     string
-	client        *http.Client
+	url          string
+	username     string
+	password     string
+	apiKey       string
+	metricsIndex string
+	logsIndex    string
+	client       *http.Client
 }
 
 func NewElasticsearchExporter() *ElasticsearchExporter {

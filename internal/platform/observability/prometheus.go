@@ -144,8 +144,8 @@ type memWriter struct {
 	*bytes.Buffer
 }
 
-func (m *memWriter) Header() http.Header        { return http.Header{} }
-func (m *memWriter) WriteHeader(_ int)          {}
+func (m *memWriter) Header() http.Header         { return http.Header{} }
+func (m *memWriter) WriteHeader(_ int)           {}
 func (m *memWriter) Write(b []byte) (int, error) { return m.Buffer.Write(b) }
 
 // seriesKey builds a stable map key for `(metric_name, labels)` so updates

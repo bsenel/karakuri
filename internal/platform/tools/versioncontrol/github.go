@@ -63,9 +63,9 @@ func (g *GitHub) ListPRs(ctx context.Context, repo string, since time.Time) ([]P
 		return nil, fmt.Errorf("github: no repo configured")
 	}
 	var raw []struct {
-		Number  int    `json:"number"`
-		Title   string `json:"title"`
-		HTMLURL string `json:"html_url"`
+		Number    int       `json:"number"`
+		Title     string    `json:"title"`
+		HTMLURL   string    `json:"html_url"`
 		UpdatedAt time.Time `json:"updated_at"`
 	}
 	if err := g.do(ctx, "GET", fmt.Sprintf("/repos/%s/pulls?state=open&per_page=50", repo), nil, &raw); err != nil {

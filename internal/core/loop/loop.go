@@ -22,21 +22,21 @@ const (
 )
 
 type Request struct {
-	Objective  objective.Objective
-	Twin       twin.DigitalTwin
-	Agent      agent.Definition
-	MaxIter    int  // hard cap; default 50
-	WatchMode  bool // if true, loop continues on environment events
+	Objective objective.Objective
+	Twin      twin.DigitalTwin
+	Agent     agent.Definition
+	MaxIter   int  // hard cap; default 50
+	WatchMode bool // if true, loop continues on environment events
 }
 
 type Result struct {
-	LoopID       string                  `json:"loop_id"`
-	ObjectiveID  objective.ObjectiveID   `json:"objective_id"`
+	LoopID       string                    `json:"loop_id"`
+	ObjectiveID  objective.ObjectiveID     `json:"objective_id"`
 	Status       objective.ObjectiveStatus `json:"status"`
-	Iterations   []Iteration             `json:"iterations,omitempty"`
-	CriteriaMet  float64                 `json:"criteria_met"`
-	CheckpointID *string                 `json:"checkpoint_id,omitempty"`
-	LearnedFacts []memory.Entry          `json:"learned_facts,omitempty"`
+	Iterations   []Iteration               `json:"iterations,omitempty"`
+	CriteriaMet  float64                   `json:"criteria_met"`
+	CheckpointID *string                   `json:"checkpoint_id,omitempty"`
+	LearnedFacts []memory.Entry            `json:"learned_facts,omitempty"`
 }
 
 type Iteration struct {

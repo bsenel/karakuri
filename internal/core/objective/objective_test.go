@@ -39,7 +39,7 @@ func TestObjective_CriterionDomains(t *testing.T) {
 		SuccessCriteria: []Criterion{
 			{ID: "c1", Domain: "software"},
 			{ID: "c2", Domain: "healthcare"},
-			{ID: "c3"}, // no domain — should not appear
+			{ID: "c3"},                     // no domain — should not appear
 			{ID: "c4", Domain: "software"}, // duplicate
 		},
 	}

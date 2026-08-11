@@ -40,9 +40,9 @@ type resolveRequest struct {
 	Decision string `json:"decision"`
 	// Choice is accepted as an alias for Decision so direct callers that
 	// mirror the Decision struct shape (choice/note/approver) work too.
-	Choice        string                       `json:"choice"`
-	Note          string                       `json:"note"`
-	Approver      string                       `json:"approver"`
+	Choice        string                        `json:"choice"`
+	Note          string                        `json:"note"`
+	Approver      string                        `json:"approver"`
 	Modifications *corecheckpoint.Modifications `json:"modifications,omitempty"`
 }
 
