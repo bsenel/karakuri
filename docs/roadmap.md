@@ -23,7 +23,7 @@ Karakuri replaced the original role-based workflow simulator with an autonomous 
 | 12    | Observability Fan-out                      | **Completed** |
 | 13    | Cross-Domain Objectives + Hardening        | **Completed** |
 | 14    | RBAC + Fine-Grained Authorization (core)   | **Completed** |
-| 15    | API Rate Limiting + Quota Management (core)| Planned       |
+| 15    | API Rate Limiting + Quota Management (core)| **Completed** |
 | 16    | Federated Identity (OIDC + SAML)           | Planned       |
 | 17    | Hierarchical Resources + Org Units         | Planned       |
 | 18    | Quota Self-Service + Cost Attribution      | Planned       |
@@ -863,7 +863,7 @@ krk audit --kind authz_denied
 ---
 
 
-## Phase 15 — API Rate Limiting + Quota Management (Planned)
+## Phase 15 — API Rate Limiting + Quota Management (Completed)
 
 **Goal:** Add per-twin / per-capability / per-LLM-budget rate limiting + quota enforcement, shipped as a standalone Go module (`github.com/bsenel/karakuri/quota`) reusable by any `net/http` or `chi` server.
 
@@ -879,6 +879,44 @@ krk audit --kind authz_denied
 8. **Release workflow** — `.github/workflows/release-quota.yml` triggered on `quota/v*.*.*` tags.
 
 **Acceptance:** Property-based test proves TokenBucket never exceeds `rate*elapsed + burst` over any window. 100 req/s × 5 fake twins at a 60/min limit yields exactly 60×200 + 40×429 each. LLM-budget exhaustion produces a checkpoint event verified end-to-end with a fake provider returning inflated `TokensUsed`. All three backends pass `go test -race`. External repo can `go get github.com/bsenel/karakuri/quota@v0.1.0` and build without pulling Karakuri.
+
+**What shipped — three modules and a shim:**
+
+- **`github.com/bsenel/karakuri/quota`** — the engine, with **zero external dependencies**. Three algorithms (token bucket, fixed window, sliding log), calendar quotas, a `chi`-compatible `Limit` middleware with pressure and audit hooks, and an in-memory reference backend. 100% statement coverage.
+- **`quota/sql`** — `database/sql` persistence for counters that outlive a process. Two tables, two dialects, and a transaction per take.
+- **`quota/valkey`** — cross-replica limiting, one Lua script per algorithm and one round trip per take. It brings **no client**: a one-method `Doer` and the scripts, so adopting it does not mean adopting somebody else's connection pool.
+- **`internal/quota`** — the Karakuri shim: the four tiers, the key extractor, backend selection, and the token budget.
+
+**One contract, three backends.** `quota/quotatest` runs the identical table against every backend, so they cannot silently diverge — a 200-way race that a check-then-write implementation cannot survive, the token bucket's `rate × elapsed + burst` bound under an irregular arrival walk, and the rule that a refusal consumes nothing and never carries a zero wait. It earned its keep repeatedly: it caught a floating-point knife-edge in the bucket refill, a `Peek` that asked whether a *zero-cost* request would fit (always yes, even when exhausted), and `quota/sql` failing under contention.
+
+**`Backend` hands out decisions, not counters.** A low-level interface would push sorted-set semantics into SQL and mutex semantics into Valkey and leave each implementation reinterpreting the algorithms anyway. This way each is written in its own idiom — Go under a lock, one Lua script, one transaction — and **atomicity per key is a stated part of the contract** rather than an accident.
+
+**Rate limits and quotas are different types.** A rate limit refuses you and expects you back in a moment; a quota refuses you until tomorrow. `Quota` puts the calendar period *in the key*, so at midnight the key changes and the new period starts at zero — no backend implements a calendar, and the reset is identical across all three.
+
+**Limiting fails open**, deliberately inverting Phase 14's rule. An authorizer that cannot answer must refuse, because the cost of wrongly allowing is a breach. A limiter that cannot answer should allow, because the cost of wrongly refusing is an outage caused by the component meant to prevent one. `FailClosed()` exists for hard spend caps.
+
+**An exhausted LLM budget pauses rather than fails.** A budget is a business limit, not a fault, so the loop raises a Phase 13 checkpoint (`reason=llm_budget_exhausted`) and waits for a human. The charge wraps the agent rather than sitting in the reason step, because the reflexion path calls `Run` four separate times and a check in one of those leaves three unmetered — which are exactly the ones a loop that will not converge keeps making.
+
+**Deviations from the plan, recorded:**
+
+- **Stdlib only**, not `golang.org/x/time/rate`. `rate.Limiter` is one unkeyed bucket, so the keyed map and its eviction are ours either way; what was left to borrow was sixty lines of arithmetic, which is not worth the empty require block the release workflow verifies.
+- **Valkey, not Redis**, and the module brings no client at all.
+- **The request tier keys on the principal, not the twin.** The plan said to key twin routes on the twin. That is wrong: a caller could spend a full budget against every twin it can see, so the limit would bound nothing. The twin dimension belongs to the per-capability quota, which bounds a twin's work rather than a caller's traffic.
+- **A LiteLLM backend the roadmap did not anticipate.** Tokens are a poor proxy for spend across models that differ by an order of magnitude in price, so `llm_budget_backend: litellm` delegates to a gateway that counts dollars. It is opt-in; `native` remains the default and Karakuri remains a single binary.
+- **`quota/sql` covers all three algorithms**, not just long windows: the shared contract demands it, and a backend that silently does not support an algorithm is a trap.
+
+**Known gap:** the Gemini *HTTP* provider cannot be pointed at a gateway — langchaingo's `googleai` package exposes `WithHTTPClient` but no `WithBaseURL`. The Gemini CLI path can be, and is. Closing it needs an OpenAI-compatible adapter, which is its own change.
+
+**Acceptance — met:**
+
+- `quota` reaches **100%** coverage with **no Karakuri imports and an empty require block**; `quota/sql` 91.6% and `quota/valkey` 96.0% against gates of 90.
+- The property that a token bucket never admits more than `rate × elapsed + burst` holds over a 3000-step irregular arrival walk, with a tightness check so a backend that refused everything could not satisfy it vacuously.
+- 100 requests against a 60/min limit yields exactly 60 allowed and 40 refused, on every backend.
+- CI runs a `valkey/valkey:8-alpine` service container, so the Lua is exercised against a real server rather than a fake.
+- The integration suite proves the 429 carries `Retry-After` and the `X-RateLimit-*` trio, that `/health` is exempt, and that one principal exhausting its budget does not refuse anybody else.
+
+**Also fixed along the way:** both CI workflows filtered `pull_request` to base `main`, so a stacked PR got **no checks at all** — not a failing check, none. Phase 14's stack was only ever verified after each PR was retargeted, which is the point at which review is already over.
+
 
 ---
 

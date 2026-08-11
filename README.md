@@ -144,6 +144,11 @@ krk research --topic "..." [--depth shallow|deep]
 # Watch mode
 krk auto [--domain <id>]
 
+# Quotas (Phase 15)
+krk quota config
+krk quota show --twin <id>
+krk quota reset --twin <id> [--capability <cap>]
+
 # Audit log (Phase 13)
 krk audit [--kind execute|escalation|approval] [--objective <id>] \
           [--agent <id>] [--violations-only] [--since <RFC3339>] [--limit N]
@@ -162,7 +167,11 @@ database:
 providers:
   default: claude
 auth:
-  token: ""        # set to require Bearer token on all endpoints
+  jwt:
+    keys: []       # or set KARAKURI_AUTH_JWT_SECRET; the server refuses to
+                   # start without a signing key
+quota:
+  backend: memory  # per replica — see Rate limits and quotas below
 memory:
   semantic_top_k: 5
 ```
@@ -252,6 +261,43 @@ It exists for plain-HTTP development where non-browser clients drop Secure
 cookies and a login appears to succeed while doing nothing. Browsers do not need
 it — `http://localhost` is a trustworthy origin and accepts Secure cookies — so
 if you find yourself setting it in front of real users, terminate TLS instead.
+
+### Rate limits and quotas
+
+Four limits ship enabled (see [ADR 008](docs/adr/008-standalone-quota-module.md)),
+generous enough that ordinary use never reaches them:
+
+| Tier | Default | Keyed on |
+|------|---------|----------|
+| Request rate | 60/min, bursting to 20 | the calling principal |
+| Capability | 1000/day | twin + capability |
+| LLM tokens | 1,000,000/day | twin |
+| Adapter | 5000/day | twin + adapter |
+
+```bash
+krk quota config                 # what this server is actually enforcing
+krk quota show --twin <id>       # usage per tier, and when it resets
+krk quota reset --twin <id>      # operator override; needs quota:admin
+```
+
+A refused request gets a 429 with `Retry-After` and the `X-RateLimit-*` headers,
+which are also on successful responses so a client can slow down before being
+refused. At 80% of any tier a `quota_pressure` event goes to the same stream the
+SPA already watches.
+
+**Counters are per replica by default.** `quota.backend: memory` means a limit of
+60/min across three replicas admits 180. Behind a load balancer, set
+`backend: valkey` — it is the only backend consistent across replicas. `sql`
+shares the application database and suits daily quotas more than per-request
+rates.
+
+**An exhausted LLM budget pauses rather than fails.** A budget is a business
+limit, not a fault, so the loop raises a checkpoint (`reason=llm_budget_exhausted`)
+and waits: approve to continue, reject to stop. Set
+`quota.llm_budget_backend: litellm` to have a [LiteLLM](https://www.litellm.ai)
+gateway count dollars instead of tokens — Karakuri stamps
+`x-litellm-customer-id: twin:<id>` on every model call, so spend is attributed
+per twin without provisioning anything.
 
 ### Helm chart
 

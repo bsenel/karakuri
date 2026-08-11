@@ -139,6 +139,10 @@ func Routes() []Route {
 		{http.MethodGet, "/domains/capabilities", ActionDomainRead, false},
 		{http.MethodGet, "/domains/{id}/conformance", ActionDomainRead, false},
 
+		{http.MethodGet, "/quota", ActionQuotaRead, false},
+		{http.MethodGet, "/quota/usage", ActionQuotaRead, false},
+		{http.MethodPost, "/quota/reset", ActionQuotaAdmin, false},
+
 		{http.MethodPost, "/research", ActionResearchRun, false},
 		{http.MethodGet, "/audit", ActionAuditRead, false},
 	}

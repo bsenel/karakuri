@@ -93,12 +93,15 @@ func TestRBACRouteMatrix(t *testing.T) {
 		karakuriauth.RoleViewer: {
 			"twin:read": true, "objective:read": true, "loop:read": true,
 			"checkpoint:read": true, "artifact:read": true, "memory:read": true,
-			"domain:read": true,
+			// quota:read is granted to viewer, so every role inherits it:
+			// being throttled and not being allowed to find out why is a bad
+			// combination.
+			"domain:read": true, "quota:read": true,
 		},
 		karakuriauth.RoleAuditor: {
 			"twin:read": true, "objective:read": true, "loop:read": true,
 			"checkpoint:read": true, "artifact:read": true, "memory:read": true,
-			"domain:read": true, "audit:read": true,
+			"domain:read": true, "audit:read": true, "quota:read": true,
 		},
 		karakuriauth.RoleOperator: {
 			"twin:read": true, "twin:create": true, "twin:update": true,
@@ -108,7 +111,7 @@ func TestRBACRouteMatrix(t *testing.T) {
 			"checkpoint:read": true, "checkpoint:resolve": true,
 			"artifact:read": true, "artifact:write": true,
 			"memory:read": true, "memory:write": true, "memory:forget": true,
-			"domain:read": true, "research:run": true,
+			"domain:read": true, "research:run": true, "quota:read": true,
 		},
 		// admin holds the wildcard.
 		karakuriauth.RoleAdmin: nil,
