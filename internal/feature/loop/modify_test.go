@@ -71,9 +71,9 @@ func TestTrimRemovedActions_NilModsIsNoop(t *testing.T) {
 
 func TestEffectiveThreshold(t *testing.T) {
 	cases := []struct {
-		name             string
-		authority        float64
-		override         *float64
+		name              string
+		authority         float64
+		override          *float64
 		expectedEffective float64
 	}{
 		{"nil mods returns authority threshold", 0.90, nil, 0.90},

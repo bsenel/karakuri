@@ -126,9 +126,9 @@ func stepReason(ctx context.Context, sc *stepContext, ws loop.WorldState) plan {
 
 	// 6. Emit step completed
 	payload := map[string]any{
-		"step":             string(loop.StepReason),
+		"step":              string(loop.StepReason),
 		"plan_action_count": len(p.Actions),
-		"confidence":       p.Confidence,
+		"confidence":        p.Confidence,
 	}
 	if revised {
 		payload["reflexion_applied"] = true
