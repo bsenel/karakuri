@@ -80,6 +80,10 @@ func (s *serviceImpl) runLoop(ctx context.Context, loopID string, req loop.Reque
 		s.finalizeLoop(ctx, state, obj, nil, false, fmt.Errorf("create agent: %w", err))
 		return
 	}
+	// Every model call the loop makes goes through the agent, so charging the
+	// twin's token budget here covers all four of the reflexion call sites
+	// rather than only the one in stepReason.
+	agent = withBudget(agent, s.budget, obj.TwinID)
 
 	// 4. Build all environments for the domain. Fetch twin bindings so envs
 	// can resolve the correct adapter instance per tenant (ADR 006).
@@ -138,15 +142,22 @@ func (s *serviceImpl) runLoop(ctx context.Context, loopID string, req loop.Reque
 	}
 
 	var (
-		score      float64
+		score       float64
 		criteriaMet bool
-		iterations []loop.Iteration
+		iterations  []loop.Iteration
 	)
 
 	for iter := 0; iter < maxIter; iter++ {
 		sc.iteration = iter
 
 		// Update state step
+		// A spent budget pauses on a checkpoint rather than failing: it is a
+		// business limit, not a fault, and the right answer is to ask a human
+		// whether to keep going.
+		if s.pauseIfBudgetExhausted(ctx, sc) {
+			return
+		}
+
 		state.mu.Lock()
 		state.status.Iteration = iter
 		state.status.Step = loop.StepObserve

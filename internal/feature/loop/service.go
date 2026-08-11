@@ -14,8 +14,8 @@ import (
 	"github.com/bsenel/karakuri/internal/core/domain"
 	"github.com/bsenel/karakuri/internal/core/environment"
 	"github.com/bsenel/karakuri/internal/core/event"
-	coreloop "github.com/bsenel/karakuri/internal/core/loop"
 	"github.com/bsenel/karakuri/internal/core/loop"
+	coreloop "github.com/bsenel/karakuri/internal/core/loop"
 	"github.com/bsenel/karakuri/internal/core/objective"
 	featureart "github.com/bsenel/karakuri/internal/feature/artifact"
 	featurecp "github.com/bsenel/karakuri/internal/feature/checkpoint"
@@ -24,6 +24,7 @@ import (
 	"github.com/bsenel/karakuri/internal/platform/git"
 	"github.com/bsenel/karakuri/internal/platform/observability"
 	"github.com/bsenel/karakuri/internal/platform/storage"
+	karakuriquota "github.com/bsenel/karakuri/internal/quota"
 )
 
 // Service drives the observe→reason→decide→act→verify→learn loop.
@@ -59,6 +60,10 @@ type serviceImpl struct {
 	otel    *observability.OTel
 	domReg  *domain.Registry
 
+	// budget bounds each twin's model spend. Nil means unmetered, which is
+	// what a caller that has not configured quotas gets.
+	budget karakuriquota.TokenBudget
+
 	mu     sync.RWMutex
 	states map[string]*loopState // loopID → state
 }
@@ -75,6 +80,7 @@ func NewService(
 	hub *event.Hub,
 	otel *observability.OTel,
 	domReg *domain.Registry,
+	budget karakuriquota.TokenBudget,
 ) Service {
 	return &serviceImpl{
 		store:   store,
@@ -88,6 +94,7 @@ func NewService(
 		hub:     hub,
 		otel:    otel,
 		domReg:  domReg,
+		budget:  budget,
 		states:  make(map[string]*loopState),
 	}
 }
@@ -268,4 +275,3 @@ func (s *serviceImpl) ResumeStoredLoops(ctx context.Context) error {
 type Resumer interface {
 	ResumeStoredLoops(ctx context.Context) error
 }
-

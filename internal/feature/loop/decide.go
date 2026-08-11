@@ -136,11 +136,11 @@ func stepDecide(ctx context.Context, sc *stepContext, p plan, mods *corecheckpoi
 		// reference its ID — reviewers deep-link from /checkpoints into
 		// /audit without joining tables.
 		auditPayload, _ := json.Marshal(map[string]any{
-			"actions":                p.Actions,
-			"confidence":             p.Confidence,
-			"confidence_threshold":   authority.ConfidenceThreshold,
-			"effective_threshold":    threshold,
-			"max_autonomous":         authority.MaxAutonomousActions,
+			"actions":              p.Actions,
+			"confidence":           p.Confidence,
+			"confidence_threshold": authority.ConfidenceThreshold,
+			"effective_threshold":  threshold,
+			"max_autonomous":       authority.MaxAutonomousActions,
 		})
 		auditID := fmt.Sprintf("audit-%d", time.Now().UnixNano())
 		_ = sc.svc.store.SaveToolEvent(ctx, storage.ToolEvent{

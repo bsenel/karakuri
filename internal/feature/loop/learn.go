@@ -102,7 +102,7 @@ func stepLearn(ctx context.Context, sc *stepContext, ws loop.WorldState, p plan,
 		Type:        event.TypeLoopStepCompleted,
 		ObjectiveID: string(sc.obj.ID),
 		Payload: map[string]any{
-			"step":                  string(loop.StepLearn),
+			"step":                   string(loop.StepLearn),
 			"memory_entries_written": memoriesWritten,
 		},
 		Timestamp: time.Now().UTC(),

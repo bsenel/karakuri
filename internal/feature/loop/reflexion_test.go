@@ -13,8 +13,8 @@ import (
 // reflexion pass need an agent that returns "critique" on call 1 and
 // "revised plan JSON" on call 2.
 type scriptedAgent struct {
-	calls    int
-	scripted []coreagent.Output
+	calls     int
+	scripted  []coreagent.Output
 	tasksSeen []string
 }
 
