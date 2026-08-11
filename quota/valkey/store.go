@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 	"sync"
@@ -161,14 +162,19 @@ func (b *Backend) eval(
 // unchecked narrowing would wrap a large number into a negative remaining,
 // which reads as an exhausted budget and would refuse every request.
 func remainingWithin(v int64, limit int) int {
-	switch {
-	case v <= 0:
+	if v <= 0 {
 		return 0
-	case v > int64(limit):
-		return limit
-	default:
-		return int(v)
 	}
+	// math.MaxInt32, not math.MaxInt: int is 32 bits on some platforms, so the
+	// bound has to be the smallest one this can be compiled for. No real limit
+	// comes near it, and anything that does is a broken reply either way.
+	if v > math.MaxInt32 {
+		return limit
+	}
+	if narrowed := int(v); narrowed <= limit {
+		return narrowed
+	}
+	return limit
 }
 
 // run invokes a script by digest, registering it with the server the first time
