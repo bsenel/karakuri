@@ -146,10 +146,29 @@ func (b *Backend) eval(
 	return quota.Decision{
 		Allowed:    out[0] == 1,
 		Limit:      p.Limit,
-		Remaining:  int(out[1]),
+		Remaining:  remainingWithin(out[1], p.Limit),
 		ResetAt:    time.UnixMilli(out[2]).UTC(),
 		RetryAfter: time.Duration(out[3]) * time.Millisecond,
 	}.Normalize(), nil
+}
+
+// remainingWithin narrows the reply's remaining count to int.
+//
+// The bound is a real invariant rather than a formality: what is left can never
+// exceed the limit the policy set, so anything above it is a broken reply. The
+// check also has to be here rather than left to the conversion, because int is
+// 32 bits on some platforms and the value arrives from another process — an
+// unchecked narrowing would wrap a large number into a negative remaining,
+// which reads as an exhausted budget and would refuse every request.
+func remainingWithin(v int64, limit int) int {
+	switch {
+	case v <= 0:
+		return 0
+	case v > int64(limit):
+		return limit
+	default:
+		return int(v)
+	}
 }
 
 // run invokes a script by digest, registering it with the server the first time
