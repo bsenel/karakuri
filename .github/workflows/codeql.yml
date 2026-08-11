@@ -9,7 +9,9 @@ on:
   push:
     branches: [main]
   pull_request:
-    branches: [main]
+    # Stacked PRs target their parent branch, not main. Without them in the
+    # filter an intermediate PR is never scanned while it is being reviewed.
+    branches: [main, "claude/**"]
   schedule:
     - cron: "0 9 * * 1"
 
