@@ -259,9 +259,11 @@ func concurrentTakesAreAtomic(t *testing.T, b quota.Backend) {
 	p := quota.Policy{Algorithm: quota.FixedWindow, Limit: limit, Window: time.Hour}
 
 	var (
-		wg      sync.WaitGroup
-		mu      sync.Mutex
-		allowed int
+		wg       sync.WaitGroup
+		mu       sync.Mutex
+		allowed  int
+		failed   int
+		firstErr error
 	)
 	start := make(chan struct{})
 	for range racers {
@@ -270,19 +272,28 @@ func concurrentTakesAreAtomic(t *testing.T, b quota.Backend) {
 			defer wg.Done()
 			<-start
 			d, err := b.Take(context.Background(), "contended", p, 1, Base)
-			if err != nil {
-				return
-			}
-			if d.Allowed {
-				mu.Lock()
+			mu.Lock()
+			defer mu.Unlock()
+			switch {
+			case err != nil:
+				failed++
+				if firstErr == nil {
+					firstErr = err
+				}
+			case d.Allowed:
 				allowed++
-				mu.Unlock()
 			}
 		}()
 	}
 	close(start)
 	wg.Wait()
 
+	// Errors first, and separately. A backend that falls over under contention
+	// also admits the wrong number, and reporting that as "not atomic" sends
+	// the next person looking in the wrong place.
+	if failed > 0 {
+		t.Fatalf("%d of %d concurrent takes returned an error; first: %v", failed, racers, firstErr)
+	}
 	if allowed != limit {
 		t.Errorf("%d of %d racers allowed against a limit of %d — the backend is not atomic per key",
 			allowed, racers, limit)

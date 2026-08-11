@@ -103,6 +103,13 @@ jobs:
           # with a driver stub nobody would maintain.
           - module: auth/sql
             coverage: 90
+          # quota/sql's residue is the same shape: exec error branches inside a
+          # transaction, reachable only by breaking the schema mid-flight.
+          # Behaviour is covered against a real SQLite file, including the full
+          # shared contract, a drifted schema, and every method against a closed
+          # database.
+          - module: quota/sql
+            coverage: 90
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
