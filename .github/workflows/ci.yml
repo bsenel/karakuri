@@ -6,7 +6,10 @@ name: CI
 
 on:
   pull_request:
-    branches: [main]
+    # Stacked PRs target their parent branch rather than main, so the filter has
+    # to include them or an intermediate PR sits with no checks at all until it
+    # is retargeted — which is the point at which review is already over.
+    branches: [main, "claude/**"]
   push:
     branches: [main]
 
