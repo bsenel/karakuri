@@ -71,7 +71,7 @@ func Apply(s *State, p Policy, n int, now time.Time) (Decision, error) {
 }
 
 func applyTokenBucket(s *State, p Policy, n int, now time.Time) Decision {
-	rate := p.refillRate()
+	rate := p.RatePerSecond()
 	capacity := float64(p.Limit)
 
 	if s.Last.IsZero() {

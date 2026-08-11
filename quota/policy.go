@@ -95,8 +95,13 @@ func (p Policy) Validate() error {
 	return nil
 }
 
-// refillRate is the tokens-per-second a TokenBucket policy replenishes at.
-func (p Policy) refillRate() float64 {
+// RatePerSecond is the rate a TokenBucket policy replenishes at: Rate when it
+// is set, and Limit/Window when it is not.
+//
+// Exported for backends that have to reproduce the refill somewhere this
+// package's arithmetic cannot reach — quota/valkey computes it inside a Lua
+// script — so that "60 a minute" means the same number in both places.
+func (p Policy) RatePerSecond() float64 {
 	if p.Rate > 0 {
 		return p.Rate
 	}
@@ -117,7 +122,7 @@ func PerSecond(n int) Policy {
 // p already implies. It is the readable way to say "60 a minute, but tolerate
 // twenty arriving at once".
 func (p Policy) Burst(n int) Policy {
-	p.Rate = p.refillRate()
+	p.Rate = p.RatePerSecond()
 	p.Limit = n
 	return p
 }
