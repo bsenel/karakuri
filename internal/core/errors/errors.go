@@ -12,6 +12,7 @@ var (
 	ErrObjectiveNotFound   = errors.New("objective not found")
 	ErrTwinNotFound        = errors.New("twin not found")
 	ErrCheckpointNotFound  = errors.New("checkpoint not found")
+	ErrContainerNotFound   = errors.New("container not found")
 	ErrConstraintViolation = errors.New("constraint violation")
 	ErrLoopMaxIter         = errors.New("loop max iterations reached")
 	ErrProviderUnavailable = errors.New("provider unavailable")

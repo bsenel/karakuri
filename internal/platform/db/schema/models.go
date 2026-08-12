@@ -186,3 +186,41 @@ type LoopStateModel struct {
 }
 
 func (LoopStateModel) TableName() string { return "loop_states" }
+
+// ContainerModel is one node of the tenancy tree — an org, a team or a project
+// (Phase 17).
+//
+// The unique index is on (parent_id, kind, name), not on name: two
+// organisations may both have a team called "Engineering", and the whole point
+// of scoping on IDs is that they do not collide when they do. Projects have no
+// parent, so their names are unique among projects.
+type ContainerModel struct {
+	ID        string    `gorm:"primaryKey;column:id"`
+	Kind      string    `gorm:"column:kind;not null;index:idx_containers_sibling,unique,priority:2"`
+	Name      string    `gorm:"column:name;not null;index:idx_containers_sibling,unique,priority:3"`
+	ParentID  string    `gorm:"column:parent_id;not null;default:'';index;index:idx_containers_sibling,unique,priority:1"`
+	CreatedAt time.Time `gorm:"column:created_at;autoCreateTime"`
+	UpdatedAt time.Time `gorm:"column:updated_at;autoUpdateTime"`
+}
+
+func (ContainerModel) TableName() string { return "containers" }
+
+// ResourceScopeModel is one label a resource carries (Phase 17): the flattened
+// ancestor closure that authorization matches a binding scope against.
+//
+// Direct separates what somebody declared from what was derived by closing over
+// ancestry. Both live in one table because both are matched the same way — the
+// listing query does not care how a label got there — while reparenting needs
+// to find declarations and recompute the rest, which a closure alone cannot
+// reproduce from itself.
+//
+// The index on label is what makes subtree listing an indexed IN clause rather
+// than the prefix scan a path model would need.
+type ResourceScopeModel struct {
+	ResourceType string `gorm:"primaryKey;column:resource_type"`
+	ResourceID   string `gorm:"primaryKey;column:resource_id"`
+	Label        string `gorm:"primaryKey;column:label;index"`
+	Direct       bool   `gorm:"column:direct;not null;default:false"`
+}
+
+func (ResourceScopeModel) TableName() string { return "resource_scopes" }

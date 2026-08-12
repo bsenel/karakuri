@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/bsenel/karakuri/internal/core/checkpoint"
+	"github.com/bsenel/karakuri/internal/core/container"
 	coreloop "github.com/bsenel/karakuri/internal/core/loop"
 	"github.com/bsenel/karakuri/internal/core/memory"
 	"github.com/bsenel/karakuri/internal/core/objective"
@@ -163,6 +164,18 @@ type StorageAdapter interface {
 	GetLoopState(ctx context.Context, loopID string) (coreloop.State, error)
 	ListActiveLoopStates(ctx context.Context) ([]coreloop.State, error)
 	DeleteLoopState(ctx context.Context, loopID string) error
+
+	// Containers and scopes (Phase 17 — the tenancy tree and the flattened
+	// closure authorization matches against).
+	SaveContainer(ctx context.Context, c container.Container) error
+	GetContainer(ctx context.Context, id string) (container.Container, error)
+	ListContainers(ctx context.Context, f container.Filter) ([]container.Container, error)
+	DeleteContainer(ctx context.Context, id string) error
+
+	PutResourceScopes(ctx context.Context, s container.ResourceScopes) error
+	GetResourceScopes(ctx context.Context, resourceType, resourceID string) (container.ResourceScopes, error)
+	ListScopedResources(ctx context.Context, f container.ScopeFilter) ([]container.ResourceScopes, error)
+	DeleteResourceScopes(ctx context.Context, resourceType, resourceID string) error
 }
 
 func Now() time.Time { return time.Now().UTC() }
