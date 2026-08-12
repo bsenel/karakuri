@@ -52,8 +52,8 @@ func (s *Service) Get(ctx context.Context, id string) (twin.DigitalTwin, error) 
 	return s.store.GetTwin(ctx, id)
 }
 
-func (s *Service) List(ctx context.Context, kind, domain string) ([]twin.DigitalTwin, error) {
-	return s.store.ListTwins(ctx, storage.TwinFilter{Kind: kind, Domain: domain})
+func (s *Service) List(ctx context.Context, f storage.TwinFilter) ([]twin.DigitalTwin, error) {
+	return s.store.ListTwins(ctx, f)
 }
 
 func (s *Service) Update(ctx context.Context, t twin.DigitalTwin) error {

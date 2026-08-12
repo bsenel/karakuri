@@ -4,13 +4,21 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"github.com/bsenel/karakuri/auth"
+	karakuriauth "github.com/bsenel/karakuri/internal/auth"
 	"github.com/bsenel/karakuri/internal/core/objective"
 	featureobj "github.com/bsenel/karakuri/internal/feature/objective"
+	"github.com/bsenel/karakuri/internal/platform/storage"
 	"github.com/go-chi/chi/v5"
 )
 
 type ObjectiveHandler struct {
 	Objectives *featureobj.Service
+
+	// Scopes narrows a listing to the objectives the caller may read, the same
+	// way TwinHandler.Scopes does. An objective inherits its twin's containers,
+	// so a grant on an organisation reaches the work being done in it.
+	Scopes karakuriauth.ScopeAuthorizer
 }
 
 func (h *ObjectiveHandler) Create(w http.ResponseWriter, r *http.Request) {
@@ -55,10 +63,24 @@ func (h *ObjectiveHandler) Get(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, obj)
 }
 
+// List returns the objectives the caller may read. See TwinHandler.List for why
+// the filter lives in the handler and why it is a narrowing rather than the
+// authority.
 func (h *ObjectiveHandler) List(w http.ResponseWriter, r *http.Request) {
-	twinID := r.URL.Query().Get("twin_id")
-	status := r.URL.Query().Get("status")
-	objs, err := h.Objectives.List(r.Context(), twinID, status)
+	principal, _ := auth.PrincipalFromContext(r.Context())
+	visible, hidden, err := karakuriauth.ListFor(
+		r.Context(), h.Scopes, principal.ID, karakuriauth.ActionObjectiveRead, "objective")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	objs, err := h.Objectives.List(r.Context(), storage.ObjectiveFilter{
+		TwinID:  r.URL.Query().Get("twin_id"),
+		Status:  r.URL.Query().Get("status"),
+		Visible: visible,
+		Hidden:  hidden,
+	})
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

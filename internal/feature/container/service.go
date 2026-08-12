@@ -273,6 +273,21 @@ func (s *Service) SetResourceContainers(ctx context.Context, resourceType, resou
 	})
 }
 
+// InheritFrom gives one resource the same containers as another.
+//
+// An objective lives where its twin lives — it is work on that twin, not a
+// thing somebody files separately — so it is placed by copying rather than by
+// asking. Copying the *declared* membership rather than the closure is what
+// keeps it correct afterwards: when the twin's team is reparented, both are
+// recomputed from their own declarations and stay in step.
+func (s *Service) InheritFrom(ctx context.Context, resourceType, resourceID, fromType, fromID string) error {
+	from, err := s.store.GetResourceScopes(ctx, fromType, fromID)
+	if err != nil {
+		return fmt.Errorf("read scopes of %s %q: %w", fromType, fromID, err)
+	}
+	return s.SetResourceContainers(ctx, resourceType, resourceID, labelsToIDs(from.Direct))
+}
+
 // ScopesOf returns the labels a resource carries — what a caller hands to
 // auth.ResourceRef.WithScopes.
 func (s *Service) ScopesOf(ctx context.Context, resourceType, resourceID string) ([]string, error) {

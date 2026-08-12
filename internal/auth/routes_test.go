@@ -42,6 +42,25 @@ func routed(t *testing.T, pattern, target string, fn extauth.ResourceFunc) extau
 	return got
 }
 
+// routedAs is routed with a principal in the context, which is what the
+// enforcer has already put there by the time a resource function runs.
+func routedAs(t *testing.T, principal extauth.Principal, pattern, target string, fn extauth.ResourceFunc) extauth.ResourceRef {
+	t.Helper()
+	var got extauth.ResourceRef
+	r := chi.NewRouter()
+	r.Get(pattern, func(_ http.ResponseWriter, req *http.Request) { got = fn(req) })
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, target, nil)
+	if principal.ID != "" {
+		req = req.WithContext(extauth.WithPrincipal(req.Context(), principal))
+	}
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("route %q did not match %q (%d)", pattern, target, rec.Code)
+	}
+	return got
+}
+
 func TestScopedAttachesContainers(t *testing.T) {
 	lookup := &stubScopes{labels: map[string][]string{
 		"twin:abc": {"team:t_7f2a", "org:o_9c31"},

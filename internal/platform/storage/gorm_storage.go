@@ -111,6 +111,7 @@ func (s *GORMStorage) ListTwins(ctx context.Context, f TwinFilter) ([]twin.Digit
 	if f.Domain != "" {
 		q = q.Where("domain = ?", f.Domain)
 	}
+	q = applyScopeSelectors(q, "twin", "id", f.Visible, f.Hidden)
 	if f.Limit > 0 {
 		q = q.Limit(f.Limit).Offset(f.Offset)
 	}
@@ -179,15 +180,16 @@ func (s *GORMStorage) GetObjective(ctx context.Context, id objective.ObjectiveID
 	return objectiveFromModel(m), nil
 }
 
-func (s *GORMStorage) ListObjectives(ctx context.Context, twinID string, status string) ([]objective.Objective, error) {
+func (s *GORMStorage) ListObjectives(ctx context.Context, f ObjectiveFilter) ([]objective.Objective, error) {
 	var models []schema.ObjectiveModel
 	q := s.db.WithContext(ctx).Order("created_at DESC")
-	if twinID != "" {
-		q = q.Where("twin_id = ?", twinID)
+	if f.TwinID != "" {
+		q = q.Where("twin_id = ?", f.TwinID)
 	}
-	if status != "" {
-		q = q.Where("status = ?", status)
+	if f.Status != "" {
+		q = q.Where("status = ?", f.Status)
 	}
+	q = applyScopeSelectors(q, "objective", "id", f.Visible, f.Hidden)
 	if err := q.Find(&models).Error; err != nil {
 		return nil, err
 	}
@@ -601,6 +603,81 @@ func loopStateFromModel(m schema.LoopStateModel) coreloop.State {
 		CreatedAt:    m.CreatedAt,
 		UpdatedAt:    m.UpdatedAt,
 	}
+}
+
+// ── Scoped listing ────────────────────────────────────────────────────────
+
+// applyScopeSelectors narrows a listing to what a principal may see.
+//
+// This is the payoff of materialising the closure. Visibility is an indexed
+// `IN` over resource_scopes.label, which is one join — where a path-shaped
+// hierarchy would need `LIKE 'org:acme/%'`, unindexable and unable to express
+// "these three teams", and a relationship-graph model would walk the graph,
+// which is why OpenFGA caps ListObjects at a thousand results.
+//
+// A nil visible means no restriction. It cannot mean "empty selector matches
+// everything": a principal with no grants must see nothing, and that difference
+// is the whole security property of this function.
+func applyScopeSelectors(q *gorm.DB, resourceType, idColumn string, visible *ScopeSelector, hidden ScopeSelector) *gorm.DB {
+	if visible != nil {
+		if visible.Empty() {
+			// Nothing is granted, so nothing matches. Expressed as a false
+			// predicate rather than an early return so the caller's paging and
+			// ordering still apply to an empty result.
+			return q.Where("1 = 0")
+		}
+		cond := q.Session(&gorm.Session{NewDB: true})
+		var group *gorm.DB
+		for i, term := range scopeTerms(cond, resourceType, idColumn, *visible, false) {
+			if i == 0 {
+				group = cond.Where(term.query, term.args...)
+				continue
+			}
+			group = group.Or(term.query, term.args...)
+		}
+		q = q.Where(group)
+	}
+	// Deny is applied as one NOT IN per term rather than as a negated OR group:
+	// "not (a or b)" is "not a and not b", and the second form is what a
+	// database plans well and what every driver renders the same way.
+	cond := q.Session(&gorm.Session{NewDB: true})
+	for _, term := range scopeTerms(cond, resourceType, idColumn, hidden, true) {
+		q = q.Where(term.query, term.args...)
+	}
+	return q
+}
+
+type scopeTerm struct {
+	query string
+	args  []any
+}
+
+// scopeTerms renders a selector as one predicate per shape it can match:
+// the row named directly, or the row sitting in one of these containers.
+func scopeTerms(cond *gorm.DB, resourceType, idColumn string, sel ScopeSelector, negate bool) []scopeTerm {
+	in := " IN "
+	if negate {
+		in = " NOT IN "
+	}
+	members := func(where string, args ...any) *gorm.DB {
+		return cond.Table("resource_scopes").Select("resource_id").Where(where, args...)
+	}
+
+	var out []scopeTerm
+	if len(sel.IDs) > 0 {
+		out = append(out, scopeTerm{idColumn + in + "?", []any{sel.IDs}})
+	}
+	if len(sel.Labels) > 0 {
+		out = append(out, scopeTerm{idColumn + in + "(?)", []any{
+			members("resource_type = ? AND label IN ?", resourceType, sel.Labels),
+		}})
+	}
+	for _, prefix := range sel.LabelPrefixes {
+		out = append(out, scopeTerm{idColumn + in + "(?)", []any{
+			members("resource_type = ? AND label LIKE ?", resourceType, prefix+"%"),
+		}})
+	}
+	return out
 }
 
 // ── Containers and scopes ─────────────────────────────────────────────────

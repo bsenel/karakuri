@@ -327,6 +327,13 @@ func TestRBACScopedBinding(t *testing.T) {
 	if twinID == "" {
 		t.Fatal("no twin id returned")
 	}
+	// A second twin the scoped viewer has no claim on, so the listing
+	// assertion below has something to leave out.
+	resp = doJSON(t, adminToken, http.MethodPost, baseURL+"/api/v1/twins", map[string]any{
+		"name": "unrelated", "kind": "team", "domain": "software",
+	})
+	assertStatus(t, resp, http.StatusOK)
+	resp.Body.Close()
 
 	const password = "correct-horse-battery-staple"
 	resp = doJSON(t, adminToken, http.MethodPost, baseURL+"/api/v1/auth/users", map[string]any{
@@ -349,10 +356,25 @@ func TestRBACScopedBinding(t *testing.T) {
 	assertStatus(t, resp, http.StatusForbidden)
 	resp.Body.Close()
 
-	// The collection is not covered by a single-object scope either.
+	// The collection returns exactly what the scope covers, and nothing else.
+	//
+	// This used to be a flat 403: a scoped binding could read its own twin but
+	// could not call GET /twins at all. That is the all-or-nothing listing
+	// Phase 17 set out to fix — the route check answers "may you list", and the
+	// filter answers "which". Nothing new is exposed by it, because every row
+	// here is one the same principal can already fetch by id.
 	resp = doJSON(t, scoutToken, http.MethodGet, baseURL+"/api/v1/twins", nil)
-	assertStatus(t, resp, http.StatusForbidden)
+	assertStatus(t, resp, http.StatusOK)
+	var listed []struct {
+		ID string `json:"id"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&listed); err != nil {
+		t.Fatalf("decode twins: %v", err)
+	}
 	resp.Body.Close()
+	if len(listed) != 1 || listed[0].ID != twinID {
+		t.Fatalf("listing = %+v, want only the twin the binding is scoped to", listed)
+	}
 }
 
 // TestRBACCheckEndpoint exercises the policy debugger, including the trace it
