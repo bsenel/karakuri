@@ -192,14 +192,14 @@ func (q Query) matches(e Event) bool {
 type Bucket struct {
 	// Key names the bucket, one entry per GroupBy dimension in the order they
 	// were asked for. Empty for an ungrouped total.
-	Key []string
+	Key []string `json:"key"`
 
-	Units float64
-	Cost  float64
+	Units float64 `json:"units"`
+	Cost  float64 `json:"cost"`
 
 	// Events is how many events the bucket folds together, which is what tells
 	// a reader whether a number is one expensive call or a thousand cheap ones.
-	Events int
+	Events int `json:"events"`
 }
 
 // Ledger records spend and reports on it.

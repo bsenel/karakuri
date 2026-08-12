@@ -44,34 +44,34 @@ var (
 // writing the other — a request that could not be turned into an override
 // without further decisions would be a request nobody can act on.
 type Request struct {
-	ID string
+	ID string `json:"id"`
 
 	// Subject and Name say which limit, in the same terms an Override does.
-	Subject Key
-	Name    string
+	Subject Key    `json:"subject"`
+	Name    string `json:"name"`
 
 	// Cap and Window are what is being asked for.
-	Cap    int
-	Window time.Duration
+	Cap    int           `json:"cap"`
+	Window time.Duration `json:"window,omitempty"`
 
 	// ExpiresAt asks for a temporary raise. Zero asks for a permanent one.
-	ExpiresAt time.Time
+	ExpiresAt time.Time `json:"expires_at,omitempty"`
 
 	// Reason is why, in the requester's words. Required: a limit raised for a
 	// reason nobody wrote down is one nobody can review later.
-	Reason string
+	Reason string `json:"reason"`
 
-	Status      RequestStatus
-	RequestedBy string
-	CreatedAt   time.Time
+	Status      RequestStatus `json:"status"`
+	RequestedBy string        `json:"requested_by"`
+	CreatedAt   time.Time     `json:"created_at"`
 
 	// DecidedBy and DecidedAt are set when the request leaves Pending, and
 	// DecisionNote carries the approver's words — most usefully on a rejection,
 	// where "no" without a reason is the least useful answer an operator can
 	// give.
-	DecidedBy    string
-	DecidedAt    time.Time
-	DecisionNote string
+	DecidedBy    string    `json:"decided_by,omitempty"`
+	DecidedAt    time.Time `json:"decided_at,omitempty"`
+	DecisionNote string    `json:"decision_note,omitempty"`
 }
 
 // Validate reports whether the request is usable as submitted.

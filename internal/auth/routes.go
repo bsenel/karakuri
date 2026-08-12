@@ -251,6 +251,15 @@ func Routes() []Route {
 		{http.MethodGet, "/quota/usage", ActionQuotaRead, false},
 		{http.MethodPost, "/quota/reset", ActionQuotaAdmin, false},
 
+		// Self-service limits and spend (Phase 18). Approving re-checks in the
+		// handler against the subject the request names, the same way container
+		// writes do — a URL-shaped check cannot see a subject that arrives as
+		// part of a stored request.
+		{http.MethodPost, "/quota/requests", ActionQuotaRequest, false},
+		{http.MethodGet, "/quota/requests", ActionQuotaRead, false},
+		{http.MethodPost, "/quota/requests/{id}/decide", ActionQuotaApprove, false},
+		{http.MethodGet, "/cost", ActionCostRead, false},
+
 		{http.MethodPost, "/research", ActionResearchRun, false},
 		{http.MethodGet, "/audit", ActionAuditRead, false},
 	}

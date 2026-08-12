@@ -49,6 +49,10 @@ func BuiltinRoles() []auth.Role {
 			// Reading the tree is how a user finds out which organisation or
 			// team a twin is in, which the interface shows beside its name.
 			auth.Allow("viewer-container-read", ActionContainerRead, "*"),
+			// Asking is not granting. Anybody who can be throttled should be
+			// able to ask for more, which is the entire point of making it
+			// self-service rather than a support ticket.
+			auth.Allow("viewer-quota-request", ActionQuotaRequest, "*"),
 		},
 	}
 
@@ -59,6 +63,8 @@ func BuiltinRoles() []auth.Role {
 		Inherits:    []string{RoleViewer},
 		Policies: []auth.Policy{
 			auth.Allow("auditor-audit-read", ActionAuditRead, "*"),
+			// Spend is what an auditor is auditing.
+			auth.Allow("auditor-cost-read", ActionCostRead, "*"),
 		},
 	}
 
@@ -86,6 +92,12 @@ func BuiltinRoles() []auth.Role {
 			// same way it confines everything else here.
 			auth.Allow("operator-container-write", ActionContainerWrite, "*"),
 			auth.Allow("operator-container-move", ActionContainerMove, "*"),
+			// An operator sees what their twins cost. Approving a raise is
+			// deliberately not here: the scope on a binding confines *which*
+			// subjects an approver can raise, but whether they may approve at
+			// all is a separate decision, and an operator driving work is not
+			// automatically the person who signs off on spending more.
+			auth.Allow("operator-cost-read", ActionCostRead, "*"),
 		},
 	}
 

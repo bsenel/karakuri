@@ -18,7 +18,8 @@ Reading them needs quota:read, which every role has. Resetting somebody's
 counters needs quota:admin, because it is an operator override rather than an
 ordinary operation.`,
 	}
-	cmd.AddCommand(quotaConfigCmd(), quotaShowCmd(), quotaResetCmd())
+	cmd.AddCommand(quotaConfigCmd(), quotaShowCmd(), quotaResetCmd(),
+		quotaRequestCmd(), quotaRequestsCmd())
 	return cmd
 }
 

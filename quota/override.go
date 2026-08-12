@@ -25,34 +25,34 @@ import (
 type Override struct {
 	// Subject is the key the limit applies to, in whatever shape the caller's
 	// keys take: "principal|alice", "twin|t_7f2a". Opaque here, as always.
-	Subject Key
+	Subject Key `json:"subject"`
 
 	// Name selects which limit this replaces. It matches Quota.Name for a
 	// quota, and whatever name the caller gave a Policy for a rate limit —
 	// this package does not name limits, so the caller's naming is the only
 	// naming there is.
-	Name string
+	Name string `json:"name"`
 
 	// Cap is the new ceiling: Quota.Cap or Policy.Limit.
-	Cap int
+	Cap int `json:"cap"`
 
 	// Window replaces Policy.Window when non-zero. It is ignored for quotas,
 	// whose period is a calendar span rather than a duration — changing "daily"
 	// to "every 36 hours" is not a thing a quota can express, and pretending
 	// otherwise would put a second calendar in the key.
-	Window time.Duration
+	Window time.Duration `json:"window,omitempty"`
 
 	// ExpiresAt is when the override stops applying. Zero means until somebody
 	// removes it.
 	//
 	// Both are ordinary: a raise for a launch week, and a raise because the team
 	// grew. Expiry is here so the first does not silently become the second.
-	ExpiresAt time.Time
+	ExpiresAt time.Time `json:"expires_at,omitempty"`
 
 	// Reason is free text an operator wrote. It is carried so that reading the
 	// overrides on a system answers "why is this one different" without a
 	// separate audit query.
-	Reason string
+	Reason string `json:"reason,omitempty"`
 }
 
 // Validate reports whether the override is usable.

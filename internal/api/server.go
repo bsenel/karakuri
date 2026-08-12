@@ -165,6 +165,18 @@ func NewApp(
 		karakuriauth.ActionContainerWrite, karakuriauth.CollectionResource("container"))
 	bindingWrite := karakuriauth.ScopedCollection(authDeps.Authorizer,
 		karakuriauth.ActionAuthWrite, karakuriauth.CollectionResource("auth"))
+	// Quota self-service and the spend report are the same shape: the subject
+	// is a stored request or a set of containers, neither of which a URL-shaped
+	// check can see, so the gate carries the caller's own containers and the
+	// handler decides the rest.
+	quotaAsk := karakuriauth.ScopedCollection(authDeps.Authorizer,
+		karakuriauth.ActionQuotaRequest, karakuriauth.CollectionResource("quota"))
+	quotaList := karakuriauth.ScopedCollection(authDeps.Authorizer,
+		karakuriauth.ActionQuotaRead, karakuriauth.CollectionResource("quota"))
+	quotaDecide := karakuriauth.ScopedCollection(authDeps.Authorizer,
+		karakuriauth.ActionQuotaApprove, karakuriauth.CollectionResource("quota"))
+	costRead := karakuriauth.ScopedCollection(authDeps.Authorizer,
+		karakuriauth.ActionCostRead, karakuriauth.CollectionResource("cost"))
 	containerRes := karakuriauth.ContainerResource(containerSvc)
 
 	healthH := &handler.HealthHandler{Providers: providers, Tools: toolReg, Exporters: exporters, Worktrees: wt, RepoPath: cfg.Git.RepoPath}
@@ -179,7 +191,12 @@ func NewApp(
 	evtH := &handler.EventsHandler{Hub: hub}
 	audH := &handler.AuditHandler{Store: store}
 	contH := &handler.ContainerHandler{Containers: containerSvc, Authorizer: authDeps.Authorizer}
-	quotaH := &handler.QuotaHandler{Quota: quotaDeps}
+	quotaH := &handler.QuotaHandler{
+		Quota:      quotaDeps,
+		Authorizer: authDeps.Authorizer,
+		Scopes:     authDeps.Authorizer,
+		Containers: containerSvc,
+	}
 	authH := &handler.AuthHandler{
 		Store:      authDeps.Store,
 		Tokens:     authDeps.Tokens,
@@ -289,6 +306,16 @@ func NewApp(
 				// Resetting somebody's counters is an operator override, not an
 				// ordinary operation.
 				r.With(require(karakuriauth.ActionQuotaAdmin, nil)).Post("/reset", quotaH.Reset)
+				// Self-service (Phase 18). The gate answers "may you ask",
+				// "may you decide", "may you list"; *which* subject and which
+				// rows are the handler's, because the subject arrives inside a
+				// stored request rather than in the URL. All three carry the
+				// caller's own containers for the same reason container writes
+				// do: the collection ref is "quota:*", which no binding scoped
+				// to an organisation matches.
+				r.With(require(karakuriauth.ActionQuotaRequest, quotaAsk)).Post("/requests", quotaH.SubmitRequest)
+				r.With(require(karakuriauth.ActionQuotaRead, quotaList)).Get("/requests", quotaH.ListRequests)
+				r.With(require(karakuriauth.ActionQuotaApprove, quotaDecide)).Post("/requests/{id}/decide", quotaH.Decide)
 			})
 
 			// The tenancy tree. Every mutation is re-checked in the handler
@@ -318,6 +345,10 @@ func NewApp(
 			// query params. Auditor and admin only — a viewer can see the
 			// system's work but not the record of who approved what.
 			r.With(require(karakuriauth.ActionAuditRead, nil)).Get("/audit", audH.List)
+			// Filtered to the containers the caller may see, from the same
+			// bindings the twin listing reads — a report must not be a way
+			// around the tenancy those enforce.
+			r.With(require(karakuriauth.ActionCostRead, costRead)).Get("/cost", quotaH.CostReport)
 		})
 	})
 

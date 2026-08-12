@@ -46,6 +46,18 @@ const (
 	ActionQuotaRead  auth.Action = "quota:read"
 	ActionQuotaAdmin auth.Action = "quota:admin"
 
+	// ActionQuotaRequest is asking for more; ActionQuotaApprove is deciding.
+	// They are separate because almost everybody should hold the first and
+	// almost nobody the second — collapsing them into quota:admin would mean
+	// the permission to request is the permission to grant.
+	ActionQuotaRequest auth.Action = "quota:request"
+	ActionQuotaApprove auth.Action = "quota:approve"
+
+	// ActionCostRead is reading what was spent. Separate from quota:read
+	// because a limit is operational and spend is commercial: plenty of
+	// deployments want everybody to see the first and not the second.
+	ActionCostRead auth.Action = "cost:read"
+
 	// Containers are the tenancy tree (Phase 17). They are authorized like
 	// anything else, which is what makes the hierarchy govern changes to
 	// itself: creating a team under an org needs a grant covering that org, so
@@ -97,6 +109,10 @@ func NewCatalog() *auth.Catalog {
 
 		ActionQuotaRead:  "read quota configuration and current usage",
 		ActionQuotaAdmin: "reset a twin's quota counters",
+
+		ActionQuotaRequest: "ask for a limit to be raised",
+		ActionQuotaApprove: "approve or reject a quota request",
+		ActionCostRead:     "read what was spent",
 
 		ActionContainerRead:  "read organisations, teams and projects",
 		ActionContainerWrite: "create, rename and delete containers, and place resources in them",
