@@ -790,7 +790,7 @@ Principal ──has──> RoleBinding{Role, Scope} ──grants──> Role{Pol
 - **Nothing is implicit.** Every action is registered in a catalog; a policy naming one that is not fails at boot rather than silently granting nothing.
 - **Roles compose.** `viewer` → {`auditor`, `contributor`, `operator`}, plus `admin`. Each permission is stated once.
 - **Conditions are a closed, typed set** (`owner_equals`, `attr_equals`, `attr_in`) rather than an expression language, so every condition stays readable by whoever audits it and evaluation is total — an unresolvable key is an unsatisfied condition with a reason, never a parse error at request time.
-- **Bindings carry a scope**, separating "alice is an operator" from "alice is an operator on `twin:abc`". Phase 17 widens `Scope` into a hierarchical path without changing the shape.
+- **Bindings carry a scope**, separating "alice is an operator" from "alice is an operator on `twin:abc`". Phase 17 let that scope name a container instead, without changing the field or the grammar.
 - **Precedence is exactly `deny > allow > default deny`.** Specificity deliberately does not break ties — ranking by specificity is the IAM footgun where adding a narrow grant silently punches a hole in a blanket restriction.
 
 **Tokens rotate.** Access tokens are short-lived JWTs (15 minutes by default), verified statelessly but with the principal reloaded from the store so disabling an account takes effect on the next request rather than at expiry. Refresh tokens are 256 bits of `crypto/rand`, stored only as a SHA-256 digest, linked into a *family*, and **rotated on every exchange**. Presenting a spent one revokes the entire lineage (OAuth 2.1 BCP §4.14.2): rotation means a legitimate holder never replays, so a replay is evidence the token leaked. Spending is a compare-and-set (`UPDATE … WHERE used_at IS NULL`), because a check-then-write lets two racing clients both succeed and the reuse detector never fires on the case it most needs to catch.
@@ -972,7 +972,7 @@ krk audit --kind authz_denied
 
 ---
 
-## Phase 17 — Hierarchical Resources + Org Units (Planned)
+## Phase 17 — Hierarchical Resources + Org Units (Completed)
 
 **Goal:** Extend Phase 14's flat resource model (`twin:abc`) to a path model (`org:acme/team:eng/twin:abc`) so multi-team and multi-org deployments isolate access naturally.
 
@@ -986,6 +986,90 @@ krk audit --kind authz_denied
 6. **API endpoints** — `GET/POST /api/v1/orgs`, `GET/POST /api/v1/teams`, `GET/POST /api/v1/memberships`, all gated by Phase 14 permissions.
 
 **Acceptance:** Hierarchical Authorizer unit tests cover ancestor walking, deny-wins precedence across hierarchy levels, and path validation. Integration test: Alice (operator in `team:eng`) reads `team:eng/twin:abc` but not `team:hr/twin:xyz`; admin in `org:acme` reads both. Migration test loads a v0.1.0 SQLite snapshot, applies the hierarchical migration, and verifies all flat policies still pass without rewrites.
+
+**What shipped — a set of labels, not a path.** The hierarchy lives *on* the resource
+rather than in its name: `ResourceRef.Scopes` carries the ancestor closure
+(`["team:t_7f2a", "org:o_9c31"]`), and a binding covers a resource if its scope matches
+the resource **or any label**. `RoleBinding.covers` is one line and `matchPattern` is
+untouched. [ADR 010](adr/010-scope-sets.md) records the decision in full.
+
+- **`auth`** — `ResourceRef.Scopes`, `InScope`, `GrantedScopes`, `ScopeLabel`,
+  `ValidateScopes`, and `RoleGrant` so a federated mapping carries a scope.
+- **`internal/core/container` + `internal/feature/container`** — orgs, teams and
+  projects, with cycle, depth and per-parent-name guards, and the closure recomputed
+  when the tree moves.
+- **`containers` + `resource_scopes`** — the tree, and the flattened labels
+  authorization matches against, with `direct` separating what was declared from what
+  was derived.
+- **`krk org` / `krk team` / `krk project`**, and `--org/--team/--project` on
+  `krk auth bindings add`.
+
+**The roadmap's design conflicted with the module's own rules.** Step 1 asked for a
+second authorizer treating resource strings as paths, selected by config flag.
+`auth/AGENTS.md` says *"patterns use one grammar … do not add a second matching rule;
+extend that one"* — and a second matcher chosen by configuration is two authorization
+semantics in one binary, where the one that matters is whichever is set on the day
+something goes wrong. Scope sets need no grammar change at all: `team:t_7f2a` is
+already a valid pattern.
+
+**Paths would not have fixed what actually leaked.** `GET /twins` returned every twin,
+filtered only on `kind` and `domain`. Per-resource denial is not isolation while the
+listing is all-or-nothing, and no path model changes that. The listing is now built
+from `GrantedScopes` as an indexed `IN` over `resource_scopes.label` — which a path
+model could not be, needing `LIKE 'org:acme/%'`.
+
+**Phase 16's hole is closed.** `Provisioner.reconcile` wrote every managed binding with
+`Scope: "*"`, so a directory group of two hundred people was two hundred
+globally-scoped principals. `role_map` entries now carry a container, resolved from
+name to ID at boot.
+
+**Labels carry IDs, never display names.** Two organisations may each have a team called
+"Engineering", and if the label were the name a grant on one would silently cover the
+other. Microsoft documents this same mistake against their own management groups as
+*"this common error"*. Renaming a container rewrites no binding.
+
+**Deviations from the plan, recorded:**
+
+- **No `HierarchicalAuthorizer`, no `cfg.Auth.RBAC.Hierarchical` flag, no
+  `IsAncestor`/`ParentOf`.** Those are path utilities; in a set model parentage lives in
+  the container tree, which is Karakuri's side. `auth` gained `InScope`, `ScopeLabel`
+  and `ValidateScopes` instead.
+- **No `memberships` table.** Membership *is* a binding once a scope can name a
+  container, so a second table would be a second source of truth about the same fact.
+- **No `twins.team_id` column.** A resource belongs to a *set* of containers, not one,
+  which is what lets a twin be in its team, its org and a cross-organisation project at
+  once — the thing Azure could not express and shipped Service Groups for.
+- **A `project` container the plan did not have.** It is how cross-tenant collaboration
+  works without a second construct grafted alongside the hierarchy.
+- **No migration test against a v0.1.0 snapshot.** The change is additive by
+  construction: a resource with no containers carries no labels and matches exactly what
+  it matched before. That property is pinned directly
+  (`TestResourcesWithoutScopesAreUnchanged`, `TestUnscopedGrantsAreUnchanged`), which is
+  a stronger statement than one fixed snapshot.
+
+**One behaviour change worth stating plainly.** A collection ref is `twin:*`, which no
+container-scoped binding matches — so a team-scoped principal could read their twins one
+at a time but could not call `GET /twins` at all. List routes now carry the caller's own
+containers, so the route check answers *"may you list"* and the filter answers *"which"*.
+This also changed what a single-object binding sees: a flat 403 became exactly its own
+twin. Nothing new is exposed, because every row returned is one the principal can already
+fetch by id.
+
+**Acceptance — met, with the hierarchy expressed as sets:**
+
+- `auth` holds at **96.8%** against its 95% gate, with every new function at 100%.
+- Deny-wins precedence across levels is covered (`TestDenyAtOrgBeatsAllowAtTeam`), as is
+  the case the whole design exists for: two organisations whose teams are **both called
+  "eng"**, isolated end to end from the tree through `InScope` to a 403.
+- The integration suite proves a federated login lands *inside* a team rather than over
+  everything (asserted against `auth_role_bindings` directly), that listing is confined
+  to the caller's tenant for twins **and** objectives, that the listing agrees with the
+  per-resource check on every row it returns, and that a twin in no container behaves
+  exactly as it did before.
+- The four self-authorization rules each have a test asserting both the allowed and the
+  refused direction.
+- The listing SQL is exercised against a real database, including the case that matters
+  most: an empty selector matches **nothing** rather than everything.
 
 ---
 
@@ -1037,7 +1121,7 @@ Phases 7–13 are **independent except where noted** and can be reordered to mat
 Phases 14–19 introduce a new architectural pattern: **the auth and quota engines ship as standalone Go modules** in this same monorepo (`auth/`, `auth/sql/`, `auth/oidc/`, `auth/saml/`, `quota/`, `quota/redis/`, `quota/sql/`, `quota/cost/`), each with its own `go.mod` and independent semver tag namespace (`auth/v0.1.0`, `quota/v0.1.0`, etc.). External Go repos consume them without pulling in Karakuri. Karakuri itself is the first reference consumer, wired in via thin integration shims under `internal/auth/` and `internal/quota/`.
 
 - **Phases 14 and 15** are independent of each other — RBAC and quota can ship in either order. Both are also independent of the existing tree because the standalone modules touch nothing under `internal/` until the integration shims land.
-- **Phase 16** depends on Phase 14 (OIDC/SAML resolvers implement `auth.TokenResolver`). **Phase 17** also depends on Phase 14 (extends `auth.Authorizer` with hierarchical path semantics). 16 and 17 are parallelisable — they extend Phase 14 along different axes and don't touch each other's code.
+- **Phase 16** depends on Phase 14 (OIDC/SAML resolvers implement `auth.TokenResolver`). **Phase 17** also depends on Phase 14, and — as built — on Phase 16: scoped role mapping is what closes the hole Phase 16 opened by binding every federated user at `*`.
 - **Phase 18** depends on Phase 15 — extends the quota module with a self-service workflow and adds a sister cost-attribution module.
 - **Phase 19** lands last; it surfaces Phases 14, 15, 17, and 18 in the React frontend and reuses the Phase 13 audit endpoint.
 
@@ -1476,6 +1560,6 @@ Checks (run via `krk domain test <id>`):
 | Authority bounds misconfiguration permits unintended actions | High     | Default `AuthorityBounds` is maximally restrictive (`MaxAutonomousActions: 0`, `ConfidenceThreshold: 1.0`); operators must explicitly relax bounds in config; all autonomous actions logged to `tool_events`; **Phase 14 RBAC enforces permissions at the request-routing layer** so a misconfigured agent can't even reach a protected endpoint                                                                                                |
 | Cost runaway from unbounded LLM use                          | High     | Phase 15 introduces per-twin LLM token budgets; exhaustion produces a checkpoint event (human approval) rather than a 500 or silent overrun. Phase 18 layers cost attribution + `Cost.Recorded` events so operators see spend per twin / team / provider before the bill arrives                                                                                                                                                              |
 | IdP outage locks operators out of Karakuri                    | High     | **Resolved differently than planned.** Local password login stays mounted alongside any configured provider, so the bootstrap administrator is the break-glass path. No static token was added: Phase 14 deleted the static bearer token, and re-adding a long-lived credential to survive a temporary outage trades a permanent risk for a temporary one. `ChainResolver` puts the local resolver first, so password login does not depend on the IdP being reachable |
-| Hierarchical-resource bypass via flat policy grants           | Medium   | Phase 17's `HierarchicalAuthorizer` rejects flat resource matches when the configured mode is hierarchical; `IsAncestor` checks gate every permission decision; migrations from v0.1.0 are tested with a fixed snapshot to guarantee no flat grant silently widens to a path-style descendant                                                                                                                                                |
+| Cross-tenant access through a container scope                 | Medium   | Phase 17 keys every scope on an issued ID, never a display name, so two organisations with a team called "eng" cannot collide — the case is pinned end to end from the tree through `InScope` to a 403. A resource with no containers carries no labels and matches exactly what it matched under the flat model, so no existing grant widens. Listing is filtered from the same bindings the per-resource check reads, and an empty grant set matches no rows rather than every row |
 
 
