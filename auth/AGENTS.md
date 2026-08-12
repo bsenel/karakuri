@@ -33,6 +33,32 @@ Overrides parent rules for `auth/` only. This directory is a **separate Go modul
 - **Fail closed.** An authorizer that cannot answer returns an error, and the middleware
   turns that into a 500. Never fall through to the handler.
 
+## Federated identity
+
+The protocols live in submodules (`auth/oidc`, `auth/saml`) because they need dependencies
+and rule 2 says the core cannot have any. What lives here is everything both share:
+`ExternalIdentity`, `RoleMap`, `Provisioner` and `ChainResolver`. A new protocol should
+reduce to producing an `ExternalIdentity` and nothing else.
+
+- **Federated users become real principals.** Authorization reads role bindings from the
+  `Store`, so an identity that exists only as claims holds none and is denied everything.
+  `Provisioner` writes it in on the way through. Do not add a second source of roles to the
+  authorizer to avoid this — one place decides what a principal may do.
+- **Principal IDs are namespaced** (`oidc:<sub>`), enforced in `ValidatePrefix`, which is
+  the single enforcement point. Without it a provider asserting `sub=admin` takes over the
+  local bootstrap administrator. Never derive a principal ID from a provider's subject
+  without going through `ExternalIdentity.PrincipalID`.
+- **Reconciliation only touches bindings under `ManagedBindingPrefix`.** A grant an
+  administrator made by hand is not the provider's to revoke, and the binding ID carries
+  that provenance so no column has to.
+- **Matching no group grants nothing.** `RoleMap.Default` stays empty unless an operator
+  fills it in: everyone in a corporate directory can authenticate, so a default role is a
+  grant to the whole company.
+- **A local credential path always remains.** `ChainResolver` puts the local `JWTResolver`
+  ahead of the provider's, so the bootstrap administrator can still log in when the IdP is
+  unreachable. That is the break-glass path — deliberately not a second static token, which
+  is what Phase 14 removed.
+
 ## Testing
 
 `go test ./... -race` from this directory. Coverage is gated at 95% in CI
