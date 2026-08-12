@@ -27,11 +27,7 @@ package oidc
 
 import (
 	"context"
-	"crypto/hmac"
-	"crypto/sha256"
 	"crypto/subtle"
-	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -180,7 +176,7 @@ type Provider struct {
 	verifier    *coreoidc.IDTokenVerifier
 	oauth       *oauth2.Config
 	provisioner *auth.Provisioner
-	now         func() time.Time
+	sealer      auth.Sealer
 	rand        func(int) (string, error)
 }
 
@@ -220,7 +216,7 @@ func New(ctx context.Context, cfg Config, provisioner *auth.Provisioner) (*Provi
 			Scopes:       cfg.Scopes,
 		},
 		provisioner: provisioner,
-		now:         time.Now,
+		sealer:      auth.Sealer{Key: cfg.StateKey},
 		rand:        randomString,
 	}, nil
 }
@@ -297,12 +293,12 @@ func (p *Provider) LoginHandler() http.Handler {
 		}
 		verifier := oauth2.GenerateVerifier()
 
-		http.SetCookie(w, p.flowCookie(p.sealFlow(flowState{
-			State:    state,
-			Nonce:    nonce,
-			Verifier: verifier,
-			Expires:  p.now().Add(p.cfg.StateTTL).Unix(),
-		}), p.cfg.StateTTL))
+		cookie, err := p.sealer.Seal(flowState{State: state, Nonce: nonce, Verifier: verifier}, p.cfg.StateTTL)
+		if err != nil {
+			http.Error(w, "could not start login", http.StatusInternalServerError)
+			return
+		}
+		http.SetCookie(w, p.flowCookie(cookie, p.cfg.StateTTL))
 
 		http.Redirect(w, r, p.oauth.AuthCodeURL(state,
 			coreoidc.Nonce(nonce),
@@ -346,9 +342,9 @@ func (p *Provider) CallbackHandler(
 			fail(w, r, fmt.Errorf("oidc: no login in progress: %w", err))
 			return
 		}
-		flow, err := p.openFlow(cookie.Value)
-		if err != nil {
-			fail(w, r, err)
+		var flow flowState
+		if err := p.sealer.Open(cookie.Value, &flow); err != nil {
+			fail(w, r, fmt.Errorf("oidc: login cookie: %w", err))
 			return
 		}
 		if subtle.ConstantTimeCompare([]byte(flow.State), []byte(r.URL.Query().Get("state"))) != 1 {
@@ -402,56 +398,11 @@ func (p *Provider) flowCookie(value string, maxAge time.Duration) *http.Cookie {
 }
 
 // flowState is what survives between the redirect out and the redirect back.
+//
+// It rides in a cookie sealed by auth.Sealer rather than in memory, so a
+// replica that did not start a login can still finish it.
 type flowState struct {
 	State    string `json:"s"`
 	Nonce    string `json:"n"`
 	Verifier string `json:"v"`
-	Expires  int64  `json:"e"`
-}
-
-// sealFlow encodes and signs a flow state for the cookie.
-//
-// Signed rather than encrypted: none of the three values is a secret from the
-// browser holding them — the browser is the party they belong to. What matters
-// is that a browser cannot mint its own, which a MAC gives.
-//
-// It returns no error because it cannot fail: flowState is four scalars, and
-// encoding/json does not fail on those. An error nobody can produce is an
-// error path nobody can test.
-func (p *Provider) sealFlow(f flowState) string {
-	payload, _ := json.Marshal(f)
-	encoded := base64.RawURLEncoding.EncodeToString(payload)
-	return encoded + "." + base64.RawURLEncoding.EncodeToString(p.sign([]byte(encoded)))
-}
-
-func (p *Provider) openFlow(value string) (flowState, error) {
-	encoded, signature, ok := strings.Cut(value, ".")
-	if !ok {
-		return flowState{}, errors.New("oidc: malformed login cookie")
-	}
-	got, err := base64.RawURLEncoding.DecodeString(signature)
-	if err != nil {
-		return flowState{}, errors.New("oidc: malformed login cookie signature")
-	}
-	if !hmac.Equal(got, p.sign([]byte(encoded))) {
-		return flowState{}, errors.New("oidc: login cookie signature is not valid")
-	}
-	payload, err := base64.RawURLEncoding.DecodeString(encoded)
-	if err != nil {
-		return flowState{}, errors.New("oidc: malformed login cookie payload")
-	}
-	var f flowState
-	if err := json.Unmarshal(payload, &f); err != nil {
-		return flowState{}, errors.New("oidc: malformed login cookie payload")
-	}
-	if p.now().Unix() > f.Expires {
-		return flowState{}, errors.New("oidc: login took too long, start again")
-	}
-	return f, nil
-}
-
-func (p *Provider) sign(payload []byte) []byte {
-	mac := hmac.New(sha256.New, p.cfg.StateKey)
-	mac.Write(payload)
-	return mac.Sum(nil)
 }

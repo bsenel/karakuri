@@ -58,6 +58,13 @@ reduce to producing an `ExternalIdentity` and nothing else.
   ahead of the provider's, so the bootstrap administrator can still log in when the IdP is
   unreachable. That is the break-glass path — deliberately not a second static token, which
   is what Phase 14 removed.
+- **`Sealer` carries flow state through the browser**, signed rather than encrypted: a
+  state token, a nonce, a PKCE verifier or a SAML request ID is not a secret from the
+  browser holding it, and what matters is that a browser cannot mint its own. It lives here
+  rather than in either protocol module because both need it, and the crypto is worth
+  reviewing once. Its key is required, never generated — a generated key lives in one
+  process, so behind a load balancer a flow started on one replica and finished on another
+  fails intermittently.
 
 ## Testing
 

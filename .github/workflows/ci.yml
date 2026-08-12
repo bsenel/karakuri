@@ -141,6 +141,12 @@ jobs:
           # real provider does differently; see the identity job.
           - module: auth/oidc
             coverage: 90
+          # auth/saml drives a real crewjam/saml IdentityProvider, so signatures
+          # and audiences are genuinely produced and verified rather than
+          # asserted. Its residue is the library erroring where the library does
+          # not error.
+          - module: auth/saml
+            coverage: 90
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
