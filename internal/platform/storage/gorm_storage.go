@@ -9,6 +9,7 @@ import (
 	"github.com/bsenel/karakuri/internal/core/agent"
 	"github.com/bsenel/karakuri/internal/core/capability"
 	"github.com/bsenel/karakuri/internal/core/checkpoint"
+	"github.com/bsenel/karakuri/internal/core/container"
 	coreerrors "github.com/bsenel/karakuri/internal/core/errors"
 	coreloop "github.com/bsenel/karakuri/internal/core/loop"
 	"github.com/bsenel/karakuri/internal/core/memory"
@@ -600,6 +601,166 @@ func loopStateFromModel(m schema.LoopStateModel) coreloop.State {
 		CreatedAt:    m.CreatedAt,
 		UpdatedAt:    m.UpdatedAt,
 	}
+}
+
+// ── Containers and scopes ─────────────────────────────────────────────────
+
+func (s *GORMStorage) SaveContainer(ctx context.Context, c container.Container) error {
+	return s.db.WithContext(ctx).Save(&schema.ContainerModel{
+		ID: c.ID, Kind: string(c.Kind), Name: c.Name, ParentID: c.ParentID,
+	}).Error
+}
+
+func (s *GORMStorage) GetContainer(ctx context.Context, id string) (container.Container, error) {
+	var m schema.ContainerModel
+	if err := s.db.WithContext(ctx).First(&m, "id = ?", id).Error; err != nil {
+		return container.Container{}, coreerrors.ErrContainerNotFound
+	}
+	return containerFromModel(m), nil
+}
+
+func (s *GORMStorage) ListContainers(ctx context.Context, f container.Filter) ([]container.Container, error) {
+	var models []schema.ContainerModel
+	q := s.db.WithContext(ctx).Order("name ASC")
+	if f.Kind != "" {
+		q = q.Where("kind = ?", string(f.Kind))
+	}
+	// RootsOnly is separate from ParentID because an empty ParentID has to mean
+	// "do not filter" — otherwise every unfiltered listing would silently
+	// narrow to the roots.
+	switch {
+	case f.RootsOnly:
+		q = q.Where("parent_id = ?", "")
+	case f.ParentID != "":
+		q = q.Where("parent_id = ?", f.ParentID)
+	}
+	if f.Name != "" {
+		q = q.Where("name = ?", f.Name)
+	}
+	if err := q.Find(&models).Error; err != nil {
+		return nil, err
+	}
+	out := make([]container.Container, len(models))
+	for i, m := range models {
+		out[i] = containerFromModel(m)
+	}
+	return out, nil
+}
+
+func (s *GORMStorage) DeleteContainer(ctx context.Context, id string) error {
+	return s.db.WithContext(ctx).Delete(&schema.ContainerModel{}, "id = ?", id).Error
+}
+
+func containerFromModel(m schema.ContainerModel) container.Container {
+	return container.Container{
+		ID: m.ID, Kind: container.Kind(m.Kind), Name: m.Name, ParentID: m.ParentID,
+		CreatedAt: m.CreatedAt, UpdatedAt: m.UpdatedAt,
+	}
+}
+
+// PutResourceScopes replaces every label a resource carries.
+//
+// Replace rather than merge, in one transaction: the closure is derived state,
+// and a partial write leaves a resource visible under a container it has left.
+// Deleting first is what makes reparenting safe — a label that is no longer in
+// the closure has to disappear, which an upsert would never do.
+func (s *GORMStorage) PutResourceScopes(ctx context.Context, scopes container.ResourceScopes) error {
+	direct := container.NormalizeLabels(scopes.Direct)
+	all := container.NormalizeLabels(scopes.All)
+	isDirect := make(map[string]bool, len(direct))
+	for _, label := range direct {
+		isDirect[label] = true
+	}
+
+	rows := make([]schema.ResourceScopeModel, 0, len(all))
+	for _, label := range all {
+		rows = append(rows, schema.ResourceScopeModel{
+			ResourceType: scopes.ResourceType,
+			ResourceID:   scopes.ResourceID,
+			Label:        label,
+			Direct:       isDirect[label],
+		})
+	}
+
+	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Delete(&schema.ResourceScopeModel{},
+			"resource_type = ? AND resource_id = ?", scopes.ResourceType, scopes.ResourceID).Error; err != nil {
+			return err
+		}
+		if len(rows) == 0 {
+			return nil
+		}
+		return tx.Create(&rows).Error
+	})
+}
+
+func (s *GORMStorage) GetResourceScopes(ctx context.Context, resourceType, resourceID string) (container.ResourceScopes, error) {
+	var models []schema.ResourceScopeModel
+	err := s.db.WithContext(ctx).Order("label ASC").
+		Find(&models, "resource_type = ? AND resource_id = ?", resourceType, resourceID).Error
+	if err != nil {
+		return container.ResourceScopes{}, err
+	}
+	// A resource in no container is not an error — it is every resource that
+	// existed before Phase 17, and it carries no labels.
+	out := container.ResourceScopes{ResourceType: resourceType, ResourceID: resourceID}
+	for _, m := range models {
+		out.All = append(out.All, m.Label)
+		if m.Direct {
+			out.Direct = append(out.Direct, m.Label)
+		}
+	}
+	return out, nil
+}
+
+func (s *GORMStorage) ListScopedResources(ctx context.Context, f container.ScopeFilter) ([]container.ResourceScopes, error) {
+	labels := container.NormalizeLabels(f.Labels)
+	if len(labels) == 0 {
+		// Empty matches nothing rather than everything. The callers are
+		// authorization filters, and one that widens to "every row" when its
+		// input is empty is how a listing leaks.
+		return nil, nil
+	}
+
+	// Two steps rather than one: the label filter selects which resources
+	// match, then every label of those resources is read back. Doing it in one
+	// query would return only the labels that matched, which is not what a
+	// caller rebuilding a closure needs.
+	type key struct {
+		ResourceType string `gorm:"column:resource_type"`
+		ResourceID   string `gorm:"column:resource_id"`
+	}
+	inner := s.db.WithContext(ctx).Model(&schema.ResourceScopeModel{}).
+		Select("resource_type", "resource_id").
+		Where("label IN ?", labels)
+	if f.ResourceType != "" {
+		inner = inner.Where("resource_type = ?", f.ResourceType)
+	}
+	if f.DirectOnly {
+		inner = inner.Where("direct = ?", true)
+	}
+	var keys []key
+	if err := inner.Distinct().Scan(&keys).Error; err != nil {
+		return nil, err
+	}
+	if len(keys) == 0 {
+		return nil, nil
+	}
+
+	out := make([]container.ResourceScopes, 0, len(keys))
+	for _, k := range keys {
+		scopes, err := s.GetResourceScopes(ctx, k.ResourceType, k.ResourceID)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, scopes)
+	}
+	return out, nil
+}
+
+func (s *GORMStorage) DeleteResourceScopes(ctx context.Context, resourceType, resourceID string) error {
+	return s.db.WithContext(ctx).Delete(&schema.ResourceScopeModel{},
+		"resource_type = ? AND resource_id = ?", resourceType, resourceID).Error
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────

@@ -18,5 +18,7 @@ func RunMigrations(db *gorm.DB, _ string) error {
 		&schema.WorktreeModel{},
 		&schema.ToolEventModel{},
 		&schema.LoopStateModel{},
+		&schema.ContainerModel{},
+		&schema.ResourceScopeModel{},
 	)
 }
