@@ -260,14 +260,34 @@ func authBindingsCmd() *cobra.Command {
 		principal string
 		role      string
 		scope     string
+		org       string
+		team      string
+		project   string
 	)
 	add := &cobra.Command{
-		Use:     "add",
-		Short:   "Grant a principal a role, optionally over one resource",
-		Example: `  krk auth bindings add --principal alice --role operator --scope twin:abc`,
+		Use:   "add",
+		Short: "Grant a principal a role, optionally over one resource or container",
+		Example: `  krk auth bindings add --principal alice --role operator --scope twin:abc
+  krk auth bindings add --principal alice --role operator --org acme --team eng
+  krk auth bindings add --principal oidc:bob --role viewer --project delta`,
 		RunE: func(_ *cobra.Command, _ []string) error {
 			if principal == "" || role == "" {
 				return fmt.Errorf("--principal and --role are required")
+			}
+			// A container named on the command line becomes the scope. It is
+			// resolved to an ID here, so what reaches the binding is
+			// "team:t_7f2a" and never the word "eng" — two organisations may
+			// each have a team by that name, and a grant matching on the word
+			// would cover both.
+			resolved, err := containerScope(org, team, project)
+			if err != nil {
+				return err
+			}
+			if resolved != "" {
+				if scope != "" {
+					return fmt.Errorf("--scope and --org/--team/--project name the same thing; use one")
+				}
+				scope = resolved
 			}
 			data, _, err := api.Post("/auth/bindings", map[string]any{
 				"principal_id": principal, "role": role, "scope": scope,
@@ -282,6 +302,9 @@ func authBindingsCmd() *cobra.Command {
 	add.Flags().StringVar(&principal, "principal", "", "Principal ID")
 	add.Flags().StringVar(&role, "role", "", "Role name")
 	add.Flags().StringVar(&scope, "scope", "", "Resource scope, e.g. twin:abc (default: everything)")
+	add.Flags().StringVar(&org, "org", "", "Grant over an organisation and everything inside it")
+	add.Flags().StringVar(&team, "team", "", "Grant over a team; needs --org")
+	add.Flags().StringVar(&project, "project", "", "Grant over a project")
 	cmd.AddCommand(add)
 	return cmd
 }

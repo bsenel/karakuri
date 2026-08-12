@@ -45,6 +45,19 @@ const (
 
 	ActionQuotaRead  auth.Action = "quota:read"
 	ActionQuotaAdmin auth.Action = "quota:admin"
+
+	// Containers are the tenancy tree (Phase 17). They are authorized like
+	// anything else, which is what makes the hierarchy govern changes to
+	// itself: creating a team under an org needs a grant covering that org, so
+	// an acme administrator cannot create teams inside globex.
+	ActionContainerRead  auth.Action = "container:read"
+	ActionContainerWrite auth.Action = "container:write"
+
+	// ActionContainerMove is separate from write because reparenting is the one
+	// operation that touches two places at once — it needs a covering grant on
+	// both the old and the new parent, or moving a team would be a way to walk
+	// resources out of a tenant you hold and into one you do not.
+	ActionContainerMove auth.Action = "container:move"
 )
 
 // NewCatalog returns the Karakuri action catalog.
@@ -84,6 +97,10 @@ func NewCatalog() *auth.Catalog {
 
 		ActionQuotaRead:  "read quota configuration and current usage",
 		ActionQuotaAdmin: "reset a twin's quota counters",
+
+		ActionContainerRead:  "read organisations, teams and projects",
+		ActionContainerWrite: "create, rename and delete containers, and place resources in them",
+		ActionContainerMove:  "reparent a container, which requires holding both ends",
 	} {
 		c.MustRegister(action, description)
 	}

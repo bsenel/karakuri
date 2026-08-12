@@ -32,6 +32,36 @@ type AuthHandler struct {
 	Authorizer *auth.StoreAuthorizer
 	Catalog    *auth.Catalog
 	Cookies    auth.CookieConfig
+
+	// Containers resolves a binding scope to the container it names, so
+	// granting can be bounded by containment (Phase 17). Nil on a deployment
+	// with no tenancy tree, where a scope names a resource directly and the
+	// check still works.
+	Containers karakuriauth.ScopeResolver
+}
+
+// mayGrant enforces that a caller can only hand out a scope they already hold,
+// writing the refusal itself and reporting whether the request should continue.
+//
+// Without it the permission to manage bindings is the permission to manage
+// every tenant: an administrator scoped to one organisation could write
+// themselves a binding over another, and the tree would be decoration.
+func (h *AuthHandler) mayGrant(w http.ResponseWriter, r *http.Request, scope string) bool {
+	principal, ok := auth.PrincipalFromContext(r.Context())
+	if !ok {
+		authError(w, http.StatusForbidden, "forbidden", "this request cannot be attributed to a principal")
+		return false
+	}
+	allowed, reason, err := karakuriauth.MayGrant(r.Context(), h.Authorizer, h.Containers, principal, scope)
+	if err != nil {
+		http.Error(w, "authorization could not be evaluated", http.StatusInternalServerError)
+		return false
+	}
+	if !allowed {
+		authError(w, http.StatusForbidden, "forbidden", reason)
+		return false
+	}
+	return true
 }
 
 // sessionResponse is what cookie-mode clients get back: enough to know the
@@ -223,6 +253,16 @@ func (h *AuthHandler) CreateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// The scope is checked before the principal is written, so a refused
+	// request leaves nothing behind.
+	scope := body.Scope
+	if scope == "" {
+		scope = "*"
+	}
+	if len(body.Roles) > 0 && !h.mayGrant(w, r, scope) {
+		return
+	}
+
 	kind := auth.KindUser
 	if body.Service {
 		kind = auth.KindService
@@ -233,10 +273,6 @@ func (h *AuthHandler) CreateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	scope := body.Scope
-	if scope == "" {
-		scope = "*"
-	}
 	for _, role := range body.Roles {
 		if _, err := h.Store.GetRole(r.Context(), role); err != nil {
 			authError(w, http.StatusBadRequest, "unknown_role", err.Error())
@@ -300,6 +336,9 @@ func (h *AuthHandler) CreateBinding(w http.ResponseWriter, r *http.Request) {
 	scope := body.Scope
 	if scope == "" {
 		scope = "*"
+	}
+	if !h.mayGrant(w, r, scope) {
+		return
 	}
 	binding := auth.RoleBinding{
 		ID:          body.PrincipalID + ":" + body.Role + ":" + scope,

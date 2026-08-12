@@ -46,6 +46,9 @@ func BuiltinRoles() []auth.Role {
 			// Seeing your own ceiling is not privileged: a caller who is being
 			// throttled should be able to find out why without an operator.
 			auth.Allow("viewer-quota-read", ActionQuotaRead, "*"),
+			// Reading the tree is how a user finds out which organisation or
+			// team a twin is in, which the interface shows beside its name.
+			auth.Allow("viewer-container-read", ActionContainerRead, "*"),
 		},
 	}
 
@@ -78,6 +81,11 @@ func BuiltinRoles() []auth.Role {
 			auth.Allow("operator-memory-write", ActionMemoryWrite, "*"),
 			auth.Allow("operator-memory-forget", ActionMemoryForget, "*"),
 			auth.Allow("operator-research-run", ActionResearchRun, "*"),
+			// An operator manages the part of the tree their binding covers,
+			// and no more: the scope on the binding is what confines this, the
+			// same way it confines everything else here.
+			auth.Allow("operator-container-write", ActionContainerWrite, "*"),
+			auth.Allow("operator-container-move", ActionContainerMove, "*"),
 		},
 	}
 

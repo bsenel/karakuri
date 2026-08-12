@@ -52,6 +52,43 @@ func OwnedTwinResource(lookup TwinOwnerLookup) auth.ResourceFunc {
 	}
 }
 
+// ClosureLookup reads a container's own ancestry. Containers are not in the
+// resource_scopes table — they are the tree that table is derived from — so
+// their labels come from here rather than from ScopeLookup.
+type ClosureLookup interface {
+	Closure(ctx context.Context, id string) ([]string, error)
+}
+
+// ContainerResource is the container a route names, carrying its ancestry, so a
+// grant on an organisation reaches the teams inside it.
+//
+// Without the closure a container-scoped administrator could not rename their
+// own team: the ref would be a bare "container:t_7f2a" and their binding names
+// the org above it.
+func ContainerResource(lookup ClosureLookup) auth.ResourceFunc {
+	return func(r *http.Request) auth.ResourceRef {
+		id := chi.URLParam(r, "id")
+		ref := auth.Resource("container", id)
+		if id == "" || lookup == nil {
+			return ref
+		}
+		closure, err := lookup.Closure(r.Context(), id)
+		if err != nil {
+			// No labels narrows the decision to an unscoped grant, and the
+			// handler reports whether the container exists — an authorization
+			// layer should not be the thing that decides that.
+			return ref
+		}
+		return ref.WithScopes(closure...)
+	}
+}
+
+// CollectionResource is a fixed collection ref, for routes whose real subject
+// arrives in the body rather than the URL.
+func CollectionResource(typ string) auth.ResourceFunc {
+	return func(*http.Request) auth.ResourceRef { return auth.Collection(typ) }
+}
+
 func ObjectiveResource(r *http.Request) auth.ResourceRef {
 	return auth.Resource("objective", chi.URLParam(r, "id"))
 }
@@ -191,6 +228,20 @@ func Routes() []Route {
 		{http.MethodPost, "/memory/store", ActionMemoryWrite, false},
 		{http.MethodPost, "/memory/recall", ActionMemoryRead, false},
 		{http.MethodPost, "/memory/forget", ActionMemoryForget, false},
+
+		// The tenancy tree (Phase 17). Reading it is how a user finds out which
+		// organisation a twin is in; writing it is confined by the tree itself,
+		// which the handler re-checks against the specific container named in
+		// the body — a URL-shaped check cannot see a parent that arrives as
+		// JSON.
+		{http.MethodPost, "/containers", ActionContainerWrite, false},
+		{http.MethodGet, "/containers", ActionContainerRead, false},
+		{http.MethodGet, "/containers/{id}", ActionContainerRead, false},
+		{http.MethodPost, "/containers/{id}/name", ActionContainerWrite, false},
+		{http.MethodPost, "/containers/{id}/parent", ActionContainerMove, false},
+		{http.MethodDelete, "/containers/{id}", ActionContainerWrite, false},
+		{http.MethodGet, "/containers/resources", ActionContainerRead, false},
+		{http.MethodPost, "/containers/resources", ActionContainerWrite, false},
 
 		{http.MethodGet, "/domains", ActionDomainRead, false},
 		{http.MethodGet, "/domains/capabilities", ActionDomainRead, false},

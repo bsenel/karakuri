@@ -155,6 +155,17 @@ func NewApp(
 		karakuriauth.ActionTwinRead, karakuriauth.TwinResource)
 	objectiveList := karakuriauth.ScopedCollection(authDeps.Authorizer,
 		karakuriauth.ActionObjectiveRead, karakuriauth.ObjectiveResource)
+	// Routes whose real subject arrives in the body: the gate here answers "do
+	// you hold this permission anywhere", and the handler re-checks against the
+	// container or scope the request actually names. Without this a principal
+	// bound to one organisation could not create a team inside it, because the
+	// collection ref is "container:*" and no container-scoped binding matches
+	// that.
+	containerWrite := karakuriauth.ScopedCollection(authDeps.Authorizer,
+		karakuriauth.ActionContainerWrite, karakuriauth.CollectionResource("container"))
+	bindingWrite := karakuriauth.ScopedCollection(authDeps.Authorizer,
+		karakuriauth.ActionAuthWrite, karakuriauth.CollectionResource("auth"))
+	containerRes := karakuriauth.ContainerResource(containerSvc)
 
 	healthH := &handler.HealthHandler{Providers: providers, Tools: toolReg, Exporters: exporters, Worktrees: wt, RepoPath: cfg.Git.RepoPath}
 	twinH := &handler.TwinHandler{Twins: twinSvc, Scopes: authDeps.Authorizer}
@@ -167,6 +178,7 @@ func NewApp(
 	resH := &handler.ResearchHandler{Research: resSvc}
 	evtH := &handler.EventsHandler{Hub: hub}
 	audH := &handler.AuditHandler{Store: store}
+	contH := &handler.ContainerHandler{Containers: containerSvc, Authorizer: authDeps.Authorizer}
 	quotaH := &handler.QuotaHandler{Quota: quotaDeps}
 	authH := &handler.AuthHandler{
 		Store:      authDeps.Store,
@@ -174,6 +186,7 @@ func NewApp(
 		Authorizer: authDeps.Authorizer,
 		Catalog:    authDeps.Catalog,
 		Cookies:    authDeps.Cookies,
+		Containers: containerSvc,
 	}
 	ssoH := &handler.SSOHandler{
 		Federation:        authDeps.Federation,
@@ -220,7 +233,7 @@ func NewApp(
 			r.Route("/auth", func(r chi.Router) {
 				r.With(require(karakuriauth.ActionAuthRead, nil)).Get("/users", authH.ListUsers)
 				r.With(require(karakuriauth.ActionAuthWrite, nil)).Post("/users", authH.CreateUser)
-				r.With(require(karakuriauth.ActionAuthWrite, nil)).Post("/bindings", authH.CreateBinding)
+				r.With(require(karakuriauth.ActionAuthWrite, bindingWrite)).Post("/bindings", authH.CreateBinding)
 				r.With(require(karakuriauth.ActionAuthRead, nil)).Get("/roles", authH.ListRoles)
 				r.With(require(karakuriauth.ActionAuthRead, nil)).Get("/policies", authH.ListPolicies)
 				r.With(require(karakuriauth.ActionAuthRead, nil)).Get("/catalog", authH.ListCatalog)
@@ -276,6 +289,20 @@ func NewApp(
 				// Resetting somebody's counters is an operator override, not an
 				// ordinary operation.
 				r.With(require(karakuriauth.ActionQuotaAdmin, nil)).Post("/reset", quotaH.Reset)
+			})
+
+			// The tenancy tree. Every mutation is re-checked in the handler
+			// against the container it actually names, because the parent
+			// arrives in the body rather than the URL.
+			r.Route("/containers", func(r chi.Router) {
+				r.With(require(karakuriauth.ActionContainerWrite, containerWrite)).Post("/", contH.Create)
+				r.With(require(karakuriauth.ActionContainerRead, nil)).Get("/", contH.List)
+				r.With(require(karakuriauth.ActionContainerRead, nil)).Get("/resources", contH.GetResourceContainers)
+				r.With(require(karakuriauth.ActionContainerWrite, containerWrite)).Post("/resources", contH.SetResourceContainers)
+				r.With(require(karakuriauth.ActionContainerRead, containerRes)).Get("/{id}", contH.Get)
+				r.With(require(karakuriauth.ActionContainerWrite, containerRes)).Post("/{id}/name", contH.Rename)
+				r.With(require(karakuriauth.ActionContainerMove, containerRes)).Post("/{id}/parent", contH.Reparent)
+				r.With(require(karakuriauth.ActionContainerWrite, containerRes)).Delete("/{id}", contH.Delete)
 			})
 
 			r.Route("/domains", func(r chi.Router) {

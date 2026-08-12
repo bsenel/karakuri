@@ -96,12 +96,17 @@ func TestRBACRouteMatrix(t *testing.T) {
 			// quota:read is granted to viewer, so every role inherits it:
 			// being throttled and not being allowed to find out why is a bad
 			// combination.
-			"domain:read": true, "quota:read": true,
+			// container:read is granted to viewer for the same reason:
+			// knowing which organisation a twin is in is not access to
+			// anything inside it, and a user who cannot see the tree cannot be
+			// shown where they are.
+			"domain:read": true, "quota:read": true, "container:read": true,
 		},
 		karakuriauth.RoleAuditor: {
 			"twin:read": true, "objective:read": true, "loop:read": true,
 			"checkpoint:read": true, "artifact:read": true, "memory:read": true,
 			"domain:read": true, "audit:read": true, "quota:read": true,
+			"container:read": true,
 		},
 		karakuriauth.RoleOperator: {
 			"twin:read": true, "twin:create": true, "twin:update": true,
@@ -112,6 +117,11 @@ func TestRBACRouteMatrix(t *testing.T) {
 			"artifact:read": true, "artifact:write": true,
 			"memory:read": true, "memory:write": true, "memory:forget": true,
 			"domain:read": true, "research:run": true, "quota:read": true,
+			// An operator manages the part of the tree their binding covers.
+			// These roles hold the wildcard here; what confines a real operator
+			// is the scope on their binding, which the handler re-checks
+			// against the container a request actually names.
+			"container:read": true, "container:write": true, "container:move": true,
 		},
 		// admin holds the wildcard.
 		karakuriauth.RoleAdmin: nil,
