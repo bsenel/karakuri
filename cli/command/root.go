@@ -49,6 +49,9 @@ func NewRoot() *cobra.Command {
 		auditCmd(),
 		authCmd(),
 		quotaCmd(),
+		orgCmd(),
+		teamCmd(),
+		projectCmd(),
 	)
 	return root
 }
