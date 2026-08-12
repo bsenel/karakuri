@@ -134,6 +134,22 @@ func federatedClient(t *testing.T) *http.Client {
 	}
 }
 
+// roleGrants renders the plain group→roles shape these tests are written in as
+// the scoped configuration form. Every grant here is unscoped, which is the
+// bare YAML form operators keep using and which still means "over everything".
+func roleGrants(roles map[string][]string) map[string][]config.AuthRoleGrantConfig {
+	if roles == nil {
+		return nil
+	}
+	out := make(map[string][]config.AuthRoleGrantConfig, len(roles))
+	for group, names := range roles {
+		for _, name := range names {
+			out[group] = append(out[group], config.AuthRoleGrantConfig{Role: name})
+		}
+	}
+	return out
+}
+
 func startOIDCServer(t *testing.T, idp *stubIdP, roles map[string][]string) (string, func()) {
 	t.Helper()
 	baseURL, _, cleanup := startServerWith(t, func(cfg *config.Config) {
@@ -142,7 +158,7 @@ func startOIDCServer(t *testing.T, idp *stubIdP, roles map[string][]string) (str
 		cfg.Auth.OIDC.IssuerURL = idp.server.URL
 		cfg.Auth.OIDC.ClientID = idp.clientID
 		cfg.Auth.OIDC.ClientSecret = "shh"
-		cfg.Auth.RoleMap.Groups = roles
+		cfg.Auth.RoleMap.Groups = roleGrants(roles)
 		// PublicURL is what redirect URLs are derived from and must be fixed
 		// before the listener exists. The redirect is overridden explicitly for
 		// the same reason, and the callback is driven by hand below.
@@ -312,7 +328,7 @@ func TestPasswordLoginSurvivesFederation(t *testing.T) {
 		cfg.Auth.Frontend.PublicURL = "http://127.0.0.1"
 		cfg.Auth.OIDC.IssuerURL = idp.server.URL
 		cfg.Auth.OIDC.ClientID = "karakuri"
-		cfg.Auth.RoleMap.Groups = map[string][]string{"karakuri-operators": {"operator"}}
+		cfg.Auth.RoleMap.Groups = roleGrants(map[string][]string{"karakuri-operators": {"operator"}})
 	})
 	defer cleanup()
 

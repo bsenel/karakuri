@@ -16,6 +16,7 @@ import (
 	coreobjective "github.com/bsenel/karakuri/internal/core/objective"
 	"github.com/bsenel/karakuri/internal/feature/artifact"
 	"github.com/bsenel/karakuri/internal/feature/checkpoint"
+	"github.com/bsenel/karakuri/internal/feature/container"
 	featureloop "github.com/bsenel/karakuri/internal/feature/loop"
 	"github.com/bsenel/karakuri/internal/feature/memory"
 	"github.com/bsenel/karakuri/internal/feature/objective"
@@ -103,6 +104,7 @@ func NewApp(
 	}
 	twinSvc := twin.NewService(store, hub)
 	objSvc := objective.NewService(store)
+	containerSvc := container.NewService(store)
 	for _, t := range templates {
 		objSvc.RegisterTemplate(t)
 	}
@@ -132,9 +134,18 @@ func NewApp(
 	require := func(action auth.Action, resource auth.ResourceFunc) func(http.Handler) http.Handler {
 		return authDeps.Enforcer.Require(action, resource)
 	}
-	// Twin routes resolve the twin's owner so owner_equals conditions can fire;
-	// one read per request, confined to routes that actually name a twin.
-	ownedTwin := karakuriauth.OwnedTwinResource(store)
+	// scoped attaches the containers a resource belongs to, so a binding on an
+	// org or a team covers what is inside it. A resource in no container gets
+	// no labels and decides exactly as it did before containers existed, which
+	// is why every route can carry this without a flag.
+	scoped := func(inner auth.ResourceFunc) auth.ResourceFunc {
+		return karakuriauth.Scoped(containerSvc, inner)
+	}
+	// Twin routes also resolve the twin's owner so owner_equals conditions can
+	// fire; one read per request, confined to routes that actually name a twin.
+	ownedTwin := scoped(karakuriauth.OwnedTwinResource(store))
+	twinRes := scoped(karakuriauth.TwinResource)
+	objectiveRes := scoped(karakuriauth.ObjectiveResource)
 
 	healthH := &handler.HealthHandler{Providers: providers, Tools: toolReg, Exporters: exporters, Worktrees: wt, RepoPath: cfg.Git.RepoPath}
 	twinH := &handler.TwinHandler{Twins: twinSvc}
@@ -213,16 +224,16 @@ func NewApp(
 				r.With(require(karakuriauth.ActionTwinRead, ownedTwin)).Get("/{id}", twinH.Get)
 				r.With(require(karakuriauth.ActionTwinUpdate, ownedTwin)).Put("/{id}", twinH.Update)
 				r.With(require(karakuriauth.ActionTwinBind, ownedTwin)).Put("/{id}/bindings", twinH.SetBindings)
-				r.With(require(karakuriauth.ActionTwinRead, karakuriauth.TwinResource)).Get("/{id}/events", evtH.StreamTwin)
+				r.With(require(karakuriauth.ActionTwinRead, twinRes)).Get("/{id}/events", evtH.StreamTwin)
 			})
 
 			r.Route("/objectives", func(r chi.Router) {
 				r.With(require(karakuriauth.ActionObjectiveCreate, nil)).Post("/", objH.Create)
 				r.With(require(karakuriauth.ActionObjectiveRead, nil)).Get("/", objH.List)
 				r.With(require(karakuriauth.ActionObjectiveRead, nil)).Get("/templates", objH.ListTemplates)
-				r.With(require(karakuriauth.ActionObjectiveRead, karakuriauth.ObjectiveResource)).Get("/{id}", objH.Get)
-				r.With(require(karakuriauth.ActionObjectiveUpdate, karakuriauth.ObjectiveResource)).Post("/{id}/status", objH.UpdateStatus)
-				r.With(require(karakuriauth.ActionObjectiveRead, karakuriauth.ObjectiveResource)).Get("/{id}/events", evtH.StreamObjective)
+				r.With(require(karakuriauth.ActionObjectiveRead, objectiveRes)).Get("/{id}", objH.Get)
+				r.With(require(karakuriauth.ActionObjectiveUpdate, objectiveRes)).Post("/{id}/status", objH.UpdateStatus)
+				r.With(require(karakuriauth.ActionObjectiveRead, objectiveRes)).Get("/{id}/events", evtH.StreamObjective)
 			})
 
 			r.Route("/loops", func(r chi.Router) {

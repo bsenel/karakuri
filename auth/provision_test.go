@@ -88,9 +88,9 @@ func newProvisioner(t *testing.T, store auth.Store, m auth.RoleMap) *auth.Provis
 }
 
 func defaultMap() auth.RoleMap {
-	return auth.RoleMap{Groups: map[string][]string{
-		"karakuri-admins":    {"admin"},
-		"karakuri-operators": {"operator"},
+	return auth.RoleMap{Groups: map[string][]auth.RoleGrant{
+		"karakuri-admins":    {{Role: "admin"}},
+		"karakuri-operators": {{Role: "operator"}},
 	}}
 }
 
@@ -103,6 +103,20 @@ func roleNames(t *testing.T, store auth.Store, principalID string) []string {
 	var out []string
 	for _, b := range bindings {
 		out = append(out, b.Role)
+	}
+	slices.Sort(out)
+	return out
+}
+
+func bindingScopes(t *testing.T, store auth.Store, principalID string) []string {
+	t.Helper()
+	bindings, err := store.ListBindings(context.Background(), principalID)
+	if err != nil {
+		t.Fatalf("list bindings: %v", err)
+	}
+	var out []string
+	for _, b := range bindings {
+		out = append(out, b.EffectiveScope())
 	}
 	slices.Sort(out)
 	return out
@@ -225,6 +239,117 @@ func TestProvisionReconcilesRoles(t *testing.T) {
 	}
 }
 
+// The hole Phase 16 opened: every federated user landed with their mapped role
+// over everything, so a directory group of two hundred people was two hundred
+// globally-scoped principals.
+func TestProvisionHonoursTheScopeOnAGrant(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	store := newProvisionerStore(t)
+	p := newProvisioner(t, store, auth.RoleMap{Groups: map[string][]auth.RoleGrant{
+		"acme-engineers": {{Role: "operator", Scope: "team:t_7f2a"}},
+	}})
+
+	_, change, err := p.Provision(ctx, auth.ExternalIdentity{
+		Subject: "alice", Groups: []string{"acme-engineers"},
+	})
+	if err != nil {
+		t.Fatalf("Provision: %v", err)
+	}
+	if !slices.Equal(change.Added, []string{"operator@team:t_7f2a"}) {
+		t.Errorf("change.Added = %v, want the scope named", change.Added)
+	}
+
+	bindings, err := store.ListBindings(ctx, "oidc:alice")
+	if err != nil {
+		t.Fatalf("list bindings: %v", err)
+	}
+	if len(bindings) != 1 {
+		t.Fatalf("bindings = %+v, want one", bindings)
+	}
+	if bindings[0].Scope != "team:t_7f2a" {
+		t.Fatalf("scope = %q, want the team — a federated login must not grant everything", bindings[0].Scope)
+	}
+	// And it means what it says: the binding reaches a twin inside that team
+	// and nothing outside it.
+	inTeam := auth.Resource("twin", "abc").WithScopes("team:t_7f2a", "org:o_9c31")
+	elsewhere := auth.Resource("twin", "xyz").WithScopes("team:t_be04", "org:o_1111")
+	if !inTeam.InScope(bindings[0].Scope) {
+		t.Error("the binding does not reach a twin in its own team")
+	}
+	if elsewhere.InScope(bindings[0].Scope) {
+		t.Error("the binding reaches another tenant's twin")
+	}
+}
+
+// Somebody in two teams holds the role in both, and losing one group at the
+// provider has to take one binding away and leave the other.
+func TestProvisionReconcilesPerScope(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	store := newProvisionerStore(t)
+	p := newProvisioner(t, store, auth.RoleMap{Groups: map[string][]auth.RoleGrant{
+		"acme-engineers":   {{Role: "operator", Scope: "team:t_7f2a"}},
+		"globex-engineers": {{Role: "operator", Scope: "team:t_be04"}},
+	}})
+	identity := auth.ExternalIdentity{Subject: "alice", Groups: []string{"acme-engineers", "globex-engineers"}}
+
+	if _, _, err := p.Provision(ctx, identity); err != nil {
+		t.Fatalf("first login: %v", err)
+	}
+	if got := bindingScopes(t, store, "oidc:alice"); !slices.Equal(got, []string{"team:t_7f2a", "team:t_be04"}) {
+		t.Fatalf("scopes = %v, want one binding per team", got)
+	}
+
+	identity.Groups = []string{"acme-engineers"}
+	_, change, err := p.Provision(ctx, identity)
+	if err != nil {
+		t.Fatalf("second login: %v", err)
+	}
+	if !slices.Equal(change.Removed, []string{"operator@team:t_be04"}) {
+		t.Errorf("change.Removed = %v, want only the globex grant", change.Removed)
+	}
+	if got := bindingScopes(t, store, "oidc:alice"); !slices.Equal(got, []string{"team:t_7f2a"}) {
+		t.Fatalf("scopes = %v, want the remaining team", got)
+	}
+}
+
+// A binding written before scopes existed carries Scope "*" and an ID with no
+// scope in it. Reconciliation keys on the binding's own fields, so an unscoped
+// map recognises it as the grant it already is rather than deleting it and
+// writing an identical one under a new ID.
+func TestProvisionLeavesPreScopeBindingsInPlace(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	store := newProvisionerStore(t)
+	p := newProvisioner(t, store, defaultMap())
+	identity := auth.ExternalIdentity{Subject: "alice", Groups: []string{"karakuri-operators"}}
+
+	legacy := auth.RoleBinding{
+		ID: "idp:oidc:alice:operator", PrincipalID: "oidc:alice", Role: "operator", Scope: "*",
+	}
+	if err := store.PutBinding(ctx, legacy); err != nil {
+		t.Fatalf("legacy binding: %v", err)
+	}
+
+	_, change, err := p.Provision(ctx, identity)
+	if err != nil {
+		t.Fatalf("Provision: %v", err)
+	}
+	// The principal itself is new, so Created is set; what matters is that no
+	// binding was added or removed — the grant is already in place.
+	if len(change.Added) != 0 || len(change.Removed) != 0 {
+		t.Errorf("change = %+v, want no binding churn", change)
+	}
+	bindings, err := store.ListBindings(ctx, "oidc:alice")
+	if err != nil {
+		t.Fatalf("list bindings: %v", err)
+	}
+	if len(bindings) != 1 || bindings[0].ID != legacy.ID {
+		t.Fatalf("bindings = %+v, want the original untouched", bindings)
+	}
+}
+
 // A grant an administrator made by hand is not the provider's to revoke.
 func TestProvisionLeavesUnmanagedBindingsAlone(t *testing.T) {
 	t.Parallel()
@@ -326,8 +451,8 @@ func TestProvisionSkipsUnknownRoles(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	store := newProvisionerStore(t)
-	p := newProvisioner(t, store, auth.RoleMap{Groups: map[string][]string{
-		"eng": {"operator", "wizard"},
+	p := newProvisioner(t, store, auth.RoleMap{Groups: map[string][]auth.RoleGrant{
+		"eng": {{Role: "operator"}, {Role: "wizard"}},
 	}})
 
 	_, change, err := p.Provision(ctx, auth.ExternalIdentity{Subject: "alice", Groups: []string{"eng"}})
@@ -377,7 +502,7 @@ func TestProvisionValidate(t *testing.T) {
 		t.Fatalf("Validate on a good map: %v", err)
 	}
 
-	typo := newProvisioner(t, store, auth.RoleMap{Groups: map[string][]string{"eng": {"opperator"}}})
+	typo := newProvisioner(t, store, auth.RoleMap{Groups: map[string][]auth.RoleGrant{"eng": {{Role: "opperator"}}}})
 	if err := typo.Validate(ctx); !errors.Is(err, auth.ErrRoleNotFound) {
 		t.Fatalf("Validate on a typo = %v, want ErrRoleNotFound", err)
 	}

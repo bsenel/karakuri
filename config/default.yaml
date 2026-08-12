@@ -86,13 +86,34 @@ auth:
     # Where a browser lands after a successful federated login.
     login_redirect: /
 
-  # Which roles the groups an identity provider asserts should grant.
+  # Which roles the groups an identity provider asserts should grant, and where
+  # those roles apply.
   #
   # `default` applies to a user who authenticated but matched no group, and it
   # is empty on purpose: everybody in a corporate directory can authenticate,
   # so a default role here is a grant to the whole company. Empty means such a
   # user logs in and sees nothing, which is the correct shape — authentication
   # is not authorization.
+  #
+  # A bare role name grants it over everything. Naming an org, a team or a
+  # project confines it to that container and everything inside it, which is
+  # what keeps a directory group of two hundred people from becoming two
+  # hundred principals who can see every tenant:
+  #
+  #   groups:
+  #     karakuri-admins:  [admin]                                  # everywhere
+  #     acme-admins:      [{role: admin, org: acme}]               # one org
+  #     acme-engineers:   [{role: operator, org: acme, team: eng}] # one team
+  #     delta-partners:   [{role: viewer, project: delta}]         # one project
+  #
+  # A team always needs its org: two organisations may each have a team called
+  # "eng", and that is exactly the case scoping exists to keep apart. Names are
+  # resolved to IDs once, at startup — a name that matches nothing is a fatal
+  # configuration error, not a login that silently grants less than intended.
+  #
+  # One identity provider is configured at a time, so group names come from a
+  # single namespace and cannot collide. Federating two providers would need
+  # this map keyed by issuer; that is not supported.
   role_map:
     groups: {}
     #   karakuri-admins: [admin]

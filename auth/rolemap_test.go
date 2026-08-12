@@ -72,36 +72,58 @@ func TestClaimPathFirst(t *testing.T) {
 	}
 }
 
-func TestRoleMapRoles(t *testing.T) {
+func role(name string) auth.RoleGrant { return auth.RoleGrant{Role: name, Scope: "*"} }
+
+func scoped(name, scope string) auth.RoleGrant { return auth.RoleGrant{Role: name, Scope: scope} }
+
+func TestRoleMapGrants(t *testing.T) {
 	t.Parallel()
 
 	m := auth.RoleMap{
-		Groups: map[string][]string{
-			"karakuri-admins":    {"admin"},
-			"karakuri-operators": {"operator"},
-			"everyone":           {"viewer", "auditor"},
-			"broken":             {""},
+		Groups: map[string][]auth.RoleGrant{
+			"karakuri-admins":    {{Role: "admin"}},
+			"karakuri-operators": {{Role: "operator"}},
+			"everyone":           {{Role: "viewer"}, {Role: "auditor"}},
+			"broken":             {{Role: ""}},
+			"acme-engineers":     {{Role: "operator", Scope: "team:t_7f2a"}},
+			"globex-engineers":   {{Role: "operator", Scope: "team:t_be04"}},
 		},
 	}
 
 	cases := []struct {
 		name   string
 		groups []string
-		want   []string
+		want   []auth.RoleGrant
 	}{
-		{name: "one group", groups: []string{"karakuri-admins"}, want: []string{"admin"}},
-		{name: "several roles from one group", groups: []string{"everyone"}, want: []string{"auditor", "viewer"}},
-		{name: "union, sorted and deduplicated", groups: []string{"everyone", "karakuri-operators", "everyone"}, want: []string{"auditor", "operator", "viewer"}},
+		{name: "one group", groups: []string{"karakuri-admins"}, want: []auth.RoleGrant{role("admin")}},
+		{name: "several roles from one group", groups: []string{"everyone"}, want: []auth.RoleGrant{role("auditor"), role("viewer")}},
+		{
+			name:   "union, sorted and deduplicated",
+			groups: []string{"everyone", "karakuri-operators", "everyone"},
+			want:   []auth.RoleGrant{role("auditor"), role("operator"), role("viewer")},
+		},
 		{name: "unmapped group grants nothing", groups: []string{"marketing"}, want: nil},
 		{name: "no groups", groups: nil, want: nil},
 		{name: "empty role names are dropped", groups: []string{"broken"}, want: nil},
+		{
+			name:   "an unset scope means everything",
+			groups: []string{"karakuri-operators"},
+			want:   []auth.RoleGrant{scoped("operator", "*")},
+		},
+		{
+			// The same role in two tenants is two grants. Collapsing them on
+			// the role name would either widen one or drop the other.
+			name:   "the same role at two scopes stays two grants",
+			groups: []string{"acme-engineers", "globex-engineers"},
+			want:   []auth.RoleGrant{scoped("operator", "team:t_7f2a"), scoped("operator", "team:t_be04")},
+		},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			if got := m.Roles(tc.groups); !slices.Equal(got, tc.want) {
-				t.Fatalf("Roles(%v) = %v, want %v", tc.groups, got, tc.want)
+			if got := m.Grants(tc.groups); !slices.Equal(got, tc.want) {
+				t.Fatalf("Grants(%v) = %v, want %v", tc.groups, got, tc.want)
 			}
 		})
 	}
@@ -112,18 +134,21 @@ func TestRoleMapRoles(t *testing.T) {
 func TestRoleMapDefaultIsEmptyUnlessConfigured(t *testing.T) {
 	t.Parallel()
 
-	bare := auth.RoleMap{Groups: map[string][]string{"eng": {"operator"}}}
-	if got := bare.Roles([]string{"marketing"}); got != nil {
+	bare := auth.RoleMap{Groups: map[string][]auth.RoleGrant{"eng": {{Role: "operator"}}}}
+	if got := bare.Grants([]string{"marketing"}); got != nil {
 		t.Fatalf("an unmapped group granted %v, want nothing", got)
 	}
 
-	withDefault := auth.RoleMap{Groups: map[string][]string{"eng": {"operator"}}, Default: []string{"viewer"}}
-	if got := withDefault.Roles([]string{"marketing"}); !slices.Equal(got, []string{"viewer"}) {
-		t.Fatalf("Roles = %v, want the configured default", got)
+	withDefault := auth.RoleMap{
+		Groups:  map[string][]auth.RoleGrant{"eng": {{Role: "operator"}}},
+		Default: []auth.RoleGrant{{Role: "viewer"}},
+	}
+	if got := withDefault.Grants([]string{"marketing"}); !slices.Equal(got, []auth.RoleGrant{role("viewer")}) {
+		t.Fatalf("Grants = %v, want the configured default", got)
 	}
 	// The default is a fallback, not an addition: a matched group replaces it.
-	if got := withDefault.Roles([]string{"eng"}); !slices.Equal(got, []string{"operator"}) {
-		t.Fatalf("Roles = %v, want only the mapped role", got)
+	if got := withDefault.Grants([]string{"eng"}); !slices.Equal(got, []auth.RoleGrant{role("operator")}) {
+		t.Fatalf("Grants = %v, want only the mapped role", got)
 	}
 }
 
@@ -131,8 +156,12 @@ func TestRoleMapMentions(t *testing.T) {
 	t.Parallel()
 
 	m := auth.RoleMap{
-		Groups:  map[string][]string{"a": {"operator", "viewer"}, "b": {"viewer"}, "c": {""}},
-		Default: []string{"viewer", "auditor"},
+		Groups: map[string][]auth.RoleGrant{
+			"a": {{Role: "operator", Scope: "org:o_1"}, {Role: "viewer"}},
+			"b": {{Role: "viewer"}},
+			"c": {{Role: ""}},
+		},
+		Default: []auth.RoleGrant{{Role: "viewer"}, {Role: "auditor"}},
 	}
 	want := []string{"auditor", "operator", "viewer"}
 	if got := m.Mentions(); !slices.Equal(got, want) {
@@ -140,5 +169,27 @@ func TestRoleMapMentions(t *testing.T) {
 	}
 	if got := (auth.RoleMap{}).Mentions(); got != nil {
 		t.Fatalf("Mentions on an empty map = %v, want nil", got)
+	}
+}
+
+// Scopes is what a host application checks against its own container tree at
+// boot. The unrestricted scope is excluded because there is nothing to look up.
+func TestRoleMapScopes(t *testing.T) {
+	t.Parallel()
+
+	m := auth.RoleMap{
+		Groups: map[string][]auth.RoleGrant{
+			"a": {{Role: "operator", Scope: "team:t_7f2a"}, {Role: "admin", Scope: "org:o_9c31"}},
+			"b": {{Role: "viewer"}},
+			"c": {{Role: "viewer", Scope: "team:t_7f2a"}},
+		},
+		Default: []auth.RoleGrant{{Role: "auditor", Scope: "org:o_9c31"}},
+	}
+	want := []string{"org:o_9c31", "team:t_7f2a"}
+	if got := m.Scopes(); !slices.Equal(got, want) {
+		t.Fatalf("Scopes = %v, want %v", got, want)
+	}
+	if got := (auth.RoleMap{}).Scopes(); got != nil {
+		t.Fatalf("Scopes on an empty map = %v, want nil", got)
 	}
 }

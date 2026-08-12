@@ -56,6 +56,50 @@ func ObjectiveResource(r *http.Request) auth.ResourceRef {
 	return auth.Resource("objective", chi.URLParam(r, "id"))
 }
 
+// ScopeLookup reads the containers a resource belongs to — its ancestor
+// closure, already flattened. It is the container service narrowed to the one
+// method the request path needs.
+type ScopeLookup interface {
+	ScopesOf(ctx context.Context, resourceType, resourceID string) ([]string, error)
+}
+
+// Scoped wraps a resource function so the decision can see which organisation,
+// team or project the resource sits in.
+//
+// It composes rather than replaces: OwnedTwinResource still supplies the owner,
+// and this adds the containers on top, because ownership and containment are
+// independent questions about the same resource.
+//
+// A resource in no container carries no labels and matches exactly what it
+// matched before containers existed. That is why this can be applied to every
+// route without a flag: on a deployment that never creates an org, it is a
+// lookup that returns nothing and changes no decision.
+//
+// A failed lookup attaches no scopes rather than failing the request. The
+// consequence is a narrower decision — a binding scoped to a container will not
+// match — so the failure mode is denial, not a resource that quietly escapes
+// its tenant. The same reasoning as OwnedTwinResource, whose lookup failure
+// leaves the owner unset.
+func Scoped(lookup ScopeLookup, inner auth.ResourceFunc) auth.ResourceFunc {
+	if lookup == nil {
+		return inner
+	}
+	return func(r *http.Request) auth.ResourceRef {
+		ref := inner(r)
+		if ref.ID == "" {
+			// A collection route names no resource, so there is nothing to
+			// look up. Whether the principal may list is answered by the
+			// binding's own scope, and which rows come back is PR4's question.
+			return ref
+		}
+		scopes, err := lookup.ScopesOf(r.Context(), ref.Type, ref.ID)
+		if err != nil || len(scopes) == 0 {
+			return ref
+		}
+		return ref.WithScopes(scopes...)
+	}
+}
+
 func LoopResource(r *http.Request) auth.ResourceRef {
 	return auth.Resource("loop", chi.URLParam(r, "id"))
 }

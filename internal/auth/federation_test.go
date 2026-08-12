@@ -36,7 +36,7 @@ func TestBuildFederationBearerIsInert(t *testing.T) {
 	t.Parallel()
 	cfg := baseConfig()
 
-	f, err := karakuriauth.BuildFederation(context.Background(), cfg, federationStore(t))
+	f, err := karakuriauth.BuildFederation(context.Background(), cfg, federationStore(t), nil)
 	if err != nil {
 		t.Fatalf("BuildFederation: %v", err)
 	}
@@ -83,7 +83,7 @@ func TestBuildFederationRejects(t *testing.T) {
 				c.Auth.Provider = config.AuthProviderOIDC
 				c.Auth.Frontend.PublicURL = "https://karakuri.example.com"
 				c.Auth.OIDC.IssuerURL = "https://idp.example.com"
-				c.Auth.RoleMap.Groups = map[string][]string{"eng": {"wizrad"}}
+				c.Auth.RoleMap.Groups = map[string][]config.AuthRoleGrantConfig{"eng": {{Role: "wizrad"}}}
 			},
 			wantErr: extauth.ErrRoleNotFound,
 		},
@@ -121,7 +121,7 @@ func TestBuildFederationRejects(t *testing.T) {
 			cfg := baseConfig()
 			tc.mutate(cfg)
 
-			_, err := karakuriauth.BuildFederation(context.Background(), cfg, federationStore(t))
+			_, err := karakuriauth.BuildFederation(context.Background(), cfg, federationStore(t), nil)
 			if err == nil {
 				t.Fatal("BuildFederation returned nil")
 			}
@@ -148,7 +148,7 @@ func TestBuildFederationSAMLFromMetadataFile(t *testing.T) {
 	cfg.Auth.Frontend.PublicURL = "https://karakuri.example.com/"
 	cfg.Auth.SAML.IDPMetadataFile = path
 
-	f, err := karakuriauth.BuildFederation(context.Background(), cfg, federationStore(t))
+	f, err := karakuriauth.BuildFederation(context.Background(), cfg, federationStore(t), nil)
 	if err != nil {
 		t.Fatalf("BuildFederation: %v", err)
 	}
@@ -179,7 +179,7 @@ func TestBuildFederationRejectsMetadataWithoutIDP(t *testing.T) {
 	cfg.Auth.Frontend.PublicURL = "https://karakuri.example.com"
 	cfg.Auth.SAML.IDPMetadataFile = path
 
-	if _, err := karakuriauth.BuildFederation(context.Background(), cfg, federationStore(t)); err == nil {
+	if _, err := karakuriauth.BuildFederation(context.Background(), cfg, federationStore(t), nil); err == nil {
 		t.Fatal("metadata declaring no IDPSSODescriptor was accepted")
 	}
 }

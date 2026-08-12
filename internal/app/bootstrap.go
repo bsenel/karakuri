@@ -26,6 +26,7 @@ import (
 	"github.com/bsenel/karakuri/internal/core/event"
 	corememory "github.com/bsenel/karakuri/internal/core/memory"
 	objectivepkg "github.com/bsenel/karakuri/internal/core/objective"
+	"github.com/bsenel/karakuri/internal/feature/container"
 	featurememory "github.com/bsenel/karakuri/internal/feature/memory"
 	"github.com/bsenel/karakuri/internal/platform/db"
 	"github.com/bsenel/karakuri/internal/platform/git"
@@ -379,7 +380,10 @@ func BuildAuth(ctx context.Context, gormDB *gorm.DB, store storage.StorageAdapte
 		return api.AuthDeps{}, fmt.Errorf("seed auth model: %w", err)
 	}
 
-	federation, err := karakuriauth.BuildFederation(ctx, cfg, authStore)
+	// The container service resolves the org, team and project names in the
+	// role map to IDs. It reads Karakuri's own tables, so it is built here
+	// rather than passed in — nothing else in this function needs it.
+	federation, err := karakuriauth.BuildFederation(ctx, cfg, authStore, container.NewService(store))
 	if err != nil {
 		return api.AuthDeps{}, err
 	}

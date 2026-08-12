@@ -87,7 +87,10 @@ func (f *Federation) Resolver() auth.TokenResolver {
 // SSO and silently did not get it is worse off than one that never configured
 // it: nobody can log in, and the reason is invisible until someone reads a log
 // line that was never written.
-func BuildFederation(ctx context.Context, cfg *config.Config, store auth.Store) (*Federation, error) {
+// containers may be nil, which is what a deployment with no tenancy tree has.
+// A role map that names one is then a configuration error rather than a silent
+// grant over everything.
+func BuildFederation(ctx context.Context, cfg *config.Config, store auth.Store, containers ContainerLookup) (*Federation, error) {
 	kind := strings.ToLower(strings.TrimSpace(cfg.Auth.Provider))
 	if kind == "" {
 		kind = config.AuthProviderBearer
@@ -112,14 +115,18 @@ func BuildFederation(ctx context.Context, cfg *config.Config, store auth.Store) 
 		return nil, err
 	}
 
+	// Container names resolve to IDs once, here. After this point nothing in
+	// the auth path has ever seen a display name.
+	roles, err := BuildRoleMap(ctx, cfg.Auth.RoleMap, containers)
+	if err != nil {
+		return nil, fmt.Errorf("auth.role_map: %w", err)
+	}
+
 	prefix := kind // "oidc" or "saml", which is exactly the namespace we want
 	provisioner := &auth.Provisioner{
 		Store:  store,
 		Prefix: prefix,
-		Roles: auth.RoleMap{
-			Groups:  cfg.Auth.RoleMap.Groups,
-			Default: cfg.Auth.RoleMap.Default,
-		},
+		Roles:  roles,
 	}
 	// A group mapped to a role nobody registered would deny every login that
 	// matched it. Catch the typo here, where an operator is reading startup
