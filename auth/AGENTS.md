@@ -70,6 +70,30 @@ What lives here is everything both protocols share: `ExternalIdentity`, `RoleMap
   process, so behind a load balancer a flow started on one replica and finished on another
   fails intermittently.
 
+## Containers and multi-tenancy
+
+Hierarchy is expressed as a **set of labels on the resource**, not a path in its name.
+`ResourceRef.Scopes` carries the ancestor closure (`["team:t_7f2a", "org:o_9c31"]`) and a
+binding covers the resource if its scope matches the resource *or any label*.
+
+- **Do not add path syntax.** `matchPattern` is untouched by containers and must stay that
+  way — it is shared by actions, resources and scopes alike, so a `/` rule would change how
+  permissions match. A label is an ordinary `<type>:<id>` pattern, which the grammar already
+  accepts.
+- **Labels carry IDs, never display names.** Two organisations may both have a team called
+  "Engineering"; if the label were the name, a grant on one would silently cover the other.
+  Build them with `ScopeLabel`, and keep names for the interface.
+- **The closure is materialised by the caller**, because the caller owns the tree. This
+  package never walks, recurses, or bounds depth during a check — that is what makes nesting
+  free at request time.
+- **A set, not a path, is the point.** A resource can be multi-homed — its team, its org, and
+  a project spanning two organisations — which is what lets cross-tenant collaboration work
+  without a second construct grafted alongside the hierarchy.
+- **Authorization is a boolean; listing is a query.** `GrantedScopes` hands back the scopes a
+  principal holds so a caller can build a `WHERE`, and keeps allow and deny apart because
+  resolving them needs the tree. Conditional denies cannot appear there, so a filtered list
+  is a narrowing and the per-resource check stays authoritative.
+
 ## Testing
 
 `go test ./... -race` from this directory. Coverage is gated at 95% in CI

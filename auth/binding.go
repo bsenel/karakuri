@@ -22,9 +22,15 @@ func (b RoleBinding) EffectiveScope() string {
 	return b.Scope
 }
 
-// covers reports whether the binding's scope reaches this resource. A binding
-// that does not cover the target contributes no policies at all — its role is
-// simply not in play for that request.
+// covers reports whether the binding's scope reaches this resource, either by
+// naming it directly or by naming a container it belongs to. A binding that
+// does not cover the target contributes no policies at all — its role is simply
+// not in play for that request.
+//
+// This is the whole of hierarchy. There is no second matching rule and no path
+// syntax: "team:t_7f2a" is an ordinary scope pattern, and a resource carrying
+// that label is inside it. Resources with no containers match exactly as they
+// did before scopes existed.
 func (b RoleBinding) covers(r ResourceRef) bool {
-	return matchPattern(b.EffectiveScope(), r.String())
+	return r.InScope(b.EffectiveScope())
 }

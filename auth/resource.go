@@ -2,6 +2,7 @@ package auth
 
 import (
 	"maps"
+	"slices"
 	"strings"
 )
 
@@ -17,6 +18,23 @@ type ResourceRef struct {
 	ID    string            `json:"id,omitempty"`
 	Owner string            `json:"owner,omitempty"`
 	Attrs map[string]string `json:"attrs,omitempty"`
+
+	// Scopes are the containers this resource belongs to — its ancestor
+	// closure, already flattened: ["team:t_7f2a", "org:o_9c31"]. A binding
+	// scoped to any of them covers this resource.
+	//
+	// It is a set rather than a path on purpose. A path gives a resource one
+	// location, which makes sharing across containers an exception mechanism
+	// bolted on afterwards; a set lets a resource be multi-homed — its own
+	// team, its own org, and a project spanning two organisations — with no
+	// second construct and no change to how matching works.
+	//
+	// Flattening is also what keeps evaluation cheap: the closure is computed
+	// where the container tree lives and stored, so authorization never walks a
+	// tree, recurses, or needs a depth limit. Empty means the resource belongs
+	// to nothing, which is exactly how every resource behaved before containers
+	// existed.
+	Scopes []string `json:"scopes,omitempty"`
 }
 
 // Resource builds a ref for a single object.
@@ -29,6 +47,31 @@ func Collection(typ string) ResourceRef { return ResourceRef{Type: typ} }
 func (r ResourceRef) WithOwner(owner string) ResourceRef {
 	r.Owner = owner
 	return r
+}
+
+// WithScopes returns a copy of r belonging to the given containers.
+//
+// The labels are the closure, not just the immediate parent: a twin in a team
+// inside an org carries both, so a binding on either covers it. Callers own
+// computing that, because they own the tree.
+func (r ResourceRef) WithScopes(scopes ...string) ResourceRef {
+	r.Scopes = slices.Clone(scopes)
+	return r
+}
+
+// InScope reports whether pattern covers this resource, by its own identity or
+// by any container it belongs to. It is what RoleBinding.covers asks, exposed
+// for callers that need the same question outside an authorization decision.
+func (r ResourceRef) InScope(pattern string) bool {
+	if matchPattern(pattern, r.String()) {
+		return true
+	}
+	for _, label := range r.Scopes {
+		if matchPattern(pattern, label) {
+			return true
+		}
+	}
+	return false
 }
 
 // WithAttr returns a copy of r carrying one additional attribute.
