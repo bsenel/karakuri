@@ -103,6 +103,15 @@ krk twin create --name <name> --kind <person|team|org> --domain <id>
 krk twin list
 krk twin get <id>
 
+# Organisations, teams and projects (Phase 17) — names resolve to IDs, which is
+# what a binding stores, so renaming a container rewrites no policy
+krk org create --name <name>
+krk team create --org <org> --name <name>
+krk team move <name> --org <from> --to-org <to>
+krk project create --name <name>
+krk project add-twin --project <name> --twin <id>
+krk org list / krk team list [--org <org>] / krk project list
+
 # Objectives
 krk objective create --twin <id> --title <title> --domain <id> \
                      [--description <text>] [--max-iter N] [--priority N] \
@@ -247,6 +256,43 @@ curl -s -XPOST localhost:8080/api/v1/auth/check -H "Authorization: Bearer $TOKEN
 Refused requests are recorded in the same audit log as authority-bounds
 escalations, so `krk audit --kind authz_denied` shows who was turned away
 alongside who approved what.
+
+#### Organisations, teams and projects
+
+A scope can name a **container** as well as a single resource, which is how a
+multi-tenant deployment isolates (see
+[ADR 010](docs/adr/010-scope-sets.md)). A resource carries the containers it
+belongs to as a set of labels, and a binding on any of them reaches it:
+
+```bash
+krk org create --name acme
+krk team create --org acme --name eng          # → {"id":"t_7f2a","kind":"team",...}
+krk auth bindings add --principal alice --role operator --org acme --team eng
+```
+
+Alice now reads acme's twins and objectives, and `krk twin list` returns hers
+alone. **Names are resolved to IDs before anything is sent**, and never reach a
+policy: two organisations may each have a team called "eng", so a grant matching
+on the word would cover both. Names are unique among siblings and nowhere else,
+and renaming an organisation rewrites no binding.
+
+Because the labels are a *set* rather than a path, a resource can be in more than
+one place at once — which is how sharing across organisations works, with no
+second construct:
+
+```bash
+krk project create --name delta
+krk project add-twin --project delta --twin <acme-twin-id>   # needs a grant over that twin
+krk auth bindings add --principal oidc:bob --role viewer --project delta
+```
+
+Bob reaches that one twin through the project and nothing else of acme's. The
+tree also governs changes to itself: creating a team inside an organisation
+requires a grant covering it, moving one requires a grant at **both** ends, and
+you can only grant a scope you already hold.
+
+A resource in no container carries no labels, so a deployment that never creates
+an organisation behaves exactly as it did before.
 
 #### Browser sessions
 
@@ -450,12 +496,12 @@ is restricted under the
 
 ## Roadmap
 
-Phases 1–13 have shipped (core engine through cross-domain objectives + hardening). Phases 14–19 are queued and introduce a multi-team production layer:
+Phases 1–17 have shipped (core engine through cross-domain objectives, then the multi-team production layer). Phases 18–19 are queued:
 
 - **Phase 14:** RBAC + fine-grained authorization, shipped as a standalone module `github.com/bsenel/karakuri/auth` reusable by any net/http or chi server
 - **Phase 15:** API rate limiting + quota management, shipped as `github.com/bsenel/karakuri/quota` with Redis/SQL backend submodules
 - **Phase 16:** Federated identity (OIDC + SAML) as `auth` submodules
-- **Phase 17:** Hierarchical resources + org units (`auth` v0.2)
+- **Phase 17:** Multi-tenant hierarchy — orgs, teams and projects as scope sets ([ADR 010](docs/adr/010-scope-sets.md))
 - **Phase 18:** Quota self-service workflow + cost attribution (`quota` v0.2 + sibling `quota/cost` module)
 - **Phase 19:** Frontend pages for auth, quota, cost, and audit
 

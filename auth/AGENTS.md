@@ -79,7 +79,8 @@ What lives here is everything both protocols share: `ExternalIdentity`, `RoleMap
 
 Hierarchy is expressed as a **set of labels on the resource**, not a path in its name.
 `ResourceRef.Scopes` carries the ancestor closure (`["team:t_7f2a", "org:o_9c31"]`) and a
-binding covers the resource if its scope matches the resource *or any label*.
+binding covers the resource if its scope matches the resource *or any label*. See
+[ADR 010](../docs/adr/010-scope-sets.md) for why, and what it gives up.
 
 - **Do not add path syntax.** `matchPattern` is untouched by containers and must stay that
   way — it is shared by actions, resources and scopes alike, so a `/` rule would change how
