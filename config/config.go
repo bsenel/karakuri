@@ -67,6 +67,40 @@ type QuotaConfig struct {
 	// convention (ADR 006).
 	LiteLLMURL    string `yaml:"litellm_url"`
 	LiteLLMKeyEnv string `yaml:"litellm_key_env"`
+
+	// Rates price what was consumed, so a spend report is in money rather than
+	// in tokens.
+	//
+	// Parsed here rather than by the cost module, which takes a Go map: a price
+	// table is configuration, and a module whose require block is empty should
+	// not gain a YAML parser to read one.
+	//
+	// A rate with no model is the provider's fallback. Nothing here is a
+	// default — a shipped price table would be wrong the week after it shipped,
+	// and a report that invents money is worse than one that reports units.
+	Rates []QuotaRateConfig `yaml:"rates"`
+
+	// CostRetentionDays is how long individual cost events are kept. The daily
+	// rollup survives pruning, so a shorter horizon costs the drill-down and
+	// not the totals. Zero keeps everything.
+	CostRetentionDays int `yaml:"cost_retention_days"`
+}
+
+// QuotaRateConfig is the price of one unit from one provider.
+type QuotaRateConfig struct {
+	Provider string `yaml:"provider"`
+
+	// Model is optional. An entry without one is the provider's fallback, used
+	// when no rate names the model exactly — providers ship models faster than
+	// anybody updates a config file.
+	Model string `yaml:"model"`
+
+	// UnitKind defaults to tokens.
+	UnitKind string `yaml:"unit_kind"`
+
+	// PerUnit is the cost of a single unit. Model prices are quoted per million
+	// tokens, so this is a small number: 15 dollars per million is 0.000015.
+	PerUnit float64 `yaml:"per_unit"`
 }
 
 // LLM budget backends for QuotaConfig.LLMBudgetBackend.

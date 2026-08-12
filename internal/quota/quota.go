@@ -27,6 +27,20 @@ type Deps struct {
 	// a gateway is configured; never nil, so callers do not have to check.
 	TokenBudget TokenBudget
 
+	// Resolver applies per-subject overrides to the tiers. Never nil — a nil
+	// *Resolver resolves to the configured limit — so nothing has to branch.
+	Resolver *quota.Resolver
+
+	// OverrideStore and RequestStore back the self-service workflow. Nil on a
+	// deployment whose backend does not persist them, in which case requests
+	// are refused with a reason rather than accepted and lost.
+	OverrideStore quota.OverrideStore
+	RequestStore  quota.RequestStore
+
+	// Costs records what was spent. Never nil; a deployment with no ledger gets
+	// one that discards, so the loop never has to check.
+	Costs *Recorder
+
 	// Close releases whatever the backend holds — a Valkey pool, say. Never
 	// nil, so callers do not have to check.
 	Close func() error
@@ -72,6 +86,10 @@ func TwinKey(twinID string) quota.Key {
 // whether or not they would have been allowed.
 func (d Deps) Limiter() func(http.Handler) http.Handler {
 	return quota.Limit(d.Backend, d.Tiers.Request, RequestKey,
+		// An approved request raises one caller's ceiling without a redeploy.
+		// Without an override in force this is a map read against the
+		// resolver's cache and the configured policy is what applies.
+		quota.Resolve(d.Resolver, TierRequest),
 		quota.OnLimited(func(r *http.Request, key quota.Key, dec quota.Decision) {
 			slog.Info("rate limit exceeded",
 				"key", string(key),
@@ -113,7 +131,12 @@ func (d Deps) publishPressure(ctx context.Context, key quota.Key, tier string, d
 // TakeCapability charges one invocation of a capability against a twin's daily
 // allowance, returning whether it may proceed.
 func (d Deps) TakeCapability(ctx context.Context, twinID, capability string, now time.Time) (quota.Decision, error) {
-	dec, err := d.Tiers.Capability.Take(ctx, d.Backend, CapabilityKey(twinID, capability), 1, now)
+	// Resolved against the twin, not against the (twin, capability) pair the
+	// counter is keyed on: an operator raises "this twin's capability
+	// allowance", and asking them to name every capability separately would be
+	// a worse question with the same answer.
+	tier := d.Tiers.Capability.Resolved(ctx, d.Resolver, TwinKey(twinID), now)
+	dec, err := tier.Take(ctx, d.Backend, CapabilityKey(twinID, capability), 1, now)
 	if err != nil {
 		return dec, err
 	}
@@ -131,7 +154,8 @@ func (d Deps) Usage(ctx context.Context, twinID string, now time.Time) (map[stri
 		"llm_tokens": d.Tiers.LLMTokens,
 		"adapter":    d.Tiers.Adapter,
 	} {
-		dec, err := q.Peek(ctx, d.Backend, TwinKey(twinID), now)
+		dec, err := q.Resolved(ctx, d.Resolver, TwinKey(twinID), now).
+			Peek(ctx, d.Backend, TwinKey(twinID), now)
 		if err != nil {
 			return nil, fmt.Errorf("peek %s: %w", name, err)
 		}

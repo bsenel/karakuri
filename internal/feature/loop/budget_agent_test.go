@@ -71,7 +71,7 @@ func TestBudgetedAgentChargesEveryCall(t *testing.T) {
 	// unmetered otherwise.
 	inner := &greedyAgent{tokens: 250}
 	budget := &recordingBudget{limit: 10000}
-	agent := withBudget(inner, budget, "twin-1")
+	agent := withBudget(inner, budget, nil, "twin-1")
 
 	for range 4 {
 		if _, err := agent.Run(context.Background(), coreagent.Input{}); err != nil {
@@ -89,7 +89,7 @@ func TestBudgetedAgentChargesEveryCall(t *testing.T) {
 func TestBudgetedAgentRefusesWhenExhausted(t *testing.T) {
 	inner := &greedyAgent{tokens: 10}
 	budget := &recordingBudget{limit: 100, reserveErr: karakuriquota.ErrBudgetExhausted}
-	agent := withBudget(inner, budget, "twin-1")
+	agent := withBudget(inner, budget, nil, "twin-1")
 
 	_, err := agent.Run(context.Background(), coreagent.Input{})
 	if !errors.Is(err, karakuriquota.ErrBudgetExhausted) {
@@ -105,7 +105,7 @@ func TestBudgetedAgentFailsOpenWhenTheCounterIsUnreadable(t *testing.T) {
 	// healthy — the same trade the HTTP limiter makes.
 	inner := &greedyAgent{tokens: 10}
 	budget := &recordingBudget{limit: 100, reserveErr: errors.New("store unreachable")}
-	agent := withBudget(inner, budget, "twin-1")
+	agent := withBudget(inner, budget, nil, "twin-1")
 
 	if _, err := agent.Run(context.Background(), coreagent.Input{}); err != nil {
 		t.Errorf("Run: %v", err)
@@ -121,7 +121,7 @@ func TestBudgetedAgentDoesNotChargeFailedCalls(t *testing.T) {
 	boom := errors.New("provider exploded")
 	inner := &greedyAgent{tokens: 500, err: boom}
 	budget := &recordingBudget{limit: 10000}
-	agent := withBudget(inner, budget, "twin-1")
+	agent := withBudget(inner, budget, nil, "twin-1")
 
 	if _, err := agent.Run(context.Background(), coreagent.Input{}); !errors.Is(err, boom) {
 		t.Fatalf("Run error = %v", err)
@@ -135,10 +135,10 @@ func TestWithBudgetIsANoOpWithoutATwin(t *testing.T) {
 	// An ad-hoc objective with no twin has no subject to charge. Metering it
 	// against a shared bucket would be worse than not metering it.
 	inner := &greedyAgent{tokens: 10}
-	if got := withBudget(inner, &recordingBudget{limit: 1}, ""); got != coreagent.Agent(inner) {
+	if got := withBudget(inner, &recordingBudget{limit: 1}, nil, ""); got != coreagent.Agent(inner) {
 		t.Error("an objective with no twin was wrapped")
 	}
-	if got := withBudget(inner, nil, "twin-1"); got != coreagent.Agent(inner) {
+	if got := withBudget(inner, nil, nil, "twin-1"); got != coreagent.Agent(inner) {
 		t.Error("a nil budget produced a wrapper")
 	}
 }

@@ -18,6 +18,8 @@ replace (
 	github.com/bsenel/karakuri/auth/saml => ./auth/saml
 	github.com/bsenel/karakuri/auth/sql => ./auth/sql
 	github.com/bsenel/karakuri/quota => ./quota
+	github.com/bsenel/karakuri/quota/cost => ./quota/cost
+	github.com/bsenel/karakuri/quota/cost/sql => ./quota/cost/sql
 	github.com/bsenel/karakuri/quota/sql => ./quota/sql
 	github.com/bsenel/karakuri/quota/valkey => ./quota/valkey
 )
@@ -29,8 +31,11 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.107.0
 	github.com/bsenel/karakuri/auth/oidc v0.0.0-00010101000000-000000000000
 	github.com/bsenel/karakuri/auth/saml v0.0.0-00010101000000-000000000000
+	github.com/bsenel/karakuri/quota/cost v0.0.0
+	github.com/bsenel/karakuri/quota/cost/sql v0.0.0-00010101000000-000000000000
 	github.com/bsenel/karakuri/quota/sql v0.0.0-00010101000000-000000000000
 	github.com/bsenel/karakuri/quota/valkey v0.0.0-00010101000000-000000000000
+	github.com/coreos/go-oidc/v3 v3.20.0
 	github.com/crewjam/saml v0.5.1
 	github.com/glebarez/sqlite v1.11.0
 	github.com/go-chi/chi/v5 v5.3.1
@@ -77,7 +82,6 @@ require (
 	github.com/beevik/etree v1.5.0 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/cloudflare/circl v1.6.3 // indirect
-	github.com/coreos/go-oidc/v3 v3.20.0 // indirect
 	github.com/cyphar/filepath-securejoin v0.6.1 // indirect
 	github.com/dlclark/regexp2 v1.10.0 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect

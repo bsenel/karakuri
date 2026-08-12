@@ -11,6 +11,8 @@ import (
 	"github.com/bsenel/karakuri/internal/core/event"
 	"github.com/bsenel/karakuri/internal/platform/valkey"
 	"github.com/bsenel/karakuri/quota"
+	"github.com/bsenel/karakuri/quota/cost"
+	costsql "github.com/bsenel/karakuri/quota/cost/sql"
 	quotasql "github.com/bsenel/karakuri/quota/sql"
 	quotavalkey "github.com/bsenel/karakuri/quota/valkey"
 )
@@ -37,7 +39,90 @@ func Build(ctx context.Context, cfg config.QuotaConfig, db *sql.DB, hub *event.H
 		return Deps{}, err
 	}
 	deps.TokenBudget = budget
+
+	// Self-service and cost attribution need somewhere durable to write. Both
+	// are opt-in by way of the backend: an approval that vanished on restart
+	// and a spend report that started empty every morning are worse than not
+	// offering either, so a deployment on the memory backend gets neither and
+	// is told why.
+	if err := buildPersistence(ctx, cfg, db, &deps); err != nil {
+		_ = closeFn()
+		return Deps{}, err
+	}
 	return deps, nil
+}
+
+// buildPersistence wires the override, request and cost stores when the
+// deployment has a database to keep them in.
+func buildPersistence(ctx context.Context, cfg config.QuotaConfig, db *sql.DB, deps *Deps) error {
+	// Nothing to record into. Deps stays usable: a nil resolver resolves to the
+	// configured limit, and a zero Recorder discards.
+	deps.Resolver = quota.NewResolver(nil)
+	deps.Costs = &Recorder{}
+
+	if db == nil {
+		if cfg.Backend == config.QuotaBackendSQL {
+			return fmt.Errorf("quota backend %q needs a database", cfg.Backend)
+		}
+		slog.Info("quota overrides and cost attribution are off",
+			"reason", "no database was handed to the quota module",
+			"note", "self-service limits and spend reporting need somewhere durable to write")
+		return nil
+	}
+
+	dialect := quotasql.SQLite
+	costDialect := costsql.SQLite
+	if isPostgres(db) {
+		dialect, costDialect = quotasql.Postgres, costsql.Postgres
+	}
+
+	store, err := quotasql.New(db, quotasql.Options{Dialect: dialect})
+	if err != nil {
+		return err
+	}
+	if err := store.Migrate(ctx); err != nil {
+		return fmt.Errorf("quota override schema: %w", err)
+	}
+	deps.OverrideStore, deps.RequestStore = store, store
+	deps.Resolver = quota.NewResolver(store, quota.OnResolveError(func(subject quota.Key, err error) {
+		// Resolution falls back to the configured limit, so this log line is
+		// the only trace that an approved raise is not being applied.
+		slog.Error("quota overrides could not be read; the configured limit applies",
+			"subject", string(subject), "err", err)
+	}))
+
+	ledger, err := costsql.New(db, costsql.Options{Dialect: costDialect})
+	if err != nil {
+		return err
+	}
+	if err := ledger.Migrate(ctx); err != nil {
+		return fmt.Errorf("cost ledger schema: %w", err)
+	}
+	deps.Costs = &Recorder{
+		Ledger: ledger,
+		Pricer: cost.NewStaticPricer(ratesFrom(cfg)),
+		Hub:    deps.Hub,
+	}
+	return nil
+}
+
+// ratesFrom renders the configured price table.
+//
+// The table is parsed by Karakuri's config rather than by the cost module,
+// which takes a Go map: a price table is configuration, and a module whose
+// require block is empty should not gain a YAML parser to read one.
+func ratesFrom(cfg config.QuotaConfig) []cost.Rate {
+	out := make([]cost.Rate, 0, len(cfg.Rates))
+	for _, r := range cfg.Rates {
+		unit := r.UnitKind
+		if unit == "" {
+			unit = cost.UnitTokens
+		}
+		out = append(out, cost.Rate{
+			Provider: r.Provider, Model: r.Model, UnitKind: unit, PerUnit: r.PerUnit,
+		})
+	}
+	return out
 }
 
 // buildBudget picks who counts model spend.
