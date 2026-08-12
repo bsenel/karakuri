@@ -262,6 +262,64 @@ cookies and a login appears to succeed while doing nothing. Browsers do not need
 it — `http://localhost` is a trustworthy origin and accepts Secure cookies — so
 if you find yourself setting it in front of real users, terminate TLS instead.
 
+#### Single sign-on (OIDC and SAML)
+
+Set `auth.provider` to `oidc` or `saml` and Karakuri authenticates against
+Keycloak, Okta, Auth0, Azure AD or ADFS, mapping the groups they assert onto its
+own roles (see [ADR 009](docs/adr/009-federated-identity-jit-provisioning.md)):
+
+```yaml
+auth:
+  provider: oidc
+  frontend:
+    public_url: https://karakuri.example.com   # required; never inferred
+  oidc:
+    issuer_url: https://sso.example.com/realms/corp
+    client_id: karakuri
+    client_secret_env: KARAKURI_AUTH_OIDC_CLIENT_SECRET
+    groups_claim: groups        # Keycloak often nests: realm_access.roles
+  role_map:
+    groups:
+      karakuri-admins: [admin]
+      karakuri-operators: [operator]
+    default: []                 # see below
+```
+
+A user who logs in becomes an ordinary principal — `oidc:<subject>` — with role
+bindings reconciled from their groups on every login. After that everything
+works as it does for a local account: ownership conditions, quota keys, the
+audit log, `krk auth users list`.
+
+Three things worth knowing before turning it on:
+
+- **`public_url` is required**, and never inferred from the request. Behind a
+  proxy the `Host` header is attacker-controlled, and deriving a redirect target
+  from one is how open redirects start.
+- **`role_map.default` is empty on purpose.** Everybody in a corporate directory
+  can authenticate against a corporate identity provider, so a default role here
+  grants the whole company access. A user matching no group signs in and can do
+  nothing, which is the intended shape.
+- **Password login keeps working.** It is the break-glass path when the identity
+  provider is unreachable, which is why Phase 16 did not re-introduce a static
+  shared token.
+
+Logging in from a terminal opens a browser and catches the credential on a
+loopback port:
+
+```bash
+krk auth login --sso              # or --no-browser to paste the URL elsewhere
+krk auth whoami                   # oidc:<subject>, with the roles the groups mapped to
+```
+
+Nothing usable passes through the browser: the code it carries is bound to a
+secret that never leaves the CLI process, and it is a spent refresh token the
+moment it is redeemed.
+
+For SAML, publish `/api/v1/auth/saml/metadata` to the identity provider and
+point `auth.saml.idp_metadata_url` back at theirs. SAML is browser-only —
+assertions are one-time login artifacts, not per-request credentials — so a
+machine-to-machine client wants OIDC.
+
 ### Rate limits and quotas
 
 Four limits ship enabled (see [ADR 008](docs/adr/008-standalone-quota-module.md)),

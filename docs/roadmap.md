@@ -24,7 +24,7 @@ Karakuri replaced the original role-based workflow simulator with an autonomous 
 | 13    | Cross-Domain Objectives + Hardening        | **Completed** |
 | 14    | RBAC + Fine-Grained Authorization (core)   | **Completed** |
 | 15    | API Rate Limiting + Quota Management (core)| **Completed** |
-| 16    | Federated Identity (OIDC + SAML)           | Planned       |
+| 16    | Federated Identity (OIDC + SAML)           | **Completed** |
 | 17    | Hierarchical Resources + Org Units         | Planned       |
 | 18    | Quota Self-Service + Cost Attribution      | Planned       |
 | 19    | Frontend for Auth, Quota, Cost, Audit      | Planned       |
@@ -920,7 +920,7 @@ krk audit --kind authz_denied
 
 ---
 
-## Phase 16 — Federated Identity (OIDC + SAML) (Planned)
+## Phase 16 — Federated Identity (OIDC + SAML) (Completed)
 
 **Goal:** Plug enterprise IdPs (Keycloak, Okta, Auth0, Azure AD, ADFS) into Karakuri via OIDC and SAML, with each protocol implemented as an independent submodule of the Phase 14 `auth` module.
 
@@ -935,6 +935,40 @@ krk audit --kind authz_denied
 7. **Release workflows** — `release-auth-oidc.yml`, `release-auth-saml.yml` on respective tag patterns.
 
 **Acceptance:** End-to-end test stands up Keycloak in `dockertest`; logging in yields a `Principal` with `Roles` derived from the IdP's `groups` claim; JWKS rotation works without service restart. SAML round-trip exercised via `crewjam/saml`'s `samltest` helpers. CLI `krk auth login` completes against a test OIDC provider. Break-glass token works when IdP is unreachable and produces audit records.
+
+**What shipped — two protocol modules and a provisioner:**
+
+- **`github.com/bsenel/karakuri/auth/oidc`** — discovery, a cached JWKS that refetches on an unseen key ID, a `TokenResolver` for the machine-to-machine path, and the authorization-code flow with PKCE for browsers.
+- **`github.com/bsenel/karakuri/auth/saml`** — SP metadata, the assertion consumer, and attribute mapping over `crewjam/saml`. It brings no protocol code of its own: signature, audience and time-window validation are the library's, because hand-rolling any of it is a way to get signature verification subtly wrong, and that fails open.
+- **`auth` core** — `ExternalIdentity`, `RoleMap`, `Provisioner`, `ChainResolver` and `Sealer`, all with the module's require block still empty. A new protocol reduces to producing an `ExternalIdentity`.
+- **`internal/auth/federation.go`** — the Karakuri shim: provider selection, group-to-role mapping, and the derived flow-state key.
+
+**The roadmap described a field that does not exist.** Step 1 said to map a claim to `Principal.Roles`. There is no such field, and adding one would not have helped: `StoreAuthorizer` resolves permissions from role bindings in the `Store`, so a principal assembled from claims holds none and is denied everything. The alternative to giving the authorizer a second source of truth is **just-in-time provisioning** — write the provider's user into the store on the way in, after which a federated principal is an ordinary principal and ownership, quota, audit and `/auth/me` all work untouched. [ADR 009](adr/009-federated-identity-jit-provisioning.md) records the decision and what it costs: revocation is lazy until the next login, and disabling a principal is the fast path.
+
+**Principal IDs are namespaced.** Local principals are named by an administrator; federated ones are named by whoever controls the provider's subject field, which in some deployments is the user. Without `oidc:`/`saml:` prefixes, an identity provider asserting `sub=admin` takes over the local bootstrap administrator.
+
+**Matching no group grants nothing.** `role_map.default` is empty unless an operator sets it, because everybody in a corporate directory can authenticate against a corporate identity provider — a default role there is a grant to the whole company.
+
+**`ChainResolver` is subtler than it looks.** The obvious implementation stops at the first resolver returning anything but "no credential", treating a malformed one as a client bug worth surfacing. That breaks federation outright: a provider-issued token *is* a bearer token, so the local resolver reaches it first and rejects the signature, and the federated resolver never runs. It continues past verification failures and reports the first substantive error only when every resolver has declined.
+
+**Deviations from the plan, recorded:**
+
+- **No static break-glass token**, contrary to step 6. Local password login stays mounted alongside any provider, so the bootstrap administrator is the emergency path. Phase 14 deleted the static bearer token; re-adding a long-lived credential to survive a temporary outage trades a permanent risk for a temporary one.
+- **No `TokenResolver` for SAML**, contrary to step 2. An assertion is a one-time login artifact delivered by browser POST — single-use, bound to one recipient, valid for minutes. Building a per-request resolver on one means accepting replayed assertions. SAML has no machine-to-machine story; OIDC is that story.
+- **A stub identity provider alongside Keycloak**, rather than `dockertest`. The in-process provider proves Karakuri drives the flow correctly and runs on a laptop with no Docker; a real Keycloak in its own CI job proves Karakuri agrees with an actual provider about discovery documents, JWKS shapes, audiences and where groups live. The Keycloak job exercises the bearer path — driving Keycloak's login HTML would be a test of Keycloak's login HTML.
+- **No new release workflows.** `release-auth.yml` already matches `auth/*/v*.*.*` and derives the module directory from the tag, so `auth/oidc/v0.1.0` and `auth/saml/v0.1.0` are covered. Two more near-identical workflows would be duplication rather than coverage.
+- **The flow-state key is derived from the JWT signing material**, not configured. One fewer secret to distribute, and every replica agrees without being told to — a flow key that differs between replicas produces logins that fail intermittently behind a load balancer.
+- **CLI login uses a loopback handoff bound to a secret.** A browser finishes a login holding httpOnly cookies, which a terminal cannot read. The code that comes back through the browser is useless without a secret that never leaves the CLI process, and it is a spent refresh token the moment it is redeemed — so a replayed code ends the session it was stolen from rather than granting a second one.
+
+**Acceptance — met:**
+
+- `auth` holds at 96.7% with an empty require block; `auth/oidc` 96.9% and `auth/saml` 93.0% against gates of 90.
+- JWKS rotation is proven by forcing one rather than asserting the documentation.
+- The SAML round trip runs against a real `crewjam.IdentityProvider`, so signatures are genuinely produced and genuinely verified.
+- CI runs a live Keycloak: realm, client, group and user provisioned through the admin API, then a genuine ID token presented to Karakuri and the mapped role exercised.
+- The integration suite proves a federated login provisions a principal, that roles are *reconciled* rather than accumulated across logins, that a user in no mapped group can log in and do nothing, and that password login still works with a provider configured.
+
+**Also fixed along the way:** `quota/sql`'s 200-way contract race failed intermittently in CI with `SQLITE_BUSY`. SQLite permits one writer, so concurrent takes were always going to queue — the bug was that they queued in SQLite's busy handler, which retries with backoff and gives up at the timeout, so an arbitrary subset waited the whole timeout and then failed. They queue on a mutex now, which costs no throughput because the work was serial regardless, and respects context cancellation, which a busy timeout does not.
 
 ---
 
@@ -1441,7 +1475,7 @@ Checks (run via `krk domain test <id>`):
 | sqlite-vec extension unavailable in deployment               | Low      | Health check verifies sqlite-vec at startup; if unavailable, semantic memory degrades gracefully to keyword-based recall with startup warning                                                                |
 | Authority bounds misconfiguration permits unintended actions | High     | Default `AuthorityBounds` is maximally restrictive (`MaxAutonomousActions: 0`, `ConfidenceThreshold: 1.0`); operators must explicitly relax bounds in config; all autonomous actions logged to `tool_events`; **Phase 14 RBAC enforces permissions at the request-routing layer** so a misconfigured agent can't even reach a protected endpoint                                                                                                |
 | Cost runaway from unbounded LLM use                          | High     | Phase 15 introduces per-twin LLM token budgets; exhaustion produces a checkpoint event (human approval) rather than a 500 or silent overrun. Phase 18 layers cost attribution + `Cost.Recorded` events so operators see spend per twin / team / provider before the bill arrives                                                                                                                                                              |
-| IdP outage locks operators out of Karakuri                    | High     | Phase 16 ships a break-glass static bearer token (`cfg.Auth.BreakGlass.Token`) that bypasses the IdP for emergency admin access; every use logged at WARN and tagged in the Phase 13 audit log with `kind=break_glass`. The legacy single-bearer path (pre-Phase 14) remains available when `cfg.Auth.Provider = bearer`                                                                                                                       |
+| IdP outage locks operators out of Karakuri                    | High     | **Resolved differently than planned.** Local password login stays mounted alongside any configured provider, so the bootstrap administrator is the break-glass path. No static token was added: Phase 14 deleted the static bearer token, and re-adding a long-lived credential to survive a temporary outage trades a permanent risk for a temporary one. `ChainResolver` puts the local resolver first, so password login does not depend on the IdP being reachable |
 | Hierarchical-resource bypass via flat policy grants           | Medium   | Phase 17's `HierarchicalAuthorizer` rejects flat resource matches when the configured mode is hierarchical; `IsAncestor` checks gate every permission decision; migrations from v0.1.0 are tested with a fixed snapshot to guarantee no flat grant silently widens to a path-style descendant                                                                                                                                                |
 
 

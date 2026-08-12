@@ -30,7 +30,10 @@ html, body, #root {
 a { color: var(--accent); text-decoration: none; }
 a:hover { text-decoration: underline; }
 
-button {
+/* .button lets an anchor look like a button. Federated login is a real
+   navigation, not a fetch — the identity provider needs the browser itself — so
+   it has to be an <a>, and it should not look different for that reason. */
+button, .button {
   font: inherit;
   padding: 6px 12px;
   background: var(--bg-elev-2);
@@ -39,9 +42,10 @@ button {
   border-radius: 6px;
   cursor: pointer;
 }
-button:hover { background: var(--accent-soft); border-color: var(--accent); }
-button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
-button.primary:hover { background: #3a86d4; }
+.button { display: inline-block; text-decoration: none; }
+button:hover, .button:hover { background: var(--accent-soft); border-color: var(--accent); }
+button.primary, .button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+button.primary:hover, .button.primary:hover { background: #3a86d4; }
 button.danger { background: var(--red); border-color: var(--red); color: #fff; }
 button:disabled { opacity: 0.5; cursor: not-allowed; }
 
