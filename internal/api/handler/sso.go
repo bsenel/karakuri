@@ -20,6 +20,10 @@ type SSOHandler struct {
 	Federation *karakuriauth.Federation
 	Tokens     *auth.TokenService
 	Cookies    auth.CookieConfig
+
+	// InsecureAllowHTTP mirrors the cookie setting, for the one cookie this
+	// handler sets itself.
+	InsecureAllowHTTP bool
 }
 
 // Config tells an unauthenticated client what kind of login this server offers,
@@ -56,14 +60,25 @@ func (h *SSOHandler) kind() string {
 //
 // GET /api/v1/auth/sso/login
 func (h *SSOHandler) Login() http.Handler {
+	var provider http.Handler
 	switch {
 	case h.Federation.OIDC != nil:
-		return h.Federation.OIDC.LoginHandler()
+		provider = h.Federation.OIDC.LoginHandler()
 	case h.Federation.SAML != nil:
-		return h.Federation.SAML.LoginHandler()
+		provider = h.Federation.SAML.LoginHandler()
 	default:
 		return http.HandlerFunc(h.notConfigured)
 	}
+
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// A login started by `krk auth login --sso` needs its loopback details
+		// recorded before the browser leaves for the identity provider.
+		if err := h.beginCLILogin(w, r); err != nil {
+			authError(w, http.StatusBadRequest, "bad_request", err.Error())
+			return
+		}
+		provider.ServeHTTP(w, r)
+	})
 }
 
 // Callback completes an OIDC flow.
@@ -116,9 +131,16 @@ func (h *SSOHandler) establishSession(w http.ResponseWriter, r *http.Request, p 
 		"provider", h.kind(),
 		"principal", karakuriauth.SanitizeLogValue(p.ID))
 
-	// The destination comes from configuration, never from the request. A
-	// "return to" parameter read off an SSO callback is an open redirect, and
-	// this is exactly the endpoint an attacker would aim one at.
+	// A CLI login goes back to the loopback listener that started it. The port
+	// is validated and the host is hardcoded — see sso_cli.go.
+	if target := h.cliRedirect(w, r, p, pair); target != "" {
+		http.Redirect(w, r, target, http.StatusFound)
+		return
+	}
+
+	// Otherwise the destination comes from configuration, never from the
+	// request. A "return to" parameter read off an SSO callback is an open
+	// redirect, and this is exactly the endpoint an attacker would aim one at.
 	http.Redirect(w, r, h.Federation.AbsoluteRedirect(), http.StatusFound)
 }
 

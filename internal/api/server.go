@@ -156,9 +156,10 @@ func NewApp(
 		Cookies:    authDeps.Cookies,
 	}
 	ssoH := &handler.SSOHandler{
-		Federation: authDeps.Federation,
-		Tokens:     authDeps.Tokens,
-		Cookies:    authDeps.Cookies,
+		Federation:        authDeps.Federation,
+		Tokens:            authDeps.Tokens,
+		Cookies:           authDeps.Cookies,
+		InsecureAllowHTTP: cfg.Auth.Cookies.InsecureAllowHTTP,
 	}
 
 	r.Route("/api/v1", func(r chi.Router) {
@@ -178,6 +179,7 @@ func NewApp(
 		r.Get("/auth/sso/config", ssoH.Config)
 		r.Method(http.MethodGet, "/auth/sso/login", ssoH.Login())
 		r.Method(http.MethodGet, "/auth/sso/callback", ssoH.Callback())
+		r.Post("/auth/sso/exchange", ssoH.Exchange)
 		r.Method(http.MethodGet, "/auth/saml/metadata", ssoH.Metadata())
 		r.Method(http.MethodPost, "/auth/saml/acs", ssoH.ACS())
 

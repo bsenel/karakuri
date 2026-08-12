@@ -26,6 +26,7 @@ import (
 const (
 	SSOLoginPath     = "/auth/sso/login"
 	SSOCallbackPath  = "/auth/sso/callback"
+	SSOExchangePath  = "/auth/sso/exchange"
 	SAMLMetadataPath = "/auth/saml/metadata"
 	SAMLACSPath      = "/auth/saml/acs"
 )
@@ -55,6 +56,12 @@ type Federation struct {
 
 	// LoginRedirect is where a browser lands after a successful login.
 	LoginRedirect string
+
+	// Sealer signs the short-lived values that travel through a browser: the
+	// login-flow state each provider keeps, and the handoff code the CLI login
+	// uses. It carries the key derived from the JWT signing material, so every
+	// replica agrees without a second secret to distribute.
+	Sealer auth.Sealer
 }
 
 // Enabled reports whether a federated provider is configured at all.
@@ -121,6 +128,7 @@ func BuildFederation(ctx context.Context, cfg *config.Config, store auth.Store) 
 		return nil, fmt.Errorf("auth.role_map: %w", err)
 	}
 	f.Provisioner = provisioner
+	f.Sealer = auth.Sealer{Key: stateKey}
 
 	if kind == config.AuthProviderOIDC {
 		if err := f.buildOIDC(ctx, cfg, public, stateKey); err != nil {
