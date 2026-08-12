@@ -36,9 +36,13 @@ Overrides parent rules for `auth/` only. This directory is a **separate Go modul
 ## Federated identity
 
 The protocols live in submodules (`auth/oidc`, `auth/saml`) because they need dependencies
-and rule 2 says the core cannot have any. What lives here is everything both share:
-`ExternalIdentity`, `RoleMap`, `Provisioner` and `ChainResolver`. A new protocol should
-reduce to producing an `ExternalIdentity` and nothing else.
+and rule 2 says the core cannot have any. See
+[ADR 009](../docs/adr/009-federated-identity-jit-provisioning.md) for why a federated user
+becomes a local principal rather than carrying its roles in a token.
+
+What lives here is everything both protocols share: `ExternalIdentity`, `RoleMap`,
+`Provisioner`, `ChainResolver` and `Sealer`. A new protocol should reduce to producing an
+`ExternalIdentity` and nothing else.
 
 - **Federated users become real principals.** Authorization reads role bindings from the
   `Store`, so an identity that exists only as claims holds none and is denied everything.
@@ -69,5 +73,5 @@ reduce to producing an `ExternalIdentity` and nothing else.
 ## Testing
 
 `go test ./... -race` from this directory. Coverage is gated at 95% in CI
-(`.github/workflows/ci.yml`, job `auth-modules`) — the module is a security boundary, so
+(`.github/workflows/ci.yml`, job `modules`) — the module is a security boundary, so
 untested branches are treated as defects rather than debt.
