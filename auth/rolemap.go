@@ -72,16 +72,36 @@ func (p ClaimPath) resolve(claims map[string]any) (any, bool) {
 	return current, true
 }
 
-// RoleMap turns the groups a provider asserted into Karakuri roles.
+// RoleGrant is a role and the scope it is granted over.
+//
+// The scope is why this is a struct rather than a role name. Without it every
+// federated user lands with their role over everything, so a directory group of
+// two hundred people becomes two hundred globally-scoped principals — which is
+// exactly what a tenancy tree exists to prevent. An empty Scope still means
+// "*", because that is what a binding with no scope has always meant.
+type RoleGrant struct {
+	Role  string
+	Scope string
+}
+
+// EffectiveScope returns the grant's scope, defaulting to "*".
+func (g RoleGrant) EffectiveScope() string {
+	if g.Scope == "" {
+		return "*"
+	}
+	return g.Scope
+}
+
+// RoleMap turns the groups a provider asserted into scoped role grants.
 //
 // The mapping is one-way and explicit. Nothing is derived from the group name,
 // because a provider's directory is not under Karakuri's control: a group
 // called "admin" appearing in somebody's LDAP tree must not silently become the
 // admin role.
 type RoleMap struct {
-	// Groups maps an asserted group name to the roles it grants. A group with
-	// no entry grants nothing.
-	Groups map[string][]string
+	// Groups maps an asserted group name to what it grants. A group with no
+	// entry grants nothing.
+	Groups map[string][]RoleGrant
 
 	// Default is granted to any identity that authenticated but matched no
 	// group.
@@ -90,27 +110,23 @@ type RoleMap struct {
 	// anybody in the company directory can authenticate against a corporate
 	// identity provider, so "matched no group" has to mean no access rather than
 	// read-only access to everything.
-	Default []string
+	Default []RoleGrant
 }
 
-// Roles returns the sorted, de-duplicated roles these groups map to.
-func (m RoleMap) Roles(groups []string) []string {
-	var out []string
+// Grants returns the sorted, de-duplicated grants these groups map to.
+//
+// Two groups mapping the same role to different scopes yield two grants, not
+// one: somebody who is an operator in two teams holds it in both, and
+// collapsing them would either widen or narrow what the directory said.
+func (m RoleMap) Grants(groups []string) []RoleGrant {
+	var out []RoleGrant
 	for _, group := range groups {
-		for _, role := range m.Groups[group] {
-			if role != "" && !slices.Contains(out, role) {
-				out = append(out, role)
-			}
-		}
+		out = appendGrants(out, m.Groups[group])
 	}
 	if len(out) == 0 {
-		for _, role := range m.Default {
-			if role != "" && !slices.Contains(out, role) {
-				out = append(out, role)
-			}
-		}
+		out = appendGrants(out, m.Default)
 	}
-	slices.Sort(out)
+	slices.SortFunc(out, compareGrants)
 	return out
 }
 
@@ -119,17 +135,59 @@ func (m RoleMap) Roles(groups []string) []string {
 // than at the first login that would have needed one.
 func (m RoleMap) Mentions() []string {
 	var out []string
-	add := func(roles []string) {
-		for _, role := range roles {
-			if role != "" && !slices.Contains(out, role) {
-				out = append(out, role)
+	add := func(grants []RoleGrant) {
+		for _, g := range grants {
+			if g.Role != "" && !slices.Contains(out, g.Role) {
+				out = append(out, g.Role)
 			}
 		}
 	}
-	for _, roles := range m.Groups {
-		add(roles)
+	for _, grants := range m.Groups {
+		add(grants)
 	}
 	add(m.Default)
 	slices.Sort(out)
 	return out
+}
+
+// Scopes returns every scope the map can grant over, sorted, excluding the
+// unrestricted one. It is what a host application validates against its own
+// container tree at boot: a scope naming a team that does not exist is a typo,
+// and finding it here beats finding it when somebody cannot see their twins.
+func (m RoleMap) Scopes() []string {
+	var out []string
+	add := func(grants []RoleGrant) {
+		for _, g := range grants {
+			scope := g.EffectiveScope()
+			if scope != "*" && !slices.Contains(out, scope) {
+				out = append(out, scope)
+			}
+		}
+	}
+	for _, grants := range m.Groups {
+		add(grants)
+	}
+	add(m.Default)
+	slices.Sort(out)
+	return out
+}
+
+func appendGrants(out, grants []RoleGrant) []RoleGrant {
+	for _, g := range grants {
+		if g.Role == "" {
+			continue
+		}
+		g.Scope = g.EffectiveScope()
+		if !slices.Contains(out, g) {
+			out = append(out, g)
+		}
+	}
+	return out
+}
+
+func compareGrants(a, b RoleGrant) int {
+	if a.Role != b.Role {
+		return strings.Compare(a.Role, b.Role)
+	}
+	return strings.Compare(a.Scope, b.Scope)
 }

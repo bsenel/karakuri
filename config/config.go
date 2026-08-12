@@ -202,10 +202,14 @@ const (
 )
 
 // AuthRoleMapConfig maps the groups an identity provider asserts onto Karakuri
-// roles.
+// roles, optionally inside an organisation, team or project.
+//
+// One identity provider is configured at a time, so group names come from a
+// single namespace and cannot collide. Federating two providers would need this
+// map keyed by issuer; that is not supported.
 type AuthRoleMapConfig struct {
-	// Groups maps an asserted group name to the roles it grants.
-	Groups map[string][]string `yaml:"groups"`
+	// Groups maps an asserted group name to what it grants.
+	Groups map[string][]AuthRoleGrantConfig `yaml:"groups"`
 
 	// Default is granted to a user who authenticated but matched no group.
 	//
@@ -214,7 +218,50 @@ type AuthRoleMapConfig struct {
 	// identity provider, so a default role here is a grant to the whole
 	// company. Leaving it empty means such a user can log in and see nothing,
 	// which is the correct shape — authentication is not authorization.
-	Default []string `yaml:"default"`
+	Default []AuthRoleGrantConfig `yaml:"default"`
+}
+
+// AuthRoleGrantConfig is one mapped role and where it applies.
+//
+// Containers are named rather than identified because a human writes this file
+// and nobody knows a team's ID when they do. The names are resolved to IDs once,
+// at boot, and only the IDs ever reach a binding — see ADR 010 for why a policy
+// must never carry a display name.
+type AuthRoleGrantConfig struct {
+	Role string `yaml:"role"`
+
+	// Org, Team and Project name the container the role is granted over. At
+	// most one of Team and Project may be set, and Team needs its Org to
+	// disambiguate: two organisations may each have a team called
+	// "Engineering", which is the whole reason names are scoped per parent.
+	//
+	// All empty means the role is granted over everything, which is what the
+	// bare string form means and what every mapping meant before Phase 17.
+	Org     string `yaml:"org,omitempty"`
+	Team    string `yaml:"team,omitempty"`
+	Project string `yaml:"project,omitempty"`
+}
+
+// UnmarshalYAML accepts both the bare form and the mapping form:
+//
+//	karakuri-admins: [admin]
+//	acme-engineers:  [{role: operator, org: acme, team: eng}]
+//
+// The bare form is what every existing configuration file uses and it keeps
+// meaning exactly what it meant: the role over everything. A config change is
+// not a reasonable price for upgrading.
+func (g *AuthRoleGrantConfig) UnmarshalYAML(node *yaml.Node) error {
+	if node.Kind == yaml.ScalarNode {
+		return node.Decode(&g.Role)
+	}
+	// A distinct type, so decoding the mapping does not call this method again.
+	type grant AuthRoleGrantConfig
+	var decoded grant
+	if err := node.Decode(&decoded); err != nil {
+		return err
+	}
+	*g = AuthRoleGrantConfig(decoded)
+	return nil
 }
 
 // AuthOIDCConfig configures the OpenID Connect provider.

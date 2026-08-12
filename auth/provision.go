@@ -170,61 +170,83 @@ func (p *Provisioner) merge(current Principal, identity ExternalIdentity) *Princ
 }
 
 // reconcile brings the principal's managed bindings in line with the mapped
-// roles, leaving every unmanaged binding alone.
+// grants, leaving every unmanaged binding alone.
+//
+// The unit of reconciliation is (role, scope), not role. Somebody who is an
+// operator in two teams holds two bindings, and losing one group at the
+// provider has to remove one of them and keep the other — keying on the role
+// alone would take both away or neither.
 func (p *Provisioner) reconcile(ctx context.Context, principal Principal, identity ExternalIdentity, change RoleChange) (RoleChange, error) {
-	desired := p.Roles.Roles(identity.Groups)
+	desired := p.Roles.Grants(identity.Groups)
 
 	existing, err := p.Store.ListBindings(ctx, principal.ID)
 	if err != nil {
 		return change, fmt.Errorf("list bindings for %q: %w", principal.ID, err)
 	}
-	managed := map[string]RoleBinding{}
+	// Keyed on the binding's own fields rather than on its ID, so a binding
+	// written before scopes existed is recognised as the grant it represents
+	// and is left alone instead of being deleted and rewritten under a new ID.
+	managed := map[RoleGrant]RoleBinding{}
 	for _, b := range existing {
 		if strings.HasPrefix(b.ID, ManagedBindingPrefix) {
-			managed[b.Role] = b
+			managed[RoleGrant{Role: b.Role, Scope: b.EffectiveScope()}] = b
 		}
 	}
 
-	for _, role := range desired {
-		if _, ok := managed[role]; ok {
+	for _, grant := range desired {
+		if _, ok := managed[grant]; ok {
 			continue
 		}
-		if _, err := p.Store.GetRole(ctx, role); err != nil {
+		if _, err := p.Store.GetRole(ctx, grant.Role); err != nil {
 			if errors.Is(err, ErrRoleNotFound) {
-				change.Unknown = append(change.Unknown, role)
+				change.Unknown = append(change.Unknown, grant.Role)
 				continue
 			}
-			return change, fmt.Errorf("look up role %q: %w", role, err)
+			return change, fmt.Errorf("look up role %q: %w", grant.Role, err)
 		}
 		if err := p.Store.PutBinding(ctx, RoleBinding{
-			ID:          managedBindingID(principal.ID, role),
+			ID:          managedBindingID(principal.ID, grant),
 			PrincipalID: principal.ID,
-			Role:        role,
-			Scope:       "*",
+			Role:        grant.Role,
+			Scope:       grant.Scope,
 		}); err != nil {
-			return change, fmt.Errorf("bind %q to %q: %w", principal.ID, role, err)
+			return change, fmt.Errorf("bind %q to %q: %w", principal.ID, grant.Role, err)
 		}
-		change.Added = append(change.Added, role)
+		change.Added = append(change.Added, describeGrant(grant))
 	}
 
-	for role, binding := range managed {
-		if slices.Contains(desired, role) {
+	for grant, binding := range managed {
+		if slices.Contains(desired, grant) {
 			continue
 		}
 		if err := p.Store.DeleteBinding(ctx, binding.ID); err != nil && !errors.Is(err, ErrBindingNotFound) {
-			return change, fmt.Errorf("unbind %q from %q: %w", principal.ID, role, err)
+			return change, fmt.Errorf("unbind %q from %q: %w", principal.ID, grant.Role, err)
 		}
-		change.Removed = append(change.Removed, role)
+		change.Removed = append(change.Removed, describeGrant(grant))
 	}
 
 	slices.Sort(change.Added)
 	slices.Sort(change.Removed)
 	slices.Sort(change.Unknown)
+	change.Unknown = slices.Compact(change.Unknown)
 	return change, nil
 }
 
 // managedBindingID is deterministic so reconciliation is idempotent and needs
 // no extra column to record provenance: the ID itself carries it.
-func managedBindingID(principalID, role string) string {
-	return ManagedBindingPrefix + principalID + ":" + role
+//
+// The scope is part of it because a principal can hold one role at several
+// scopes, and two bindings cannot share an ID.
+func managedBindingID(principalID string, grant RoleGrant) string {
+	return ManagedBindingPrefix + principalID + ":" + grant.Role + ":" + grant.EffectiveScope()
+}
+
+// describeGrant renders a grant for RoleChange, which an operator reads in an
+// audit record. An unscoped grant renders as the bare role so the common case
+// stays as legible as it was before scopes existed.
+func describeGrant(grant RoleGrant) string {
+	if scope := grant.EffectiveScope(); scope != "*" {
+		return grant.Role + "@" + scope
+	}
+	return grant.Role
 }

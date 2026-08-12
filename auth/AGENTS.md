@@ -58,6 +58,11 @@ What lives here is everything both protocols share: `ExternalIdentity`, `RoleMap
 - **Matching no group grants nothing.** `RoleMap.Default` stays empty unless an operator
   fills it in: everyone in a corporate directory can authenticate, so a default role is a
   grant to the whole company.
+- **A mapped grant carries a scope.** `RoleGrant` is a role *and* a scope, and reconciliation
+  keys on the pair, so somebody in two teams holds two bindings and losing one group takes
+  one away. Without the scope every federated user lands over everything, and a directory
+  group of two hundred people is two hundred globally-scoped principals. An unset scope still
+  means `*`, which is what a binding with no scope has always meant.
 - **A local credential path always remains.** `ChainResolver` puts the local `JWTResolver`
   ahead of the provider's, so the bootstrap administrator can still log in when the IdP is
   unreachable. That is the break-glass path — deliberately not a second static token, which

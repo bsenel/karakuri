@@ -62,7 +62,7 @@ func TestKeycloakBearerLogin(t *testing.T) {
 		cfg.Auth.OIDC.IssuerURL = issuer
 		cfg.Auth.OIDC.ClientID = keycloakClient
 		cfg.Auth.OIDC.ClientSecret = keycloakSecret
-		cfg.Auth.RoleMap.Groups = map[string][]string{keycloakGroup: {"operator"}}
+		cfg.Auth.RoleMap.Groups = roleGrants(map[string][]string{keycloakGroup: {"operator"}})
 	})
 	defer cleanup()
 
