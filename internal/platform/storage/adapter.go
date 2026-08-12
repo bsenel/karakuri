@@ -13,12 +13,62 @@ import (
 	"github.com/bsenel/karakuri/internal/core/vfs"
 )
 
+// ScopeSelector selects rows by identity or by containment (Phase 17).
+//
+// It is the storage-shaped form of the scopes a principal's bindings cover:
+// a binding on one twin contributes an ID, a binding on an org contributes a
+// label, and a binding on "org:*" contributes a prefix. Translating patterns
+// into these three lists is the caller's job (internal/auth.ListSelectors),
+// because pattern grammar belongs to the auth module and SQL belongs here.
+type ScopeSelector struct {
+	// IDs names rows directly — a binding scoped "twin:abc".
+	IDs []string
+
+	// Labels names containers the row belongs to — "team:t_7f2a".
+	Labels []string
+
+	// LabelPrefixes covers a whole kind of container — a binding scoped
+	// "org:*" contributes "org:". Rare, but supported so a filtered listing
+	// cannot be narrower than the per-row check, which would show a 403 on a
+	// list for a row the same principal can fetch by ID.
+	LabelPrefixes []string
+}
+
+// Empty reports whether the selector matches nothing at all.
+func (s ScopeSelector) Empty() bool {
+	return len(s.IDs) == 0 && len(s.Labels) == 0 && len(s.LabelPrefixes) == 0
+}
+
 // TwinFilter filters twin list queries.
 type TwinFilter struct {
 	Kind   string
 	Domain string
 	Limit  int
 	Offset int
+
+	// Visible restricts the listing to what a principal may see. Nil means no
+	// restriction — an unauthenticated internal caller, or a principal whose
+	// grants cover everything.
+	//
+	// It is a pointer rather than an empty-means-everything value on purpose:
+	// a principal with no grants at all must see nothing, and a filter that
+	// widens to every row when its input is empty is how a listing leaks.
+	Visible *ScopeSelector
+
+	// Hidden removes rows an unconditional deny covers. Conditional denies
+	// cannot appear here — whether one bites depends on the row — so a filtered
+	// list is a narrowing and the per-resource check stays authoritative.
+	Hidden ScopeSelector
+}
+
+// ObjectiveFilter filters objective list queries. TwinID and Status are the
+// original query parameters; the scope fields mean what TwinFilter's do.
+type ObjectiveFilter struct {
+	TwinID string
+	Status string
+
+	Visible *ScopeSelector
+	Hidden  ScopeSelector
 }
 
 // LoopIteration is the storage DTO for loop step records.
@@ -123,7 +173,7 @@ type StorageAdapter interface {
 	// Objectives
 	SaveObjective(ctx context.Context, o objective.Objective) error
 	GetObjective(ctx context.Context, id objective.ObjectiveID) (objective.Objective, error)
-	ListObjectives(ctx context.Context, twinID string, status string) ([]objective.Objective, error)
+	ListObjectives(ctx context.Context, f ObjectiveFilter) ([]objective.Objective, error)
 	UpdateObjectiveStatus(ctx context.Context, id objective.ObjectiveID, s objective.ObjectiveStatus) error
 
 	// Loop iterations

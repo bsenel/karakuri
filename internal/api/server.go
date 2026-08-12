@@ -103,8 +103,10 @@ func NewApp(
 		memSvc = memory.NewService(store, cfg.Memory.SemanticTopK)
 	}
 	twinSvc := twin.NewService(store, hub)
-	objSvc := objective.NewService(store)
 	containerSvc := container.NewService(store)
+	// Objectives inherit their twin's containers, so a grant on an organisation
+	// reaches the work being done in it and not only the twins themselves.
+	objSvc := objective.NewService(store).WithContainers(containerSvc)
 	for _, t := range templates {
 		objSvc.RegisterTemplate(t)
 	}
@@ -146,10 +148,17 @@ func NewApp(
 	ownedTwin := scoped(karakuriauth.OwnedTwinResource(store))
 	twinRes := scoped(karakuriauth.TwinResource)
 	objectiveRes := scoped(karakuriauth.ObjectiveResource)
+	// List routes are the one place a collection ref carries the caller's own
+	// containers, so a team-scoped binding can reach GET /twins at all. Which
+	// rows come back is then the handler's filter, not this check.
+	twinList := karakuriauth.ScopedCollection(authDeps.Authorizer,
+		karakuriauth.ActionTwinRead, karakuriauth.TwinResource)
+	objectiveList := karakuriauth.ScopedCollection(authDeps.Authorizer,
+		karakuriauth.ActionObjectiveRead, karakuriauth.ObjectiveResource)
 
 	healthH := &handler.HealthHandler{Providers: providers, Tools: toolReg, Exporters: exporters, Worktrees: wt, RepoPath: cfg.Git.RepoPath}
-	twinH := &handler.TwinHandler{Twins: twinSvc}
-	objH := &handler.ObjectiveHandler{Objectives: objSvc}
+	twinH := &handler.TwinHandler{Twins: twinSvc, Scopes: authDeps.Authorizer}
+	objH := &handler.ObjectiveHandler{Objectives: objSvc, Scopes: authDeps.Authorizer}
 	loopH := &handler.LoopHandler{Loop: loopSvc}
 	cpH := &handler.CheckpointHandler{Checkpoints: cpSvc}
 	artH := &handler.ArtifactHandler{Artifacts: artSvc}
@@ -220,7 +229,7 @@ func NewApp(
 
 			r.Route("/twins", func(r chi.Router) {
 				r.With(require(karakuriauth.ActionTwinCreate, nil)).Post("/", twinH.Create)
-				r.With(require(karakuriauth.ActionTwinRead, nil)).Get("/", twinH.List)
+				r.With(require(karakuriauth.ActionTwinRead, twinList)).Get("/", twinH.List)
 				r.With(require(karakuriauth.ActionTwinRead, ownedTwin)).Get("/{id}", twinH.Get)
 				r.With(require(karakuriauth.ActionTwinUpdate, ownedTwin)).Put("/{id}", twinH.Update)
 				r.With(require(karakuriauth.ActionTwinBind, ownedTwin)).Put("/{id}/bindings", twinH.SetBindings)
@@ -229,7 +238,7 @@ func NewApp(
 
 			r.Route("/objectives", func(r chi.Router) {
 				r.With(require(karakuriauth.ActionObjectiveCreate, nil)).Post("/", objH.Create)
-				r.With(require(karakuriauth.ActionObjectiveRead, nil)).Get("/", objH.List)
+				r.With(require(karakuriauth.ActionObjectiveRead, objectiveList)).Get("/", objH.List)
 				r.With(require(karakuriauth.ActionObjectiveRead, nil)).Get("/templates", objH.ListTemplates)
 				r.With(require(karakuriauth.ActionObjectiveRead, objectiveRes)).Get("/{id}", objH.Get)
 				r.With(require(karakuriauth.ActionObjectiveUpdate, objectiveRes)).Post("/{id}/status", objH.UpdateStatus)

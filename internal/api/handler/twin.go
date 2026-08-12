@@ -5,13 +5,19 @@ import (
 	"net/http"
 
 	"github.com/bsenel/karakuri/auth"
+	karakuriauth "github.com/bsenel/karakuri/internal/auth"
 	"github.com/bsenel/karakuri/internal/core/twin"
 	featuretwin "github.com/bsenel/karakuri/internal/feature/twin"
+	"github.com/bsenel/karakuri/internal/platform/storage"
 	"github.com/go-chi/chi/v5"
 )
 
 type TwinHandler struct {
 	Twins *featuretwin.Service
+
+	// Scopes narrows a listing to the twins the caller may read. Nil disables
+	// filtering, which is what a deployment with no authorizer wired has.
+	Scopes karakuriauth.ScopeAuthorizer
 }
 
 func (h *TwinHandler) Create(w http.ResponseWriter, r *http.Request) {
@@ -52,10 +58,34 @@ func (h *TwinHandler) Get(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, t)
 }
 
+// List returns the twins the caller may read.
+//
+// The permission check on this route answers "may you list twins at all"; it
+// cannot answer "which ones", because that question is about rows the request
+// has not named. So the listing is filtered here, from the same bindings the
+// per-resource check reads — otherwise per-resource denial would not be
+// isolation, and GET /twins would be all-or-nothing.
+//
+// The filter is a narrowing, not the authority. Conditional denies cannot
+// appear in GrantedScopes — whether one bites depends on the resource — so
+// GET /twins/{id} stays the authoritative check for any twin listed here.
 func (h *TwinHandler) List(w http.ResponseWriter, r *http.Request) {
-	kind := r.URL.Query().Get("kind")
-	domain := r.URL.Query().Get("domain")
-	twins, err := h.Twins.List(r.Context(), kind, domain)
+	principal, _ := auth.PrincipalFromContext(r.Context())
+	visible, hidden, err := karakuriauth.ListFor(
+		r.Context(), h.Scopes, principal.ID, karakuriauth.ActionTwinRead, "twin")
+	if err != nil {
+		// Fail closed: an authorizer that cannot answer must not produce an
+		// unfiltered list.
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	twins, err := h.Twins.List(r.Context(), storage.TwinFilter{
+		Kind:    r.URL.Query().Get("kind"),
+		Domain:  r.URL.Query().Get("domain"),
+		Visible: visible,
+		Hidden:  hidden,
+	})
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
