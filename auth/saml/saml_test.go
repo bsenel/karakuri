@@ -29,9 +29,9 @@ func newProvisioner(t *testing.T) (*auth.Provisioner, auth.Store) {
 	return &auth.Provisioner{
 		Store:  store,
 		Prefix: karakurisaml.DefaultPrefix,
-		Roles: auth.RoleMap{Groups: map[string][]string{
-			"karakuri-operators": {"operator"},
-			"karakuri-admins":    {"admin"},
+		Roles: auth.RoleMap{Groups: map[string][]auth.RoleGrant{
+			"karakuri-operators": {{Role: "operator"}},
+			"karakuri-admins":    {{Role: "admin"}},
 		}},
 	}, store
 }
