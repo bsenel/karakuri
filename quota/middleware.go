@@ -37,7 +37,12 @@ func Limit(b Backend, p Policy, extract KeyExtractor, opts ...Option) func(http.
 				return
 			}
 
-			d, err := b.Take(r.Context(), key, p, cfg.cost(r), cfg.now())
+			now := cfg.now()
+			// The policy in force may not be the one configured: an operator
+			// can have raised this subject's ceiling since boot.
+			effective := cfg.resolver.Policy(r.Context(), key, cfg.limitName, p, now)
+
+			d, err := b.Take(r.Context(), key, effective, cfg.cost(r), now)
 			if err != nil {
 				cfg.onError(r, key, err)
 				if cfg.failClosed {
@@ -89,6 +94,8 @@ type options struct {
 	failClosed bool
 	cost       func(*http.Request) int
 	now        func() time.Time
+	resolver   *Resolver
+	limitName  string
 }
 
 func newOptions(opts []Option) options {
@@ -137,6 +144,24 @@ func OnPressure(threshold float64, fn func(*http.Request, Key, Decision)) Option
 			return
 		}
 		o.pressureAt, o.onPressure = threshold, fn
+	}
+}
+
+// Resolve makes the limit per-subject: the policy passed to Limit becomes the
+// base, and an override for name replaces its ceiling.
+//
+// It is an option rather than a change to Limit's signature so that every
+// existing caller keeps working and a deployment with no overrides pays
+// nothing — without it the resolver is never consulted at all.
+//
+// The lookup is a cache read on the overwhelming majority of requests; see
+// Resolver.
+func Resolve(r *Resolver, name string) Option {
+	return func(o *options) {
+		if r == nil || name == "" {
+			return
+		}
+		o.resolver, o.limitName = r, name
 	}
 }
 
