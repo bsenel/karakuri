@@ -69,6 +69,75 @@ auth:
     # http://localhost is treated as a secure origin and accepts Secure cookies.
     insecure_allow_http: false
 
+  # Where logins come from: bearer, oidc or saml.
+  #
+  # Choosing a federated provider does NOT switch password login off. It stays
+  # mounted alongside, deliberately: it is the break-glass path when the
+  # identity provider is unreachable, and adding a static shared token back to
+  # serve that purpose is exactly what Phase 14 removed.
+  provider: bearer
+
+  frontend:
+    # This server's externally reachable base URL. Required once a federated
+    # provider is configured, and deliberately not inferred from an inbound
+    # request: behind a proxy the Host header is attacker-controlled, and
+    # deriving a redirect target from one is how open redirects start.
+    public_url: ""
+    # Where a browser lands after a successful federated login.
+    login_redirect: /
+
+  # Which roles the groups an identity provider asserts should grant.
+  #
+  # `default` applies to a user who authenticated but matched no group, and it
+  # is empty on purpose: everybody in a corporate directory can authenticate,
+  # so a default role here is a grant to the whole company. Empty means such a
+  # user logs in and sees nothing, which is the correct shape — authentication
+  # is not authorization.
+  role_map:
+    groups: {}
+    #   karakuri-admins: [admin]
+    #   karakuri-operators: [operator]
+    #   karakuri-readers: [viewer]
+    default: []
+
+  oidc:
+    issuer_url: ""
+    client_id: ""
+    # Never inline the secret; name the variable holding it, as every other
+    # secret in this file does.
+    client_secret_env: KARAKURI_AUTH_OIDC_CLIENT_SECRET
+    # Defaults to <public_url>/api/v1/auth/sso/callback. It must match what is
+    # registered with the provider.
+    redirect_url: ""
+    # Empty requests openid, profile and email.
+    scopes: []
+    # There is no standard OIDC claim for group membership. Keycloak nests it
+    # under realm_access.roles, Okta and Auth0 use groups, Azure AD emits
+    # object IDs. Empty means "groups".
+    groups_claim: ""
+    email_claim: ""
+    name_claim: ""
+
+  saml:
+    # One of these supplies the identity provider's signing certificates and
+    # endpoints. The URL is fetched once at startup.
+    idp_metadata_url: ""
+    idp_metadata_file: ""
+    # Defaults to <public_url>/api/v1/auth/saml/metadata.
+    entity_id: ""
+    # Matched against both an attribute's Name and its FriendlyName, because
+    # providers populate one, the other, or both: ADFS sends
+    # http://schemas.xmlsoap.org/claims/Group, Azure AD sends
+    # http://schemas.microsoft.com/ws/2008/06/identity/claims/groups, Okta
+    # sends groups, Shibboleth sends eduPersonAffiliation.
+    role_attribute: groups
+    email_attribute: email
+    name_attribute: displayName
+    # Accept logins this server did not start. Off by default: without a
+    # request of ours to correlate against, the guarantee that a response
+    # answers a request we actually sent is gone.
+    allow_idp_initiated: false
+
 quota:
   # Where counters live: memory, sql or valkey.
   #

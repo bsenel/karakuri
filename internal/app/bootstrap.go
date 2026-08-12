@@ -379,6 +379,14 @@ func BuildAuth(ctx context.Context, gormDB *gorm.DB, store storage.StorageAdapte
 		return api.AuthDeps{}, fmt.Errorf("seed auth model: %w", err)
 	}
 
+	federation, err := karakuriauth.BuildFederation(ctx, cfg, authStore)
+	if err != nil {
+		return api.AuthDeps{}, err
+	}
+	if federation.Enabled() {
+		slog.Info("federated identity enabled", "provider", federation.Kind)
+	}
+
 	authorizer := auth.NewAuthorizer(authStore)
 	enforcer := auth.NewEnforcer(authorizer)
 	// Every denial lands in the same audit log as authority-bounds escalations,
@@ -396,6 +404,7 @@ func BuildAuth(ctx context.Context, gormDB *gorm.DB, store storage.StorageAdapte
 		Catalog:    catalog,
 		Enforcer:   enforcer,
 		Cookies:    karakuriauth.CookieConfig(cfg.Auth),
+		Federation: federation,
 	}, nil
 }
 

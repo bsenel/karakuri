@@ -202,3 +202,59 @@ jobs:
           go-version: "1.25.x"
           cache: true
       - run: go test ./... -race -count=1 -timeout 5m
+
+  # A real identity provider, because the in-process one in the integration
+  # suite can only prove Karakuri drives the flow correctly — not that it agrees
+  # with an actual provider about discovery documents, JWKS shapes, audiences
+  # and where group membership lives, which is where implementations differ.
+  #
+  # Its own job rather than a service container on `test`: Keycloak takes the
+  # better part of a minute to become ready, and making every other test wait
+  # for that is a poor trade.
+  identity:
+    name: Identity provider
+    runs-on: ubuntu-latest
+    needs: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: web-dist
+          path: web/dist
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.x"
+          cache: true
+
+      # Started with `docker run` rather than as a `services:` container: the
+      # image's entrypoint needs the `start-dev` argument, and service
+      # containers have no way to pass one.
+      - name: Start Keycloak
+        run: |
+          docker run -d --name keycloak -p 8080:8080 \
+            -e KC_BOOTSTRAP_ADMIN_USERNAME=admin \
+            -e KC_BOOTSTRAP_ADMIN_PASSWORD=admin \
+            quay.io/keycloak/keycloak:26.0 start-dev
+
+      # The image ships no curl, so readiness is polled from the runner rather
+      # than through a container health check.
+      - name: Wait for Keycloak
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 90); do
+            if curl -fsS http://localhost:8080/realms/master >/dev/null 2>&1; then
+              echo "Keycloak ready after ${i}s"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Keycloak did not become ready; last 50 log lines:" >&2
+          docker logs --tail 50 keycloak >&2
+          exit 1
+
+      - name: Federated identity end to end
+        env:
+          KEYCLOAK_URL: http://localhost:8080
+          KEYCLOAK_ADMIN: admin
+          KEYCLOAK_ADMIN_PASSWORD: admin
+        run: go test ./test/integration/... -run TestKeycloak -race -count=1 -timeout 5m -v

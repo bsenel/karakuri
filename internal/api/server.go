@@ -49,6 +49,10 @@ type AuthDeps struct {
 	Catalog    *auth.Catalog
 	Enforcer   *auth.Enforcer
 	Cookies    auth.CookieConfig
+
+	// Federation is the configured identity provider, or a zero value when
+	// none is. It is never nil.
+	Federation *karakuriauth.Federation
 }
 
 // Resolver authenticates a request from its access token: the Authorization
@@ -59,7 +63,18 @@ type AuthDeps struct {
 // so the cookie covers SSE too, without writing a credential into URLs that
 // end up in access logs, proxy logs and Referer headers.
 func (d AuthDeps) Resolver() auth.TokenResolver {
-	return auth.NewJWTResolver(d.Tokens, karakuriauth.AccessCookieName)
+	local := auth.NewJWTResolver(d.Tokens, karakuriauth.AccessCookieName)
+	external := d.Federation.Resolver()
+	if external == nil {
+		return local
+	}
+	// Local first: it is a signature check against a key already in memory,
+	// while the federated one may reach for a key set over the network. The
+	// chain continues past a failed verification precisely so a
+	// provider-issued token — which is also a bearer token, and which the
+	// local resolver will reject — still reaches the resolver that can verify
+	// it. See auth.ChainResolver.
+	return auth.ChainResolver{local, external}
 }
 
 func NewApp(
@@ -140,16 +155,31 @@ func NewApp(
 		Catalog:    authDeps.Catalog,
 		Cookies:    authDeps.Cookies,
 	}
+	ssoH := &handler.SSOHandler{
+		Federation: authDeps.Federation,
+		Tokens:     authDeps.Tokens,
+		Cookies:    authDeps.Cookies,
+	}
 
 	r.Route("/api/v1", func(r chi.Router) {
 		// Public: a load balancer and the SPA's login screen both need to
 		// reach a server they cannot yet authenticate against.
 		r.Get("/health", healthH.ServeHTTP)
 
-		// Public: for these three the credential *is* the request body, so
-		// requiring a credential to reach them would be circular.
+		// Public: for these the credential *is* the request, so requiring a
+		// credential to reach them would be circular.
 		r.Post("/auth/token", authH.Token)
 		r.Post("/auth/refresh", authH.Refresh)
+
+		// Federated login, for the same reason. These are mounted whatever the
+		// configured provider is: with none, they answer 404 rather than
+		// vanishing, so a misconfigured client gets an explanation instead of a
+		// route that silently does not exist.
+		r.Get("/auth/sso/config", ssoH.Config)
+		r.Method(http.MethodGet, "/auth/sso/login", ssoH.Login())
+		r.Method(http.MethodGet, "/auth/sso/callback", ssoH.Callback())
+		r.Method(http.MethodGet, "/auth/saml/metadata", ssoH.Metadata())
+		r.Method(http.MethodPost, "/auth/saml/acs", ssoH.ACS())
 
 		r.Group(func(r chi.Router) {
 			r.Use(auth.Authenticate(authDeps.Resolver()))
