@@ -102,6 +102,9 @@ func Routes() []Route {
 		{http.MethodGet, "/auth/sso/config", "", true},
 		{http.MethodGet, "/auth/sso/login", "", true},
 		{http.MethodGet, "/auth/sso/callback", "", true},
+		// Redeeming a CLI handoff code: the code IS the credential, so
+		// requiring one to reach this would be circular.
+		{http.MethodPost, "/auth/sso/exchange", "", true},
 		{http.MethodGet, "/auth/saml/metadata", "", true},
 		{http.MethodPost, "/auth/saml/acs", "", true},
 		{http.MethodGet, "/auth/me", "", false},      // any authenticated principal

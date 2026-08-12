@@ -39,17 +39,41 @@ func authLoginCmd() *cobra.Command {
 		id            string
 		passwordStdin bool
 		refreshToken  string
+		sso           bool
+		noBrowser     bool
 	)
 	cmd := &cobra.Command{
 		Use:   "login",
 		Short: "Log in and cache credentials for this API server",
 		Long: `Reads the password from stdin with --password-stdin, which keeps it out of
 your shell history and out of the process list. Service accounts have no
-password; pass the refresh token they were issued with --refresh-token.`,
+password; pass the refresh token they were issued with --refresh-token.
+
+With --sso, logging in goes through the identity provider this server is
+configured for: a browser opens, and the credential comes back to a listener on
+localhost. Nothing usable travels through the browser — the code it carries is
+bound to a secret that never leaves this process. Use --no-browser on a machine
+with no browser to open and paste the URL somewhere else.
+
+Password login keeps working when a provider is configured. That is deliberate:
+it is how an administrator gets in when the identity provider is down.`,
 		Example: `  krk auth login --id admin --password-stdin < password.txt
   echo "$PASSWORD" | krk auth login --id alice --password-stdin
-  krk auth login --refresh-token "$CI_TOKEN"`,
+  krk auth login --refresh-token "$CI_TOKEN"
+  krk auth login --sso
+  krk auth login --sso --no-browser`,
 		RunE: func(c *cobra.Command, _ []string) error {
+			if sso {
+				session, err := api.SSOLogin(c.Context(), func(target string) {
+					fmt.Fprintf(c.OutOrStdout(), "Opening %s\n", target)
+				}, !noBrowser)
+				if err != nil {
+					return err
+				}
+				fmt.Fprintf(c.OutOrStdout(), "Logged in to %s as %s\n",
+					api.BaseURL, orDefault(session.PrincipalID, "unknown principal"))
+				return nil
+			}
 			if refreshToken != "" {
 				session, err := api.LoginWithRefreshToken(refreshToken)
 				if err != nil {
@@ -78,6 +102,8 @@ password; pass the refresh token they were issued with --refresh-token.`,
 	cmd.Flags().StringVar(&id, "id", "", "Principal ID to log in as")
 	cmd.Flags().BoolVar(&passwordStdin, "password-stdin", false, "Read the password from stdin")
 	cmd.Flags().StringVar(&refreshToken, "refresh-token", "", "Adopt a refresh token issued for a service account")
+	cmd.Flags().BoolVar(&sso, "sso", false, "Log in through the server's identity provider in a browser")
+	cmd.Flags().BoolVar(&noBrowser, "no-browser", false, "With --sso, print the URL instead of opening a browser")
 	return cmd
 }
 
