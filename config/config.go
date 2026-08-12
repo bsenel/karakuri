@@ -178,6 +178,109 @@ type AuthConfig struct {
 	JWT       JWTConfig           `yaml:"jwt"`
 	Bootstrap AuthBootstrapConfig `yaml:"bootstrap"`
 	Cookies   AuthCookieConfig    `yaml:"cookies"`
+
+	// Provider selects the identity provider federated logins go through:
+	// "bearer" (the default — local passwords only), "oidc" or "saml".
+	//
+	// Selecting one does not switch local password login off. It stays mounted
+	// alongside, which is deliberate: it is the break-glass path when the
+	// identity provider is unreachable, and re-adding a static shared token to
+	// serve that purpose is exactly what Phase 14 removed.
+	Provider string `yaml:"provider"`
+
+	OIDC     AuthOIDCConfig     `yaml:"oidc"`
+	SAML     AuthSAMLConfig     `yaml:"saml"`
+	RoleMap  AuthRoleMapConfig  `yaml:"role_map"`
+	Frontend AuthFrontendConfig `yaml:"frontend"`
+}
+
+// Federated identity providers Provider may name.
+const (
+	AuthProviderBearer = "bearer"
+	AuthProviderOIDC   = "oidc"
+	AuthProviderSAML   = "saml"
+)
+
+// AuthRoleMapConfig maps the groups an identity provider asserts onto Karakuri
+// roles.
+type AuthRoleMapConfig struct {
+	// Groups maps an asserted group name to the roles it grants.
+	Groups map[string][]string `yaml:"groups"`
+
+	// Default is granted to a user who authenticated but matched no group.
+	//
+	// It is empty unless an operator sets it, and that is the important part:
+	// everybody in a corporate directory can authenticate against a corporate
+	// identity provider, so a default role here is a grant to the whole
+	// company. Leaving it empty means such a user can log in and see nothing,
+	// which is the correct shape — authentication is not authorization.
+	Default []string `yaml:"default"`
+}
+
+// AuthOIDCConfig configures the OpenID Connect provider.
+type AuthOIDCConfig struct {
+	IssuerURL    string `yaml:"issuer_url"`
+	ClientID     string `yaml:"client_id"`
+	ClientSecret string `yaml:"client_secret,omitempty"`
+
+	// ClientSecretEnv names the environment variable the client secret is read
+	// from, matching the `*_env` convention used for every other secret.
+	ClientSecretEnv string `yaml:"client_secret_env,omitempty"`
+
+	// RedirectURL is this server's own callback URL as the provider sees it —
+	// it must match what is registered there. Defaults to PublicURL plus
+	// /api/v1/auth/sso/callback.
+	RedirectURL string `yaml:"redirect_url"`
+
+	// Scopes requested at login. Empty means openid, profile and email.
+	Scopes []string `yaml:"scopes"`
+
+	// GroupsClaim, EmailClaim and NameClaim locate those values in the token's
+	// claims, as dotted paths. There is no standard claim for group membership:
+	// Keycloak nests it under "realm_access.roles", Okta and Auth0 use
+	// "groups", Azure AD emits object IDs. Empty means "groups", "email" and
+	// "name" respectively.
+	GroupsClaim string `yaml:"groups_claim"`
+	EmailClaim  string `yaml:"email_claim"`
+	NameClaim   string `yaml:"name_claim"`
+}
+
+// AuthSAMLConfig configures the SAML 2.0 service provider.
+type AuthSAMLConfig struct {
+	// IDPMetadataURL or IDPMetadataFile supplies the identity provider's
+	// metadata. Exactly one is needed; the URL is fetched once at startup.
+	IDPMetadataURL  string `yaml:"idp_metadata_url"`
+	IDPMetadataFile string `yaml:"idp_metadata_file"`
+
+	// EntityID identifies this service provider. Defaults to the metadata URL.
+	EntityID string `yaml:"entity_id"`
+
+	// RoleAttribute, EmailAttribute and NameAttribute name the assertion
+	// attributes to read. Each is matched against both an attribute's Name and
+	// its FriendlyName, because providers populate one, the other, or both.
+	RoleAttribute  string `yaml:"role_attribute"`
+	EmailAttribute string `yaml:"email_attribute"`
+	NameAttribute  string `yaml:"name_attribute"`
+
+	// AllowIDPInitiated accepts logins this server did not start. Off by
+	// default: without a request of ours to correlate against, the guarantee
+	// that a response answers a request we actually sent is gone.
+	AllowIDPInitiated bool `yaml:"allow_idp_initiated"`
+}
+
+// AuthFrontendConfig tells the server where to send a browser once a federated
+// login succeeds.
+type AuthFrontendConfig struct {
+	// PublicURL is this server's externally reachable base URL. It is what
+	// redirect and assertion-consumer URLs are derived from, and it cannot be
+	// inferred from an inbound request: a proxied Host header is
+	// attacker-controlled, and inferring a redirect target from one is how open
+	// redirects happen.
+	PublicURL string `yaml:"public_url"`
+
+	// LoginRedirect is where the browser lands after a successful federated
+	// login. Defaults to "/".
+	LoginRedirect string `yaml:"login_redirect"`
 }
 
 // AuthCookieConfig tunes the httpOnly session cookies the browser client uses.
@@ -344,6 +447,15 @@ func ensureGitHubToken() {
 //	KARAKURI_QUOTA_VALKEY_URL        → cfg.Quota.ValkeyURL
 //	KARAKURI_QUOTA_REQUESTS_PER_MIN  → cfg.Quota.RequestsPerMinute
 //	KARAKURI_QUOTA_LLM_TOKENS_PER_DAY → cfg.Quota.LLMTokensPerDay
+//	KARAKURI_AUTH_PROVIDER           → cfg.Auth.Provider (bearer|oidc|saml)
+//	KARAKURI_AUTH_PUBLIC_URL         → cfg.Auth.Frontend.PublicURL
+//	KARAKURI_AUTH_OIDC_ISSUER_URL    → cfg.Auth.OIDC.IssuerURL
+//	KARAKURI_AUTH_OIDC_CLIENT_ID     → cfg.Auth.OIDC.ClientID
+//	KARAKURI_AUTH_OIDC_CLIENT_SECRET → cfg.Auth.OIDC.ClientSecret
+//	KARAKURI_AUTH_OIDC_GROUPS_CLAIM  → cfg.Auth.OIDC.GroupsClaim
+//	KARAKURI_AUTH_SAML_IDP_METADATA_URL  → cfg.Auth.SAML.IDPMetadataURL
+//	KARAKURI_AUTH_SAML_IDP_METADATA_FILE → cfg.Auth.SAML.IDPMetadataFile
+//	KARAKURI_AUTH_SAML_ROLE_ATTRIBUTE    → cfg.Auth.SAML.RoleAttribute
 func overrideFromEnv(cfg *Config) {
 	if v := os.Getenv("KARAKURI_DATABASE_DRIVER"); v != "" {
 		cfg.Database.Driver = v
@@ -373,6 +485,24 @@ func overrideFromEnv(cfg *Config) {
 	}
 	if v := os.Getenv("KARAKURI_AUTH_BOOTSTRAP_ADMIN"); v != "" {
 		cfg.Auth.Bootstrap.AdminID = v
+	}
+	for _, o := range []struct {
+		env string
+		dst *string
+	}{
+		{"KARAKURI_AUTH_PROVIDER", &cfg.Auth.Provider},
+		{"KARAKURI_AUTH_PUBLIC_URL", &cfg.Auth.Frontend.PublicURL},
+		{"KARAKURI_AUTH_OIDC_ISSUER_URL", &cfg.Auth.OIDC.IssuerURL},
+		{"KARAKURI_AUTH_OIDC_CLIENT_ID", &cfg.Auth.OIDC.ClientID},
+		{"KARAKURI_AUTH_OIDC_CLIENT_SECRET", &cfg.Auth.OIDC.ClientSecret},
+		{"KARAKURI_AUTH_OIDC_GROUPS_CLAIM", &cfg.Auth.OIDC.GroupsClaim},
+		{"KARAKURI_AUTH_SAML_IDP_METADATA_URL", &cfg.Auth.SAML.IDPMetadataURL},
+		{"KARAKURI_AUTH_SAML_IDP_METADATA_FILE", &cfg.Auth.SAML.IDPMetadataFile},
+		{"KARAKURI_AUTH_SAML_ROLE_ATTRIBUTE", &cfg.Auth.SAML.RoleAttribute},
+	} {
+		if v := os.Getenv(o.env); v != "" {
+			*o.dst = v
+		}
 	}
 	// Only an explicit truthy value turns Secure off; anything unparseable
 	// leaves the safe default in place rather than guessing.
@@ -428,6 +558,9 @@ func overrideFromEnv(cfg *Config) {
 		if k.Secret == "" && k.SecretEnv != "" {
 			cfg.Auth.JWT.Keys[i].Secret = os.Getenv(k.SecretEnv)
 		}
+	}
+	if cfg.Auth.OIDC.ClientSecret == "" && cfg.Auth.OIDC.ClientSecretEnv != "" {
+		cfg.Auth.OIDC.ClientSecret = os.Getenv(cfg.Auth.OIDC.ClientSecretEnv)
 	}
 }
 
@@ -524,6 +657,14 @@ func setDefaults(cfg *Config) {
 	}
 	if cfg.Auth.Bootstrap.AdminID == "" {
 		cfg.Auth.Bootstrap.AdminID = "admin"
+	}
+	if cfg.Auth.Provider == "" {
+		// Local passwords only. Federation is something an operator turns on,
+		// not something a fresh install finds itself in.
+		cfg.Auth.Provider = AuthProviderBearer
+	}
+	if cfg.Auth.Frontend.LoginRedirect == "" {
+		cfg.Auth.Frontend.LoginRedirect = "/"
 	}
 	if cfg.Quota.LLMBudgetBackend == "" {
 		cfg.Quota.LLMBudgetBackend = LLMBudgetNative

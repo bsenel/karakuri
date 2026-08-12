@@ -19,17 +19,29 @@
 // [quota.SlidingLog] in particular stores one row per consumption. That is fine
 // for "a thousand a day" and wrong for "sixty a minute".
 //
-// # SQLite callers must set a busy timeout
+// # SQLite concurrency
 //
 // Take opens its transaction with BEGIN IMMEDIATE, which takes the write lock
-// up front. Without a busy timeout SQLite returns SQLITE_BUSY the instant a
-// second connection tries, so under any concurrency most takes fail rather than
-// wait — and a limiter whose errors are ignored is a limiter that is not
-// limiting. Open the database with one:
+// up front. SQLite allows exactly one writer, so concurrent takes queue — and
+// where they queue matters.
+//
+// Within one process they queue on a mutex this Backend holds, which is fair,
+// respects context cancellation, and costs no throughput because the writes
+// were serial regardless. Left to SQLite's busy handler instead, they retry
+// with backoff and give up at the busy timeout: under real contention an
+// arbitrary subset waits the whole timeout and then fails, which is how a
+// limiter stops limiting.
+//
+// Across processes — several replicas over one database file — the mutex
+// reaches only its own, so a busy timeout is still required. Open the database
+// with one:
 //
 //	sql.Open("sqlite", "file:quota.db?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)")
 //
-// Postgres needs nothing equivalent; its transactions block on the row lock.
+// Two Backends built over the same file in one process count as two processes
+// for this purpose; they do not share the mutex.
+//
+// Postgres needs none of this; its transactions block on the row lock.
 package sql
 
 import (
@@ -39,6 +51,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/bsenel/karakuri/quota"
@@ -71,6 +84,23 @@ type Backend struct {
 	db      *stdsql.DB
 	dialect Dialect
 	prefix  string
+
+	// writes serialises this process's SQLite write transactions.
+	//
+	// SQLite permits exactly one writer at a time, so concurrent takes were
+	// never going to proceed in parallel — they were only going to queue,
+	// somewhere. Letting database/sql hand out a connection per goroutine means
+	// they queue inside SQLite's busy handler, which retries with backoff and
+	// gives up at the busy timeout: under real contention some callers wait
+	// their whole timeout and then fail, and the ones that fail are arbitrary.
+	//
+	// Queueing them here instead costs no throughput, because the work was
+	// serial regardless. It is fair, it respects context cancellation, and it
+	// removes the busy timeout from the path entirely for a single process.
+	// Cross-process contention still needs it — see the package doc.
+	//
+	// Unused on Postgres, which blocks on the row lock and needs none of this.
+	writes sync.Mutex
 }
 
 var _ quota.Backend = (*Backend)(nil)
@@ -154,6 +184,16 @@ func (b *Backend) withWrite(ctx context.Context, fn func(execer) error) error {
 			return err
 		}
 		return tx.Commit()
+	}
+
+	// One writer at a time; see Backend.writes. Taken before the connection is
+	// checked out so a queue of waiters does not also hold a pool connection
+	// each, which on a small pool would deadlock reads.
+	b.writes.Lock()
+	defer b.writes.Unlock()
+	// A caller who cancelled while queueing should not then start a write.
+	if err := ctx.Err(); err != nil {
+		return err
 	}
 
 	conn, err := b.db.Conn(ctx)

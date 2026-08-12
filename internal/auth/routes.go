@@ -94,6 +94,16 @@ func Routes() []Route {
 
 		{http.MethodPost, "/auth/token", "", true},   // login: the credential IS the request
 		{http.MethodPost, "/auth/refresh", "", true}, // rotation: same
+
+		// Federated login. Public for the same reason /auth/token is: these are
+		// how somebody with no credential acquires one. The SAML metadata
+		// endpoint is public because metadata is what an administrator hands
+		// the identity provider, and it carries only public information.
+		{http.MethodGet, "/auth/sso/config", "", true},
+		{http.MethodGet, "/auth/sso/login", "", true},
+		{http.MethodGet, "/auth/sso/callback", "", true},
+		{http.MethodGet, "/auth/saml/metadata", "", true},
+		{http.MethodPost, "/auth/saml/acs", "", true},
 		{http.MethodGet, "/auth/me", "", false},      // any authenticated principal
 		{http.MethodPost, "/auth/revoke", "", false}, // revoking your own session
 
