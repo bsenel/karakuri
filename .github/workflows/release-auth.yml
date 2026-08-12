@@ -7,8 +7,13 @@ name: Release auth module
 # permanently resolvable through the module proxy.
 #
 # Tag pattern per Go's multi-module convention:
-#   auth/v0.1.0      → github.com/bsenel/karakuri/auth v0.1.0
-#   auth/sql/v0.1.0  → github.com/bsenel/karakuri/auth/sql v0.1.0
+#   auth/v0.1.0       → github.com/bsenel/karakuri/auth v0.1.0
+#   auth/sql/v0.1.0   → github.com/bsenel/karakuri/auth/sql v0.1.0
+#   auth/oidc/v0.1.0  → github.com/bsenel/karakuri/auth/oidc v0.1.0
+#   auth/saml/v0.1.0  → github.com/bsenel/karakuri/auth/saml v0.1.0
+#
+# Every submodule is covered by the auth/*/v*.*.* pattern below and the module
+# directory is derived from the tag, so a new submodule needs no new workflow.
 
 on:
   push:

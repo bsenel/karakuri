@@ -135,6 +135,12 @@ jobs:
           # shapes no real client produces.
           - module: quota/valkey
             coverage: 90
+          # auth/oidc drives the full authorization-code flow against an
+          # in-process provider, so the residue is crypto/rand failing — which
+          # no test can stage without pretending. A live Keycloak covers what a
+          # real provider does differently; see the identity job.
+          - module: auth/oidc
+            coverage: 90
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
