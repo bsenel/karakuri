@@ -42,25 +42,117 @@ type QuotaHandler struct {
 // is actually enforcing rather than inferring it from the config file it thinks
 // is loaded.
 //
+// Since Phase 19 that file is the seed rather than the answer, which makes this
+// endpoint load-bearing: it reports what is enforced *and* what was configured,
+// because an operator reading YAML and believing it is the failure mode a
+// database-backed limit introduces.
+//
 // GET /api/v1/quota
-func (h *QuotaHandler) Config(w http.ResponseWriter, _ *http.Request) {
-	t := h.Quota.Tiers
+func (h *QuotaHandler) Config(w http.ResponseWriter, r *http.Request) {
+	inForce := h.Quota.Tiers(r.Context())
+	configured := h.Quota.TierSet.Configured()
 	writeJSON(w, map[string]any{
-		"request": map[string]any{
-			"algorithm":  string(t.Request.Algorithm),
-			"limit":      t.Request.Limit,
-			"window":     t.Request.Window.String(),
-			"per_second": t.Request.RatePerSecond(),
-		},
-		"capability":         quotaSummary(t.Capability.Cap, string(t.Capability.Period)),
-		"llm_tokens":         quotaSummary(t.LLMTokens.Cap, string(t.LLMTokens.Period)),
-		"adapter":            quotaSummary(t.Adapter.Cap, string(t.Adapter.Period)),
+		"request":            policySummary(inForce.Request),
+		"capability":         quotaSummary(inForce.Capability.Cap, string(inForce.Capability.Period)),
+		"llm_tokens":         quotaSummary(inForce.LLMTokens.Cap, string(inForce.LLMTokens.Period)),
+		"adapter":            quotaSummary(inForce.Adapter.Cap, string(inForce.Adapter.Period)),
 		"pressure_threshold": karakuriquota.PressureThreshold,
+		"configured": map[string]any{
+			"request":    policySummary(configured.Request),
+			"capability": quotaSummary(configured.Capability.Cap, string(configured.Capability.Period)),
+			"llm_tokens": quotaSummary(configured.LLMTokens.Cap, string(configured.LLMTokens.Period)),
+			"adapter":    quotaSummary(configured.Adapter.Cap, string(configured.Adapter.Period)),
+		},
+		// Editable says whether a change would survive a restart. A deployment
+		// with no database can read this page and not be offered a form that
+		// would silently do nothing.
+		"editable": h.Quota.TierStore != nil,
 	})
+}
+
+func policySummary(p quota.Policy) map[string]any {
+	return map[string]any{
+		"algorithm":  string(p.Algorithm),
+		"limit":      p.Limit,
+		"window":     p.Window.String(),
+		"per_second": p.RatePerSecond(),
+	}
 }
 
 func quotaSummary(cap int, period string) map[string]any {
 	return map[string]any{"cap": cap, "period": period}
+}
+
+// Tiers lists what an operator has stored, beside what configuration says.
+//
+// GET /api/v1/quota/tiers
+func (h *QuotaHandler) Tiers(w http.ResponseWriter, r *http.Request) {
+	stored := h.Quota.TierSet.Stored(r.Context())
+	if stored == nil {
+		stored = []karakuriquota.Tier{}
+	}
+	writeJSON(w, map[string]any{"stored": stored, "editable": h.Quota.TierStore != nil})
+}
+
+// SetTier changes a limit for everybody.
+//
+// This is the one write in this file that is not about a single subject, which
+// is why it is gated on quota:admin rather than quota:approve: approving a raise
+// for a twin you administer is a tenant-scoped decision, and moving the ceiling
+// for the whole deployment is not.
+//
+// PUT /api/v1/quota/tiers/{name}
+func (h *QuotaHandler) SetTier(w http.ResponseWriter, r *http.Request) {
+	if h.Quota.TierStore == nil {
+		writeQuotaError(w, errNoTierStore)
+		return
+	}
+	var body struct {
+		Cap    int     `json:"cap"`
+		Window string  `json:"window"`
+		Rate   float64 `json:"rate"`
+		Reason string  `json:"reason"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, "body must be JSON", http.StatusBadRequest)
+		return
+	}
+	window, err := parseOptionalDuration(body.Window)
+	if err != nil {
+		http.Error(w, "window: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	principal, _ := auth.PrincipalFromContext(r.Context())
+
+	tier := karakuriquota.Tier{
+		Name:      chi.URLParam(r, "name"),
+		Cap:       body.Cap,
+		Window:    window,
+		Rate:      body.Rate,
+		Reason:    body.Reason,
+		UpdatedBy: principal.ID,
+		UpdatedAt: time.Now().UTC(),
+	}
+	if err := h.Quota.SetTier(r.Context(), tier); err != nil {
+		writeQuotaError(w, err)
+		return
+	}
+	writeJSON(w, tier)
+}
+
+// ResetTier returns a limit to what configuration says.
+//
+// DELETE /api/v1/quota/tiers/{name}
+func (h *QuotaHandler) ResetTier(w http.ResponseWriter, r *http.Request) {
+	if h.Quota.TierStore == nil {
+		writeQuotaError(w, errNoTierStore)
+		return
+	}
+	if err := h.Quota.ResetTier(r.Context(), chi.URLParam(r, "name")); err != nil {
+		writeQuotaError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // Usage reports a twin's current consumption without spending any of it.
@@ -396,8 +488,16 @@ func intersectLabels(visible, asked []string) []string {
 	return out
 }
 
+// errNoTierStore is what a deployment with no database answers to an edit. It
+// is a 501 rather than a 400 because the request is well-formed and the server
+// is what cannot honour it — and a UI reading `editable: false` should never
+// have offered the form.
+var errNoTierStore = errors.New("this deployment keeps no database, so an edited limit would not survive a restart; set the limit in configuration instead")
+
 func writeQuotaError(w http.ResponseWriter, err error) {
 	switch {
+	case errors.Is(err, errNoTierStore):
+		authError(w, http.StatusNotImplemented, "not_implemented", err.Error())
 	case errors.Is(err, quota.ErrRequestNotFound):
 		authError(w, http.StatusNotFound, "not_found", err.Error())
 	case errors.Is(err, quota.ErrRequestDecided):

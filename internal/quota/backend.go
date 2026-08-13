@@ -31,7 +31,15 @@ func Build(ctx context.Context, cfg config.QuotaConfig, db *sql.DB, hub *event.H
 	if err != nil {
 		return Deps{}, err
 	}
-	deps := Deps{Backend: backend, Tiers: tiers, Hub: hub, Close: closeFn}
+	// Configuration is the seed. A stored tier replaces a ceiling for everybody
+	// once the database is wired below; until then, and on a deployment with no
+	// database at all, this is the whole answer.
+	deps := Deps{
+		Backend: backend,
+		TierSet: NewTierResolver(tiers, nil),
+		Hub:     hub,
+		Close:   closeFn,
+	}
 
 	budget, err := buildBudget(cfg, deps)
 	if err != nil {
@@ -84,6 +92,17 @@ func buildPersistence(ctx context.Context, cfg config.QuotaConfig, db *sql.DB, d
 		return fmt.Errorf("quota override schema: %w", err)
 	}
 	deps.OverrideStore, deps.RequestStore = store, store
+
+	// Limits become editable the moment there is somewhere to keep them. The
+	// YAML stays meaningful: it seeds a fresh database and it is what `unset`
+	// returns to.
+	tierStore := NewSQLTierStore(db)
+	if err := tierStore.Migrate(ctx); err != nil {
+		return err
+	}
+	deps.TierStore = tierStore
+	deps.TierSet = NewTierResolver(deps.TierSet.Configured(), tierStore)
+	LogTierDivergence(ctx, deps.TierSet)
 	deps.Resolver = quota.NewResolver(store, quota.OnResolveError(func(subject quota.Key, err error) {
 		// Resolution falls back to the configured limit, so this log line is
 		// the only trace that an approved raise is not being applied.
@@ -135,7 +154,12 @@ func buildBudget(cfg config.QuotaConfig, deps Deps) (TokenBudget, error) {
 		if cfg.LiteLLMKeyEnv != "" {
 			key = os.Getenv(cfg.LiteLLMKeyEnv)
 		}
-		b, err := NewLiteLLMBudget(cfg.LiteLLMURL, key, deps.Tiers.LLMTokens.Cap, nil)
+		// The gateway is told a ceiling once, at wire-up, because that is the
+		// shape of its API — so this one is the configured limit rather than a
+		// stored one. An operator raising the tier in the UI moves what
+		// Karakuri enforces; moving what the gateway enforces is a change on
+		// the gateway.
+		b, err := NewLiteLLMBudget(cfg.LiteLLMURL, key, deps.TierSet.Configured().LLMTokens.Cap, nil)
 		if err != nil {
 			return nil, err
 		}

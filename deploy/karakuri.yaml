@@ -85,6 +85,11 @@ quota:
   requests_per_minute: 60
   request_burst: 20
 
+  # These are the SEED for the limits, not the last word on them: a tier set
+  # through `krk quota set` is stored in the database and takes precedence.
+  # `krk quota unset` returns one to the value here, and the server logs any
+  # tier where the two differ at startup.
+
   # Daily caps. A capability is one twin invoking one capability; llm_tokens is
   # a twin's model spend; adapter bounds calls to one external service.
   capability_per_day: 1000

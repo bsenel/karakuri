@@ -260,6 +260,13 @@ func Routes() []Route {
 		{http.MethodPost, "/quota/requests/{id}/decide", ActionQuotaApprove, false},
 		{http.MethodGet, "/cost", ActionCostRead, false},
 
+		// The limits an operator has stored (Phase 19). Editing one changes it
+		// for the whole deployment, which is why it is quota:admin rather than
+		// the tenant-scoped quota:approve.
+		{http.MethodGet, "/quota/tiers", ActionQuotaRead, false},
+		{http.MethodPut, "/quota/tiers/{name}", ActionQuotaAdmin, false},
+		{http.MethodDelete, "/quota/tiers/{name}", ActionQuotaAdmin, false},
+
 		{http.MethodPost, "/research", ActionResearchRun, false},
 		{http.MethodGet, "/audit", ActionAuditRead, false},
 	}

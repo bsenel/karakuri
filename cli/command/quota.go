@@ -19,7 +19,8 @@ counters needs quota:admin, because it is an operator override rather than an
 ordinary operation.`,
 	}
 	cmd.AddCommand(quotaConfigCmd(), quotaShowCmd(), quotaResetCmd(),
-		quotaRequestCmd(), quotaRequestsCmd())
+		quotaRequestCmd(), quotaRequestsCmd(),
+		quotaTiersCmd(), quotaSetCmd(), quotaUnsetCmd())
 	return cmd
 }
 
@@ -28,8 +29,11 @@ func quotaConfigCmd() *cobra.Command {
 		Use:   "config",
 		Short: "Show the limits this server is enforcing",
 		Long: `Reports what the server is actually enforcing, which is not always what the
-config file you are looking at says — environment overrides and defaults both
-apply.`,
+config file you are looking at says — a stored tier takes precedence over it,
+and environment overrides and defaults both apply.
+
+The response carries ` + "`configured`" + ` beside the limits in force, so the two can be
+compared without reading the file the server was started with.`,
 		RunE: func(_ *cobra.Command, _ []string) error {
 			data, _, err := api.Get("/quota")
 			if err != nil {
