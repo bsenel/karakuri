@@ -316,6 +316,13 @@ func NewApp(
 				r.With(require(karakuriauth.ActionQuotaRequest, quotaAsk)).Post("/requests", quotaH.SubmitRequest)
 				r.With(require(karakuriauth.ActionQuotaRead, quotaList)).Get("/requests", quotaH.ListRequests)
 				r.With(require(karakuriauth.ActionQuotaApprove, quotaDecide)).Post("/requests/{id}/decide", quotaH.Decide)
+				// The limits themselves (Phase 19). Reading is quota:read like
+				// the rest; writing is quota:admin and deliberately unscoped —
+				// approving a raise for a twin you administer is a tenant
+				// decision, and moving the ceiling for everybody is not.
+				r.With(require(karakuriauth.ActionQuotaRead, quotaList)).Get("/tiers", quotaH.Tiers)
+				r.With(require(karakuriauth.ActionQuotaAdmin, nil)).Put("/tiers/{name}", quotaH.SetTier)
+				r.With(require(karakuriauth.ActionQuotaAdmin, nil)).Delete("/tiers/{name}", quotaH.ResetTier)
 			})
 
 			// The tenancy tree. Every mutation is re-checked in the handler

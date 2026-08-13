@@ -58,7 +58,7 @@ func (d Deps) Budget() *NativeBudget { return &NativeBudget{deps: d} }
 // either refusing calls that would have fit or holding a reservation across a
 // request that may never return.
 func (b *NativeBudget) Reserve(ctx context.Context, twinID string, _ int, now time.Time) error {
-	dec, err := b.deps.Tiers.LLMTokens.Peek(ctx, b.deps.Backend, TwinKey(twinID), now)
+	dec, err := b.deps.Tiers(ctx).LLMTokens.Peek(ctx, b.deps.Backend, TwinKey(twinID), now)
 	if err != nil {
 		return err
 	}
@@ -77,7 +77,7 @@ func (b *NativeBudget) Record(ctx context.Context, twinID string, tokens int, no
 		// inventing an estimate would make the budget a fiction.
 		return nil
 	}
-	dec, err := b.deps.Tiers.LLMTokens.Take(ctx, b.deps.Backend, TwinKey(twinID), tokens, now)
+	dec, err := b.deps.Tiers(ctx).LLMTokens.Take(ctx, b.deps.Backend, TwinKey(twinID), tokens, now)
 	if err != nil {
 		return err
 	}
@@ -88,7 +88,7 @@ func (b *NativeBudget) Record(ctx context.Context, twinID string, tokens int, no
 }
 
 func (b *NativeBudget) Usage(ctx context.Context, twinID string, now time.Time) (quota.Decision, error) {
-	return b.deps.Tiers.LLMTokens.Peek(ctx, b.deps.Backend, TwinKey(twinID), now)
+	return b.deps.Tiers(ctx).LLMTokens.Peek(ctx, b.deps.Backend, TwinKey(twinID), now)
 }
 
 // UnlimitedBudget is the no-op used where no budget is configured, so callers

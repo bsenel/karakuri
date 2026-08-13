@@ -15,7 +15,7 @@ func deps(t *testing.T) karakuriquota.Deps {
 	overrides := quota.NewMemoryOverrideStore()
 	return karakuriquota.Deps{
 		Backend:       quota.NewMemoryBackend(),
-		Tiers:         karakuriquota.DefaultTiers(config.QuotaConfig{}),
+		TierSet:       karakuriquota.NewTierResolver(karakuriquota.DefaultTiers(config.QuotaConfig{}), nil),
 		OverrideStore: overrides,
 		RequestStore:  quota.NewMemoryRequestStore(),
 		Resolver:      quota.NewResolver(overrides),
@@ -79,14 +79,14 @@ func TestSubmitApproveRaisesTheLimit(t *testing.T) {
 		t.Fatalf("submitted = %+v", req)
 	}
 	// Before approval the configured cap applies.
-	if got := d.Tiers.LLMTokens.Resolved(ctx, d.Resolver, karakuriquota.TwinKey("t1"), req.CreatedAt); got.Cap != 1_000_000 {
+	if got := d.Tiers(ctx).LLMTokens.Resolved(ctx, d.Resolver, karakuriquota.TwinKey("t1"), req.CreatedAt); got.Cap != 1_000_000 {
 		t.Fatalf("cap before approval = %d, want the configured default", got.Cap)
 	}
 
 	if _, err := d.Decide(ctx, req.ID, "bob", "one week", true); err != nil {
 		t.Fatalf("Decide: %v", err)
 	}
-	if got := d.Tiers.LLMTokens.Resolved(ctx, d.Resolver, karakuriquota.TwinKey("t1"), req.CreatedAt); got.Cap != 5_000_000 {
+	if got := d.Tiers(ctx).LLMTokens.Resolved(ctx, d.Resolver, karakuriquota.TwinKey("t1"), req.CreatedAt); got.Cap != 5_000_000 {
 		t.Fatalf("cap after approval = %d, want the approved 5,000,000", got.Cap)
 	}
 

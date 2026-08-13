@@ -17,7 +17,14 @@ import (
 // internal/app.BuildQuota.
 type Deps struct {
 	Backend quota.Backend
-	Tiers   Tiers
+
+	// TierSet answers what the limits are right now. Configuration is its seed
+	// and its fallback; a stored tier replaces a ceiling for everybody, the way
+	// an override replaces one for a subject.
+	//
+	// Never nil in a built Deps — a nil *TierResolver resolves to the zero
+	// Tiers, which would admit nothing, so Build always constructs one.
+	TierSet *TierResolver
 
 	// Hub receives quota_pressure events. Optional: without it, pressure is
 	// logged and nothing else.
@@ -30,6 +37,11 @@ type Deps struct {
 	// Resolver applies per-subject overrides to the tiers. Never nil — a nil
 	// *Resolver resolves to the configured limit — so nothing has to branch.
 	Resolver *quota.Resolver
+
+	// TierStore is where an edited limit is written. Nil on a deployment with
+	// no database, where the tiers are whatever configuration says and the API
+	// refuses to pretend otherwise.
+	TierStore TierStore
 
 	// OverrideStore and RequestStore back the self-service workflow. Nil on a
 	// deployment whose backend does not persist them, in which case requests
@@ -85,10 +97,15 @@ func TwinKey(twinID string) quota.Key {
 // policy — and a caller who is over their limit should get the same answer
 // whether or not they would have been allowed.
 func (d Deps) Limiter() func(http.Handler) http.Handler {
-	return quota.Limit(d.Backend, d.Tiers.Request, RequestKey,
-		// An approved request raises one caller's ceiling without a redeploy.
-		// Without an override in force this is a map read against the
-		// resolver's cache and the configured policy is what applies.
+	return quota.Limit(d.Backend, d.TierSet.Configured().Request, RequestKey,
+		// Two things can have moved this limit since boot. Base is the limit an
+		// operator set for everybody; Resolve is the raise approved for one
+		// caller, applied on top. Both are cache reads on the overwhelming
+		// majority of requests, and with neither in force the policy handed to
+		// Limit is what applies.
+		quota.Base(func(r *http.Request) (quota.Policy, error) {
+			return d.Tiers(r.Context()).Request, nil
+		}),
 		quota.Resolve(d.Resolver, TierRequest),
 		quota.OnLimited(func(r *http.Request, key quota.Key, dec quota.Decision) {
 			slog.Info("rate limit exceeded",
@@ -108,6 +125,11 @@ func (d Deps) Limiter() func(http.Handler) http.Handler {
 		}),
 	)
 }
+
+// Tiers returns the limits in force, which is configuration unless an operator
+// has stored something else. It is a cache read on the hot path; see
+// TierResolver for how stale that can be.
+func (d Deps) Tiers(ctx context.Context) Tiers { return d.TierSet.Tiers(ctx) }
 
 // publishPressure emits a quota_pressure event so the SPA and `krk` can show a
 // twin approaching its ceiling before anything is refused.
@@ -135,7 +157,7 @@ func (d Deps) TakeCapability(ctx context.Context, twinID, capability string, now
 	// counter is keyed on: an operator raises "this twin's capability
 	// allowance", and asking them to name every capability separately would be
 	// a worse question with the same answer.
-	tier := d.Tiers.Capability.Resolved(ctx, d.Resolver, TwinKey(twinID), now)
+	tier := d.Tiers(ctx).Capability.Resolved(ctx, d.Resolver, TwinKey(twinID), now)
 	dec, err := tier.Take(ctx, d.Backend, CapabilityKey(twinID, capability), 1, now)
 	if err != nil {
 		return dec, err
@@ -149,10 +171,11 @@ func (d Deps) TakeCapability(ctx context.Context, twinID, capability string, now
 // Usage reports every tier's current state for a twin, without spending any of
 // it. It backs `krk quota show`.
 func (d Deps) Usage(ctx context.Context, twinID string, now time.Time) (map[string]quota.Decision, error) {
+	tiers := d.Tiers(ctx)
 	out := map[string]quota.Decision{}
 	for name, q := range map[string]quota.Quota{
-		"llm_tokens": d.Tiers.LLMTokens,
-		"adapter":    d.Tiers.Adapter,
+		"llm_tokens": tiers.LLMTokens,
+		"adapter":    tiers.Adapter,
 	} {
 		dec, err := q.Resolved(ctx, d.Resolver, TwinKey(twinID), now).
 			Peek(ctx, d.Backend, TwinKey(twinID), now)
@@ -170,10 +193,11 @@ func (d Deps) Usage(ctx context.Context, twinID string, now time.Time) (map[stri
 // It affects the period containing now and nothing else, so an override today
 // cannot hand back yesterday's budget.
 func (d Deps) Reset(ctx context.Context, twinID, capability string, now time.Time) error {
+	tiers := d.Tiers(ctx)
 	if capability != "" {
-		return d.Tiers.Capability.Reset(ctx, d.Backend, CapabilityKey(twinID, capability), now)
+		return tiers.Capability.Reset(ctx, d.Backend, CapabilityKey(twinID, capability), now)
 	}
-	for _, q := range []quota.Quota{d.Tiers.LLMTokens, d.Tiers.Adapter} {
+	for _, q := range []quota.Quota{tiers.LLMTokens, tiers.Adapter} {
 		if err := q.Reset(ctx, d.Backend, TwinKey(twinID), now); err != nil {
 			return err
 		}

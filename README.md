@@ -158,6 +158,11 @@ krk quota config
 krk quota show --twin <id>
 krk quota reset --twin <id> [--capability <cap>]
 
+# The limits themselves (Phase 19) — stored in the database; the config file seeds them
+krk quota tiers
+krk quota set --tier llm-tokens --cap 5000000 --reason "team grew to twelve"
+krk quota unset llm-tokens
+
 # Self-service limits and spend (Phase 18)
 krk quota request --tier llm-tokens --twin <id> --cap 5000000 --reason "launch week"
 krk quota requests list [--status pending] [--mine]
@@ -410,6 +415,32 @@ and waits: approve to continue, reject to stop. Set
 gateway count dollars instead of tokens — Karakuri stamps
 `x-litellm-customer-id: twin:<id>` on every model call, so spend is attributed
 per twin without provisioning anything.
+
+### The limits themselves
+
+Since Phase 19 the tiers live in the database, and the configuration file is
+their **seed** rather than their answer:
+
+```bash
+krk quota config                              # what is enforced, beside what was configured
+krk quota set --tier llm-tokens --cap 5000000 --reason "team grew to twelve"
+krk quota tiers                               # what has been set, by whom, and why
+krk quota unset llm-tokens                    # back to the file
+```
+
+A fresh database takes every tier from YAML. Once a tier is set it takes
+precedence, survives restarts, and applies across replicas within the resolver's
+30-second window — immediately on the server that handled the change.
+
+**The cost of that is worth stating.** An operator reading `llm_tokens_per_day`
+in a config file is reading the seed, not necessarily the limit. Two things
+close the gap: the server logs one line per diverging tier at startup, and
+`GET /quota` reports `configured` beside what is in force. Editing needs
+`quota:admin` and is deliberately unscoped — approving a raise for a team you
+administer is a tenant decision, and moving everybody's ceiling is not.
+
+A deployment with no database answers `editable: false` and refuses the edit,
+rather than accepting a limit that would vanish on the next restart.
 
 ### Asking for more
 
