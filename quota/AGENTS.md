@@ -38,6 +38,25 @@ Overrides parent rules for `quota/` only. This directory is a **separate Go modu
   into a site outage has done more damage than the traffic it was guarding against.
   `FailClosed()` is there for the cases where the budget is the point.
 
+## Overrides
+
+A limit is configuration; an override is the exception one subject gets. `Resolver` sits
+between them, so `Policy` and `Quota` stay values a caller composes at startup.
+
+- **An override replaces a ceiling and nothing else.** Not the algorithm — that is a
+  decision about the shape of the traffic, and somebody approving "more" is not choosing to
+  swap how it is counted. `Apply` clears `Rate` when the window moves, so a raise cannot
+  leave a bigger bucket refilling at the old speed.
+- **The cache is the design, not an optimisation.** The request tier runs on every call, so
+  reading a store each time makes the limiter a second hot-path dependency. `DefaultCacheTTL`
+  bounds how stale a decision can be; whoever writes an override calls `Invalidate` so their
+  own process sees it at once.
+- **Resolution fails to the configured limit**, never to the cached one and never upward. A
+  store that cannot be read must not be able to raise a ceiling, and the failure is not
+  cached, so recovery is immediate.
+- **A nil `*Resolver` resolves to the base.** A deployment with no overrides never branches,
+  and `Limit` without the `Resolve` option never consults one at all.
+
 ## Adding a backend
 
 Implement `Backend`, then run the shared contract from your package:

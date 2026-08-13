@@ -120,6 +120,17 @@ func (q Quota) Peek(ctx context.Context, b Backend, subject Key, now time.Time) 
 	return q.decide(ctx, b, subject, 0, now, false)
 }
 
+// Resolved returns this quota as it applies to one subject, with any override
+// on its Cap in force.
+//
+// It is a separate call rather than a parameter on Take because the resolved
+// quota is worth holding: a caller that takes and then reports usage should see
+// one ceiling, not two. A nil resolver returns the quota unchanged, so a
+// deployment with no overrides can call this everywhere without branching.
+func (q Quota) Resolved(ctx context.Context, r *Resolver, subject Key, now time.Time) Quota {
+	return r.Quota(ctx, subject, q, now)
+}
+
 // Reset clears the current period's usage for subject. It is the admin
 // override: it affects the period containing now and nothing else, so resetting
 // today cannot hand back yesterday's budget.

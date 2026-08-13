@@ -268,3 +268,70 @@ func TestJoinKey(t *testing.T) {
 		})
 	}
 }
+
+// An override raises what one caller is allowed, without a redeploy and without
+// touching anybody else — the point of the whole mechanism.
+func TestLimitResolvesPerSubject(t *testing.T) {
+	store := NewMemoryOverrideStore()
+	if err := store.PutOverride(context.Background(), Override{
+		Subject: "/twins", Name: "request", Cap: 3,
+	}); err != nil {
+		t.Fatalf("PutOverride: %v", err)
+	}
+
+	mw := Limit(NewMemoryBackend(), Policy{Algorithm: FixedWindow, Limit: 1, Window: time.Minute},
+		byPath, frozen(base), Resolve(NewResolver(store), "request"))
+
+	// The key with an override gets three, not the configured one.
+	for i := range 3 {
+		rec, reached := serve(mw, httptest.NewRequest(http.MethodGet, "/twins", nil))
+		if !reached {
+			t.Fatalf("request %d was refused inside the raised limit", i)
+		}
+		if got := rec.Header().Get("X-RateLimit-Limit"); got != "3" {
+			t.Errorf("request %d: X-RateLimit-Limit = %q, want the override's 3", i, got)
+		}
+	}
+	if _, reached := serve(mw, httptest.NewRequest(http.MethodGet, "/twins", nil)); reached {
+		t.Error("the raised limit did not apply at all — a fourth request got through")
+	}
+
+	// A key with no override keeps what was configured.
+	if _, reached := serve(mw, httptest.NewRequest(http.MethodGet, "/objectives", nil)); !reached {
+		t.Fatal("an unrelated key was refused its first request")
+	}
+	if _, reached := serve(mw, httptest.NewRequest(http.MethodGet, "/objectives", nil)); reached {
+		t.Error("an unrelated key was given the override's ceiling")
+	}
+}
+
+// Without the option nothing is consulted, so a deployment with no overrides
+// pays nothing and behaves exactly as it did.
+func TestLimitWithoutAResolverIsUnchanged(t *testing.T) {
+	store := NewMemoryOverrideStore()
+	if err := store.PutOverride(context.Background(), Override{
+		Subject: "/twins", Name: "request", Cap: 100,
+	}); err != nil {
+		t.Fatalf("PutOverride: %v", err)
+	}
+	mw := Limit(NewMemoryBackend(), Policy{Algorithm: FixedWindow, Limit: 1, Window: time.Minute},
+		byPath, frozen(base))
+
+	if _, reached := serve(mw, httptest.NewRequest(http.MethodGet, "/twins", nil)); !reached {
+		t.Fatal("the first request was refused")
+	}
+	if _, reached := serve(mw, httptest.NewRequest(http.MethodGet, "/twins", nil)); reached {
+		t.Error("an override applied without Resolve being set")
+	}
+
+	// Resolve ignores nonsense rather than panicking at wire-up: a nil resolver
+	// or an unnamed limit means there is nothing to resolve against.
+	mw = Limit(NewMemoryBackend(), Policy{Algorithm: FixedWindow, Limit: 1, Window: time.Minute},
+		byPath, frozen(base), Resolve(nil, "request"), Resolve(NewResolver(store), ""))
+	if _, reached := serve(mw, httptest.NewRequest(http.MethodGet, "/twins", nil)); !reached {
+		t.Fatal("the first request was refused")
+	}
+	if _, reached := serve(mw, httptest.NewRequest(http.MethodGet, "/twins", nil)); reached {
+		t.Error("an override applied through an unusable Resolve option")
+	}
+}
