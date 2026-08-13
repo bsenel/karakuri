@@ -105,6 +105,21 @@ async function call<T>(method: string, path: string, body?: unknown): Promise<T>
     await refreshSession();
     res = await send();
   }
+  if (res.status === 429) {
+    // One page load here is several requests at once — the quota page alone
+    // asks for its config, its stored tiers, the requests and the overrides —
+    // and a burst of them can legitimately reach the per-principal rate limit.
+    // The server says exactly how long to wait, so waiting is a better answer
+    // than rendering an empty table with no explanation.
+    //
+    // Once, and briefly. A page that retried repeatedly would turn a limit into
+    // a hang, and the limiter's whole purpose is to be felt.
+    const wait = retryAfterMS(res.headers.get('Retry-After'));
+    if (wait !== null) {
+      await new Promise((resolve) => setTimeout(resolve, wait));
+      res = await send();
+    }
+  }
 
   const text = await res.text();
   if (!res.ok) throw new APIError(res.status, text);
@@ -114,6 +129,23 @@ async function call<T>(method: string, path: string, body?: unknown): Promise<T>
   } catch {
     return text as unknown as T;
   }
+}
+
+/**
+ * How long the server asked us to wait, in milliseconds, or null if waiting is
+ * not worth it.
+ *
+ * Capped at two seconds: beyond that the honest thing is to show the refusal
+ * rather than leave somebody looking at a spinner. A missing or unparseable
+ * header also means null — inventing a delay the server did not ask for is how
+ * a client becomes the reason a limit is being hit.
+ */
+function retryAfterMS(header: string | null): number | null {
+  if (!header) return null;
+  const seconds = Number(header);
+  if (!Number.isFinite(seconds) || seconds < 0) return null;
+  const ms = Math.ceil(seconds * 1000);
+  return ms <= 2000 ? Math.max(ms, 250) : null;
 }
 
 export const api = {

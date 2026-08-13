@@ -21,6 +21,12 @@ export default defineConfig({
   timeout: 30_000,
   use: {
     baseURL: process.env.KARAKURI_E2E_URL ?? 'http://127.0.0.1:8080',
+    // A pre-installed browser, for an environment that has one and cannot
+    // download another. CI leaves this unset and uses what
+    // `playwright install chromium` put in place.
+    ...(process.env.PLAYWRIGHT_CHROMIUM_PATH
+      ? { launchOptions: { executablePath: process.env.PLAYWRIGHT_CHROMIUM_PATH } }
+      : {}),
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
   },

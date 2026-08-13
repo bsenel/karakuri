@@ -46,21 +46,33 @@ export function TwinsPage() {
       <div className="card" style={{ marginBottom: 16 }}>
         <h3>Create</h3>
         <form onSubmit={create} className="row" style={{ alignItems: 'flex-end' }}>
+          {/* htmlFor/id rather than a bare <label>: without the association a
+              screen reader reads the field as unlabelled, and so does anything
+              else driving the page by accessible name. */}
           <div className="grow">
-            <label>Name</label>
-            <input value={name} onChange={(e) => setName(e.target.value)} required />
+            <label htmlFor="twin-name">Name</label>
+            <input
+              id="twin-name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              required
+            />
           </div>
           <div>
-            <label>Kind</label>
-            <select value={kind} onChange={(e) => setKind(e.target.value as typeof kind)}>
+            <label htmlFor="twin-kind">Kind</label>
+            <select
+              id="twin-kind"
+              value={kind}
+              onChange={(e) => setKind(e.target.value as typeof kind)}
+            >
               <option value="person">person</option>
               <option value="team">team</option>
               <option value="organization">organization</option>
             </select>
           </div>
           <div>
-            <label>Domain</label>
-            <input value={domain} onChange={(e) => setDomain(e.target.value)} />
+            <label htmlFor="twin-domain">Domain</label>
+            <input id="twin-domain" value={domain} onChange={(e) => setDomain(e.target.value)} />
           </div>
           <button className="primary" type="submit">Create</button>
         </form>

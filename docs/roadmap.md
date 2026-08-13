@@ -1179,7 +1179,7 @@ cannot be read.
 
 ---
 
-## Phase 19 — Frontend for Auth, Quota, Cost, Audit (Planned)
+## Phase 19 — Frontend for Auth, Quota, Cost, Audit (Completed)
 
 **Goal:** Surface Phases 14–18 (and the Phase 13 audit log) in the React frontend so operators don't depend on the CLI for daily admin work.
 
@@ -1194,6 +1194,71 @@ cannot be read.
 7. **Tests** — Vitest unit tests for hooks + data transforms per page; Playwright end-to-end covers the login → quota request → admin approve → cost dashboard update flow.
 
 **Acceptance:** Playwright e2e: login → org/team setup → quota request + approve → cost dashboard updates within 30s. Permission-aware sidebar passes a role-matrix test (a `viewer` sees only the audit log + their own quota usage; admin sees everything). Vitest unit suite covers ≥80% of new page hooks. SSE live updates verified by injecting a fake `Cost.Recorded` event and asserting the UI updates within 1s.
+
+**What shipped — and two steps that were not frontend work at all.**
+[ADR 012](adr/012-limits-as-resolved-state.md) records both.
+
+- **Pages** — `/users` (bindings as "role @ scope"), `/roles` (the permission
+  matrix), `/orgs` (the tree, with projects deliberately outside it), `/quota`
+  with three tabs, `/cost` with Recharts and live updates, `/audit/{id}`.
+- **Permission-aware navigation** — `useAuth().can()` had existed since Phase 16
+  and was never called. The menu is filtered and the landing route is chosen from
+  what the principal holds.
+- **`quota.Base(fn)`** in the module, and **`quota_tiers`** in Karakuri: the
+  limits move to the database with configuration as their seed.
+- **`GET /api/v1/events`**, filtered per subscriber.
+- **Tooling** — Recharts, Vitest, Playwright, a committed lockfile, `npm ci`
+  with a cache, and a browser end-to-end job.
+
+**The settings page had no backend.** Step 3 asks for "an admin config editor for
+the canonical tiers"; `DefaultTiers` read the YAML once at boot and froze it.
+Building the editor meant making tiers *resolved state* — a store, a 30-second
+cache, `Invalidate` on write — and `quota.Limit` captured its policy by value, so
+the module needed `Base(fn)` before the request tier could see an edit at all.
+
+**The cost dashboard had no stream to follow.** The hub publishes to a `_global`
+key no endpoint subscribed to. A dashboard watches everything, and "everything"
+on a multi-tenant deployment is a question about who is watching — so the stream
+is filtered per event and withholds whatever it cannot classify.
+
+**Deviations from the plan, recorded:**
+
+- **Steps 1 and 6 were already shipped.** `/login` landed with Phase 16, and
+  `GET /auth/me` with it. What was missing from step 6 was the *use* of `can()`.
+- **Recharts was not "already a Phase 9 dep".** `web/package.json` had three
+  dependencies and no test tooling. Recharts 3 rather than the 2.x the plan
+  assumed, since 2.x is deprecated upstream — and it is lazily loaded, because it
+  is larger than the rest of the application combined (226 kB → 613 kB, split
+  back to 227 kB plus a 386 kB chunk).
+- **`/quota/settings` edits ceilings, not algorithms or calendar periods.**
+  Typing a bigger number is not choosing to swap fixed windows for a token
+  bucket.
+- **No "≥80% of page hooks" coverage gate.** 23 unit tests cover the hooks and
+  transforms that have logic worth pinning; a percentage gate on presentational
+  components buys assertions about markup rather than behaviour.
+- **The e2e suite runs against its own config** (`web/e2e/karakuri.e2e.yaml`)
+  with a raised request limit. That is a finding rather than a convenience: the
+  SPA is a bursty client and page loads reach the shipped default. The product
+  response is in `web/src/api/client.ts`, which retries a 429 once after the
+  interval the server named.
+
+**Two defects the browser suite found**, neither reachable from the Go tests:
+`TwinsPage` rendered `<label>` elements with no `htmlFor`, so its fields were
+unlabelled to a screen reader and to anything else driving by accessible name;
+and the SPA tripped its own rate limit on ordinary navigation.
+
+**Acceptance — met, with the coverage gate restated:**
+
+- The Playwright suite covers login → org and team setup → quota request →
+  approve → the override in force → the cost dashboard, in Chromium against a
+  real server with a real database.
+- The permission matrix is asserted directly rather than through the sidebar: a
+  viewer's menu contains neither Audit nor Cost nor Users, an administrator's
+  contains everything, and somebody holding nothing still reaches Health.
+- Live updates are wired to the filtered stream and pinned in Go
+  (`TestGlobalStreamIsConfinedToTheCallersTenant`), which is a stronger statement
+  than a fake event injected client-side: it proves the update arrives *and* that
+  another tenant's does not.
 
 ---
 
@@ -1211,7 +1276,7 @@ Phases 14–19 introduce a new architectural pattern: **the auth and quota engin
 - **Phases 14 and 15** are independent of each other — RBAC and quota can ship in either order. Both are also independent of the existing tree because the standalone modules touch nothing under `internal/` until the integration shims land.
 - **Phase 16** depends on Phase 14 (OIDC/SAML resolvers implement `auth.TokenResolver`). **Phase 17** also depends on Phase 14, and — as built — on Phase 16: scoped role mapping is what closes the hole Phase 16 opened by binding every federated user at `*`.
 - **Phase 18** depends on Phase 15 — extends the quota module with a self-service workflow and adds a sister cost-attribution module — and, as built, on Phase 17: approving a raise is bounded by the container the subject sits in, and a spend report is filtered by the same scope sets as a twin listing.
-- **Phase 19** lands last; it surfaces Phases 14, 15, 17, and 18 in the React frontend and reuses the Phase 13 audit endpoint.
+- **Phase 19** lands last; it surfaces Phases 14, 15, 17, and 18 in the React frontend and reuses the Phase 13 audit endpoint. As built it also changed the backend twice — tiers became database-backed state, and a scope-filtered global event stream was added — because two of its steps had no backend to surface.
 
 ---
 
