@@ -58,7 +58,19 @@ func (s *Service) List(ctx context.Context, f storage.TwinFilter) ([]twin.Digita
 
 func (s *Service) Update(ctx context.Context, t twin.DigitalTwin) error {
 	t.UpdatedAt = time.Now().UTC()
-	return s.store.UpdateTwin(ctx, t)
+	if err := s.store.UpdateTwin(ctx, t); err != nil {
+		return err
+	}
+	// An update publishes, which until Phase 19 it did not — twin_state_updated
+	// fired only on creation, so the one event named for a state change was the
+	// only thing that never reported one. Nothing watched the stream closely
+	// enough to notice until there was a dashboard following it.
+	s.hub.Publish(ctx, event.Event{
+		Type: event.TypeTwinStateUpdated, TwinID: t.ID,
+		Payload:   map[string]any{"action": "updated", "name": t.Name},
+		Timestamp: t.UpdatedAt,
+	})
+	return nil
 }
 
 func newID() (string, error) {

@@ -188,7 +188,11 @@ func NewApp(
 	memH := &handler.MemoryHandler{Memory: memSvc}
 	domH := &handler.DomainHandler{Domains: domReg, Capabilities: capReg}
 	resH := &handler.ResearchHandler{Research: resSvc}
-	evtH := &handler.EventsHandler{Hub: hub}
+	evtH := &handler.EventsHandler{
+		Hub:        hub,
+		Scopes:     authDeps.Authorizer,
+		Containers: containerSvc,
+	}
 	audH := &handler.AuditHandler{Store: store}
 	contH := &handler.ContainerHandler{Containers: containerSvc, Authorizer: authDeps.Authorizer}
 	quotaH := &handler.QuotaHandler{
@@ -351,6 +355,12 @@ func NewApp(
 			// agent_id, kind, bounds_violation, since (RFC3339), and limit
 			// query params. Auditor and admin only — a viewer can see the
 			// system's work but not the record of who approved what.
+			// The deployment-wide stream a dashboard follows. The route gate
+			// answers "may you watch anything"; which events reach this
+			// subscriber is decided per event, because the key names
+			// everything and no URL-shaped check can narrow that.
+			r.With(require(karakuriauth.StreamAction, twinList)).Get("/events", evtH.StreamAll)
+
 			r.With(require(karakuriauth.ActionAuditRead, nil)).Get("/audit", audH.List)
 			// Filtered to the containers the caller may see, from the same
 			// bindings the twin listing reads — a report must not be a way

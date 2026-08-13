@@ -3,6 +3,7 @@ package quota
 import (
 	"context"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/bsenel/karakuri/internal/core/event"
@@ -135,17 +136,27 @@ func (r *Recorder) publish(ctx context.Context, e cost.Event) {
 	if r.Hub == nil {
 		return
 	}
+	// TwinID is the twin that pays, not the resource the spend was on. Those
+	// differ for a tool call, whose resource is the objective — and publishing
+	// an objective ID under twin_id would route the event to the wrong
+	// per-twin stream and describe the wrong thing to a dashboard.
+	twinID := e.ResourceID
+	if e.ResourceType != "twin" {
+		twinID = strings.TrimPrefix(string(e.Subject), "twin|")
+	}
 	r.Hub.Publish(ctx, event.Event{
 		Type:   event.TypeCostRecorded,
-		TwinID: e.ResourceID,
+		TwinID: twinID,
 		Payload: map[string]any{
-			"subject":   string(e.Subject),
-			"provider":  e.Provider,
-			"model":     e.Model,
-			"units":     e.Units,
-			"unit_kind": e.UnitKind,
-			"cost":      e.Cost,
-			"labels":    e.Labels,
+			"resource_type": e.ResourceType,
+			"resource_id":   e.ResourceID,
+			"subject":       string(e.Subject),
+			"provider":      e.Provider,
+			"model":         e.Model,
+			"units":         e.Units,
+			"unit_kind":     e.UnitKind,
+			"cost":          e.Cost,
+			"labels":        e.Labels,
 		},
 		Timestamp: e.OccurredAt,
 	})
