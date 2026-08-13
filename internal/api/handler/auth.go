@@ -10,6 +10,7 @@ import (
 
 	"github.com/bsenel/karakuri/auth"
 	karakuriauth "github.com/bsenel/karakuri/internal/auth"
+	"github.com/go-chi/chi/v5"
 )
 
 // AuthHandler serves login, token rotation, and the principal/role/policy
@@ -451,4 +452,136 @@ func authError(w http.ResponseWriter, status int, code, reason string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(map[string]string{"error": code, "reason": reason})
+}
+
+// ListBindings returns a principal's bindings, or every binding when no
+// principal is named.
+//
+// A binding is the answer to "why can this person do that", and until now the
+// only way to see one was to read the database. The policy debugger at
+// /auth/check answers the same question for one action; this answers it for the
+// whole principal.
+//
+// GET /api/v1/auth/bindings?principal=<id>
+func (h *AuthHandler) ListBindings(w http.ResponseWriter, r *http.Request) {
+	if id := r.URL.Query().Get("principal"); id != "" {
+		bindings, err := h.Store.ListBindings(r.Context(), id)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, bindings)
+		return
+	}
+
+	principals, err := h.Store.ListPrincipals(r.Context())
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	out := []auth.RoleBinding{}
+	for _, p := range principals {
+		bindings, err := h.Store.ListBindings(r.Context(), p.ID)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		out = append(out, bindings...)
+	}
+	writeJSON(w, out)
+}
+
+// DeleteBinding revokes one binding.
+//
+// Revoking is bounded by the same rule as granting: you can only take away a
+// scope you hold. Without that, an administrator scoped to one organisation
+// could strip another organisation's bindings — which is not a way to gain
+// access, but is a way to deny it to everybody else, and a tenancy model that
+// stops at reads is not one.
+//
+// DELETE /api/v1/auth/bindings/{id}
+func (h *AuthHandler) DeleteBinding(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	binding, err := h.findBinding(r, id)
+	if err != nil {
+		authError(w, http.StatusNotFound, "not_found", "no such binding")
+		return
+	}
+	if !h.mayGrant(w, r, binding.Scope) {
+		return
+	}
+	if err := h.Store.DeleteBinding(r.Context(), id); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// findBinding locates a binding by ID across principals, because the store
+// indexes them by principal and a URL carries only the binding.
+func (h *AuthHandler) findBinding(r *http.Request, id string) (auth.RoleBinding, error) {
+	principals, err := h.Store.ListPrincipals(r.Context())
+	if err != nil {
+		return auth.RoleBinding{}, err
+	}
+	for _, p := range principals {
+		bindings, err := h.Store.ListBindings(r.Context(), p.ID)
+		if err != nil {
+			return auth.RoleBinding{}, err
+		}
+		for _, b := range bindings {
+			if b.ID == id {
+				return b, nil
+			}
+		}
+	}
+	return auth.RoleBinding{}, errNoSuchBinding
+}
+
+var errNoSuchBinding = errors.New("no such binding")
+
+// DeleteUser removes a principal and everything that granted it access.
+//
+// Unscoped, deliberately, and for the same reason creating one is: a principal
+// is not a tenant's resource. A tenant-scoped administrator who could delete
+// principals could delete the bootstrap administrator, which is a way to take a
+// deployment down rather than a way to run one tenant of it. See ADR 010.
+//
+// The bindings go with the principal. Leaving them would leave rows granting
+// roles to an identity that no longer exists — harmless until somebody recreates
+// the same ID and silently inherits them.
+//
+// DELETE /api/v1/auth/users/{id}
+func (h *AuthHandler) DeleteUser(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	principal, ok := auth.PrincipalFromContext(r.Context())
+	if ok && principal.ID == id {
+		// Deleting the account you are signed in as leaves nobody able to undo
+		// it, and on a single-administrator deployment that is the whole
+		// deployment.
+		authError(w, http.StatusBadRequest, "bad_request",
+			"you cannot delete the principal you are signed in as")
+		return
+	}
+	if _, err := h.Store.GetPrincipal(r.Context(), id); err != nil {
+		authError(w, http.StatusNotFound, "not_found", "no such principal")
+		return
+	}
+
+	bindings, err := h.Store.ListBindings(r.Context(), id)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	for _, b := range bindings {
+		if err := h.Store.DeleteBinding(r.Context(), b.ID); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+	}
+	if err := h.Store.DeletePrincipal(r.Context(), id); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }

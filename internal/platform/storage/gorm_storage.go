@@ -539,6 +539,25 @@ func (s *GORMStorage) ListToolEvents(ctx context.Context, f ToolEventFilter) ([]
 	return out, nil
 }
 
+// GetToolEvent returns one audit row by ID.
+//
+// The list endpoint could have answered this with a filter, and deliberately
+// does not: an audit detail view is reached by link — from a checkpoint, from
+// another tab, from somebody's bookmark — and making that a search over a
+// bounded page means a row that has scrolled off cannot be opened at all.
+func (s *GORMStorage) GetToolEvent(ctx context.Context, id string) (ToolEvent, error) {
+	var m schema.ToolEventModel
+	if err := s.db.WithContext(ctx).First(&m, "id = ?", id).Error; err != nil {
+		return ToolEvent{}, err
+	}
+	return ToolEvent{
+		ID: m.ID, ObjectiveID: m.ObjectiveID, AgentID: m.AgentID, Capability: m.Capability,
+		Adapter: m.Adapter, Success: m.Success, Confidence: m.Confidence, PayloadJSON: m.PayloadJSON,
+		Kind: m.Kind, EscalationReason: m.EscalationReason, Approver: m.Approver,
+		BoundsViolation: m.BoundsViolation, CreatedAt: m.CreatedAt,
+	}, nil
+}
+
 // ── Loop state (Phase 11) ─────────────────────────────────────────────────
 
 func (s *GORMStorage) SaveLoopState(ctx context.Context, st coreloop.State) error {

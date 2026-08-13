@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -543,4 +544,93 @@ func atoiOr(s string, fallback int) int {
 		return n
 	}
 	return fallback
+}
+
+// overrideLister is the optional whole-store read a store may support.
+//
+// Optional because listing every override is an administrative question rather
+// than an enforcement one: resolution only ever asks about one subject, so a
+// store is complete without this. The SQL store has it; the memory one does
+// not, and a deployment on the memory store answers an empty list rather than
+// an error.
+type overrideLister interface {
+	ListOverrides(ctx context.Context) ([]quota.Override, error)
+}
+
+// Overrides lists the per-subject raises in force, so an administrator can see
+// what has been approved without reading the database.
+//
+// Filtered to what the caller may see, by the same rule that governs approving
+// one: an override is about a subject, and a subject is a resource with
+// containers. Listing them unfiltered would tell every reader which of another
+// tenant's twins had asked for more and why.
+//
+// GET /api/v1/quota/overrides
+func (h *QuotaHandler) Overrides(w http.ResponseWriter, r *http.Request) {
+	lister, ok := h.Quota.OverrideStore.(overrideLister)
+	if !ok || h.Quota.OverrideStore == nil {
+		writeJSON(w, []quota.Override{})
+		return
+	}
+	all, err := lister.ListOverrides(r.Context())
+	if err != nil {
+		writeQuotaError(w, err)
+		return
+	}
+
+	principal, _ := auth.PrincipalFromContext(r.Context())
+	visible := make([]quota.Override, 0, len(all))
+	for _, o := range all {
+		allowed, _, err := karakuriauth.MayActOn(
+			r.Context(), h.Authorizer, h.Containers, principal,
+			karakuriauth.ActionQuotaApprove, karakuriquota.ScopeForSubject(o.Subject))
+		if err != nil {
+			http.Error(w, "authorization could not be evaluated", http.StatusInternalServerError)
+			return
+		}
+		if allowed {
+			visible = append(visible, o)
+		}
+	}
+	writeJSON(w, visible)
+}
+
+// RevokeOverride takes a raise back.
+//
+// Bounded by the same check as granting one: whoever may approve a raise for a
+// subject may withdraw it, and nobody else. Revoking is not the harmless
+// direction — a raise somebody is relying on, removed by an administrator of
+// another tenant, is that tenant's work stopping.
+//
+// DELETE /api/v1/quota/overrides/{subject}/{name}
+func (h *QuotaHandler) RevokeOverride(w http.ResponseWriter, r *http.Request) {
+	if h.Quota.OverrideStore == nil {
+		writeQuotaError(w, errNoTierStore)
+		return
+	}
+	subject := quota.Key(chi.URLParam(r, "subject"))
+	name := chi.URLParam(r, "name")
+
+	principal, _ := auth.PrincipalFromContext(r.Context())
+	allowed, reason, err := karakuriauth.MayActOn(
+		r.Context(), h.Authorizer, h.Containers, principal,
+		karakuriauth.ActionQuotaApprove, karakuriquota.ScopeForSubject(subject))
+	if err != nil {
+		http.Error(w, "authorization could not be evaluated", http.StatusInternalServerError)
+		return
+	}
+	if !allowed {
+		authError(w, http.StatusForbidden, "forbidden",
+			"you can only revoke a raise for a subject you already hold: "+reason)
+		return
+	}
+
+	if err := h.Quota.OverrideStore.DeleteOverride(r.Context(), subject, name); err != nil {
+		writeQuotaError(w, err)
+		return
+	}
+	// The limit goes back to the tier at once for this process, and within the
+	// cache window everywhere else — the same guarantee an approval gets.
+	h.Quota.Resolver.Invalidate(subject)
+	w.WriteHeader(http.StatusNoContent)
 }
