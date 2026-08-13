@@ -33,10 +33,16 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
-      # No lockfile committed yet; install resolves fresh each run. Once a
-      # package-lock.json is generated against a modern Node and committed,
-      # switch this back to `npm ci` + `cache: npm` for reproducibility.
-      - run: npm install --no-audit --no-fund
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci --no-audit --no-fund
+        working-directory: web
+      - run: npm run typecheck
+        working-directory: web
+      # Unit tests only. The Playwright suite needs a browser and a running
+      # server, so it is its own job below rather than a step that makes every
+      # frontend build wait for a browser download.
+      - run: npm run test
         working-directory: web
       - run: npm run build
         working-directory: web
