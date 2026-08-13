@@ -15,6 +15,7 @@ import { HealthPage }        from '@/pages/HealthPage';
 import { UsersPage }         from '@/pages/UsersPage';
 import { RolesPage }         from '@/pages/RolesPage';
 import { OrgsPage }          from '@/pages/OrgsPage';
+import { QuotaPage }         from '@/pages/QuotaPage';
 
 export default function App() {
   return (
@@ -50,6 +51,8 @@ function Shell() {
         <Route path="users" element={<UsersPage />} />
         <Route path="roles" element={<RolesPage />} />
         <Route path="orgs" element={<OrgsPage />} />
+        {/* Quota has nested tabs, so it claims the subtree rather than one path. */}
+        <Route path="quota/*" element={<QuotaPage />} />
       </Route>
     </Routes>
   );
