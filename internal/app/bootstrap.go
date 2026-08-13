@@ -274,7 +274,61 @@ func BootstrapServer(cfgPath string) (*Bootstrap, error) {
 		startRetentionLoop(ctx, apiApp.Memory, cfg.Memory.Retention)
 	}
 
+	// Cost retention (Phase 18). One event per model call and per tool call
+	// adds up, so raw rows age out while the daily rollup does not — a shorter
+	// horizon costs the drill-down and not the totals.
+	startCostRetention(ctx, quotaDeps, cfg.Quota.CostRetentionDays)
+
 	return &Bootstrap{Config: cfg, App: apiApp, Store: store, Worktrees: wt}, nil
+}
+
+// startCostRetention prunes raw cost events on a daily tick.
+//
+// Daily rather than hourly because the horizon is measured in days: sweeping
+// twelve times between two cutoffs deletes nothing eleven of those times. The
+// first sweep runs a minute after boot rather than a day later, so a deployment
+// that has just lowered its retention sees the effect without waiting a day,
+// and a restart loop cannot postpone pruning indefinitely.
+//
+// Zero retention keeps everything, which is why this is not gated on an
+// Enabled flag: the horizon itself says whether to sweep.
+func startCostRetention(ctx context.Context, deps karakuriquota.Deps, days int) {
+	if days <= 0 {
+		return
+	}
+	retention := time.Duration(days) * 24 * time.Hour
+	slog.Info("cost event retention enabled",
+		"days", days,
+		"note", "the daily rollup is kept; only per-event rows are pruned")
+
+	go func() {
+		sweep := func() {
+			n, err := deps.SweepCosts(ctx, retention, time.Now().UTC())
+			if err != nil {
+				slog.Warn("cost retention sweep failed", "err", err)
+				return
+			}
+			if n > 0 {
+				slog.Info("cost events pruned", "rows", n, "older_than_days", days)
+			}
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(time.Minute):
+			sweep()
+		}
+		ticker := time.NewTicker(24 * time.Hour)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				sweep()
+			}
+		}
+	}()
 }
 
 // startRetentionLoop launches a background goroutine that periodically calls

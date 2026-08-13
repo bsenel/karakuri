@@ -197,6 +197,39 @@ quota:
   # litellm_url: http://litellm:4000
   # litellm_key_env: LITELLM_MASTER_KEY
 
+  # What a unit costs, so `krk cost report` is in money rather than in tokens.
+  #
+  # Nothing is priced by default. A shipped price table would be wrong the week
+  # after it shipped, and a report that invents money is worse than one that
+  # reports units — with no table the units are still counted and the money
+  # reads zero.
+  #
+  # A rate with no model is that provider's fallback. unit_kind is tokens or
+  # calls, and defaults to tokens. per_unit is in whole currency units, so a
+  # model at $15 per million input tokens is 0.000015.
+  # rates:
+  #   - provider: anthropic
+  #     model: claude-opus-4
+  #     unit_kind: tokens
+  #     per_unit: 0.000015
+  #   - provider: anthropic          # anything else from this provider
+  #     per_unit: 0.000003
+  #   - provider: github
+  #     unit_kind: calls
+  #     per_unit: 0.0
+
+  # How long individual cost events are kept, for drilling from a total down to
+  # the objective that produced it. The daily rollup survives pruning, so a
+  # shorter horizon costs the drill-down and not the totals. Zero keeps
+  # everything.
+  cost_retention_days: 90
+
+  # Self-service limits need somewhere durable to write and are wired whenever
+  # a database is configured, whatever the counter backend above. An approval
+  # that vanished on restart would be worse than not offering one, so a
+  # deployment with no database gets neither overrides nor cost reporting, and
+  # says so in a log line at startup.
+
 domains:
   - id: software
     enabled: true
