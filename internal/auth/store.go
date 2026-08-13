@@ -19,7 +19,7 @@ func NewStore(db *gorm.DB) (*authsql.Store, error) {
 		return nil, fmt.Errorf("auth: take *sql.DB from GORM: %w", err)
 	}
 	dialect := authsql.SQLite
-	if db.Dialector != nil && db.Dialector.Name() == "postgres" {
+	if db.Dialector != nil && db.Name() == "postgres" {
 		dialect = authsql.Postgres
 	}
 	return authsql.New(sqlDB, authsql.Options{Dialect: dialect})

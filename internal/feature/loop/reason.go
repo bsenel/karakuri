@@ -41,9 +41,7 @@ func stepReason(ctx context.Context, sc *stepContext, ws loop.WorldState) plan {
 
 	// 2. Build agent input
 	memEntries := make([]coreagent.MemoryEntry, len(sc.memEntries))
-	for i, e := range sc.memEntries {
-		memEntries[i] = e
-	}
+	copy(memEntries, sc.memEntries)
 
 	// Inject the registered env catalog and capability list into the task
 	// instructions. Without this, the agent has to invent env_ids and

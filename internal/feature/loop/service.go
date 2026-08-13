@@ -15,7 +15,6 @@ import (
 	"github.com/bsenel/karakuri/internal/core/environment"
 	"github.com/bsenel/karakuri/internal/core/event"
 	"github.com/bsenel/karakuri/internal/core/loop"
-	coreloop "github.com/bsenel/karakuri/internal/core/loop"
 	"github.com/bsenel/karakuri/internal/core/objective"
 	featureart "github.com/bsenel/karakuri/internal/feature/artifact"
 	featurecp "github.com/bsenel/karakuri/internal/feature/checkpoint"
@@ -214,7 +213,7 @@ func (s *serviceImpl) persistState(ctx context.Context, state *loopState, comple
 	if result.CheckpointID != nil {
 		cpID = *result.CheckpointID
 	}
-	persisted := coreloop.State{
+	persisted := loop.State{
 		LoopID:       state.id,
 		ObjectiveID:  status.ObjectiveID,
 		TwinID:       req.Twin.ID,

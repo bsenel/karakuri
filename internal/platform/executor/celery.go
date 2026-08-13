@@ -49,7 +49,6 @@ type CeleryExecutor struct {
 type celeryInvocation struct {
 	celeryID string
 	status   TaskStatus
-	err      error
 }
 
 func NewCeleryExecutor() *CeleryExecutor {

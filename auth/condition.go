@@ -74,10 +74,10 @@ func (c Condition) Evaluate(p Principal, r ResourceRef) ConditionResult {
 	res := ConditionResult{Condition: c}
 	switch c.Kind {
 	case CondOwnerEquals:
-		switch {
-		case r.Owner == "":
+		switch r.Owner {
+		case "":
 			res.Detail = fmt.Sprintf("resource %s has no owner", r)
-		case r.Owner == p.ID:
+		case p.ID:
 			res.Satisfied = true
 			res.Detail = fmt.Sprintf("owner %q matches principal", r.Owner)
 		default:
