@@ -2,6 +2,7 @@ import { Navigate, Route, Routes } from 'react-router-dom';
 import { AuthProvider, useAuth } from '@/auth/AuthProvider';
 import { LoginModal } from '@/auth/LoginModal';
 import { Layout } from '@/components/Layout';
+import { landingFor } from '@/auth/permissions';
 import { TwinsPage }         from '@/pages/TwinsPage';
 import { TwinDetailPage }    from '@/pages/TwinDetailPage';
 import { ObjectivesPage }    from '@/pages/ObjectivesPage';
@@ -24,13 +25,16 @@ export default function App() {
 // Authentication is never optional now, so the test is simply whether we know
 // who the user is.
 function Shell() {
-  const { ready, identity } = useAuth();
+  const { ready, identity, can } = useAuth();
   if (!ready) return <div style={{ padding: 24 }} className="muted">Loading…</div>;
   if (!identity) return <LoginModal />;
   return (
     <Routes>
       <Route path="/" element={<Layout />}>
-        <Route index element={<Navigate to="/objectives" replace />} />
+        {/* Where somebody lands depends on what they hold. A fixed default
+            sends an auditor with no objective access straight to a 403, which
+            is a poor first impression of a system behaving correctly. */}
+        <Route index element={<Navigate to={landingFor(can)} replace />} />
         <Route path="twins" element={<TwinsPage />} />
         <Route path="twins/:id" element={<TwinDetailPage />} />
         <Route path="objectives" element={<ObjectivesPage />} />

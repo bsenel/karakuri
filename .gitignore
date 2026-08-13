@@ -45,3 +45,8 @@ web/node_modules/
 # Editor/IDE
 # .idea/
 # .vscode/
+
+# Playwright's own output. The report is a build artifact of a test run, not a
+# thing to review in a diff.
+web/playwright-report/
+web/test-results/

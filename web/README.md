@@ -17,6 +17,20 @@ npm run dev      # http://localhost:5173 ; proxies /api → http://localhost:808
 The dev server expects a Karakuri server running on `localhost:8080`. Start it
 with `make build && ./bin/server` (or `make docker-up`) before running the UI.
 
+## Test
+
+```bash
+npm run test          # Vitest — hooks, permission gating, data transforms
+npm run test:watch
+npm run typecheck
+npm run test:e2e      # Playwright — needs a Karakuri server on :8080
+```
+
+Vitest runs in jsdom and is what CI runs on every push. Playwright drives a real
+browser against a real server, so it is a separate job: it is the only thing
+here that catches a route guard which renders but does not navigate, and it is
+far too slow to run on every save.
+
 ## Build
 
 ```bash
@@ -27,6 +41,20 @@ The Go server embeds `web/dist/` via `embed.FS` at `cmd/server/`, so once
 `web/dist/` is present, the server binary serves the UI from `/` while keeping
 `/api/v1/*` as the REST surface and `/api/v1/*/events` as SSE. SPA routes fall
 back to `index.html`.
+
+## Permissions in the interface
+
+The navigation shows only what the signed-in principal can open, and where
+somebody lands after signing in depends on what they hold — an auditor with no
+objective access should not meet a 403 as their first impression of a system
+that is working correctly.
+
+**Hiding a link is a courtesy, not a control.** The server refuses the request
+either way; what this buys is a menu without items that answer 403, which
+otherwise teaches people to ignore errors. Nothing secret may rely on it:
+anything that must not be seen has to be absent from the API's response, not
+from the menu. `RequirePermission` carries the same caveat in its doc comment,
+because that is where somebody will read it.
 
 ## Auth
 

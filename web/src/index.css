@@ -208,3 +208,35 @@ pre.payload {
   max-height: 240px;
   overflow-y: auto;
 }
+
+/* Phase 19 additions. Everything below is a variation on what already exists
+   above — no new palette, no new spacing scale. */
+
+/* A table wide enough to overflow scrolls inside its own box rather than
+   pushing the page sideways; a cost report grouped by day and provider is
+   routinely wider than a laptop. */
+.tablewrap { overflow-x: auto; }
+
+/* A button that reads as a link, for actions that sit inside prose or beside
+   a status rather than at the end of a form. */
+button.linklike {
+  background: none;
+  border: none;
+  padding: 0 4px;
+  color: var(--fg-muted);
+  text-decoration: underline;
+}
+button.linklike:hover { background: none; color: var(--fg); border: none; }
+
+.error { color: var(--red); }
+
+/* Two numbers side by side — what is configured, and what is actually in
+   force. The pairing is the point: a limit that has been edited should not be
+   readable only as the number it is now. */
+.pair { display: flex; gap: 8px; align-items: baseline; }
+.pair .was { color: var(--fg-muted); text-decoration: line-through; }
+
+/* Recharts renders into a plain div; this only bounds it so a chart cannot
+   grow without limit on a wide screen. */
+.chart { width: 100%; height: 280px; }
+.chart-tall { height: 360px; }

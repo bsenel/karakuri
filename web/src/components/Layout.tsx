@@ -1,19 +1,27 @@
 import { NavLink, Outlet } from 'react-router-dom';
 import { useAuth } from '@/auth/AuthProvider';
+import { visibleNavigation } from '@/auth/permissions';
 
 export function Layout() {
-  const { health } = useAuth();
+  const { health, identity, can, logout } = useAuth();
+  // The navigation shows what this principal can actually open. Hiding a link
+  // is a courtesy rather than a control — the server refuses either way — but a
+  // menu full of items that answer 403 teaches people to ignore errors.
+  const links = visibleNavigation(can);
+
   return (
     <div className="layout">
       <nav className="topnav">
         <span className="brand">⌬ Karakuri</span>
-        <NavLink to="/twins"       className={({ isActive }) => (isActive ? 'active' : '')}>Twins</NavLink>
-        <NavLink to="/objectives"  className={({ isActive }) => (isActive ? 'active' : '')}>Objectives</NavLink>
-        <NavLink to="/checkpoints" className={({ isActive }) => (isActive ? 'active' : '')}>Checkpoints</NavLink>
-        <NavLink to="/audit"       className={({ isActive }) => (isActive ? 'active' : '')}>Audit</NavLink>
-        <NavLink to="/memory"      className={({ isActive }) => (isActive ? 'active' : '')}>Memory</NavLink>
-        <NavLink to="/artifacts"   className={({ isActive }) => (isActive ? 'active' : '')}>Artifacts</NavLink>
-        <NavLink to="/health"      className={({ isActive }) => (isActive ? 'active' : '')}>Health</NavLink>
+        {links.map((entry) => (
+          <NavLink
+            key={entry.to}
+            to={entry.to}
+            className={({ isActive }) => (isActive ? 'active' : '')}
+          >
+            {entry.label}
+          </NavLink>
+        ))}
         <div className="grow" />
         {health && (
           <span className="small muted">
@@ -21,6 +29,14 @@ export function Layout() {
             {health.adapters.filter((a) => a.active).length} adapters
           </span>
         )}
+        {identity && (
+          <span className="small muted" title={identity.roles.join(', ')}>
+            {identity.principal.name || identity.principal.id}
+          </span>
+        )}
+        <button className="linklike small" onClick={() => void logout()}>
+          Sign out
+        </button>
       </nav>
       <main className="main">
         <Outlet />
