@@ -8,10 +8,10 @@ Exactly **one** `[~]` at a time. An item becomes `[x]` only when it links to evi
 | 0 | Recon & baseline | agent | [x] | Phase 0 report in plan; `/tmp/testbaseline.log`; findings F-01…F-25 | 2026-08-13 |
 | 1 | Code cleanup & refactoring (descoped) | agent | [x] | `REFACTOR_REPORT.md`; commit 28ed499 | 2026-08-13 |
 | 2 | Security audit → SECURITY_AUDIT.md | agent | [x] | `SECURITY_AUDIT.md`; `evidence/` | 2026-08-13 |
-| 3 | Compliance audit → COMPLIANCE_AUDIT.md | agent | [~] | | 2026-08-13 |
+| 3 | Compliance audit → COMPLIANCE_AUDIT.md | agent | [x] | `COMPLIANCE_AUDIT.md` | 2026-08-13 |
 | 4 | Design & dev best-practices audit → ENGINEERING_AUDIT.md | agent | [x] | `ENGINEERING_AUDIT.md`; `adr/013`, `adr/014` | 2026-08-13 |
 | 5 | Penetration testing → PENTEST_REPORT.md | agent | [x] | `PENTEST_REPORT.md`; `evidence/pentest-transcript.txt`, `zap-baseline.json` | 2026-08-13 |
-| 6 | CI automation of 2–5 → CI_SECURITY_PIPELINE.md | agent | [ ] | | |
+| 6 | CI automation of 2–5 → CI_SECURITY_PIPELINE.md | agent | [~] | | 2026-08-13 |
 
 ## Workstream 0 — Recon & baseline (done)
 
@@ -69,10 +69,11 @@ Validation: full `go test ./...` green across all 10 modules; Playwright e2e 5/5
 - [x] Wrote `ENGINEERING_AUDIT.md`: Matrix A (68.6, Developing), findings E-01..E-06, 30/60/90 roadmap.
 - [x] ADR-013 (versioned migrations), ADR-014 (error envelope + correlation IDs).
 
-## Workstream 3 — Compliance audit
+## Workstream 3 — Compliance audit (done)
 
-- [ ] Data-flow inventory.
-- [ ] Write `COMPLIANCE_AUDIT.md`: SOC 2 / SSDF / GDPR / ISO 27001 / EU CRA, technical vs org controls, cross-mapping.
+- [x] Data-flow inventory (GDPR Art. 30 basis) with processor/cross-border flags.
+- [x] Wrote `COMPLIANCE_AUDIT.md`: SOC 2 / SSDF / GDPR / ISO 27001 / EU CRA, [Code] vs [Org]
+      separation, cross-mapping table, readiness actions. Stated: readiness, not certification.
 
 ## Workstream 6 — CI automation
 
