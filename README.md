@@ -158,6 +158,14 @@ krk quota config
 krk quota show --twin <id>
 krk quota reset --twin <id> [--capability <cap>]
 
+# Self-service limits and spend (Phase 18)
+krk quota request --tier llm-tokens --twin <id> --cap 5000000 --reason "launch week"
+krk quota requests list [--status pending] [--mine]
+krk quota requests approve <request-id> [--note "..."]
+krk quota requests reject <request-id> --note "..."
+krk cost report [--since 720h] [--twin <id>] [--org <name> --team <name>] \
+                [--provider <p>] [--group-by day,provider,model,label] [--limit N]
+
 # Audit log (Phase 13)
 krk audit [--kind execute|escalation|approval] [--objective <id>] \
           [--agent <id>] [--violations-only] [--since <RFC3339>] [--limit N]
@@ -403,6 +411,62 @@ gateway count dollars instead of tokens — Karakuri stamps
 `x-litellm-customer-id: twin:<id>` on every model call, so spend is attributed
 per twin without provisioning anything.
 
+### Asking for more
+
+Raising a limit for one team used to mean editing YAML and restarting. It is now
+a request somebody approves ([ADR 011](docs/adr/011-overrides-and-labelled-spend.md)):
+
+```bash
+krk quota request --tier llm-tokens --twin t_7f2a --cap 5000000 --reason "launch week"
+krk quota requests list --status pending
+krk quota requests approve qr_1a2b3c4d          # writes the override
+krk quota show --twin t_7f2a                    # the new cap, in force
+```
+
+Approving writes a per-subject **override** that is consulted when the tier is
+resolved, so an approval changes the limit that is actually enforced rather than
+only a row in a table. It takes effect within the resolver's 30-second cache —
+immediately in the process that approved it. `--until` makes the raise lapse on
+its own, which is what "double for launch week" actually means; without it the
+raise is permanent.
+
+**Asking is not granting.** Every role down to `viewer` holds `quota:request`,
+because anybody who can be throttled should be able to ask. Deciding is
+`quota:approve`, and it is bounded by the same containment as handing out a
+binding: you can only approve a raise for a subject you already hold, so an acme
+administrator approves acme's requests and nobody else's. Rejecting needs no
+such scope — somebody who may decide at all may always decline.
+
+### Cost attribution
+
+Every model call and every tool call is recorded with what it consumed, what it
+cost, and the containers the resource sat in **when the call happened**:
+
+```bash
+krk cost report --since 24h --group-by provider
+krk cost report --org acme --team eng --since 720h --group-by day
+krk cost report --twin t_7f2a --group-by model
+```
+
+**Nothing is priced by default.** A shipped price table would be wrong the week
+after it shipped, so with no `quota.rates` configured the units are still counted
+and the money reads zero — the honest answer rather than an invented one. Set the
+table in configuration to get currency out.
+
+A report shows only what you may see. The filter comes from the same bindings
+that decide which twins you can list, so a report is not a way around tenancy,
+and naming another tenant's team narrows to nothing rather than widening to their
+spend. Labels are copied onto the event rather than derived at query time: moving
+a twin between teams does not move last month's money.
+
+Raw events age out (`quota.cost_retention_days`) and the daily rollup does not, so
+a shorter horizon costs the drill-down and not the totals. Each write publishes a
+`cost_recorded` event on the same stream the SPA already watches.
+
+Self-service and cost both need somewhere durable to write, and are wired whenever
+a database is configured — whatever the counter backend. A deployment with neither
+gets neither, and says so at startup.
+
 ### Helm chart
 
 `deploy/` is the chart root (chart name `karakuri` from `Chart.yaml`). The same chart drives Helm direct, Minikube, k3s, and ArgoCD. Tunable values live in [`deploy/values.yaml`](deploy/values.yaml); k3s-specific overrides in [`deploy/values-k3s.yaml`](deploy/values-k3s.yaml).
@@ -496,13 +560,13 @@ is restricted under the
 
 ## Roadmap
 
-Phases 1–17 have shipped (core engine through cross-domain objectives, then the multi-team production layer). Phases 18–19 are queued:
+Phases 1–18 have shipped (core engine through cross-domain objectives, then the multi-team production layer). Phase 19 is queued:
 
 - **Phase 14:** RBAC + fine-grained authorization, shipped as a standalone module `github.com/bsenel/karakuri/auth` reusable by any net/http or chi server
 - **Phase 15:** API rate limiting + quota management, shipped as `github.com/bsenel/karakuri/quota` with Redis/SQL backend submodules
 - **Phase 16:** Federated identity (OIDC + SAML) as `auth` submodules
 - **Phase 17:** Multi-tenant hierarchy — orgs, teams and projects as scope sets ([ADR 010](docs/adr/010-scope-sets.md))
-- **Phase 18:** Quota self-service workflow + cost attribution (`quota` v0.2 + sibling `quota/cost` module)
+- **Phase 18:** Quota self-service + cost attribution — per-subject overrides an approval writes, and labelled spend ([ADR 011](docs/adr/011-overrides-and-labelled-spend.md))
 - **Phase 19:** Frontend pages for auth, quota, cost, and audit
 
 Full per-phase status, acceptance criteria, and architecture rationale in [docs/roadmap.md](docs/roadmap.md).

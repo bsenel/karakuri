@@ -1073,7 +1073,7 @@ fetch by id.
 
 ---
 
-## Phase 18 — Quota Self-Service + Cost Attribution (Planned)
+## Phase 18 — Quota Self-Service + Cost Attribution (Completed)
 
 **Goal:** Let users request quota increases through an approval workflow, and give operators per-team / per-twin / per-provider cost attribution so spend is visible before the bill arrives.
 
@@ -1088,6 +1088,94 @@ fetch by id.
 7. **Release workflow** — `.github/workflows/release-quota-cost.yml`.
 
 **Acceptance:** Self-service workflow integration: Alice submits a request, Bob (admin) approves, Alice's effective quota reflects the new limit within 60 seconds. Cost report matches scripted `TokensUsed` values from a controlled loop run within ±0.01% floating-point tolerance. Concurrent ledger writes verified race-free.
+
+**What shipped — an approval writes an override, and spend carries its labels.**
+A request on its own is a row nothing reads; what makes an approval mean something is a
+per-subject **override** consulted when a tier is resolved. And because Phase 17 had just
+made teams real, a cost report is filtered by the same scope sets as everything else.
+[ADR 011](adr/011-overrides-and-labelled-spend.md) records the decisions in full.
+
+- **`quota`** — `Override`, `OverrideStore`, `Resolver` with a 30-second TTL cache, and
+  `quota.Resolve(...)` as an *option* on `Limit` so no existing caller changed. Then
+  `Request`, `RequestStore` and `Requests{Submit,Decide,List}`, where approving writes the
+  override **before** marking the request approved.
+- **`quota/sql`** — `quota_overrides` and `quota_requests`, alongside the existing counters.
+- **`quota/cost`** — a sibling module with an empty require block: `Event`, `Ledger`,
+  `Pricer`, `StaticPricer`, `MemoryLedger`, and `Query`/`Bucket`/`Fold` for reports.
+- **`quota/cost/sql`** — `cost_events` for drill-down and `cost_daily` for totals, the
+  rollup upserted in the event's own transaction, plus a retention sweep scheduled daily
+  from bootstrap: one row per model call and per tool call adds up, and the rollup outlives
+  the events it was folded from.
+- **Karakuri** — `internal/quota/requests.go` and `cost.go`, `Provider`/`Model` on
+  `coreagent.Output`, token cost recorded beside the budget charge and adapter cost beside
+  the tool event, `cost_recorded` on the hub.
+- **API + CLI** — `quota:request`, `quota:approve` and `cost:read`; `POST/GET
+  /quota/requests`, `POST /quota/requests/{id}/decide`, `GET /cost`; `krk quota request`,
+  `krk quota requests list/approve/reject`, `krk cost report`.
+
+**The plan's step 1 could not meet its own acceptance criterion.** It specified `Request` +
+`RequestStore` and stopped there, so approving would have written a row nothing consulted
+and *"Alice's effective quota reflects the new limit within 60 seconds"* was unreachable.
+Overrides are the load-bearing addition, and the 30-second resolver cache is why the
+criterion can say sixty: the request tier runs on every API call, and a database read per
+request to ask "has anyone raised this lately" is the wrong trade.
+
+**Approving is bounded by containment, not just by role.** The route gate answers "may you
+decide at all"; it cannot answer "may you decide *this* one", because the subject arrives
+inside a stored request rather than in the URL. The handler re-checks `quota:approve`
+against the subject rendered as a resource with its containers attached — the same rule
+ADR 010 set for handing out bindings, restated for money. Rejecting is deliberately
+ungated: somebody who may decide at all may always decline, and requiring the scope to say
+"no" would leave other tenants' requests pending forever.
+
+**The capability quota is enforced for the first time.** `Deps.TakeCapability` had been
+configured, documented, defaulted and called from nowhere since Phase 15 — confirmed by
+grep across `internal/`, where the only mention was its own definition. The act step now
+charges it before the action, failing open with a `quota_pressure` event when the backend
+cannot be read.
+
+**Deviations from the plan, recorded:**
+
+- **Per-subject overrides, which the plan did not have.** Without them an approval changes
+  nothing. This is the difference between the workflow and the feature.
+- **`Request` carries an `Override`, not `{PrincipalID, Key, NewLimit, NewWindow}`.**
+  Approving one *is* writing the other, so `Request.Override()` is a method; a request that
+  needed further decisions to become an override would be a request nobody could act on.
+- **`StaticPricer` takes a Go map, not a YAML table.** Karakuri's config parses the YAML
+  and hands it over, which keeps `quota/cost`'s require block empty — the same discipline
+  ADR 007/008 set when `auth` implemented JWT over `crypto/hmac`. Nothing is priced by
+  default: a shipped price table would be wrong the week after it shipped.
+- **`GET /cost`, not `/cost/aggregate`.** One endpoint that groups by whatever you ask for,
+  rather than a second one for drill-down.
+- **Cost events are scope-filtered**, which the plan predates. A per-resource check that
+  refuses another tenant's twin means nothing while a report totals that twin's spend.
+- **Raw events *and* a daily rollup, in one transaction.** A background aggregator would
+  need a scheduler, a watermark and an answer for what a report shows while it is behind.
+- **No `release-quota-cost.yml`.** The submodules are still consumed through `replace`
+  directives; tagging `auth`, `quota` and now `quota/cost` is one carried follow-up, and the
+  release workflow belongs with it rather than ahead of it.
+- **Tool-adapter cost is recorded at the act step, not by wrapping `internal/platform/tools/*`.**
+  One call site that already knows the twin, the objective and the capability beats N
+  wrappers that each know only their own adapter.
+
+**Acceptance — met:**
+
+- The self-service round trip is pinned end to end
+  (`TestQuotaApprovalIsConfinedToTheApproversTenant`): a viewer cannot decide, a
+  team-scoped administrator cannot approve the other tenant's request, her own tenant's
+  approval goes through, and `GET /quota/usage` reports the raised limit **immediately** —
+  the resolver invalidates on approval, so the 60-second budget is spent with room left.
+  A second decision on the same request is a 409.
+- Cost totals are exact rather than within a tolerance: pricing is `units × per_unit` in
+  `float64` and the contract suite asserts equality, so there is no drift to bound.
+- Concurrency is covered by the shared ledger contract run under `-race` against both
+  implementations, and the SQL writer serialises rollup upserts with `BEGIN IMMEDIATE`.
+- The Phase 17 property, restated for money: two organisations, spend in each, and a
+  report from one containing neither the other's rows **nor its totals**
+  (`TestCostReportIsConfinedToTheCallersTenant`), plus the two edges — an uncontained twin
+  hidden from a scoped reader, and a twin-scoped binding answered exactly.
+- `quota` holds its 95% gate; `quota/cost` and `quota/cost/sql` ship with their own gates
+  at 95 and 90.
 
 ---
 
@@ -1122,7 +1210,7 @@ Phases 14–19 introduce a new architectural pattern: **the auth and quota engin
 
 - **Phases 14 and 15** are independent of each other — RBAC and quota can ship in either order. Both are also independent of the existing tree because the standalone modules touch nothing under `internal/` until the integration shims land.
 - **Phase 16** depends on Phase 14 (OIDC/SAML resolvers implement `auth.TokenResolver`). **Phase 17** also depends on Phase 14, and — as built — on Phase 16: scoped role mapping is what closes the hole Phase 16 opened by binding every federated user at `*`.
-- **Phase 18** depends on Phase 15 — extends the quota module with a self-service workflow and adds a sister cost-attribution module.
+- **Phase 18** depends on Phase 15 — extends the quota module with a self-service workflow and adds a sister cost-attribution module — and, as built, on Phase 17: approving a raise is bounded by the container the subject sits in, and a spend report is filtered by the same scope sets as a twin listing.
 - **Phase 19** lands last; it surfaces Phases 14, 15, 17, and 18 in the React frontend and reuses the Phase 13 audit endpoint.
 
 ---
@@ -1558,8 +1646,9 @@ Checks (run via `krk domain test <id>`):
 | Cross-domain objective complexity exceeds LLM context        | Medium   | Objectives scoped to single domain by default; world state chunked and summarised before reason step if size exceeds provider context limit (Phase 13)                                                       |
 | sqlite-vec extension unavailable in deployment               | Low      | Health check verifies sqlite-vec at startup; if unavailable, semantic memory degrades gracefully to keyword-based recall with startup warning                                                                |
 | Authority bounds misconfiguration permits unintended actions | High     | Default `AuthorityBounds` is maximally restrictive (`MaxAutonomousActions: 0`, `ConfidenceThreshold: 1.0`); operators must explicitly relax bounds in config; all autonomous actions logged to `tool_events`; **Phase 14 RBAC enforces permissions at the request-routing layer** so a misconfigured agent can't even reach a protected endpoint                                                                                                |
-| Cost runaway from unbounded LLM use                          | High     | Phase 15 introduces per-twin LLM token budgets; exhaustion produces a checkpoint event (human approval) rather than a 500 or silent overrun. Phase 18 layers cost attribution + `Cost.Recorded` events so operators see spend per twin / team / provider before the bill arrives                                                                                                                                                              |
+| Cost runaway from unbounded LLM use                          | High     | Phase 15 introduces per-twin LLM token budgets; exhaustion produces a checkpoint event (human approval) rather than a 500 or silent overrun. Phase 18 shipped the attribution: every model and tool call is recorded with its provider, model and the containers it belonged to, priced from a configured table, and published as `cost_recorded` — so spend per twin / team / provider is visible before the bill arrives. Phase 18 also wired the per-capability daily quota, which had been configured and enforced nowhere since Phase 15                                                                                                                                                              |
 | IdP outage locks operators out of Karakuri                    | High     | **Resolved differently than planned.** Local password login stays mounted alongside any configured provider, so the bootstrap administrator is the break-glass path. No static token was added: Phase 14 deleted the static bearer token, and re-adding a long-lived credential to survive a temporary outage trades a permanent risk for a temporary one. `ChainResolver` puts the local resolver first, so password login does not depend on the IdP being reachable |
 | Cross-tenant access through a container scope                 | Medium   | Phase 17 keys every scope on an issued ID, never a display name, so two organisations with a team called "eng" cannot collide — the case is pinned end to end from the tree through `InScope` to a 403. A resource with no containers carries no labels and matches exactly what it matched under the flat model, so no existing grant widens. Listing is filtered from the same bindings the per-resource check reads, and an empty grant set matches no rows rather than every row |
+| A quota approval used to raise another tenant's limit         | Medium   | Phase 18 checks `quota:approve` against the subject the request names, rendered as a resource carrying its containers — the same containment rule ADR 010 set for handing out bindings. A route gate cannot do this: the subject arrives inside a stored request rather than in the URL. Pinned by `TestQuotaApprovalIsConfinedToTheApproversTenant`. Rejecting is deliberately ungated, so requests from tenants nobody administers cannot get stuck pending |
 
 

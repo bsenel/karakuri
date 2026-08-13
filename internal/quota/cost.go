@@ -175,3 +175,30 @@ func (d Deps) CostReport(ctx context.Context, q cost.Query) ([]cost.Bucket, erro
 // CostSubject is the subject key a twin's spend is recorded under, exported so
 // a caller building a query names the same thing the recorder wrote.
 func CostSubject(twinID string) quota.Key { return TwinKey(twinID) }
+
+// sweeper is the optional prune a ledger may support. Optional because it is a
+// storage concern: the in-memory ledger has nothing to prune, and a ledger that
+// keeps everything is a legitimate choice rather than a broken implementation.
+type sweeper interface {
+	Sweep(ctx context.Context, before time.Time) (int64, error)
+}
+
+// SweepCosts drops raw events older than the retention horizon and reports how
+// many went.
+//
+// Only the events. The daily rollup survives pruning, which is what lets an
+// operator keep a year of totals and a month of drill-down — the totals are the
+// expensive thing to lose and the cheap thing to keep.
+//
+// A ledger that cannot prune, or a retention of zero, is a no-op: keeping
+// everything is a choice, and one an operator makes by not setting the horizon.
+func (d Deps) SweepCosts(ctx context.Context, retention time.Duration, now time.Time) (int64, error) {
+	if !d.Costs.Enabled() || retention <= 0 {
+		return 0, nil
+	}
+	s, ok := d.Costs.Ledger.(sweeper)
+	if !ok {
+		return 0, nil
+	}
+	return s.Sweep(ctx, now.Add(-retention))
+}
