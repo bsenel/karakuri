@@ -335,3 +335,103 @@ func TestLimitWithoutAResolverIsUnchanged(t *testing.T) {
 		t.Error("an override applied through an unusable Resolve option")
 	}
 }
+
+// The configured limit itself can move, for a caller that keeps its limits
+// somewhere an operator edits rather than in a file read at boot.
+func TestLimitResolvesItsBase(t *testing.T) {
+	stored := Policy{Algorithm: FixedWindow, Limit: 3, Window: time.Minute}
+	mw := Limit(NewMemoryBackend(), Policy{Algorithm: FixedWindow, Limit: 1, Window: time.Minute},
+		byPath, frozen(base), Base(func(*http.Request) (Policy, error) { return stored, nil }))
+
+	for i := range 3 {
+		rec, reached := serve(mw, httptest.NewRequest(http.MethodGet, "/twins", nil))
+		if !reached {
+			t.Fatalf("request %d was refused inside the stored limit", i)
+		}
+		if got := rec.Header().Get("X-RateLimit-Limit"); got != "3" {
+			t.Errorf("request %d: X-RateLimit-Limit = %q, want the stored 3", i, got)
+		}
+	}
+	if _, reached := serve(mw, httptest.NewRequest(http.MethodGet, "/twins", nil)); reached {
+		t.Error("the stored limit did not bound anything — a fourth request got through")
+	}
+}
+
+// Base is the base and an override is the exception, in that order: "everybody
+// gets this" composed with "except this one".
+func TestLimitOverrideAppliesOnTopOfTheResolvedBase(t *testing.T) {
+	store := NewMemoryOverrideStore()
+	if err := store.PutOverride(context.Background(), Override{
+		Subject: "/twins", Name: "request", Cap: 5,
+	}); err != nil {
+		t.Fatalf("PutOverride: %v", err)
+	}
+	mw := Limit(NewMemoryBackend(), Policy{Algorithm: FixedWindow, Limit: 1, Window: time.Minute},
+		byPath, frozen(base),
+		Base(func(*http.Request) (Policy, error) {
+			return Policy{Algorithm: FixedWindow, Limit: 2, Window: time.Minute}, nil
+		}),
+		Resolve(NewResolver(store), "request"))
+
+	// The subject with an override gets the override's ceiling, not the base's.
+	rec, _ := serve(mw, httptest.NewRequest(http.MethodGet, "/twins", nil))
+	if got := rec.Header().Get("X-RateLimit-Limit"); got != "5" {
+		t.Errorf("X-RateLimit-Limit = %q, want the override's 5", got)
+	}
+	// A subject with no override gets the resolved base rather than the
+	// constructed one — which is the composition under test.
+	rec, _ = serve(mw, httptest.NewRequest(http.MethodGet, "/objectives", nil))
+	if got := rec.Header().Get("X-RateLimit-Limit"); got != "2" {
+		t.Errorf("X-RateLimit-Limit = %q, want the resolved base's 2", got)
+	}
+}
+
+// A store that cannot be read, or that reads back nonsense, falls to the policy
+// Limit was built with. It must never fall to no limit: a malformed row would
+// then be a way to switch the limiter off.
+func TestLimitFallsBackWhenTheBaseCannotBeResolved(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		fn   func(*http.Request) (Policy, error)
+	}{
+		{"unreadable", func(*http.Request) (Policy, error) {
+			return Policy{}, errors.New("database down")
+		}},
+		{"invalid", func(*http.Request) (Policy, error) {
+			// Limit 0 with no window is exactly the shape that would admit
+			// everything if it were used as-is.
+			return Policy{Algorithm: FixedWindow}, nil
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var reported error
+			mw := Limit(NewMemoryBackend(), Policy{Algorithm: FixedWindow, Limit: 1, Window: time.Minute},
+				byPath, frozen(base), Base(tc.fn),
+				OnError(func(_ *http.Request, _ Key, err error) { reported = err }))
+
+			if _, reached := serve(mw, httptest.NewRequest(http.MethodGet, "/twins", nil)); !reached {
+				t.Fatal("the first request was refused")
+			}
+			if _, reached := serve(mw, httptest.NewRequest(http.MethodGet, "/twins", nil)); reached {
+				t.Error("a second request got through — the configured limit did not apply")
+			}
+			if reported == nil {
+				t.Error("nothing was reported through OnError, so the fallback would be silent")
+			}
+		})
+	}
+}
+
+// Without the option the configured policy is the whole story, and a nil
+// function is ignored rather than panicking at wire-up.
+func TestLimitWithoutABaseIsUnchanged(t *testing.T) {
+	mw := Limit(NewMemoryBackend(), Policy{Algorithm: FixedWindow, Limit: 1, Window: time.Minute},
+		byPath, frozen(base), Base(nil))
+
+	if _, reached := serve(mw, httptest.NewRequest(http.MethodGet, "/twins", nil)); !reached {
+		t.Fatal("the first request was refused")
+	}
+	if _, reached := serve(mw, httptest.NewRequest(http.MethodGet, "/twins", nil)); reached {
+		t.Error("the configured limit did not apply")
+	}
+}

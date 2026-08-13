@@ -56,6 +56,13 @@ between them, so `Policy` and `Quota` stay values a caller composes at startup.
   cached, so recovery is immediate.
 - **A nil `*Resolver` resolves to the base.** A deployment with no overrides never branches,
   and `Limit` without the `Resolve` option never consults one at all.
+- **The base can move too, and it is still the base.** `Limit` captures its `Policy` by
+  value, which is honest for a limit read from a file at boot and stale for one a host keeps
+  in a database. `Base(fn)` resolves the configured limit per request; `Resolve` then applies
+  the subject's override on top, in that order — "what everybody gets", then "except this
+  one". A base that cannot be read, or that reads back invalid, falls to the policy `Limit`
+  was constructed with and reports through `OnError`. It never falls to *no* limit: a
+  malformed row must not be a way to switch the limiter off.
 
 ## Adding a backend
 

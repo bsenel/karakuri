@@ -38,9 +38,10 @@ func Limit(b Backend, p Policy, extract KeyExtractor, opts ...Option) func(http.
 			}
 
 			now := cfg.now()
-			// The policy in force may not be the one configured: an operator
-			// can have raised this subject's ceiling since boot.
-			effective := cfg.resolver.Policy(r.Context(), key, cfg.limitName, p, now)
+			// Two things can move a limit since this middleware was built: the
+			// configured policy itself, if the caller keeps it somewhere
+			// editable, and an override raising one subject's ceiling.
+			effective := cfg.resolver.Policy(r.Context(), key, cfg.limitName, cfg.base(r, p), now)
 
 			d, err := b.Take(r.Context(), key, effective, cfg.cost(r), now)
 			if err != nil {
@@ -96,6 +97,30 @@ type options struct {
 	now        func() time.Time
 	resolver   *Resolver
 	limitName  string
+	baseFn     func(*http.Request) (Policy, error)
+}
+
+// base returns the configured policy in force for this request.
+//
+// Without the Base option this is the policy handed to Limit, which is the
+// whole story for a caller whose limits live in a config file. With it, the
+// configured limit is itself something that can move — and a limit that cannot
+// be read, or that reads back invalid, falls to the one Limit was built with
+// rather than to no limit at all. That fallback is the point: a bad row in a
+// table must not be a way to switch the limiter off.
+func (o options) base(r *http.Request, configured Policy) Policy {
+	if o.baseFn == nil {
+		return configured
+	}
+	p, err := o.baseFn(r)
+	if err == nil {
+		err = p.Validate()
+	}
+	if err != nil {
+		o.onError(r, "", err)
+		return configured
+	}
+	return p
 }
 
 func newOptions(opts []Option) options {
@@ -162,6 +187,34 @@ func Resolve(r *Resolver, name string) Option {
 			return
 		}
 		o.resolver, o.limitName = r, name
+	}
+}
+
+// Base makes the *configured* limit resolvable per request, for a deployment
+// that keeps its limits somewhere an operator can edit without a redeploy.
+//
+// Limit captures its Policy by value, which is right when the policy comes from
+// a config file read at boot: it cannot change, so reading it once is honest.
+// A caller storing limits in a database has the opposite problem — the value
+// captured at wire-up is stale the moment somebody edits it.
+//
+// This is the base, not the answer. Resolve still applies a subject's override
+// on top, in that order, because the two mean different things: the base is
+// "what everybody gets" and an override is "except this one".
+//
+// The function is called on every request that is subject to the limit, so it
+// wants a cache behind it — see Resolver for the shape and the reasoning about
+// how stale is stale enough.
+//
+// Returning an error, or a policy that does not validate, falls back to the
+// policy Limit was built with and reports through OnError. A limiter that
+// switched itself off because a row was malformed would be the worst outcome
+// available.
+func Base(fn func(*http.Request) (Policy, error)) Option {
+	return func(o *options) {
+		if fn != nil {
+			o.baseFn = fn
+		}
 	}
 }
 
