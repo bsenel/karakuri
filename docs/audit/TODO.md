@@ -11,7 +11,7 @@ Exactly **one** `[~]` at a time. An item becomes `[x]` only when it links to evi
 | 3 | Compliance audit → COMPLIANCE_AUDIT.md | agent | [x] | `COMPLIANCE_AUDIT.md` | 2026-08-13 |
 | 4 | Design & dev best-practices audit → ENGINEERING_AUDIT.md | agent | [x] | `ENGINEERING_AUDIT.md`; `adr/013`, `adr/014` | 2026-08-13 |
 | 5 | Penetration testing → PENTEST_REPORT.md | agent | [x] | `PENTEST_REPORT.md`; `evidence/pentest-transcript.txt`, `zap-baseline.json` | 2026-08-13 |
-| 6 | CI automation of 2–5 → CI_SECURITY_PIPELINE.md | agent | [~] | | 2026-08-13 |
+| 6 | CI automation of 2–5 → CI_SECURITY_PIPELINE.md | agent | [x] | `CI_SECURITY_PIPELINE.md`, `security-scan.yml`, `REMEDIATION_ROADMAP.md` | 2026-08-13 |
 
 ## Workstream 0 — Recon & baseline (done)
 
@@ -75,12 +75,13 @@ Validation: full `go test ./...` green across all 10 modules; Playwright e2e 5/5
 - [x] Wrote `COMPLIANCE_AUDIT.md`: SOC 2 / SSDF / GDPR / ISO 27001 / EU CRA, [Code] vs [Org]
       separation, cross-mapping table, readiness actions. Stated: readiness, not certification.
 
-## Workstream 6 — CI automation
+## Workstream 6 — CI automation (done)
 
-- [ ] `security-scan.yml` workflow (SAST/SCA/secret/IaC/SBOM/SARIF/licence).
-- [ ] `.pre-commit-config.yaml` + allowlist/baseline files.
-- [ ] Write `CI_SECURITY_PIPELINE.md` with Matrix E.
-- [ ] `REMEDIATION_ROADMAP.md` consolidated + Matrix F traceability.
+- [x] `.github/workflows/security-scan.yml` (golangci-lint, gosec, govulncheck, npm audit,
+      gitleaks, Trivy fs+IaC, licenses, Syft SBOM); actionlint-clean, SARIF upload, least-priv.
+- [x] `.pre-commit-config.yaml` + `.trivyignore` baseline (per-entry reasons).
+- [x] Wrote `CI_SECURITY_PIPELINE.md` with Matrix E + time-boxed exception process.
+- [x] `REMEDIATION_ROADMAP.md` consolidated (12 fixed, 8 P1, 10 P2) + Matrix F traceability.
 
 ## Blockers & Open Questions
 

@@ -1,0 +1,14 @@
+# Trivy allowlist — baseline so day-one scanning does not block all work.
+# Each entry needs a reason and a tracking reference. Review periodically.
+
+# Generic-chart IaC policy noise on the Helm templates (see SECURITY_AUDIT.md F-07
+# discussion): these fire because the chart's default image is not pinned to a
+# specific cloud registry / not tagged by digest. Operators set image.repository
+# and image.tag for their own registry; the securityContext HIGH findings are
+# already remediated.
+AVD-KSV-0013  # image tag ":latest" — chart default; operators pin their tag
+AVD-KSV-0032  # restrict image to *.azurecr.io — org policy, not applicable to OSS chart
+AVD-KSV-0033  # restrict image to GCR — org policy, N/A
+AVD-KSV-0034  # restrict image to private registry — org policy, N/A
+AVD-KSV-0035  # restrict image to ECR — org policy, N/A
+AVD-KSV-01010 # ConfigMap "sensitive content" — false positive on config comments
