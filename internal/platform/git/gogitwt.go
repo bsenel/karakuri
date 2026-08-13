@@ -38,7 +38,33 @@ func NewGoGitWorktreeManager(cfg config.GitConfig) (*GoGitWorktreeManager, error
 
 func (m *GoGitWorktreeManager) repoRoot() string { return m.cfg.RepoPath }
 
+// safeWorktreeComponent rejects a path segment that could escape the worktree
+// base: empty, "." / "..", or anything containing a path separator or a NUL.
+func safeWorktreeComponent(s string) error {
+	if s == "" {
+		return fmt.Errorf("empty")
+	}
+	if s == "." || s == ".." {
+		return fmt.Errorf("%q is not a valid path segment", s)
+	}
+	if strings.ContainsAny(s, "/\\\x00") {
+		return fmt.Errorf("%q contains a path separator", s)
+	}
+	return nil
+}
+
 func (m *GoGitWorktreeManager) Create(ctx context.Context, opts WorktreeOptions) (Worktree, error) {
+	// The objective and task IDs become path segments below. They originate from
+	// an API request body (POST /loops), so a value like "../../etc" would let
+	// filepath.Join escape the worktree base and MkdirAll/`git worktree add`
+	// operate outside the repository. Reject any traversal component before it
+	// reaches the filesystem. See SECURITY_AUDIT.md F-01.
+	if err := safeWorktreeComponent(string(opts.ObjectiveID)); err != nil {
+		return Worktree{}, fmt.Errorf("objective id: %w", err)
+	}
+	if err := safeWorktreeComponent(opts.TaskID); err != nil {
+		return Worktree{}, fmt.Errorf("task id: %w", err)
+	}
 	objID := string(opts.ObjectiveID)
 	if len(objID) > 8 {
 		objID = objID[:8]
@@ -47,8 +73,14 @@ func (m *GoGitWorktreeManager) Create(ctx context.Context, opts WorktreeOptions)
 	if branch == "" {
 		branch = fmt.Sprintf("%s/%s/%s", m.cfg.BranchPrefix, objID, opts.TaskID)
 	}
-	basePath := filepath.Join(m.repoRoot(), m.cfg.WorktreeBase, string(opts.ObjectiveID), opts.TaskID)
-	if err := os.MkdirAll(filepath.Dir(basePath), 0o755); err != nil {
+	worktreeBase := filepath.Join(m.repoRoot(), m.cfg.WorktreeBase)
+	basePath := filepath.Join(worktreeBase, string(opts.ObjectiveID), opts.TaskID)
+	// Belt-and-suspenders: even with the component check above, confirm the
+	// resolved path stays within the worktree base before creating anything.
+	if rel, err := filepath.Rel(worktreeBase, basePath); err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return Worktree{}, fmt.Errorf("worktree path %q escapes base %q", basePath, worktreeBase)
+	}
+	if err := os.MkdirAll(filepath.Dir(basePath), 0o750); err != nil {
 		return Worktree{}, err
 	}
 	baseBranch := opts.BaseBranch
