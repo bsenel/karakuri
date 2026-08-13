@@ -140,6 +140,13 @@ jobs:
           # shapes no real client produces.
           - module: quota/valkey
             coverage: 90
+          # quota/cost/sql's residue is the Postgres transaction path and exec
+          # error branches inside a transaction, the same shape quota/sql's is.
+          # Behaviour is covered against a real SQLite file: the full shared
+          # contract, a drifted schema, a cancelled context, and every method
+          # against a closed database.
+          - module: quota/cost/sql
+            coverage: 90
           # auth/oidc drives the full authorization-code flow against an
           # in-process provider, so the residue is crypto/rand failing — which
           # no test can stage without pretending. A live Keycloak covers what a
