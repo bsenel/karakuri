@@ -1,3 +1,4 @@
+import { Suspense, lazy } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { AuthProvider, useAuth } from '@/auth/AuthProvider';
 import { LoginModal } from '@/auth/LoginModal';
@@ -16,6 +17,10 @@ import { UsersPage }         from '@/pages/UsersPage';
 import { RolesPage }         from '@/pages/RolesPage';
 import { OrgsPage }          from '@/pages/OrgsPage';
 import { QuotaPage }         from '@/pages/QuotaPage';
+// The cost page is the only thing that pulls in Recharts, which is larger than
+// the rest of the application put together. Loading it lazily means everybody
+// else pays nothing for a page they may never open.
+const CostPage = lazy(() => import('@/pages/CostPage').then((m) => ({ default: m.CostPage })));
 
 export default function App() {
   return (
@@ -53,6 +58,14 @@ function Shell() {
         <Route path="orgs" element={<OrgsPage />} />
         {/* Quota has nested tabs, so it claims the subtree rather than one path. */}
         <Route path="quota/*" element={<QuotaPage />} />
+        <Route
+          path="cost"
+          element={
+            <Suspense fallback={<p className="muted">Loading…</p>}>
+              <CostPage />
+            </Suspense>
+          }
+        />
       </Route>
     </Routes>
   );
