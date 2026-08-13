@@ -114,7 +114,7 @@ func NewApp(
 	artSvc := artifact.NewService(store)
 	resSvc := research.NewService(toolReg, artSvc)
 	agentFactory := platformagent.NewFactory(providers, hub, otel)
-	loopSvc := featureloop.NewService(store, agentFactory, capReg, envReg, memSvc, cpSvc, artSvc, wt, hub, otel, domReg, quotaDeps.TokenBudget)
+	loopSvc := featureloop.NewService(store, agentFactory, capReg, envReg, memSvc, cpSvc, artSvc, wt, hub, otel, domReg, quotaDeps)
 
 	r := chi.NewRouter()
 	r.Use(chimw.Recoverer)

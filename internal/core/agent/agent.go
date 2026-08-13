@@ -64,6 +64,13 @@ type Output struct {
 	Confidence float64
 	TokensUsed int
 	Reasoning  string // chain-of-thought trace
+
+	// Provider and Model say who served the call. They exist so spend can be
+	// attributed — "which provider did this month go to" is unanswerable from a
+	// token count alone — and they are empty for any agent that does not reach
+	// a model.
+	Provider string
+	Model    string
 }
 
 type OutputChunk struct {

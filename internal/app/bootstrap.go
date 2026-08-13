@@ -422,11 +422,13 @@ func BuildAuth(ctx context.Context, gormDB *gorm.DB, store storage.StorageAdapte
 // not get one is worse off than one that never configured it — it believes it
 // is protected.
 func BuildQuota(ctx context.Context, gormDB *gorm.DB, cfg *config.Config, hub *event.Hub) (karakuriquota.Deps, error) {
-	// The SQL backend shares the application's pool rather than opening its
-	// own. Only that backend needs it, so the handle is resolved lazily and a
-	// failure here is not fatal for the memory or Valkey paths.
+	// The quota module shares the application's pool rather than opening its
+	// own. The counters only need it on the SQL backend, but the overrides,
+	// requests and cost ledger need it whichever backend is counting — an
+	// approval and a spend report have to survive a restart on every
+	// deployment, not only the ones that chose SQL for their rate limiter.
 	var sqlDB *sql.DB
-	if cfg.Quota.Backend == config.QuotaBackendSQL && gormDB != nil {
+	if gormDB != nil {
 		db, err := gormDB.DB()
 		if err != nil {
 			return karakuriquota.Deps{}, fmt.Errorf("quota: %w", err)

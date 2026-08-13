@@ -72,6 +72,11 @@ func (a *karakuriAgent) Run(ctx context.Context, input coreagent.Input) (coreage
 		Confidence: 0.85,
 		TokensUsed: resp.TokensUsed,
 		Reasoning:  resp.Content,
+		// Who served it, so the spend can be attributed. The model name is the
+		// adapter's own — a provider that serves several reports which one it
+		// used, and one that serves a single model reports that.
+		Provider: a.provider.Name(),
+		Model:    modelOf(a.provider),
 	}, nil
 }
 
@@ -106,4 +111,18 @@ func buildUserPrompt(input coreagent.Input) string {
 	}
 	return fmt.Sprintf("Objective: %s\n\nTask: %s\n\n%s",
 		string(objJSON), input.Task, memSummary)
+}
+
+// modelOf reports which model an adapter served, when it can say.
+//
+// The optional interface rather than a method on ProviderAdapter: most adapters
+// wrap a single configured model and a few pick per call, and widening the
+// interface would make every adapter answer a question most of them do not
+// have. An adapter that stays quiet attributes spend to its provider, which is
+// the dimension that matters for a bill.
+func modelOf(p llm.ProviderAdapter) string {
+	if m, ok := p.(interface{ Model() string }); ok {
+		return m.Model()
+	}
+	return ""
 }

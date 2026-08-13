@@ -13,6 +13,8 @@ import (
 	"github.com/bsenel/karakuri/internal/core/loop"
 	"github.com/bsenel/karakuri/internal/platform/git"
 	"github.com/bsenel/karakuri/internal/platform/storage"
+	karakuriquota "github.com/bsenel/karakuri/internal/quota"
+	"github.com/bsenel/karakuri/quota/cost"
 )
 
 func stepAct(ctx context.Context, sc *stepContext, p plan) []environment.ActionResult {
@@ -54,6 +56,24 @@ func stepAct(ctx context.Context, sc *stepContext, p plan) []environment.ActionR
 		params := action.Params
 		if params == nil {
 			params = make(map[string]any)
+		}
+
+		// a2. Charge the twin's daily allowance for this capability.
+		//
+		// Before the action rather than after, because the point of the tier is
+		// to stop a misconfigured watcher hammering an external service — most
+		// capabilities are not model calls, they reach GitHub or Linear, and a
+		// charge levied afterwards would have already made the call.
+		//
+		// A refusal skips the action and records why, rather than failing the
+		// iteration: the loop can still make progress on whatever else it
+		// planned, and the operator sees a bounded twin rather than a broken one.
+		if !sc.svc.allowCapability(ctx, sc, action.CapabilityID, i) {
+			results = append(results, environment.ActionResult{
+				Success: false,
+				Error:   "capability quota exhausted for the day",
+			})
+			continue
 		}
 
 		// b. Worktree for code-writing capabilities
@@ -161,6 +181,19 @@ func stepAct(ctx context.Context, sc *stepContext, p plan) []environment.ActionR
 			Confidence:  p.Confidence,
 			PayloadJSON: string(payloadJSON),
 			CreatedAt:   time.Now().UTC(),
+		})
+
+		// g. And what it cost. Attributed to the objective rather than the twin,
+		// because "which piece of work spent this" is the question a bill
+		// prompts — the twin is still the subject that pays, and its containers
+		// are what a per-team report groups on.
+		sc.svc.costs.Record(ctx, karakuriquota.Spend{
+			TwinID:       sc.twinID,
+			ResourceType: "objective",
+			ResourceID:   string(sc.obj.ID),
+			Provider:     envAdapter,
+			Units:        1,
+			UnitKind:     cost.UnitCalls,
 		})
 
 		results = append(results, result)

@@ -12,6 +12,7 @@ import (
 	featurecp "github.com/bsenel/karakuri/internal/feature/checkpoint"
 	"github.com/bsenel/karakuri/internal/platform/llm"
 	karakuriquota "github.com/bsenel/karakuri/internal/quota"
+	"github.com/bsenel/karakuri/quota/cost"
 )
 
 // budgetedAgent charges a twin's LLM token budget for every model call.
@@ -25,20 +26,21 @@ type budgetedAgent struct {
 	inner  coreagent.Agent
 	budget karakuriquota.TokenBudget
 	twinID string
+	costs  *karakuriquota.Recorder
 	now    func() time.Time
 }
 
 var _ coreagent.Agent = (*budgetedAgent)(nil)
 
 // withBudget wraps agent unless there is nothing to enforce.
-func withBudget(agent coreagent.Agent, budget karakuriquota.TokenBudget, twinID string) coreagent.Agent {
+func withBudget(agent coreagent.Agent, budget karakuriquota.TokenBudget, costs *karakuriquota.Recorder, twinID string) coreagent.Agent {
 	if budget == nil || twinID == "" {
 		// No twin means no subject to charge — an ad-hoc objective created
 		// without one. Metering it against a shared bucket would be worse than
 		// not metering it.
 		return agent
 	}
-	return &budgetedAgent{inner: agent, budget: budget, twinID: twinID, now: time.Now}
+	return &budgetedAgent{inner: agent, budget: budget, costs: costs, twinID: twinID, now: time.Now}
 }
 
 func (a *budgetedAgent) Run(ctx context.Context, input coreagent.Input) (coreagent.Output, error) {
@@ -65,6 +67,16 @@ func (a *budgetedAgent) Run(ctx context.Context, input coreagent.Input) (coreage
 	// Recording is best-effort: the work is already done and paid for
 	// upstream, and losing the record is better than discarding the result.
 	_ = a.budget.Record(ctx, a.twinID, out.TokensUsed, now)
+	// The budget says whether there is room left; the ledger says what it cost.
+	// Both, because a token count is not a bill and a bill does not stop a
+	// runaway loop.
+	a.costs.Record(ctx, karakuriquota.Spend{
+		TwinID:   a.twinID,
+		Provider: out.Provider,
+		Model:    out.Model,
+		Units:    float64(out.TokensUsed),
+		UnitKind: cost.UnitTokens,
+	})
 	return out, nil
 }
 
@@ -143,4 +155,48 @@ func (s *serviceImpl) pauseIfBudgetExhausted(ctx context.Context, sc *stepContex
 		},
 	})
 	return true
+}
+
+// allowCapability charges the twin's daily allowance for one capability and
+// reports whether the action may run.
+//
+// The tier has been configured, documented and defaulted since Phase 15 and was
+// enforced nowhere — TakeCapability had no callers. This is that call site.
+//
+// It fails open, like every other limiter here: a counter that cannot be read
+// must not stop work that is otherwise fine, because a quota backend outage
+// turning into a halted loop does more damage than the calls it would have
+// bounded.
+func (s *serviceImpl) allowCapability(ctx context.Context, sc *stepContext, capabilityID string, index int) bool {
+	if s.quota.Backend == nil || sc.twinID == "" || capabilityID == "" {
+		return true
+	}
+	dec, err := s.quota.TakeCapability(ctx, sc.twinID, capabilityID, time.Now())
+	if err != nil {
+		slog.Error("capability quota could not be read; allowing the action",
+			"twin", sc.twinID, "capability", capabilityID, "loop", sc.loopID, "err", err)
+		return true
+	}
+	if dec.Allowed {
+		return true
+	}
+
+	slog.Warn("capability quota exhausted; skipping the action",
+		"twin", sc.twinID, "capability", capabilityID, "loop", sc.loopID,
+		"limit", dec.Limit, "reset_at", dec.ResetAt)
+	s.hub.Publish(ctx, event.Event{
+		Type:        event.TypeQuotaPressure,
+		ObjectiveID: string(sc.obj.ID),
+		TwinID:      sc.twinID,
+		Payload: map[string]any{
+			"tier":       "capability",
+			"capability": capabilityID,
+			"limit":      dec.Limit,
+			"remaining":  dec.Remaining,
+			"reset_at":   dec.ResetAt,
+			"action":     index,
+		},
+		Timestamp: time.Now().UTC(),
+	})
+	return false
 }

@@ -64,6 +64,11 @@ type serviceImpl struct {
 	// what a caller that has not configured quotas gets.
 	budget karakuriquota.TokenBudget
 
+	// quota enforces the per-capability daily allowance, and costs records what
+	// the work spent. Both zero-valued on a caller that configured neither.
+	quota karakuriquota.Deps
+	costs *karakuriquota.Recorder
+
 	mu     sync.RWMutex
 	states map[string]*loopState // loopID → state
 }
@@ -80,8 +85,11 @@ func NewService(
 	hub *event.Hub,
 	otel *observability.OTel,
 	domReg *domain.Registry,
-	budget karakuriquota.TokenBudget,
+	quotaDeps karakuriquota.Deps,
 ) Service {
+	// The whole Deps rather than just the token budget: the loop now also
+	// charges the per-capability allowance and records what work cost, and
+	// three parameters that always travel together are a struct.
 	return &serviceImpl{
 		store:   store,
 		factory: factory,
@@ -94,7 +102,9 @@ func NewService(
 		hub:     hub,
 		otel:    otel,
 		domReg:  domReg,
-		budget:  budget,
+		budget:  quotaDeps.TokenBudget,
+		quota:   quotaDeps,
+		costs:   quotaDeps.Costs,
 		states:  make(map[string]*loopState),
 	}
 }

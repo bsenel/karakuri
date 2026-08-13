@@ -19,6 +19,7 @@ const (
 	// TypeQuotaPressure fires when a limit is most of the way used, so an
 	// operator learns about a ceiling before it starts refusing work.
 	TypeQuotaPressure      = "quota_pressure"
+	TypeCostRecorded       = "cost_recorded"
 	TypeEnvironmentChanged = "environment_changed"
 	TypeMemoryRecalled     = "memory_recalled"
 	TypeMemoryLearned      = "memory_learned"
