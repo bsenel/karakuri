@@ -52,6 +52,7 @@ func NewRoot() *cobra.Command {
 		orgCmd(),
 		teamCmd(),
 		projectCmd(),
+		costCmd(),
 	)
 	return root
 }

@@ -69,16 +69,30 @@ func ResourceForScope(ctx context.Context, containers ScopeResolver, scope strin
 // somebody from globex *into acme*, because acme's resources are theirs to
 // share, and cannot put themselves into globex.
 func MayGrant(ctx context.Context, a auth.Authorizer, containers ScopeResolver, principal auth.Principal, scope string) (bool, string, error) {
+	allowed, reason, err := MayActOn(ctx, a, containers, principal, ActionAuthWrite, scope)
+	if err != nil || allowed {
+		return allowed, "", err
+	}
+	return false, "you can only grant a scope you already hold: " + reason, nil
+}
+
+// MayActOn answers whether a principal holds an action over the thing a scope
+// names, resolving the scope's containers first.
+//
+// It is the body of MayGrant, separated because granting is not the only
+// decision shaped this way: approving a quota raise is the same question asked
+// of a different action, and a route-level check cannot ask it — the subject
+// arrives inside a stored record rather than in the URL.
+func MayActOn(ctx context.Context, a auth.Authorizer, containers ScopeResolver, principal auth.Principal, action auth.Action, scope string) (bool, string, error) {
 	if a == nil {
 		return false, "no authorizer is configured", nil
 	}
-	ref := ResourceForScope(ctx, containers, scope)
-	decision, err := a.Authorize(ctx, principal, ActionAuthWrite, ref)
+	decision, err := a.Authorize(ctx, principal, action, ResourceForScope(ctx, containers, scope))
 	if err != nil {
 		return false, "", err
 	}
 	if decision.Allowed {
 		return true, "", nil
 	}
-	return false, "you can only grant a scope you already hold: " + decision.Reason, nil
+	return false, decision.Reason, nil
 }

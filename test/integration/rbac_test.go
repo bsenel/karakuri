@@ -100,13 +100,20 @@ func TestRBACRouteMatrix(t *testing.T) {
 			// knowing which organisation a twin is in is not access to
 			// anything inside it, and a user who cannot see the tree cannot be
 			// shown where they are.
+			// quota:request is granted to viewer for the same reason: anybody
+			// who can be throttled should be able to ask for more, which is
+			// the whole point of making it self-service rather than a ticket.
+			// Asking is not granting — quota:approve is a separate action.
 			"domain:read": true, "quota:read": true, "container:read": true,
+			"quota:request": true,
 		},
 		karakuriauth.RoleAuditor: {
 			"twin:read": true, "objective:read": true, "loop:read": true,
 			"checkpoint:read": true, "artifact:read": true, "memory:read": true,
 			"domain:read": true, "audit:read": true, "quota:read": true,
-			"container:read": true,
+			"container:read": true, "quota:request": true,
+			// Spend is what an auditor is auditing.
+			"cost:read": true,
 		},
 		karakuriauth.RoleOperator: {
 			"twin:read": true, "twin:create": true, "twin:update": true,
@@ -122,6 +129,11 @@ func TestRBACRouteMatrix(t *testing.T) {
 			// is the scope on their binding, which the handler re-checks
 			// against the container a request actually names.
 			"container:read": true, "container:write": true, "container:move": true,
+			"quota:request": true,
+			// An operator sees what their twins cost. Approving a raise is
+			// deliberately not theirs: driving work does not make somebody the
+			// person who signs off on spending more.
+			"cost:read": true,
 		},
 		// admin holds the wildcard.
 		karakuriauth.RoleAdmin: nil,

@@ -68,6 +68,25 @@ func SubjectFor(tier, principalID, twinID string) (quota.Key, error) {
 	}
 }
 
+// ScopeForSubject renders a subject as the binding scope naming the same thing,
+// so an approval can be authorized against the resource the raise applies to.
+//
+// Subjects are "twin|abc" and scopes are "twin:abc" — the separator differs
+// because a quota key is joined with one that cannot appear in a resource type.
+// Translating between the two spellings belongs here, beside SubjectFor that
+// built the key, rather than in every caller that has to authorize one.
+//
+// An unrecognised shape renders as the empty scope, which is the unrestricted
+// resource: a subject nothing can resolve is one only an unscoped grant covers,
+// which fails closed.
+func ScopeForSubject(subject quota.Key) string {
+	typ, id, ok := strings.Cut(string(subject), "|")
+	if !ok || typ == "" || id == "" || strings.Contains(id, "|") {
+		return ""
+	}
+	return typ + ":" + id
+}
+
 // SubmitRequest records a request for more of a tier.
 type SubmitRequest struct {
 	Tier        string
