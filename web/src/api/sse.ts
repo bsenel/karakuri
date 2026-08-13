@@ -28,6 +28,19 @@ export function streamTwin(twinID: string, onEvent: SSEHandler): SSEStream {
   return openStream(`/api/v1/twins/${encodeURIComponent(twinID)}/events`, onEvent);
 }
 
+/**
+ * The deployment-wide stream, for a dashboard that follows everything rather
+ * than one objective.
+ *
+ * What arrives is already narrowed to what the caller may see: the server tests
+ * every event against the same bindings that decide which twins they can list,
+ * and withholds anything it cannot classify. So this needs no filtering of its
+ * own, and adding some would only hide events the server judged visible.
+ */
+export function streamAll(onEvent: SSEHandler): SSEStream {
+  return openStream('/api/v1/events', onEvent);
+}
+
 function openStream(path: string, onEvent: SSEHandler): SSEStream {
   let es: EventSource | null = null;
   let closed = false;

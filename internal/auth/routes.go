@@ -263,6 +263,11 @@ func Routes() []Route {
 		// The limits an operator has stored (Phase 19). Editing one changes it
 		// for the whole deployment, which is why it is quota:admin rather than
 		// the tenant-scoped quota:approve.
+		// The deployment-wide event stream (Phase 19). Gated on twin:read
+		// because that is what it shows; the per-event filter then confines it
+		// to the same twins the listing would return.
+		{http.MethodGet, "/events", ActionTwinRead, false},
+
 		{http.MethodGet, "/quota/tiers", ActionQuotaRead, false},
 		{http.MethodPut, "/quota/tiers/{name}", ActionQuotaAdmin, false},
 		{http.MethodDelete, "/quota/tiers/{name}", ActionQuotaAdmin, false},
