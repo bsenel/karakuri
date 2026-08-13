@@ -48,6 +48,7 @@ export const navigation: NavEntry[] = [
   { to: '/quota', label: 'Quota', action: Actions.quotaRead },
   { to: '/orgs', label: 'Organisations', action: Actions.containerRead },
   { to: '/users', label: 'Users', action: Actions.authRead },
+  { to: '/roles', label: 'Roles', action: Actions.authRead },
   { to: '/audit', label: 'Audit', action: Actions.auditRead },
   { to: '/memory', label: 'Memory', action: Actions.memoryRead },
   { to: '/artifacts', label: 'Artifacts', action: Actions.artifactRead },
