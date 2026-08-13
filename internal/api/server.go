@@ -119,6 +119,10 @@ func NewApp(
 	r := chi.NewRouter()
 	r.Use(chimw.Recoverer)
 	r.Use(middleware.Logging)
+	r.Use(middleware.SecurityHeaders)
+	// 1 MiB request-body ceiling. Every handler decodes small JSON documents;
+	// nothing legitimately posts more than this. See SECURITY_AUDIT.md F-05.
+	r.Use(middleware.MaxBytes(1 << 20))
 	// Authentication is scoped to /api/v1 only — the SPA itself (HTML + assets)
 	// is public so unauthenticated visitors can reach the login screen.
 
