@@ -12,6 +12,9 @@ import { AuditPage }         from '@/pages/AuditPage';
 import { MemoryPage }        from '@/pages/MemoryPage';
 import { ArtifactsPage }     from '@/pages/ArtifactsPage';
 import { HealthPage }        from '@/pages/HealthPage';
+import { UsersPage }         from '@/pages/UsersPage';
+import { RolesPage }         from '@/pages/RolesPage';
+import { OrgsPage }          from '@/pages/OrgsPage';
 
 export default function App() {
   return (
@@ -44,6 +47,9 @@ function Shell() {
         <Route path="memory" element={<MemoryPage />} />
         <Route path="artifacts" element={<ArtifactsPage />} />
         <Route path="health" element={<HealthPage />} />
+        <Route path="users" element={<UsersPage />} />
+        <Route path="roles" element={<RolesPage />} />
+        <Route path="orgs" element={<OrgsPage />} />
       </Route>
     </Routes>
   );
