@@ -24,10 +24,14 @@ authorizer has exactly one code path that emits an allow).
 The defects **cluster at the HTTP edge and in the deployment/supply chain**, not in
 the crypto:
 
-- **Broken object-level authorization (IDOR).** A `require(action, nil)` idiom
-  collapses per-resource checks to "do you hold this permission anywhere," leaving a
-  cluster of routes (`/quota/usage`, `/loops`, `/checkpoints`, `/artifacts`,
-  `/memory/*`, `/audit`) reading and writing across tenant boundaries. (F-02)
+- **Incomplete authorization model.** A `require(action, nil)` idiom gates a cluster of
+  routes (`/quota/usage`, `/checkpoints`, `/artifacts`, `/memory/*`, `/audit`) on a
+  collection-wide permission rather than a per-object one. **Active testing corrected
+  the initial read of this** (see `PENTEST_REPORT.md` PT-02): the gate *fails closed*
+  for tenant-scoped principals, so it is not a live cross-tenant leak; the real defect
+  is that these resources are not wired into the container-scoping system twins and
+  objectives use, leaving no object-level ownership enforcement. Downgraded High →
+  Medium. (F-02)
 - **A path-traversal chain** from `POST /loops` to `os.MkdirAll`/`git worktree add`
   outside the repo root, amplified by the container running as **root**. (F-01, F-06)
 - **No rate limiting on any unauthenticated route**, including login, and the one
@@ -39,8 +43,10 @@ the crypto:
   server timeouts, no request-body limits, no security response headers, and a
   builder image that ships a Go toolchain with 28 known CVEs. (F-04–F-07, F-11)
 
-25 findings are recorded below (2 High-critical-adjacent, 9 High, 9 Medium, 5 Low),
-each with a traced evidence chain. **The static scanners were largely unhelpful**:
+25 findings are recorded below (6 High, 12 Medium, 1 Low/Medium, 6 Low), each with a
+traced evidence chain, and one (F-02) that active testing **downgraded** from the
+static tool's High reading — the kind of correction verification exists to produce.
+**The static scanners were largely unhelpful**:
 all 13 semgrep warnings and the bulk of gosec's 35 were verified false positives
 (Appendix C); every substantive finding came from manual review of the auth and
 data-access paths.
@@ -120,7 +126,7 @@ Severity uses CVSS v4.0 base. Risk score = Likelihood × Impact (1–5 each, Mat
 | ID | Title | Category | Severity | CVSS v4.0 | Likel. | Impact | Risk | Standard mapping | Evidence | Status | Remediation | Effort | Target |
 |----|-------|----------|----------|:---------:|:------:|:------:|:----:|------------------|----------|--------|-------------|:------:|:------:|
 | F-01 | Path traversal via unvalidated `objective_id` | Access control / traversal | **High** | 8.3 | 3 | 5 | 15 | CWE-22; ASVS 5.2.5; API1 | `handler/loop.go:31`→`git/gogitwt.go:50` | Open→Fixed | Resolve from store + containment check | S | P0 |
-| F-02 | IDOR cluster — collection-wide auth check | Access control | **High** | 8.2 | 4 | 4 | 16 | CWE-639/CWE-284; ASVS 4.2.1; API1 | `auth/middleware.go:77-80` + 11 routes | Open→Fixed | Per-resource authorization | M | P0 |
+| F-02 | Incomplete authz model — collection-wide gate, no object scoping | Access control | Medium | 6.0 | 3 | 3 | 9 | CWE-1220/CWE-284; ASVS 4.2.1; API1 | `auth/middleware.go:77-80` + routes | Open | Wire resources into container-scoping (design) | L | P1 |
 | F-03 | No rate limit on unauth routes; limiter fails open | Auth / DoS | **High** | 8.7 | 4 | 4 | 16 | CWE-307/CWE-770; ASVS 2.2.1; API4 | `server.go:226-247`, `quota/middleware.go:53` | Open→Fixed | IP rate-limit; fail closed | M | P0 |
 | F-06 | Shipped image: 28-CVE Go toolchain, runs as root | Supply chain / hardening | **High** | 8.1 | 3 | 4 | 12 | CWE-1104/CWE-250; SSDF PW.4 | `Dockerfile:2,12`, `go.mod:3` | Open→Fixed | Pin patched Go; non-root USER; pin bases | S | P0 |
 | F-13 | Frontend deps: react-router crit+high | Supply chain | **High** | 8.2 | 3 | 4 | 12 | CWE-1395/CWE-601; Top10 A06 | `web/package-lock.json` | Open→Fixed | `npm audit fix` (react-router ≥7.9) | S | P0 |
@@ -157,8 +163,8 @@ Severity uses CVSS v4.0 base. Risk score = Likelihood × Impact (1–5 each, Mat
 | Likelihood ↓ \ Impact → | 1 Negligible | 2 Minor | 3 Moderate | 4 Major | 5 Severe |
 |-------------------------|--------------|---------|------------|---------|----------|
 | **5 Almost certain** | 1 · F-08 | | | | |
-| **4 Likely** | 2 · F-24 | 1 · F-09 | 2 · F-04, F-05 | 2 · F-02, F-03 | |
-| **3 Possible** | 2 · F-14 | 3 · F-15, F-22, F-25 | 4 · F-11, F-10, F-20, F-21 | 3 · F-06, F-13, F-16 | 1 · F-01 |
+| **4 Likely** | 2 · F-24 | 1 · F-09 | 2 · F-04, F-05 | 1 · F-03 | |
+| **3 Possible** | 2 · F-14 | 3 · F-15, F-22, F-25 | 5 · F-02, F-11, F-10, F-20, F-21 | 3 · F-06, F-13, F-16 | 1 · F-01 |
 | **2 Unlikely** | | | | 3 · F-18, F-19 | 1 · F-17 |
 | **1 Rare** | | | | 1 · F-23 | |
 
@@ -232,48 +238,70 @@ if rel, err := filepath.Rel(base, p); err != nil || strings.HasPrefix(rel, "..")
 [ASVS 5.2.5](https://github.com/OWASP/ASVS) ·
 [OWASP Path Traversal](https://owasp.org/www-community/attacks/Path_Traversal).
 
-### F-02 — IDOR: `require(action, nil)` collapses to a collection-wide permission check · **High** · CVSS:4.0/AV:N/AC:L/AT:N/PR:L/UI:N/VC:H/VI:L/VA:N/SC:N/SI:N/SA:N (8.2)
+### F-02 — Incomplete authorization model: collection-wide gate, no object-level scoping · **Medium** · CVSS:4.0/AV:N/AC:L/AT:N/PR:H/UI:N/VC:H/VI:L/VA:N/SC:N/SI:N/SA:N (6.0)
 
-**CWE-639/CWE-284 · ASVS 4.2.1 · OWASP API1/API5 · Top10 A01**
+**CWE-1220 (insufficient granularity of access control) / CWE-284 · ASVS 4.2.1 · OWASP API1/API5**
+
+> **Corrected by active testing.** The static reading of this finding predicted a live
+> cross-tenant IDOR/BOLA. Local exploitation (`PENTEST_REPORT.md` PT-02) **did not
+> reproduce that** and is documented here in full, because getting the severity right
+> matters more than confirming a prior.
 
 **Evidence:** `auth/middleware.go:77-80` resolves a nil resource-func to
-`Collection(action.Type())` — a wildcard `"<type>:*"` scope — which answers "do you
-hold this permission anywhere," never "for this specific ID." The routes below pass
-`nil` (or an unscoped resource) and take the target ID straight from the request:
+`Collection(action.Type())` — a wildcard `"<type>:*"` scope. The following routes pass
+`nil` and take the target ID from the request:
 
-| Route | Handler | Untrusted ID | Effect |
-|-------|---------|--------------|--------|
-| `GET /quota/usage?twin=` | `handler/quota.go:162-185` | query `twin` | cross-tenant **read** of consumption |
-| `POST /quota/reset` | `handler/quota.go:193-213` | body `twin` | cross-tenant **write** (counter reset) |
-| `POST /loops` | `handler/loop.go:19-41` | body ids | act on another tenant's twin/objective |
-| `GET /checkpoints?twin_id=` | `handler/checkpoint.go:16-34` | query/path | cross-tenant read |
-| `GET /artifacts`, `GET /artifacts/{sha}` | `handler/artifact.go:34-54` | query/path | cross-tenant read of stored content |
-| `POST/POST/POST /memory/*` | `handler/memory.go:15-53` | body | deployment-wide read/write incl. `forget` |
-| `GET /audit`, `GET /audit/{id}` | `handler/audit.go:19-65` | query/path | cross-tenant audit disclosure |
-| `GET /auth/policies?principal=` | `handler/auth.go:370-379` | query | any principal's effective grants |
+| Route | Handler | Untrusted ID |
+|-------|---------|--------------|
+| `GET /quota/usage?twin=` | `handler/quota.go:162-185` | query `twin` |
+| `POST /quota/reset` | `handler/quota.go:193-213` | body `twin` |
+| `GET /checkpoints?twin_id=` | `handler/checkpoint.go:16-34` | query/path |
+| `GET /artifacts`, `GET /artifacts/{sha}` | `handler/artifact.go:34-54` | query/path |
+| `/memory/{store,recall,forget}` | `handler/memory.go:15-53` | body |
+| `GET /audit`, `GET /audit/{id}` | `handler/audit.go:19-65` | query/path |
+| `GET /auth/policies?principal=` | `handler/auth.go:370-379` | query |
 
-The handler `quota.Usage` (`handler/quota.go:162-185`) is the clearest illustration:
-it is the **only** method in its own file that does not call
-`karakuriauth.MayActOn`/`ListFor` per subject — every sibling (`ListRequests`,
-`Decide`, `Overrides`, `RevokeOverride`, `CostReport`) does. The pattern to copy is
-already present two functions away.
+**What the gate actually does (verified live).** A `Collection("<type>")` resource
+carries no container labels, so a **container-scoped** binding does **not** satisfy it —
+the enforcer returns 403 *"no role binding covers `<type>:*`"*. Only a principal holding
+the permission at **global scope (`*`)** passes. Confirmed:
 
-**Reproduction:** two tenant-scoped principals A and B; A calls
-`GET /api/v1/quota/usage?twin=<B's twin>` and receives B's usage. Verified — see
-`PENTEST_REPORT.md` PT-02.
+```
+attacker (auditor scoped to org acme) → GET /quota/usage?twin=beta-twin → 403 "no binding covers quota:*"
+attacker (auditor scoped to org acme) → GET /audit                       → 403 "no binding covers audit:*"
+gviewer  (auditor scoped to *)         → GET /audit                       → 200 (all principals' events)
+```
 
-**Impact:** horizontal privilege escalation across tenants — the defining BOLA class.
-Read paths disclose usage, artifacts, audit trails and grants; write paths (`reset`,
-`memory/forget`) mutate or destroy another tenant's state.
+So the gate **fails closed** for scoped principals — there is **no cross-tenant leak by
+a scoped principal**. The real defect is narrower and structural:
 
-**Remediation *(remediated, P0)*:** thread a resource reference through each route so
-the enforcer evaluates the *specific* ID, or add an in-handler `MayActOn(principal,
-action, resource)` guard mirroring `handler/quota.go:320-322`. Where the resource is a
-twin/objective, reuse `scoped(...)` (already used by the correctly-guarded routes at
-`server.go:272-284`). A shared helper is extracted in WS1 to avoid re-implementing the
-check per handler. **Effort:** M. **Refs:**
+1. These resource types are **not integrated into the container-scoping system** that
+   twins/objectives use (`ScopedCollection` widening + row filtering,
+   `internal/auth/listing.go:35-67`, `gorm_storage.go:640-667`). A tenant-scoped
+   principal therefore **cannot use these endpoints at all** — over-restrictive, but
+   fail-closed.
+2. Within a **global** grant there is **no object-level ownership narrowing**: a global
+   `auditor`/`viewer`/`operator` reads every principal's data. That is the documented
+   behaviour of a *global* role, so it is a completeness gap (CWE-1220), not a boundary
+   bypass.
+
+`quota.Usage` (`handler/quota.go:162-185`) remains a genuine local inconsistency: it is
+the only method in its file that does not call `MayActOn` per subject while every
+sibling does.
+
+**Impact:** no live cross-tenant disclosure. The gap prevents per-tenant delegation of
+these features and removes defence-in-depth (object-level checks) that the twin/objective
+routes have. If a future refactor widened one of these gates via `ScopedCollection`
+without adding the row filter, it *would* become a live IDOR — so this is also a latent
+trap adjacent to F-23.
+
+**Remediation (P1 — design change, not a one-liner):** wire checkpoints, artifacts,
+memory, audit and `quota/usage` into the same `ScopedCollection` + row-filter pattern
+the list routes use, so a tenant-scoped principal sees exactly their container's rows.
+As an immediate consistency fix, add the `MayActOn` guard to `quota.Usage` to match its
+siblings. **Effort:** L. **Refs:**
+[CWE-1220](https://cwe.mitre.org/data/definitions/1220.html) ·
 [API1:2023 BOLA](https://owasp.org/API-Security/editions/2023/en/0xa1-broken-object-level-authorization/) ·
-[CWE-639](https://cwe.mitre.org/data/definitions/639.html) ·
 [Authorization Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Authorization_Cheat_Sheet.html).
 
 ### F-03 — No rate limiting on unauthenticated routes; the limiter fails open · **High** · CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:L/VI:L/VA:L/SC:N/SI:N/SA:N (8.7)
@@ -699,8 +727,8 @@ Consolidated and dated in `REMEDIATION_ROADMAP.md`. Summary:
 
 | Priority | Target | Findings | Rationale |
 |----------|--------|----------|-----------|
-| **P0** | this branch | F-01, F-02, F-03, F-04, F-05, F-06, F-07, F-11, F-13, F-16 | Live, authenticated-reachable or network-reachable; several one-line fixes |
-| **P1** | +30 days | F-08, F-09, F-10, F-14, F-17, F-18, F-20, F-23 | Meaningful risk; needs a small design step or is defence-in-depth |
+| **P0** | this branch | F-01, F-03, F-04, F-05, F-06, F-07, F-11, F-13, F-16 | Live, authenticated-reachable or network-reachable; several one-line fixes |
+| **P1** | +30 days | F-02, F-08, F-09, F-10, F-14, F-17, F-18, F-20, F-23 | Meaningful risk; needs a design step or is defence-in-depth |
 | **P2** | +90 days | F-12, F-15, F-19, F-21, F-22, F-24, F-25 | Hardening, hygiene, and drift control |
 
 ---

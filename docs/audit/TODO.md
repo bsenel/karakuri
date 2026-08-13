@@ -10,7 +10,7 @@ Exactly **one** `[~]` at a time. An item becomes `[x]` only when it links to evi
 | 2 | Security audit → SECURITY_AUDIT.md | agent | [x] | `SECURITY_AUDIT.md`; `evidence/` | 2026-08-13 |
 | 3 | Compliance audit → COMPLIANCE_AUDIT.md | agent | [ ] | | |
 | 4 | Design & dev best-practices audit → ENGINEERING_AUDIT.md | agent | [ ] | | |
-| 5 | Penetration testing → PENTEST_REPORT.md | agent | [ ] | | |
+| 5 | Penetration testing → PENTEST_REPORT.md | agent | [x] | `PENTEST_REPORT.md`; `evidence/pentest-transcript.txt`, `zap-baseline.json` | 2026-08-13 |
 | 6 | CI automation of 2–5 → CI_SECURITY_PIPELINE.md | agent | [ ] | | |
 
 ## Workstream 0 — Recon & baseline (done)
@@ -29,12 +29,15 @@ Exactly **one** `[~]` at a time. An item becomes `[x]` only when it links to evi
 - [x] Checkov on Dockerfile → `evidence/checkov-dockerfile.json`.
 - [x] Write `SECURITY_AUDIT.md`: 25 findings, Matrix A/B/C, roadmap, residual risk, 3 appendices.
 
-## Workstream 5 — Penetration testing (in progress)
+## Workstream 5 — Penetration testing (done)
 
-- [~] Build image `make docker-build`; run on loopback with throwaway secrets.
-- [ ] Verify F-01 (path traversal), F-02 (IDOR set), F-03 (login brute-force), F-16 (token in URL).
-- [ ] ZAP baseline scan (Docker) → `evidence/zap-baseline.json`.
-- [ ] Write `PENTEST_REPORT.md`; retest section filled after WS-FIX.
+- [x] Ran server binary on loopback (127.0.0.1:8899) with throwaway secrets. Container
+      build path is itself F-06, so the binary was used to isolate app behaviour.
+- [x] F-01 CONFIRMED (dir created outside root); F-03 CONFIRMED (30 logins, 0×429);
+      F-16 CONFIRMED (/auth/refresh takes bare token); **F-02 reframed** — gate fails
+      closed for scoped principals, downgraded High→Medium. `PENTEST_REPORT.md` PT-01..05.
+- [x] ZAP baseline (57 PASS / 4 WARN, all F-11 headers) → `evidence/zap-baseline.json`.
+- [x] Wrote `PENTEST_REPORT.md`; retest notes reflect the P0 fixes (applied in WS-FIX).
 
 ## Workstream FIX — Remediate P0/P1 (separate commits)
 
