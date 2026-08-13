@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"github.com/bsenel/karakuri/auth"
 	corecheckpoint "github.com/bsenel/karakuri/internal/core/checkpoint"
 	"github.com/bsenel/karakuri/internal/core/loop"
 	"github.com/bsenel/karakuri/internal/core/objective"
@@ -62,10 +63,17 @@ func (h *LoopHandler) Resume(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	// The approver is who the audit trail says authorized this resume, so it
+	// comes from the authenticated principal, not a self-asserted body field.
+	// See SECURITY_AUDIT.md F-10.
+	approver := req.Approver
+	if p, ok := auth.PrincipalFromContext(r.Context()); ok {
+		approver = p.ID
+	}
 	result, err := h.Loop.Resume(r.Context(), id, corecheckpoint.Decision{
 		Choice:        req.Decision,
 		Note:          req.Note,
-		Approver:      req.Approver,
+		Approver:      approver,
 		Modifications: req.Modifications,
 	})
 	if err != nil {
