@@ -114,6 +114,11 @@ jobs:
             coverage: 95
           - module: quota
             coverage: 95
+          # quota/cost is pure arithmetic over its own types, like the two
+          # above, and its residue is one unreachable default branch guarded by
+          # Query.Validate.
+          - module: quota/cost
+            coverage: 95
           # auth/sql's residual uncovered statements are RowsAffected() and
           # tx.Commit() error branches, which need a fault-injecting driver to
           # reach. Behaviour is covered — every method against a closed
@@ -174,8 +179,8 @@ jobs:
           # `go vet` and by running them. `quotatest` is the backend contract
           # suite: its uncovered statements are assertion branches that only
           # execute when a backend is broken, and it is executed in full by the
-          # package under test.
-          pkgs=$(go list ./... | grep -v -e '/examples/' -e '/quotatest')
+          # package under test. `costtest` is the same thing for ledgers.
+          pkgs=$(go list ./... | grep -v -e '/examples/' -e '/quotatest' -e '/costtest')
           go test ${pkgs} -coverprofile=cover.out >/dev/null
           total=$(go tool cover -func=cover.out | awk '/^total:/ {print $3}' | tr -d '%')
           echo "${{ matrix.module }} coverage: ${total}% (gate: ${MIN_COVERAGE}%)"
