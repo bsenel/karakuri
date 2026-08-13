@@ -254,7 +254,12 @@ func NewApp(
 			r.Route("/auth", func(r chi.Router) {
 				r.With(require(karakuriauth.ActionAuthRead, nil)).Get("/users", authH.ListUsers)
 				r.With(require(karakuriauth.ActionAuthWrite, nil)).Post("/users", authH.CreateUser)
+				r.With(require(karakuriauth.ActionAuthWrite, nil)).Delete("/users/{id}", authH.DeleteUser)
+				r.With(require(karakuriauth.ActionAuthRead, nil)).Get("/bindings", authH.ListBindings)
 				r.With(require(karakuriauth.ActionAuthWrite, bindingWrite)).Post("/bindings", authH.CreateBinding)
+				// Revoking is bounded by the same rule as granting, re-checked
+				// in the handler against the scope the binding actually names.
+				r.With(require(karakuriauth.ActionAuthWrite, bindingWrite)).Delete("/bindings/{id}", authH.DeleteBinding)
 				r.With(require(karakuriauth.ActionAuthRead, nil)).Get("/roles", authH.ListRoles)
 				r.With(require(karakuriauth.ActionAuthRead, nil)).Get("/policies", authH.ListPolicies)
 				r.With(require(karakuriauth.ActionAuthRead, nil)).Get("/catalog", authH.ListCatalog)
@@ -324,6 +329,10 @@ func NewApp(
 				// the rest; writing is quota:admin and deliberately unscoped —
 				// approving a raise for a twin you administer is a tenant
 				// decision, and moving the ceiling for everybody is not.
+				// The raises in force, filtered to the subjects the caller
+				// could have approved for.
+				r.With(require(karakuriauth.ActionQuotaRead, quotaList)).Get("/overrides", quotaH.Overrides)
+				r.With(require(karakuriauth.ActionQuotaApprove, quotaDecide)).Delete("/overrides/{subject}/{name}", quotaH.RevokeOverride)
 				r.With(require(karakuriauth.ActionQuotaRead, quotaList)).Get("/tiers", quotaH.Tiers)
 				r.With(require(karakuriauth.ActionQuotaAdmin, nil)).Put("/tiers/{name}", quotaH.SetTier)
 				r.With(require(karakuriauth.ActionQuotaAdmin, nil)).Delete("/tiers/{name}", quotaH.ResetTier)
@@ -362,6 +371,7 @@ func NewApp(
 			r.With(require(karakuriauth.StreamAction, twinList)).Get("/events", evtH.StreamAll)
 
 			r.With(require(karakuriauth.ActionAuditRead, nil)).Get("/audit", audH.List)
+			r.With(require(karakuriauth.ActionAuditRead, nil)).Get("/audit/{id}", audH.Get)
 			// Filtered to the containers the caller may see, from the same
 			// bindings the twin listing reads — a report must not be a way
 			// around the tenancy those enforce.

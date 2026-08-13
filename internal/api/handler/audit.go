@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/bsenel/karakuri/internal/platform/storage"
+	"github.com/go-chi/chi/v5"
 )
 
 // AuditHandler serves the authority-bounds audit log (Phase 13). Reads
@@ -47,4 +48,19 @@ func (h *AuditHandler) List(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, events)
+}
+
+// Get returns one audit row.
+//
+// GET /api/v1/audit/{id}
+func (h *AuditHandler) Get(w http.ResponseWriter, r *http.Request) {
+	event, err := h.Store.GetToolEvent(r.Context(), chi.URLParam(r, "id"))
+	if err != nil {
+		// Not-found and unreadable are the same answer here on purpose: an
+		// audit log that distinguishes them tells an unauthorized prober which
+		// IDs exist.
+		http.Error(w, "no such audit event", http.StatusNotFound)
+		return
+	}
+	writeJSON(w, event)
 }

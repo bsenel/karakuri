@@ -209,6 +209,10 @@ type StorageAdapter interface {
 	SaveToolEvent(ctx context.Context, e ToolEvent) error
 	ListToolEvents(ctx context.Context, f ToolEventFilter) ([]ToolEvent, error)
 
+	// GetToolEvent returns one audit row by ID, for a detail view reached by
+	// link rather than by scrolling.
+	GetToolEvent(ctx context.Context, id string) (ToolEvent, error)
+
 	// Loop state (Phase 11 — durable execution across server restarts)
 	SaveLoopState(ctx context.Context, s coreloop.State) error
 	GetLoopState(ctx context.Context, loopID string) (coreloop.State, error)

@@ -195,7 +195,10 @@ func Routes() []Route {
 		{http.MethodPost, "/auth/users", ActionAuthWrite, false},
 		{http.MethodGet, "/auth/roles", ActionAuthRead, false},
 		{http.MethodGet, "/auth/policies", ActionAuthRead, false},
+		{http.MethodDelete, "/auth/users/{id}", ActionAuthWrite, false},
+		{http.MethodGet, "/auth/bindings", ActionAuthRead, false},
 		{http.MethodPost, "/auth/bindings", ActionAuthWrite, false},
+		{http.MethodDelete, "/auth/bindings/{id}", ActionAuthWrite, false},
 		{http.MethodPost, "/auth/check", ActionAuthRead, false},
 
 		{http.MethodPost, "/twins", ActionTwinCreate, false},
@@ -268,11 +271,14 @@ func Routes() []Route {
 		// to the same twins the listing would return.
 		{http.MethodGet, "/events", ActionTwinRead, false},
 
+		{http.MethodGet, "/quota/overrides", ActionQuotaRead, false},
+		{http.MethodDelete, "/quota/overrides/{subject}/{name}", ActionQuotaApprove, false},
 		{http.MethodGet, "/quota/tiers", ActionQuotaRead, false},
 		{http.MethodPut, "/quota/tiers/{name}", ActionQuotaAdmin, false},
 		{http.MethodDelete, "/quota/tiers/{name}", ActionQuotaAdmin, false},
 
 		{http.MethodPost, "/research", ActionResearchRun, false},
 		{http.MethodGet, "/audit", ActionAuditRead, false},
+		{http.MethodGet, "/audit/{id}", ActionAuditRead, false},
 	}
 }
