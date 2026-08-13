@@ -64,5 +64,52 @@ func (b *Backend) schema() []string {
 		// housekeeping pass table-scans every key on a busy deployment.
 		`CREATE INDEX IF NOT EXISTS ` + b.table("quota_counters_expires_idx") +
 			` ON ` + b.table("quota_counters") + ` (expires_ms)`,
+
+		// One row per (subject, limit): an override replaces a named ceiling,
+		// so a second row for the same pair would be a second answer with no
+		// rule about which wins. The composite primary key is what makes the
+		// upsert in PutOverride mean "replace".
+		//
+		// Deliberately not swept. A counter is worth expiring because it will
+		// be recreated on the next request; an override is a decision somebody
+		// made, and one that vanishes because nobody used it for a while is a
+		// limit that silently drops back.
+		`CREATE TABLE IF NOT EXISTS ` + b.table("quota_overrides") + ` (
+	subject    TEXT NOT NULL,
+	name       TEXT NOT NULL,
+	cap_units  BIGINT NOT NULL DEFAULT 0,
+	window_ms  BIGINT NOT NULL DEFAULT 0,
+	expires_ms BIGINT NOT NULL DEFAULT 0,
+	reason     TEXT NOT NULL DEFAULT '',
+	PRIMARY KEY (subject, name)
+)`,
+
+		// Requests are the audit trail: who asked for what, who decided, and
+		// why. They outlive the override an approval writes, which is the point
+		// — "why is this limit 5,000,000" is answered here long after somebody
+		// has revoked it.
+		`CREATE TABLE IF NOT EXISTS ` + b.table("quota_requests") + ` (
+	id            TEXT PRIMARY KEY,
+	subject       TEXT NOT NULL,
+	name          TEXT NOT NULL,
+	cap_units     BIGINT NOT NULL DEFAULT 0,
+	window_ms     BIGINT NOT NULL DEFAULT 0,
+	expires_ms    BIGINT NOT NULL DEFAULT 0,
+	reason        TEXT NOT NULL DEFAULT '',
+	status        TEXT NOT NULL DEFAULT 'pending',
+	requested_by  TEXT NOT NULL DEFAULT '',
+	created_ms    BIGINT NOT NULL DEFAULT 0,
+	decided_by    TEXT NOT NULL DEFAULT '',
+	decided_ms    BIGINT NOT NULL DEFAULT 0,
+	decision_note TEXT NOT NULL DEFAULT ''
+)`,
+
+		// The pending queue is the listing an approver opens, and it is the one
+		// that must not table-scan as the decided ones accumulate.
+		`CREATE INDEX IF NOT EXISTS ` + b.table("quota_requests_status_idx") +
+			` ON ` + b.table("quota_requests") + ` (status, created_ms)`,
+
+		`CREATE INDEX IF NOT EXISTS ` + b.table("quota_requests_subject_idx") +
+			` ON ` + b.table("quota_requests") + ` (subject)`,
 	}
 }
