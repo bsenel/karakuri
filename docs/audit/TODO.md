@@ -39,18 +39,23 @@ Exactly **one** `[~]` at a time. An item becomes `[x]` only when it links to evi
 - [x] ZAP baseline (57 PASS / 4 WARN, all F-11 headers) → `evidence/zap-baseline.json`.
 - [x] Wrote `PENTEST_REPORT.md`; retest notes reflect the P0 fixes (applied in WS-FIX).
 
-## Workstream FIX — Remediate P0/P1 (separate commits)
+## Workstream FIX — Remediate P0/P1 (separate commits, all P0 done + verified)
 
-- [ ] F-01 — resolve objective from store + worktree containment check.
-- [ ] F-02 — per-resource authorization on unscoped routes.
-- [ ] F-03 — unauthenticated rate-limit middleware; limiter fail-closed.
-- [ ] F-04/05/11 — http.Server timeouts, MaxBytesReader, security headers.
-- [ ] F-16 — remove live refresh token from CLI callback URL.
-- [ ] F-10 — approver from authenticated principal.
-- [ ] F-09 — opaque client errors + correlation ID.
-- [ ] F-06 — Dockerfile: patched Go, non-root USER, pinned bases.
-- [ ] F-07 — Helm securityContext.
-- [ ] F-13/14 — npm audit fix; disable prod source maps.
+- [x] F-01 — worktree containment check + component validation (`03502df`); regression test + pentest PT-01.
+- [-] F-02 — **reframed** to design change (P1) after pentest disproved the live IDOR; in roadmap.
+- [x] F-03 — per-IP rate limiter on `/auth/*` (`117a580`); verified live 26/30 → 429.
+- [x] F-04/05/11 — http.Server timeouts, MaxBytesReader, security headers (`fef55e2`); 4 headers live.
+- [x] F-16 — encrypt CLI handoff code, refresh token no longer recoverable (`befab80`); sealer tests.
+- [x] F-10 — approver from authenticated principal (`a60a1f5`).
+- [x] F-20 — login timing dummy-verify (`5e772f9`).
+- [x] F-06 — Dockerfile patched Go/non-root/digest-pinned (`4af2ca1`); builder + non-root validated.
+- [x] F-07 — Helm pod+container securityContext (`4af2ca1`); Trivy 3 HIGH cleared.
+- [x] F-13/14 — react-router v7, prod source maps off (`ad5cbac`); build+23 unit+5 e2e green.
+- [ ] F-08 — lint repair (done in WS1).
+- [-] F-09, F-17, F-18, F-19, F-21..F-25, F-15, F-12 — documented in `REMEDIATION_ROADMAP.md` (P1/P2).
+
+Validation: full `go test ./...` green across all 10 modules; Playwright e2e 5/5 green
+(CSP + react-router v7 confirmed in a real browser).
 
 ## Workstream 1 — Refactor (descoped to repairs + enablers)
 
