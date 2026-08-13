@@ -176,6 +176,24 @@ krk audit [--kind execute|escalation|approval] [--objective <id>] \
           [--agent <id>] [--violations-only] [--since <RFC3339>] [--limit N]
 ```
 
+## Web interface
+
+The React SPA at `/` covers what `krk` does, for the work an operator does daily:
+users and their bindings, the org/team/project tree, the role→permission matrix,
+quota usage and the self-service queue, the limits themselves, spend, and the
+audit log.
+
+**The navigation shows only what you can open**, and where you land after signing
+in depends on what you hold — an auditor with no objective access should not meet
+a 403 as their first impression of a system behaving correctly. Hiding a link is
+a courtesy rather than a control: the server refuses either way, and nothing
+secret relies on a hidden menu item.
+
+The cost dashboard follows a live stream (`GET /api/v1/events`) that is filtered
+per subscriber against the same bindings that decide which twins you may list. An
+event the server cannot classify is withheld rather than broadcast — see
+[ADR 012](docs/adr/012-limits-as-resolved-state.md).
+
 ## Configuration
 
 Copy `config/default.yaml` and set `ANTHROPIC_API_KEY`. Key options:
@@ -591,14 +609,14 @@ is restricted under the
 
 ## Roadmap
 
-Phases 1–18 have shipped (core engine through cross-domain objectives, then the multi-team production layer). Phase 19 is queued:
+Phases 1–19 have shipped: the core engine, then cross-domain objectives, then the multi-team production layer and the interface for it.
 
 - **Phase 14:** RBAC + fine-grained authorization, shipped as a standalone module `github.com/bsenel/karakuri/auth` reusable by any net/http or chi server
 - **Phase 15:** API rate limiting + quota management, shipped as `github.com/bsenel/karakuri/quota` with Redis/SQL backend submodules
 - **Phase 16:** Federated identity (OIDC + SAML) as `auth` submodules
 - **Phase 17:** Multi-tenant hierarchy — orgs, teams and projects as scope sets ([ADR 010](docs/adr/010-scope-sets.md))
+- **Phase 19:** Web interface for auth, quota, cost and audit; limits become resolved state ([ADR 012](docs/adr/012-limits-as-resolved-state.md))
 - **Phase 18:** Quota self-service + cost attribution — per-subject overrides an approval writes, and labelled spend ([ADR 011](docs/adr/011-overrides-and-labelled-spend.md))
-- **Phase 19:** Frontend pages for auth, quota, cost, and audit
 
 Full per-phase status, acceptance criteria, and architecture rationale in [docs/roadmap.md](docs/roadmap.md).
 

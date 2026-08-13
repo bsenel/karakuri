@@ -276,3 +276,78 @@ jobs:
           KEYCLOAK_ADMIN: admin
           KEYCLOAK_ADMIN_PASSWORD: admin
         run: go test ./test/integration/... -run TestKeycloak -race -count=1 -timeout 5m -v
+
+  # The browser end of the same flows the Go integration suite covers from the
+  # API end. It is its own job because it needs a built frontend, a running
+  # server and a browser — and because it is the slowest thing here, so nothing
+  # else should wait on it.
+  e2e:
+    name: Browser end to end
+    runs-on: ubuntu-latest
+    needs: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: web-dist
+          path: web/dist
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.x"
+          cache: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci --no-audit --no-fund
+        working-directory: web
+      # Chromium only. The suite tests this application's behaviour rather than
+      # cross-browser rendering, and three browsers would triple the slowest
+      # job in the pipeline to catch bugs it is not looking for.
+      - run: npx playwright install --with-deps chromium
+        working-directory: web
+
+      - name: Build the server
+        run: go build -o bin/server ./cmd/server
+
+      # A real server against a real SQLite database, which is what the suite
+      # signs in to. The bootstrap password is required — the server refuses to
+      # start without one rather than inventing a credential.
+      - name: Start Karakuri
+        env:
+          KARAKURI_AUTH_JWT_SECRET: e2e-signing-key-not-used-anywhere-else
+          KARAKURI_AUTH_BOOTSTRAP_PASSWORD: e2e-bootstrap-password
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/karakuri-e2e
+          KARAKURI_CONFIG=web/e2e/karakuri.e2e.yaml \
+            ./bin/server >/tmp/karakuri-e2e/server.log 2>&1 &
+          for i in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:8080/api/v1/health >/dev/null 2>&1; then
+              echo "server ready after ${i}s"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "server did not become ready; log:" >&2
+          cat /tmp/karakuri-e2e/server.log >&2
+          exit 1
+
+      - name: Run the browser suite
+        env:
+          KARAKURI_E2E_URL: http://127.0.0.1:8080
+          KARAKURI_AUTH_BOOTSTRAP_PASSWORD: e2e-bootstrap-password
+        run: npm run test:e2e
+        working-directory: web
+
+      - name: Server log
+        if: failure()
+        run: cat /tmp/karakuri-e2e/server.log
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: web/playwright-report
+          retention-days: 3

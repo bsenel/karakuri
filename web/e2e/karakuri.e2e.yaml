@@ -1,0 +1,316 @@
+# Configuration for the browser end-to-end suite, derived from
+# config/default.yaml and differing from it in exactly two ways: everything
+# writable lives under /tmp, and the request rate limit is raised.
+#
+# The raised limit is worth explaining rather than hiding. A browser is a bursty
+# client in a way `krk` is not — one page load is four or five requests — and
+# the suite drives a dozen loads in under a minute as one principal. Leaving the
+# shipped default here would mean the suite spent its time testing the limiter.
+#
+# That the SPA can reach the default limit at all is a real finding, and the
+# response to it is in web/src/api/client.ts: a 429 is retried once, after the
+# interval the server named. This file is why the suite does not depend on that
+# retry succeeding.
+
+server:
+  addr: ":8080"
+
+database:
+  driver: sqlite
+  dsn: /tmp/karakuri-e2e/karakuri.db
+
+git:
+  repo_path: /tmp/karakuri-e2e/repo
+  worktree_base: /tmp/karakuri-e2e/worktrees
+  base_branch: main
+  branch_prefix: karakuri
+  auto_prune: true
+
+observability:
+  exporters:
+    - name: local
+      enabled: true
+      path: /tmp/karakuri-e2e/obs/
+      formats:
+        metrics: ndjson
+        logs: ndjson
+      rotation:
+        max_size_mb: 100
+        max_age_days: 30
+
+providers:
+  default: claude
+  fallback:
+    gemini: claude
+    cursor: claude
+    copilot: claude
+
+executor: local
+
+auth:
+  jwt:
+    issuer: karakuri
+    audience: karakuri-api
+    access_ttl: 15m
+    refresh_ttl: 720h
+    # Signing keys. The server refuses to start without one — there is no
+    # default secret, because a predictable signing key is a backdoor.
+    # The usual deployment sets KARAKURI_AUTH_JWT_SECRET instead of listing
+    # keys here; declare them explicitly when you want to rotate, since a
+    # keyring keeps old tokens verifiable while a new key signs.
+    #
+    # keys:
+    #   - kid: 2026-06
+    #     algorithm: HS256
+    #     active: true
+    #     secret_env: KARAKURI_AUTH_JWT_SECRET
+    #   - kid: 2026-05          # previous signer, still trusted until its
+    #     algorithm: HS256      # tokens expire
+    #     secret_env: KARAKURI_AUTH_JWT_SECRET_PREVIOUS
+    keys: []
+  bootstrap:
+    # On a database with no principals, the server creates this administrator
+    # using the password from the named environment variable. If it is unset,
+    # the server refuses to start — generating one and logging it would copy a
+    # live credential into every configured log sink.
+    admin_id: admin
+    password_env: KARAKURI_AUTH_BOOTSTRAP_PASSWORD
+  cookies:
+    # Browser sessions ride in httpOnly, SameSite=Strict, Secure cookies. Only
+    # the last of those is negotiable, and only for plain-HTTP development:
+    # setting this true lets a session cookie travel unencrypted. Leave it
+    # false anywhere a real credential exists. Browsers do not need it —
+    # http://localhost is treated as a secure origin and accepts Secure cookies.
+    insecure_allow_http: false
+
+  # Where logins come from: bearer, oidc or saml.
+  #
+  # Choosing a federated provider does NOT switch password login off. It stays
+  # mounted alongside, deliberately: it is the break-glass path when the
+  # identity provider is unreachable, and adding a static shared token back to
+  # serve that purpose is exactly what Phase 14 removed.
+  provider: bearer
+
+  frontend:
+    # This server's externally reachable base URL. Required once a federated
+    # provider is configured, and deliberately not inferred from an inbound
+    # request: behind a proxy the Host header is attacker-controlled, and
+    # deriving a redirect target from one is how open redirects start.
+    public_url: ""
+    # Where a browser lands after a successful federated login.
+    login_redirect: /
+
+  # Which roles the groups an identity provider asserts should grant, and where
+  # those roles apply.
+  #
+  # `default` applies to a user who authenticated but matched no group, and it
+  # is empty on purpose: everybody in a corporate directory can authenticate,
+  # so a default role here is a grant to the whole company. Empty means such a
+  # user logs in and sees nothing, which is the correct shape — authentication
+  # is not authorization.
+  #
+  # A bare role name grants it over everything. Naming an org, a team or a
+  # project confines it to that container and everything inside it, which is
+  # what keeps a directory group of two hundred people from becoming two
+  # hundred principals who can see every tenant:
+  #
+  #   groups:
+  #     karakuri-admins:  [admin]                                  # everywhere
+  #     acme-admins:      [{role: admin, org: acme}]               # one org
+  #     acme-engineers:   [{role: operator, org: acme, team: eng}] # one team
+  #     delta-partners:   [{role: viewer, project: delta}]         # one project
+  #
+  # A team always needs its org: two organisations may each have a team called
+  # "eng", and that is exactly the case scoping exists to keep apart. Names are
+  # resolved to IDs once, at startup — a name that matches nothing is a fatal
+  # configuration error, not a login that silently grants less than intended.
+  #
+  # One identity provider is configured at a time, so group names come from a
+  # single namespace and cannot collide. Federating two providers would need
+  # this map keyed by issuer; that is not supported.
+  role_map:
+    groups: {}
+    #   karakuri-admins: [admin]
+    #   karakuri-operators: [operator]
+    #   karakuri-readers: [viewer]
+    default: []
+
+  oidc:
+    issuer_url: ""
+    client_id: ""
+    # Never inline the secret; name the variable holding it, as every other
+    # secret in this file does.
+    client_secret_env: KARAKURI_AUTH_OIDC_CLIENT_SECRET
+    # Defaults to <public_url>/api/v1/auth/sso/callback. It must match what is
+    # registered with the provider.
+    redirect_url: ""
+    # Empty requests openid, profile and email.
+    scopes: []
+    # There is no standard OIDC claim for group membership. Keycloak nests it
+    # under realm_access.roles, Okta and Auth0 use groups, Azure AD emits
+    # object IDs. Empty means "groups".
+    groups_claim: ""
+    email_claim: ""
+    name_claim: ""
+
+  saml:
+    # One of these supplies the identity provider's signing certificates and
+    # endpoints. The URL is fetched once at startup.
+    idp_metadata_url: ""
+    idp_metadata_file: ""
+    # Defaults to <public_url>/api/v1/auth/saml/metadata.
+    entity_id: ""
+    # Matched against both an attribute's Name and its FriendlyName, because
+    # providers populate one, the other, or both: ADFS sends
+    # http://schemas.xmlsoap.org/claims/Group, Azure AD sends
+    # http://schemas.microsoft.com/ws/2008/06/identity/claims/groups, Okta
+    # sends groups, Shibboleth sends eduPersonAffiliation.
+    role_attribute: groups
+    email_attribute: email
+    name_attribute: displayName
+    # Accept logins this server did not start. Off by default: without a
+    # request of ours to correlate against, the guarantee that a response
+    # answers a request we actually sent is gone.
+    allow_idp_initiated: false
+
+quota:
+  # Where counters live: memory, sql or valkey.
+  #
+  # memory is per replica. A limit of 60/min across three replicas admits 180,
+  # and nothing reports a problem — it is the right choice for a single
+  # instance and the wrong one behind a load balancer, where valkey is the only
+  # backend consistent across replicas. sql shares the application database and
+  # suits long-window quotas more than per-request rates.
+  backend: memory
+  # valkey_url: valkey://:password@valkey:6379/0
+
+  # Sustained request rate per principal, and how many may arrive at once. The
+  # defaults are deliberately generous: a limiter that fires during ordinary
+  # use trains operators to raise it without reading it.
+  # A browser is a bursty client in a way `krk` is not: one page load here is
+  # four or five requests, and the suite drives a dozen page loads in under a
+  # minute as a single principal. The shipped defaults are right for people and
+  # wrong for this, and a suite that trips the limiter tests the limiter rather
+  # than the pages.
+  requests_per_minute: 6000
+  request_burst: 600
+
+  # Everything below is the SEED for these limits, not the last word on them.
+  # A tier set through `krk quota set` (or the settings page) is stored in the
+  # database and takes precedence; the values here are what a fresh database
+  # starts from and what `krk quota unset` returns to. The server logs one line
+  # per diverging tier at startup, and `krk quota config` reports both.
+
+  # Daily caps. A capability is one twin invoking one capability; llm_tokens is
+  # a twin's model spend; adapter bounds calls to one external service.
+  capability_per_day: 1000
+  llm_tokens_per_day: 1000000
+  adapter_per_day: 5000
+
+  # Who counts model spend: native or litellm.
+  #
+  # native counts tokens through this process and needs nothing else. litellm
+  # delegates to a gateway that counts dollars against a maintained per-model
+  # cost table — closer to what most operators want to cap, but a service to
+  # run, so it is opt-in. Either way an exhausted budget pauses the loop on a
+  # checkpoint rather than failing it.
+  #
+  # With litellm, point ANTHROPIC_BASE_URL (and GOOGLE_GEMINI_BASE_URL for the
+  # Gemini CLI) at the same gateway; Karakuri stamps x-litellm-customer-id so
+  # spend is attributed per twin without provisioning anything.
+  llm_budget_backend: native
+  # litellm_url: http://litellm:4000
+  # litellm_key_env: LITELLM_MASTER_KEY
+
+  # What a unit costs, so `krk cost report` is in money rather than in tokens.
+  #
+  # Nothing is priced by default. A shipped price table would be wrong the week
+  # after it shipped, and a report that invents money is worse than one that
+  # reports units — with no table the units are still counted and the money
+  # reads zero.
+  #
+  # A rate with no model is that provider's fallback. unit_kind is tokens or
+  # calls, and defaults to tokens. per_unit is in whole currency units, so a
+  # model at $15 per million input tokens is 0.000015.
+  # rates:
+  #   - provider: anthropic
+  #     model: claude-opus-4
+  #     unit_kind: tokens
+  #     per_unit: 0.000015
+  #   - provider: anthropic          # anything else from this provider
+  #     per_unit: 0.000003
+  #   - provider: github
+  #     unit_kind: calls
+  #     per_unit: 0.0
+
+  # How long individual cost events are kept, for drilling from a total down to
+  # the objective that produced it. The daily rollup survives pruning, so a
+  # shorter horizon costs the drill-down and not the totals. Zero keeps
+  # everything.
+  cost_retention_days: 90
+
+  # Self-service limits need somewhere durable to write and are wired whenever
+  # a database is configured, whatever the counter backend above. An approval
+  # that vanished on restart would be worse than not offering one, so a
+  # deployment with no database gets neither overrides nor cost reporting, and
+  # says so in a log line at startup.
+
+domains:
+  - id: software
+    enabled: true
+  - id: agriculture
+    enabled: true
+  - id: healthcare
+    enabled: true
+
+memory:
+  consolidation_threshold: 20
+  semantic_top_k: 5
+  vector_backend: sqlite-keyword   # sqlite-keyword | pgvector  (pgvector requires database.driver=postgres)
+  embedding_dim: 1536
+
+# Tool adapters — multi-instance shape (ADR 006).
+# Each slot carries a `default:` instance name and a map of named `instances:`.
+# Use `<field>_env: ENV_VAR_NAME` to populate `<field>` from an environment
+# variable at startup so checked-in YAML never holds plaintext credentials.
+#
+# Example multi-tenant config:
+#   tools:
+#     versioncontrol:
+#       default: acme_github
+#       instances:
+#         acme_github:    { type: github, repo: acme/api, token_env: ACME_GITHUB_TOKEN }
+#         personal_github: { type: github, repo: bsenel/sideproj, token_env: BSENEL_GITHUB_TOKEN }
+#     email:
+#       default: acme_outlook
+#       instances:
+#         acme_outlook:  { type: outlook, from_address: bot@acme.com, oauth_token_env: ACME_MS_TOKEN }
+#         personal_gmail: { type: gmail, from_address: bsenel@gmail.com, oauth_token_env: BSENEL_GOOGLE_TOKEN }
+tools:
+  versioncontrol:
+    default: ""
+    instances: {}
+  projectmgmt:
+    default: ""
+    instances: {}
+  messaging:
+    default: ""
+    instances: {}
+  design:
+    default: ""
+    instances: {}
+  testing:
+    default: ""
+    instances: {}
+  calendar:
+    default: ""
+    instances: {}
+  email:
+    default: ""
+    instances: {}
+  # CLI coding-agent slot (Phase 7). type: claude_code | cursor_cli | gemini_cli | copilot_cli
+  # Each instance can override the CLI binary path via the `binary:` field;
+  # default looks the binary up on PATH.
+  cli_agents:
+    default: ""
+    instances: {}

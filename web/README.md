@@ -26,6 +26,22 @@ npm run typecheck
 npm run test:e2e      # Playwright — needs a Karakuri server on :8080
 ```
 
+The e2e suite runs against its own server config, `e2e/karakuri.e2e.yaml`, which
+differs from the shipped one in two ways: everything writable is under `/tmp`,
+and the request rate limit is raised. The raised limit is worth knowing about
+rather than hiding — a browser is a bursty client in a way `krk` is not, one page
+load here is four or five requests, and the suite drives a dozen loads in under a
+minute as one principal. That the SPA can reach the shipped default at all is a
+real finding; the response to it is in `src/api/client.ts`, which retries a 429
+once after the interval the server named.
+
+```bash
+mkdir -p /tmp/karakuri-e2e
+KARAKURI_AUTH_JWT_SECRET=... KARAKURI_AUTH_BOOTSTRAP_PASSWORD=... \
+  KARAKURI_CONFIG=web/e2e/karakuri.e2e.yaml ./bin/server &
+cd web && KARAKURI_AUTH_BOOTSTRAP_PASSWORD=... npm run test:e2e
+```
+
 Vitest runs in jsdom and is what CI runs on every push. Playwright drives a real
 browser against a real server, so it is a separate job: it is the only thing
 here that catches a route guard which renders but does not navigate, and it is
