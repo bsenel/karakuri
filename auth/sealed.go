@@ -1,7 +1,10 @@
 package auth
 
 import (
+	"crypto/aes"
+	"crypto/cipher"
 	"crypto/hmac"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
@@ -133,4 +136,92 @@ func (s Sealer) sign(payload []byte) []byte {
 	mac := hmac.New(sha256.New, s.Key)
 	mac.Write(payload)
 	return mac.Sum(nil)
+}
+
+// encryptLabel domain-separates the AES key derived below from the raw HMAC
+// signing key, so the same Sealer.Key never serves two cryptographic purposes
+// with the same bytes.
+const encryptLabel = "karakuri/auth/seal/encrypt/v1"
+
+// aeadKey derives a 32-byte AES-256 key from the sealer key.
+func (s Sealer) aeadKey() [32]byte {
+	h := sha256.New()
+	h.Write(s.Key)
+	h.Write([]byte(encryptLabel))
+	var k [32]byte
+	copy(k[:], h.Sum(nil))
+	return k
+}
+
+func (s Sealer) aead() (cipher.AEAD, error) {
+	key := s.aeadKey()
+	block, err := aes.NewCipher(key[:])
+	if err != nil {
+		return nil, err
+	}
+	return cipher.NewGCM(block)
+}
+
+// SealEncrypted is Seal for a payload that must stay confidential from the party
+// carrying it — a refresh token in a CLI handoff, for instance, which travels
+// through a URL. Where Seal only signs (the browser may read what it holds),
+// SealEncrypted additionally encrypts with AES-256-GCM, so the sealed string is
+// ciphertext: it cannot be decoded into the underlying value without the key.
+// GCM's tag also authenticates it, so no separate MAC is needed.
+func (s Sealer) SealEncrypted(v any, ttl time.Duration) (string, error) {
+	if err := s.Validate(); err != nil {
+		return "", err
+	}
+	data, err := json.Marshal(v)
+	if err != nil {
+		return "", fmt.Errorf("auth: seal: %w", err)
+	}
+	envelope, err := json.Marshal(sealed{Expires: s.now().Add(ttl).Unix(), Data: data})
+	if err != nil {
+		return "", fmt.Errorf("auth: seal: %w", err)
+	}
+	gcm, err := s.aead()
+	if err != nil {
+		return "", fmt.Errorf("auth: seal: %w", err)
+	}
+	nonce := make([]byte, gcm.NonceSize())
+	if _, err := rand.Read(nonce); err != nil {
+		return "", fmt.Errorf("auth: seal: %w", err)
+	}
+	ciphertext := gcm.Seal(nonce, nonce, envelope, nil)
+	return base64.RawURLEncoding.EncodeToString(ciphertext), nil
+}
+
+// OpenEncrypted verifies and decrypts a value produced by SealEncrypted.
+func (s Sealer) OpenEncrypted(value string, v any) error {
+	if err := s.Validate(); err != nil {
+		return err
+	}
+	raw, err := base64.RawURLEncoding.DecodeString(value)
+	if err != nil {
+		return ErrSealMalformed
+	}
+	gcm, err := s.aead()
+	if err != nil {
+		return ErrSealMalformed
+	}
+	if len(raw) < gcm.NonceSize() {
+		return ErrSealMalformed
+	}
+	nonce, ciphertext := raw[:gcm.NonceSize()], raw[gcm.NonceSize():]
+	envelope, err := gcm.Open(nil, nonce, ciphertext, nil)
+	if err != nil {
+		return ErrSealSignature
+	}
+	var out sealed
+	if err := json.Unmarshal(envelope, &out); err != nil {
+		return ErrSealMalformed
+	}
+	if s.now().Unix() > out.Expires {
+		return ErrSealExpired
+	}
+	if err := json.Unmarshal(out.Data, v); err != nil {
+		return ErrSealMalformed
+	}
+	return nil
 }
