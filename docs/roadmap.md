@@ -2,7 +2,7 @@
 
 ## Context
 
-Karakuri replaced the original role-based workflow simulator with an autonomous platform built on four primitives: **Capabilities, Environments, Objectives, and Agents**. No backward compatibility is maintained. The CLI binary is `krk`. This document records what shipped (Phases 1–21). Starting with Phase 14, the auth and quota engines ship as standalone Go modules under `github.com/bsenel/karakuri/{auth,quota}` and their submodules — fully reusable by other repos without pulling Karakuri itself.
+Karakuri replaced the original role-based workflow simulator with an autonomous platform built on four primitives: **Capabilities, Environments, Objectives, and Agents**. No backward compatibility is maintained. The CLI binary is `krk`. This document records what shipped (Phases 1–22). Starting with Phase 14, the auth and quota engines ship as standalone Go modules under `github.com/bsenel/karakuri/{auth,quota}` and their submodules — fully reusable by other repos without pulling Karakuri itself.
 
 ## Status Summary
 
@@ -30,6 +30,7 @@ Karakuri replaced the original role-based workflow simulator with an autonomous 
 | 19    | Frontend for Auth, Quota, Cost, Audit      | **Completed** |
 | 20    | Standing Objectives + Reconciliation       | **Completed** |
 | 21    | Digests                                    | **Completed** |
+| 22    | The Karakuri Domain Pack                   | **Completed** |
 
 
 ---
@@ -1589,12 +1590,133 @@ somebody.
 
 ---
 
+## Phase 22 — The Karakuri Domain Pack (Completed)
+
+**Goal:** Karakuri can read its own usage, find what limits it, and open a pull request that fixes it — under its own repository rules, and never from the pack that decided what to fix.
+
+**What shipped — and the thing it deliberately cannot do.**
+[ADR 017](adr/017-karakuri-as-a-domain-pack.md) records the design.
+
+Everything needed to *act* on self-improvement already existed: the software
+pack writes code in a worktree and opens pull requests, the research adapter
+reads the field, and Phase 20's supervisor schedules and bounds the work. What
+was missing was the observation — nothing let a domain pack see what this
+deployment had been doing.
+
+- **`internal/core/telemetry`** — a read-only port answering one question: what
+  has this deployment been doing over a window. Carried on
+  `environment.BuildContext`, nil for every pack but this one. Wired on the
+  environment registry rather than threaded through the loop and reconcile
+  services, since there is one reader per process and both already hold the
+  registry.
+- **`internal/platform/telemetry`** — implements it over objectives, reconcile
+  outcomes, the audit log and the cost ledger. Accumulates nothing, like the
+  digest, so a snapshot for a past window is reproducible. It returns
+  bottlenecks already ranked rather than four counters to compare: a pack
+  asking "what should I improve" would otherwise derive that ranking slightly
+  differently every time a model ran.
+- **`domains/karakuri`** — `karakuri.env.telemetry` and `karakuri.env.repo`;
+  capabilities `analyse_usage`, `propose_roadmap_phase`, `draft_adr`; agents
+  `karakuri-maintainer` (Reflexion) and `karakuri-analyst` (read-only);
+  templates `watch_health` and `self_improve`.
+
+**Read-only is the property being bought, not a precaution.** A pack that could
+write to the telemetry port could rewrite the evidence of what it did, and the
+value of letting Karakuri watch itself depends entirely on the watching being
+trustworthy. Both environments refuse an `Act` out loud rather than succeeding
+quietly — the same reasoning that made an unmatched `EnvID` an honest failure
+in Phase 13.5.
+
+**The pack that decides what to change cannot change anything.** Its three
+capabilities analyse and draft; the writing is the software pack's, in a
+worktree, through a pull request an operator reviews, reached by a cross-domain
+objective. One pack that could both conclude "Karakuri should be allowed to do
+more" and carry that out is one bug away from a system that widens its own
+bounds, and no amount of prompt discipline substitutes for not having the
+capability. It is asserted by a test rather than left to a comment, and
+`karakuri-maintainer` carries `MaxAutonomousActions: 0` with a confidence
+threshold no plan can clear — so it always asks, however much autonomy its
+standing objective has earned. The `self_improve` template is verified in part
+by `software.act.open_pull_request`: the pack cannot mark its own homework on
+the part it does not do.
+
+**The telemetry fingerprint is deliberately lossy.** The supervisor senses
+drift by hashing snapshots, and an environment hashing raw counters would move
+every time anything happened anywhere — a standing self-improvement objective
+would reconcile continuously to discover that work had occurred. Counts are
+bucketed by order of magnitude, the approval rate is banded, and only the
+bottleneck set is hashed exactly. This is the first environment where the right
+fingerprint is lossy, and it generalises: a SHA should answer "has anything
+changed that would change what I do", not "has anything changed".
+
+**One thing the conformance suite had wrong.** It required every criterion
+verifier to be a capability in the same pack — untrue since Phase 13 added
+cross-domain objectives, and unexercised until this pack. A foreign verifier is
+now allowed when the criterion declares `Criterion.Domain`, and still rejected
+when it does not, so a typo in a local verifier keeps failing rather than
+becoming indistinguishable from a deliberate cross-pack reference. The named
+domain is not resolved: a pack is validated on its own, and whether another is
+enabled is the registry's business at boot.
+
+**Acceptance — met:**
+
+- Build clean; `go test ./... -count=1` passes; the pack passes the same
+  conformance suite as software and agriculture.
+- The safety properties are pinned by tests rather than by comments: the pack
+  owns no capability whose ID looks like a write, the maintainer cannot act
+  unsupervised or delegate or edit its objective, both environments refuse an
+  action and say so, and `self_improve` is verified in part by another pack.
+- The fingerprint is pinned in both directions: a week that trebles its senses,
+  reconciles and approvals does not move it; a new bottleneck, a decision queue
+  growing from 2 to 40, and an objective entering the breaker each do. The
+  bottleneck set hashes order-independently.
+- An unwired deployment reports `available: false` and no SHA, so the
+  supervisor reads it as blind and drives the objective from its schedule —
+  rather than seeing a still fingerprint and concluding nothing changed.
+
+**Operator quickstart:**
+
+```bash
+# Enable the pack (config/default.yaml ships it disabled).
+#   domains:
+#     - id: karakuri
+#       enabled: true
+#
+# Bind the twin to the repository, then watch the deployment without spending
+# anything: sense-only autonomy never runs a loop.
+krk objective create --title "Watch Karakuri" --domain karakuri --twin twin_1 \
+    --template karakuri.objective.watch_health
+krk objective standing <id> --sense 1h --autonomy sense --ceiling sense
+
+# Self-improvement is cross-domain: this pack analyses and drafts, the software
+# pack writes. Propose-only, so every change arrives as a checkpoint.
+krk objective create --title "Improve Karakuri" --domain karakuri --twin twin_1 \
+    --template karakuri.objective.self_improve
+krk objective standing <id> --cron "0 9 * * 1" --sense 6h --autonomy propose
+```
+
+**What's deferred:**
+
+- **A research environment in this pack.** The research adapter and
+  `POST /research` already exist and an objective can reach them; a pack-owned
+  environment that ranked the field the way the telemetry one ranks
+  bottlenecks is a real addition and not this phase's.
+- **Reading CI status per pull request.** `karakuri.env.repo` reports open pull
+  requests; the version-control adapter has no check-status call, and adding
+  one is adapter work.
+- **Per-objective spend ceilings**, carried over from Phase 21. A
+  self-improvement objective is exactly the one an operator would want to cap
+  separately from its twin.
+
+---
+
 ## Phase Ordering Rationale
 
 Phases 7–13 are **independent except where noted** and can be reordered to match priority. The dependencies that DO exist:
 
 - **Phase 11** (distributed execution) benefits from **Phase 8**'s Postgres backend for shared state (now available) but Restate has its own state store and works without it.
 - **Phase 13** (cross-domain) is now unblocked — Phase 10 shipped Healthcare as a second non-software production pack to combine with Software.
+- **Phase 22** (the karakuri pack) depends on **Phase 13**'s cross-domain objectives — it analyses and drafts, and the software pack does the writing — and on **Phase 20** for the outcomes its telemetry reads. It is the first pack to exercise `Criterion.Domain`, which is how the conformance suite's assumption that every verifier is local came to light.
 - **Phase 21** (digests) depends on **Phase 20** for the outcomes it reports and on **Phase 6**'s adapters for delivery. It reads only: nothing is accumulated between deliveries, so a digest can be regenerated for any past window.
 - **Phase 20** (standing objectives) depends on **Phase 11**'s durable loop state, which is what the supervisor watches to know a loop has finished, and on **Phase 13.5**'s actionable checkpoints, which are what an escalating reconcile hands a human. It also had to fix the disconnect between resolving a checkpoint and resuming a loop before either could be relied on. Its lease discharges Phase 11's deferred "active-active multi-node coordination" for the outer loop only; loop execution itself is still single-node-resume.
 - **Phase 9** (frontend) can run in parallel with any other phase; the API contract is already stable.
@@ -2050,6 +2172,7 @@ Checks (run via `krk domain test <id>`):
 | Cross-domain objective complexity exceeds LLM context        | Medium   | Objectives scoped to single domain by default; world state chunked and summarised before reason step if size exceeds provider context limit (Phase 13)                                                       |
 | sqlite-vec extension unavailable in deployment               | Low      | Health check verifies sqlite-vec at startup; if unavailable, semantic memory degrades gracefully to keyword-based recall with startup warning                                                                |
 | Authority bounds misconfiguration permits unintended actions | High     | Default `AuthorityBounds` is maximally restrictive (`MaxAutonomousActions: 0`, `ConfidenceThreshold: 1.0`); operators must explicitly relax bounds in config; all autonomous actions logged to `tool_events`; **Phase 14 RBAC enforces permissions at the request-routing layer** so a misconfigured agent can't even reach a protected endpoint                                                                                                |
+| Karakuri changes itself unsupervised                          | High     | Phase 22 splits deciding from doing across two packs. The karakuri pack's capabilities analyse and draft and none of them writes; the writing is the software pack's, in a git worktree, through a pull request an operator reviews. `karakuri-maintainer` carries `MaxAutonomousActions: 0` and a confidence threshold no plan can clear, so it escalates however much autonomy its standing objective has earned, and both of the pack's environments refuse an `Act` out loud rather than succeeding quietly. The split is pinned by tests, not by comments: the pack owns no capability whose ID looks like a write, and `self_improve` is verified in part by `software.act.open_pull_request` so it cannot mark its own homework. The telemetry port is read-only because a pack that could write there could rewrite the evidence of what it did |
 | A standing objective spends indefinitely, or acts unsupervised | High   | Phase 20's whole design is the mitigation, and every part of it is a ceiling somebody declared. The cheap tier means an unchanged world costs adapter calls and no tokens. `min_interval` floors how often the expensive tier can fire, quiet windows blacken hours it may not act in, and `max_concurrent` bounds how many can run at once — loops were unbounded detached goroutines before this. Autonomy starts at propose and rises only to an operator-declared `ceiling`, re-applied on every read of the state so a hand-edited row cannot widen it; one rejection demotes immediately. Three consecutive failures, or three reconciles with no progress, pause the objective **and raise a checkpoint** — an objective that went quiet with no explanation is indistinguishable from one that is content, which is the failure mode worth spending a checkpoint to avoid |
 | Two replicas hold the same standing objective                | High     | Phase 20 claims each objective with a single conditional `UPDATE` on `reconcile_states` and a `RowsAffected` check, so the database arbitrates rather than a coordination service Karakuri does not have. A crashed holder releases nothing — its lease expires and the next replica to ask wins. Pinned against a real database by eight goroutines racing for one objective and exactly one winning. Without it the cost is not a duplicate run somebody notices but a recurring duplicate bill and two copies of the same morning report, forever |
 | Cost runaway from unbounded LLM use                          | High     | Phase 15 introduces per-twin LLM token budgets; exhaustion produces a checkpoint event (human approval) rather than a 500 or silent overrun. Phase 18 shipped the attribution: every model and tool call is recorded with its provider, model and the containers it belonged to, priced from a configured table, and published as `cost_recorded` — so spend per twin / team / provider is visible before the bill arrives. Phase 18 also wired the per-capability daily quota, which had been configured and enforced nowhere since Phase 15                                                                                                                                                              |

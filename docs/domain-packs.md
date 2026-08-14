@@ -236,3 +236,63 @@ This runs 7 checks server-side and returns pass/fail per check:
 | `teardown_no_panic` | Teardown() completes without panicking |
 
 All 7 checks must pass before a pack is considered conformant.
+
+## Observing Karakuri itself
+
+A pack may ask to see this deployment's own behaviour — how often it escalates,
+what it spends, which objectives keep failing, what nobody has decided — by
+reading `BuildContext.Telemetry` in its environment factory (Phase 22,
+[ADR 017](adr/017-karakuri-as-a-domain-pack.md)).
+
+```go
+Build: func(bc environment.BuildContext) (environment.Environment, error) {
+    // Nil unless the deployment wired one. Report that rather than
+    // returning zeroes, which read as a perfectly healthy system.
+    return &myEnv{telemetry: bc.Telemetry}, nil
+},
+```
+
+The port is read-only and stays that way. A pack that could write there could
+rewrite the evidence of what it did, and the value of Karakuri watching itself
+depends on the watching being trustworthy.
+
+Two rules follow, and `domains/karakuri` is the worked example of both:
+
+- **An environment that observes should refuse to act, out loud.** Return
+  `ActionResult{Success: false, Error: "..."}` rather than succeeding quietly.
+  A silent success is the failure mode Phase 13.5 spent a dogfood run finding.
+- **Keep deciding and doing in separate packs.** The karakuri pack analyses and
+  drafts; the software pack writes, in a worktree, through a pull request
+  somebody reviews. A pack that could both conclude something about its own
+  authority and act on it is one bug away from widening its own bounds.
+
+### Cross-pack criteria
+
+A template may be verified by another pack's capability — that is what
+cross-domain objectives are for — by declaring the domain on the criterion:
+
+```go
+objective.Criterion{
+    ID:       "pull-request",
+    Verifier: "software.act.open_pull_request",
+    Domain:   "software", // required; without it this is a dangling reference
+    Weight:   0.4,
+}
+```
+
+The conformance suite accepts a foreign verifier only when `Domain` says so, so
+a typo in a local one still fails. It does not check that the named pack is
+enabled: a pack is validated on its own, and which others are configured is the
+registry's business at boot.
+
+### Fingerprints should be lossy on purpose
+
+`Snapshot().SHA` is what the reconcile supervisor uses to decide whether
+anything changed. It should answer *"has anything changed that would change
+what I do"*, not *"has anything changed"*.
+
+`karakuri.env.telemetry` buckets its counts by order of magnitude and bands its
+rates, so an ordinary busy week does not move the hash while a new bottleneck
+or a decision queue growing tenfold does. An environment that hashed raw
+counters would wake a standing objective continuously to discover that work had
+occurred.
