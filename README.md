@@ -61,6 +61,72 @@ OBSERVE → REASON → DECIDE → ACT → VERIFY → LEARN
 
 Synthetic Reflexion-vs-ChainOfThought comparison lives in [`docs/benchmarks.md`](docs/benchmarks.md); regenerate with `go run ./cmd/krk-bench`.
 
+## Standing Objectives
+
+An objective converges once and stops. A **standing** objective is a desired
+state Karakuri holds: it senses cheaply on a cadence, reconciles when the world
+has drifted or a clock says to look anyway, and escalates whatever exceeds the
+autonomy it has earned.
+
+```bash
+# Watch a repository and propose fixes, never acting on its own.
+krk objective standing obj_123 --sense 15m --autonomy propose
+
+# A weekday morning review that may act, having earned its way up to it.
+krk objective standing obj_123 \
+    --cron "0 8 * * 1-5" --timezone Europe/Istanbul \
+    --sense 1h --resync 24h \
+    --autonomy propose --ceiling act_with_notice --promote-after 5 \
+    --quiet 22:00-07:00
+
+krk objective reconcile-status obj_123   # what it has been doing
+krk objective reconcile obj_123          # now, rather than on the cadence
+krk objective pause obj_123 --reason "investigating a noisy adapter"
+krk objective resume obj_123
+```
+
+**Two tiers, and the cheap one is why this is affordable.** Sensing calls
+`Snapshot` on each environment and compares a composite hash against the one
+taken when the objective last converged — a handful of adapter calls, no model
+call, no tokens. The full loop runs only when that hash moved, a schedule came
+due, or `--resync` expired. An objective can be checked every fifteen minutes
+all year and spend money only on the days something happened.
+
+An environment that returns no hash (a calendar, an inbox) is reported as
+*blind* rather than as unchanged; those objectives are driven by their schedule
+instead.
+
+**Autonomy is a ladder, and the ceiling is yours.**
+
+| Level | What it may do |
+|-------|----------------|
+| `sense` | Never reconciles. Watches, and raises a checkpoint when something moves. Costs no tokens. |
+| `propose` | Plans, then escalates every action to a checkpoint. The default. |
+| `act_with_notice` | The agent's own authority bounds apply; every autonomous action appears in the next digest. |
+| `act` | The agent's bounds apply; only exceptions surface. |
+
+`--promote-after N` earns one rung after N clean reconciles and never passes
+`--ceiling`. One rejected checkpoint demotes immediately — a reviewer saying no
+is a stronger signal than any number of runs nobody objected to. Both movements
+are written to the audit log as `kind=promotion` / `kind=demotion`.
+
+**Guardrails, on by default.** A database lease so two replicas never reconcile
+the same objective (and never send the same report twice); `max_concurrent` on
+simultaneous reconciles; a circuit breaker at three consecutive failures and a
+stall detector at three reconciles that fail to move the score — both pause the
+objective *and* raise a checkpoint, because an objective that goes quiet with no
+explanation looks exactly like one that is content. `--quiet` and
+`--min-interval` hold back the expensive tier only; sensing runs through the
+night, which is how the morning reconcile knows what happened.
+
+Configure the ceilings in `reconcile:` (see [config/default.yaml](config/default.yaml));
+`reconcile.enabled: false` is the kill switch. Design rationale in
+[ADR 015](docs/adr/015-standing-objectives-and-reconciliation.md).
+
+> `krk loop start --watch` still works and means what it always did. It is now a
+> standing objective at `sense` autonomy, which behaves the same and survives a
+> server restart.
+
 ## Domain Packs
 
 Domain packs encapsulate all field-specific knowledge. The core engine imports none of it.
@@ -118,6 +184,15 @@ krk objective create --twin <id> --title <title> --domain <id> \
                      [--template <id>]
 krk objective list [--twin <id>] [--status <pending|active|completed|failed>]
 krk objective get <id>
+
+# Standing objectives (Phase 20) — an objective Karakuri holds rather than
+# finishes. Sensing is free; reconciling is what costs.
+krk objective standing <id> --sense 15m --every 1h --autonomy propose
+krk objective reconcile-status <id>
+krk objective reconcile <id>
+krk objective pause <id> --reason "..."
+krk objective resume <id>
+krk objective unstanding <id>
 
 # Loop (start returns JSON `{"loop_id":"..."}` with --output json; jq
 # selector is `.loop_id`, not `.id`)
@@ -609,7 +684,7 @@ is restricted under the
 
 ## Roadmap
 
-Phases 1–19 have shipped: the core engine, then cross-domain objectives, then the multi-team production layer and the interface for it.
+Phases 1–20 have shipped: the core engine, then cross-domain objectives, then the multi-team production layer and the interface for it, and then the supervisor that makes an objective something Karakuri holds rather than something it finishes.
 
 - **Phase 14:** RBAC + fine-grained authorization, shipped as a standalone module `github.com/bsenel/karakuri/auth` reusable by any net/http or chi server
 - **Phase 15:** API rate limiting + quota management, shipped as `github.com/bsenel/karakuri/quota` with Redis/SQL backend submodules
@@ -617,6 +692,7 @@ Phases 1–19 have shipped: the core engine, then cross-domain objectives, then 
 - **Phase 17:** Multi-tenant hierarchy — orgs, teams and projects as scope sets ([ADR 010](docs/adr/010-scope-sets.md))
 - **Phase 19:** Web interface for auth, quota, cost and audit; limits become resolved state ([ADR 012](docs/adr/012-limits-as-resolved-state.md))
 - **Phase 18:** Quota self-service + cost attribution — per-subject overrides an approval writes, and labelled spend ([ADR 011](docs/adr/011-overrides-and-labelled-spend.md))
+- **Phase 20:** Standing objectives — a desired state held by a supervisor that senses cheaply and spends rarely, with autonomy earned under a declared ceiling ([ADR 015](docs/adr/015-standing-objectives-and-reconciliation.md))
 
 Full per-phase status, acceptance criteria, and architecture rationale in [docs/roadmap.md](docs/roadmap.md).
 

@@ -2,7 +2,7 @@
 
 ## Context
 
-Karakuri replaced the original role-based workflow simulator with an autonomous platform built on four primitives: **Capabilities, Environments, Objectives, and Agents**. No backward compatibility is maintained. The CLI binary is `krk`. This document records what shipped (Phases 1–13) and what is queued (Phases 14–19). Starting with Phase 14, the auth and quota engines ship as standalone Go modules under `github.com/bsenel/karakuri/{auth,quota}` and their submodules — fully reusable by other repos without pulling Karakuri itself.
+Karakuri replaced the original role-based workflow simulator with an autonomous platform built on four primitives: **Capabilities, Environments, Objectives, and Agents**. No backward compatibility is maintained. The CLI binary is `krk`. This document records what shipped (Phases 1–20). Starting with Phase 14, the auth and quota engines ship as standalone Go modules under `github.com/bsenel/karakuri/{auth,quota}` and their submodules — fully reusable by other repos without pulling Karakuri itself.
 
 ## Status Summary
 
@@ -25,9 +25,10 @@ Karakuri replaced the original role-based workflow simulator with an autonomous 
 | 14    | RBAC + Fine-Grained Authorization (core)   | **Completed** |
 | 15    | API Rate Limiting + Quota Management (core)| **Completed** |
 | 16    | Federated Identity (OIDC + SAML)           | **Completed** |
-| 17    | Hierarchical Resources + Org Units         | Planned       |
-| 18    | Quota Self-Service + Cost Attribution      | Planned       |
-| 19    | Frontend for Auth, Quota, Cost, Audit      | Planned       |
+| 17    | Hierarchical Resources + Org Units         | **Completed** |
+| 18    | Quota Self-Service + Cost Attribution      | **Completed** |
+| 19    | Frontend for Auth, Quota, Cost, Audit      | **Completed** |
+| 20    | Standing Objectives + Reconciliation       | **Completed** |
 
 
 ---
@@ -1262,12 +1263,199 @@ and the SPA tripped its own rate limit on ordinary navigation.
 
 ---
 
+## Phase 20 — Standing Objectives + Reconciliation (Completed)
+
+**Goal:** An objective can declare a state to be *held* rather than a task to be finished, and Karakuri converges the world to it on its own — sensing cheaply, spending rarely, and escalating whatever exceeds the autonomy it has earned.
+
+**What shipped — and the near-miss it replaces.**
+[ADR 015](adr/015-standing-objectives-and-reconciliation.md) records the design.
+
+Karakuri converged once. The loop ran to a met criteria score or its iteration
+cap, `finalizeLoop` wrote `completed` or `failed`, and the objective was
+terminal from that moment. "Keep this repository's build green" and "every
+weekday morning, work through the calendar, the tickets and the inbox" are not
+tasks with an end; they are desired states the world moves away from
+continuously, and something has to notice and converge again at 3am with nobody
+watching.
+
+- **The declaration lives on the objective.** `Mode` (empty is oneshot, so
+  every row written before this keeps its behaviour exactly), `Cadence` and
+  `Autonomy`. `StatusConverged` is where a standing objective rests —
+  deliberately not `completed`, which says the work is over.
+- **The runtime lives in `reconcile_states`**, the split Phase 11 already drew
+  between `Objective` and `loop.State`: what an operator edits, and what the
+  system discovers by running.
+- **`internal/feature/reconcile`** — one supervisor goroutine, one due-wheel
+  query per tick over an indexed `next_due_at`, a bounded dispatch, and a
+  lease. A thousand standing objectives cost one statement per tick rather than
+  a thousand sleeping goroutines.
+- **`internal/platform/schedule`** — cadence maths over `robfig/cron`, used as
+  a parser only. `every`, `cron`, `daily_at`, IANA timezones, `resync`,
+  `min_interval` and quiet windows.
+- **`PUT/DELETE /objectives/{id}/standing`**, `GET`/`POST
+  /objectives/{id}/reconcile`, `POST .../pause`, `POST .../resume`; three new
+  actions; `krk objective standing|unstanding|reconcile|reconcile-status|pause|resume`;
+  a Standing panel on the objective page.
+
+**The two-tier split is the whole economics.** Every pass senses: `Snapshot` on
+each environment, sorted, hashed, compared against the fingerprint taken when
+the objective last converged. That is a handful of adapter calls and no model
+call. A loop runs only when the fingerprint moved, a schedule came due, or the
+resync horizon expired — so an objective can be checked every fifteen minutes
+all year and spend money only on the days something happened.
+`TestQuietWorldCostsNoLoopRun` pins it: six passes over a still world, zero
+loops.
+
+Three details in that hash are load-bearing. Environment IDs are **sorted**,
+because build order is not stable across replicas and an unsorted hash would
+report drift on deploys and not on commits. An environment that returns no SHA
+is **blind, not still** — a calendar saying "I don't know" read as "unchanged"
+would go quiet exactly when it should not, so blind environments are named in
+the outcome and their objectives are driven by their schedule instead. And
+drift is measured **against the last convergence**, not the previous
+observation, so a change that reverts is not drift and one sitting unaddressed
+since yesterday still is.
+
+**Autonomy is earned under a ceiling, and it is not a second policy engine.**
+Four rungs — `sense`, `propose`, `act_with_notice`, `act` — applied by writing
+`agent.AuthorityBounds` into the loop request, the struct the decide step has
+enforced since Phase 1. `Ceiling` is operator-declared and applied on every
+read of the state, so no history and no hand-edited row can widen it.
+Promotion takes a declared number of clean reconciles and moves one rung;
+demotion takes one rejection and is immediate. The asymmetry is the point: a
+reviewer saying no is a stronger signal than any number of runs nobody objected
+to. Both movements write `tool_events` rows (`kind=promotion` / `demotion`),
+because a change in what Karakuri may do to the world without asking belongs in
+the same log as the approvals and the refusals.
+
+**Guardrails, each with a test.** A DB lease (one conditional `UPDATE`, one
+`RowsAffected` check) so two replicas cannot reconcile the same objective, pay
+twice and mail the same report twice. A semaphore, because loops have been
+unbounded detached goroutines since Phase 1 and a hundred objectives coming due
+together is a hundred concurrent model-calling loops. A circuit breaker at
+three consecutive failures and a stall detector at three reconciles that move
+the score nowhere — both pause the objective **and raise a checkpoint**, since
+an objective that went quiet with no explanation looks exactly like one that is
+converged and content. Exponential backoff with a ceiling. Quiet windows and a
+minimum interval, on the expensive tier only.
+
+**Two things that were already broken, and had to be fixed to build this:**
+
+- **A resolved checkpoint did not resume the loop that raised it.**
+  `POST /checkpoints/{id}/resolve` wrote the row and the audit entry and left
+  the goroutine blocked on `<-decisionCh` forever; `POST /loops/{id}/resume`
+  unblocked it and left the checkpoint `pending` for good. Whichever door an
+  operator came through, the other half of the state was wrong. Survivable when
+  a human notices and uses the other endpoint — fatal for an objective that
+  escalates on its own schedule and has to carry on afterwards.
+- **The stall detector the Phase 1 risk table promised** ("if score doesn't
+  improve for N consecutive iterations, emit checkpoint rather than burning
+  tokens") was never built. The only brake was `MaxIter` and the token budget.
+  It now lives on the outer loop, where "no progress across three full
+  reconciles" is a stronger signal than three iterations of one run.
+
+**Deviations from the plan, recorded:**
+
+- **`watch.go` is deleted rather than kept alongside.** Watch mode polled
+  snapshots after a finished loop and raised a checkpoint, from a ticker that
+  died with the process — and it subscribed to `env.Subscribe()` channels it
+  never read. `--watch` and `watch_mode: true` still work and mean the same
+  thing, now as a standing objective at sense-only autonomy, which also
+  survives a restart. Two drift detectors that could disagree is worse than one.
+- **`stepObserve`'s composite SHA was not shared with the fingerprint,** which
+  the plan called for. Observe hashes what the loop read in the order it read
+  it, as a record of one iteration; the fingerprint hashes what the world
+  claims to be, sorted, as a value to compare against later. Sharing them means
+  giving one an ordering guarantee it does not need or taking one from the
+  other. `SelectAgent` and `BuildEnvironments` *are* extracted and shared,
+  which is where the real duplication was: a supervisor that built a different
+  environment set than the loop observes would be watching one world and
+  converging another.
+- **The lease was not deferred to operators.** Phase 11 left "active-active
+  multi-node coordination" to leader-election sidecars, which is defensible
+  when duplicate work means one duplicate run somebody notices. For a standing
+  objective it means a recurring duplicate bill and two copies of the same
+  morning report, forever. This phase discharges that deferral for the outer
+  loop; loop execution itself is still single-node-resume.
+- **`internal/platform/executor` was left alone.** Durable *scheduling* is a
+  different problem from durable *execution* — the supervisor needs to know
+  which objectives are due and who holds them, which is a query, not a queue —
+  and `Task.Fn` is a Go closure that cannot cross a process boundary anyway.
+
+**One bug the tests found:** a loop that failed to *start* never gets a loop ID,
+and the outcome switch tested "was there a loop" before it tested "did it
+fail" — so a broken objective was filed as a quiet one and the circuit breaker
+sat at zero forever.
+
+**Acceptance — met:**
+
+- Build clean (`go build ./...`); the full suite passes (`go test ./... -count=1`).
+- **The economics are pinned, not asserted:** six sense passes over an unchanged
+  world run zero loops and record six outcomes, so the cheap tier is visible in
+  the history rather than invisible.
+- **The lease is exercised against a real database**, both engines' conditional
+  `UPDATE` being the load-bearing part: eight goroutines racing for one
+  objective produce exactly one winner, an expired lease is taken over without
+  the crashed holder releasing anything, and a late release from a displaced
+  replica does not unlock work somebody else is now doing.
+- **Schedule maths is pinned across a daylight-saving change** in a real zone:
+  "08:00 America/New_York" stays 08:00 while the UTC gap between firings is 23
+  hours in spring and 25 in autumn. Quiet windows defer to the opening rather
+  than dropping work, chain when adjacent, and give up rather than loop forever
+  when an operator blacks out the whole day.
+- **The ceiling is pinned directly:** six clean runs at `--promote-after 1` stop
+  at the declared ceiling, one rejection demotes at once, and both write audit
+  rows.
+- **A regression guard on the thing that must not change:** a oneshot objective
+  still ends `completed` or `failed`.
+- Three integration tests over a real server and database cover the lifecycle,
+  every rejected declaration, and the permission split. Ten Vitest cases cover
+  the console panel's transforms.
+
+**Operator quickstart:**
+
+```bash
+# Watch a repository and propose fixes, never acting on its own.
+krk objective standing obj_123 --sense 15m --autonomy propose
+
+# A weekday morning review that may act, having earned its way up to it.
+krk objective standing obj_123 \
+    --cron "0 8 * * 1-5" --timezone Europe/Istanbul \
+    --sense 1h --resync 24h \
+    --autonomy propose --ceiling act_with_notice --promote-after 5 \
+    --quiet 22:00-07:00
+
+# What has it been doing? The cheap passes are in here too, and that is the point.
+krk objective reconcile-status obj_123
+
+# Now, rather than on the cadence. Then stop it, then start it again.
+krk objective reconcile obj_123
+krk objective pause obj_123 --reason "investigating a noisy adapter"
+krk objective resume obj_123
+```
+
+**What's deferred:**
+
+- **Digests.** Both motivating examples end in "and tell me what happened".
+  The material is already recorded — reconcile outcomes, `tool_events`,
+  pending checkpoints, `cost_daily` — but composing and delivering it is Phase 21.
+- **Push triggers.** `Environment.Subscribe` exists and is implemented, and
+  nothing reads it. A signal that is lossy in-process and absent across
+  replicas can only ever be an optimisation on top of a poll that has to exist
+  anyway.
+- **Per-objective spend ceilings.** The quota module supports arbitrary
+  subjects, so `objective:<id>` is a small addition; today a standing
+  objective spends against its twin's daily allowance like everything else.
+
+---
+
 ## Phase Ordering Rationale
 
 Phases 7–13 are **independent except where noted** and can be reordered to match priority. The dependencies that DO exist:
 
 - **Phase 11** (distributed execution) benefits from **Phase 8**'s Postgres backend for shared state (now available) but Restate has its own state store and works without it.
 - **Phase 13** (cross-domain) is now unblocked — Phase 10 shipped Healthcare as a second non-software production pack to combine with Software.
+- **Phase 20** (standing objectives) depends on **Phase 11**'s durable loop state, which is what the supervisor watches to know a loop has finished, and on **Phase 13.5**'s actionable checkpoints, which are what an escalating reconcile hands a human. It also had to fix the disconnect between resolving a checkpoint and resuming a loop before either could be relied on. Its lease discharges Phase 11's deferred "active-active multi-node coordination" for the outer loop only; loop execution itself is still single-node-resume.
 - **Phase 9** (frontend) can run in parallel with any other phase; the API contract is already stable.
 - **Phase 12** is a pure adapter implementation — can ship independently (Phases 6 and 7 already followed this pattern).
 
@@ -1692,6 +1880,14 @@ Checks (run via `krk domain test <id>`):
 | Reflexion benchmark harness                                            | **Fully implemented** (Phase 13) — `cmd/krk-bench` runs 200 trials × 5 scenarios for both strategies; writes a deterministic markdown summary to `docs/benchmarks.md`                    |
 | Helm chart OCI publishing                                              | **Fully implemented** (Phase 13) — `.github/workflows/release-helm.yml` packages + pushes to `oci://ghcr.io/<owner>/charts` on `v*.*.*` tags via `GITHUB_TOKEN`                          |
 | Authority-bounds audit log                                            | **Fully implemented** (Phase 13) — `tool_events` columns `kind`/`escalation_reason`/`approver`/`bounds_violation`; every escalation + approval written; `GET /api/v1/audit` + `krk audit` |
+| Standing objectives (declaration)                                     | **Fully implemented** (Phase 20) — `Mode`/`Cadence`/`Autonomy` on Objective; empty mode is oneshot, so nothing written before Phase 20 changes behaviour |
+| Reconcile supervisor (sense → drift → converge)                       | **Fully implemented** (Phase 20) — one due-wheel goroutine over an indexed `next_due_at`; the cheap tier hashes `Snapshot` and spends no tokens; `reconcile_states` + `reconcile_outcomes` |
+| Cadence scheduling (cron, interval, timezone, quiet windows)          | **Fully implemented** (Phase 20) — `internal/platform/schedule` over `robfig/cron` as a parser only; DST-safe, quiet windows defer rather than drop |
+| Earned autonomy under a declared ceiling                              | **Fully implemented** (Phase 20) — four rungs written into `agent.AuthorityBounds`, so the decide step is still the only gate; promotion/demotion audited as `kind=promotion`/`demotion` |
+| Multi-replica coordination (outer loop)                               | **Fully implemented** (Phase 20) — DB lease on `reconcile_states`, one conditional UPDATE; discharges part of Phase 11's deferred leader election. Loop execution itself is still single-node-resume |
+| Circuit breaker + stall detector                                      | **Fully implemented** (Phase 20) — both pause the objective and raise a checkpoint; the stall brake is the one the Phase 1 risk table promised and never built |
+| Watch mode                                                            | **Superseded** (Phase 20) — `watch.go` deleted; `--watch` / `watch_mode: true` now declare a standing objective at sense-only autonomy, which behaves the same and survives a restart |
+| Digests / periodic reports                                            | Planned (Phase 21) — the material is recorded (reconcile outcomes, `tool_events`, pending checkpoints, `cost_daily`); composing and delivering it is not built |
 
 
 ---
@@ -1701,7 +1897,7 @@ Checks (run via `krk domain test <id>`):
 
 | Risk                                                         | Severity | Mitigation                                                                                                                                                                                                   |
 | ------------------------------------------------------------ | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Non-terminating loop (objective never satisfied)             | High     | Hard `MaxIter` cap (default 50) per objective; criteria completion score tracked per iteration; if score doesn't improve for N consecutive iterations, emit checkpoint rather than burning tokens            |
+| Non-terminating loop (objective never satisfied)             | High     | Hard `MaxIter` cap (default 50) per objective; criteria completion score tracked per iteration. **The no-progress brake promised here was never built on the inner loop and now exists on the outer one** (Phase 20): three reconciles that fail to move the weighted score pause the objective and raise a checkpoint, which is a stronger signal than three iterations of a single run |
 | Memory bloat degrades semantic recall quality                | High     | Retention TTL + confidence decay (Phase 13); `Forget` runs on schedule; consolidation promotes only high-confidence entries; semantic tier size cap with LRU eviction                                        |
 | sqlite-vec performance degrades at scale                     | Medium   | `Memory` interface abstracts vector store; pgvector swap = only `platform/memory/semantic.go` changes (Phase 8); no feature or core changes required                                                         |
 | LLM reasoning inconsistency across iterations                | Medium   | Reflexion strategy adds self-critique pass; procedural memory surfaces historical success rates; `ConfidenceThreshold` in `AuthorityBounds` escalates uncertain plans                                        |
@@ -1711,6 +1907,8 @@ Checks (run via `krk domain test <id>`):
 | Cross-domain objective complexity exceeds LLM context        | Medium   | Objectives scoped to single domain by default; world state chunked and summarised before reason step if size exceeds provider context limit (Phase 13)                                                       |
 | sqlite-vec extension unavailable in deployment               | Low      | Health check verifies sqlite-vec at startup; if unavailable, semantic memory degrades gracefully to keyword-based recall with startup warning                                                                |
 | Authority bounds misconfiguration permits unintended actions | High     | Default `AuthorityBounds` is maximally restrictive (`MaxAutonomousActions: 0`, `ConfidenceThreshold: 1.0`); operators must explicitly relax bounds in config; all autonomous actions logged to `tool_events`; **Phase 14 RBAC enforces permissions at the request-routing layer** so a misconfigured agent can't even reach a protected endpoint                                                                                                |
+| A standing objective spends indefinitely, or acts unsupervised | High   | Phase 20's whole design is the mitigation, and every part of it is a ceiling somebody declared. The cheap tier means an unchanged world costs adapter calls and no tokens. `min_interval` floors how often the expensive tier can fire, quiet windows blacken hours it may not act in, and `max_concurrent` bounds how many can run at once — loops were unbounded detached goroutines before this. Autonomy starts at propose and rises only to an operator-declared `ceiling`, re-applied on every read of the state so a hand-edited row cannot widen it; one rejection demotes immediately. Three consecutive failures, or three reconciles with no progress, pause the objective **and raise a checkpoint** — an objective that went quiet with no explanation is indistinguishable from one that is content, which is the failure mode worth spending a checkpoint to avoid |
+| Two replicas hold the same standing objective                | High     | Phase 20 claims each objective with a single conditional `UPDATE` on `reconcile_states` and a `RowsAffected` check, so the database arbitrates rather than a coordination service Karakuri does not have. A crashed holder releases nothing — its lease expires and the next replica to ask wins. Pinned against a real database by eight goroutines racing for one objective and exactly one winning. Without it the cost is not a duplicate run somebody notices but a recurring duplicate bill and two copies of the same morning report, forever |
 | Cost runaway from unbounded LLM use                          | High     | Phase 15 introduces per-twin LLM token budgets; exhaustion produces a checkpoint event (human approval) rather than a 500 or silent overrun. Phase 18 shipped the attribution: every model and tool call is recorded with its provider, model and the containers it belonged to, priced from a configured table, and published as `cost_recorded` — so spend per twin / team / provider is visible before the bill arrives. Phase 18 also wired the per-capability daily quota, which had been configured and enforced nowhere since Phase 15                                                                                                                                                              |
 | IdP outage locks operators out of Karakuri                    | High     | **Resolved differently than planned.** Local password login stays mounted alongside any configured provider, so the bootstrap administrator is the break-glass path. No static token was added: Phase 14 deleted the static bearer token, and re-adding a long-lived credential to survive a temporary outage trades a permanent risk for a temporary one. `ChainResolver` puts the local resolver first, so password login does not depend on the IdP being reachable |
 | Cross-tenant access through a container scope                 | Medium   | Phase 17 keys every scope on an issued ID, never a display name, so two organisations with a team called "eng" cannot collide — the case is pinned end to end from the tree through `InScope` to a 403. A resource with no containers carries no labels and matches exactly what it matched under the flat model, so no existing grant widens. Listing is filtered from the same bindings the per-resource check reads, and an empty grant set matches no rows rather than every row |
