@@ -31,6 +31,11 @@ type Service interface {
 	Run(ctx context.Context, req loop.Request) (loop.Result, error)
 	Resume(ctx context.Context, loopID string, decision corecheckpoint.Decision) (loop.Result, error)
 	Status(ctx context.Context, loopID string) (loop.Status, error)
+	// ResumeCheckpoint delivers a decision to whichever loop is waiting on
+	// the given checkpoint, reporting whether one was. It satisfies
+	// checkpoint.LoopResumer, which is how resolving a checkpoint unblocks
+	// the loop that raised it.
+	ResumeCheckpoint(ctx context.Context, checkpointID string, decision corecheckpoint.Decision) (bool, error)
 	// ResumeStoredLoops re-launches non-completed loops persisted by a
 	// previous server process. Bootstrap calls this once at startup so loops
 	// continue across server restarts (Phase 11).
@@ -156,18 +161,71 @@ func (s *serviceImpl) Resume(ctx context.Context, loopID string, decision corech
 		return loop.Result{}, fmt.Errorf("loop %q not found", loopID)
 	}
 
-	// Send decision non-blocking (buffer size 1)
-	select {
-	case state.decisionCh <- decision:
-	default:
-		return loop.Result{}, fmt.Errorf("loop %q is not waiting for a decision", loopID)
+	if err := s.deliver(state, decision); err != nil {
+		return loop.Result{}, err
 	}
 
-	// Return current result
+	// The checkpoint this loop was waiting on is now decided, so say so.
+	// Before Phase 20 this door left the row `pending` forever: an operator
+	// who resumed from the CLI got a running loop and a checkpoint list that
+	// never emptied. Record rather than Resolve, because the delivery above
+	// is the half Resolve would otherwise repeat.
 	state.mu.RLock()
+	cpID := state.result.CheckpointID
 	result := state.result
 	state.mu.RUnlock()
+	if cpID != nil && *cpID != "" {
+		_ = s.cpSvc.Record(ctx, *cpID, decision)
+	}
 	return result, nil
+}
+
+// ResumeCheckpoint is the other door onto the same act: a reviewer resolving
+// the checkpoint itself, without knowing or caring which loop raised it.
+//
+// The lookup is over the in-memory state map rather than the persisted rows
+// because a blocked goroutine is a per-process thing — only the replica
+// running the loop can unblock it. A checkpoint whose loop is elsewhere, or
+// which no loop raised at all, returns false, and the caller treats that as
+// the ordinary answer it is. Such a loop is not lost: it is still paused in
+// storage, and a restart replays its iteration and raises a fresh checkpoint.
+func (s *serviceImpl) ResumeCheckpoint(_ context.Context, checkpointID string, decision corecheckpoint.Decision) (bool, error) {
+	if checkpointID == "" {
+		return false, nil
+	}
+
+	s.mu.RLock()
+	var target *loopState
+	for _, state := range s.states {
+		state.mu.RLock()
+		waiting := state.status.Paused && state.result.CheckpointID != nil && *state.result.CheckpointID == checkpointID
+		state.mu.RUnlock()
+		if waiting {
+			target = state
+			break
+		}
+	}
+	s.mu.RUnlock()
+
+	if target == nil {
+		return false, nil
+	}
+	if err := s.deliver(target, decision); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// deliver hands a decision to a waiting runner. The channel is buffered to one
+// and the send is non-blocking, so a decision arriving for a loop that is not
+// at a checkpoint is refused rather than queued for the next escalation.
+func (s *serviceImpl) deliver(state *loopState, decision corecheckpoint.Decision) error {
+	select {
+	case state.decisionCh <- decision:
+		return nil
+	default:
+		return fmt.Errorf("loop %q is not waiting for a decision", state.id)
+	}
 }
 
 func (s *serviceImpl) Status(ctx context.Context, loopID string) (loop.Status, error) {
