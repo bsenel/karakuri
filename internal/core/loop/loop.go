@@ -25,8 +25,7 @@ type Request struct {
 	Objective objective.Objective
 	Twin      twin.DigitalTwin
 	Agent     agent.Definition
-	MaxIter   int  // hard cap; default 50
-	WatchMode bool // if true, loop continues on environment events
+	MaxIter   int // hard cap; default 50
 }
 
 type Result struct {

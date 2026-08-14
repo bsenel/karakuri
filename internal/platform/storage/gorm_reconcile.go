@@ -33,6 +33,7 @@ func (s *GORMStorage) SaveReconcileState(ctx context.Context, st reconcile.State
 		LastTrigger:      string(st.LastTrigger),
 		LastOutcomeID:    st.LastOutcomeID,
 		LastError:        st.LastError,
+		ActiveLoopID:     st.ActiveLoopID,
 
 		CriteriaMet:         st.CriteriaMet,
 		ScoreStreak:         st.ScoreStreak,
@@ -228,6 +229,7 @@ func reconcileStateFromModel(m schema.ReconcileStateModel) reconcile.State {
 		LastTrigger:      reconcile.Trigger(m.LastTrigger),
 		LastOutcomeID:    m.LastOutcomeID,
 		LastError:        m.LastError,
+		ActiveLoopID:     m.ActiveLoopID,
 
 		CriteriaMet:         m.CriteriaMet,
 		ScoreStreak:         m.ScoreStreak,

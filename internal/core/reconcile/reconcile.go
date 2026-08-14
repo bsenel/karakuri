@@ -183,6 +183,16 @@ type State struct {
 	LastOutcomeID    string     `json:"last_outcome_id,omitempty"`
 	LastError        string     `json:"last_error,omitempty"`
 
+	// ActiveLoopID is the loop this objective left running — set when a
+	// reconcile escalated and the supervisor stopped waiting on it.
+	//
+	// It has to be here rather than inferred, because the supervisor
+	// deliberately does not sit on a paused loop: a reconcile that stopped to
+	// ask a human could wait days, and holding a lease and a concurrency slot
+	// for that long would starve every other standing objective. Letting go
+	// means remembering what was let go of.
+	ActiveLoopID string `json:"active_loop_id,omitempty"`
+
 	// CriteriaMet is the most recent weighted score, and ScoreStreak counts
 	// consecutive reconciles that failed to improve it. The streak is the
 	// stall detector: an objective whose score has not moved in three
