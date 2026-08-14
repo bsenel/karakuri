@@ -21,6 +21,7 @@ import (
 	"github.com/bsenel/karakuri/internal/feature/memory"
 	"github.com/bsenel/karakuri/internal/feature/objective"
 	featurereconcile "github.com/bsenel/karakuri/internal/feature/reconcile"
+	featurereport "github.com/bsenel/karakuri/internal/feature/report"
 	"github.com/bsenel/karakuri/internal/feature/research"
 	"github.com/bsenel/karakuri/internal/feature/twin"
 	platformagent "github.com/bsenel/karakuri/internal/platform/agent"
@@ -43,6 +44,8 @@ type App struct {
 	// same reason Loop and Memory are: it owns a goroutine whose lifetime is
 	// the process's, not a request's.
 	Reconcile *featurereconcile.Service
+	// Reports is the digest sender, exposed for the same reason.
+	Reports *featurereport.Service
 }
 
 // AuthDeps carries the authentication and authorization wiring built by
@@ -135,6 +138,12 @@ func NewApp(
 		MaxBackoff:         cfg.Reconcile.MaxBackoffDuration(),
 	})
 
+	reportSvc := featurereport.NewService(store, toolReg, agentFactory, quotaDeps, featurereport.Config{
+		Enabled:  cfg.Reports.Enabled,
+		Tick:     cfg.Reports.TickDuration(),
+		LeaseTTL: cfg.Reports.LeaseTTLDuration(),
+	})
+
 	r := chi.NewRouter()
 	r.Use(chimw.Recoverer)
 	r.Use(middleware.Logging)
@@ -207,6 +216,7 @@ func NewApp(
 	objH := &handler.ObjectiveHandler{Objectives: objSvc, Scopes: authDeps.Authorizer}
 	loopH := &handler.LoopHandler{Loop: loopSvc, Store: store, Reconcile: reconcileSvc}
 	recH := &handler.ReconcileHandler{Reconcile: reconcileSvc, Store: store}
+	repH := &handler.ReportHandler{Reports: reportSvc}
 	cpH := &handler.CheckpointHandler{Checkpoints: cpSvc}
 	artH := &handler.ArtifactHandler{Artifacts: artSvc}
 	memH := &handler.MemoryHandler{Memory: memSvc}
@@ -405,6 +415,18 @@ func NewApp(
 				r.With(require(karakuriauth.ActionDomainRead, karakuriauth.DomainResource)).Get("/{id}/conformance", domH.Conformance)
 			})
 
+			// Digest schedules (Phase 21). Reading is a viewer permission —
+			// somebody receiving a daily brief should be able to find out why
+			// — while writing one is an operator's, because a schedule makes
+			// Karakuri message a named address on a recurring basis.
+			r.Route("/reports", func(r chi.Router) {
+				r.With(require(karakuriauth.ActionReportRead, nil)).Get("/", repH.List)
+				r.With(require(karakuriauth.ActionReportRead, nil)).Get("/preview", repH.Preview)
+				r.With(require(karakuriauth.ActionReportWrite, nil)).Post("/", repH.Create)
+				r.With(require(karakuriauth.ActionReportWrite, nil)).Delete("/{id}", repH.Delete)
+				r.With(require(karakuriauth.ActionReportWrite, nil)).Post("/{id}/send", repH.Send)
+			})
+
 			r.With(require(karakuriauth.ActionResearchRun, nil)).Post("/research", resH.Run)
 
 			// Authority-bounds audit log (Phase 13). Supports objective_id,
@@ -430,7 +452,7 @@ func NewApp(
 	// registered so REST + SSE win over the catch-all SPA fallback.
 	r.Handle("/*", karakuriweb.Handler())
 
-	return &App{Router: r, Loop: loopSvc, Memory: memSvc, Reconcile: reconcileSvc}
+	return &App{Router: r, Loop: loopSvc, Memory: memSvc, Reconcile: reconcileSvc, Reports: reportSvc}
 }
 
 func (a *App) Handler() http.Handler { return a.Router }

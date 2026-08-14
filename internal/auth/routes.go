@@ -221,6 +221,12 @@ func Routes() []Route {
 		{http.MethodPost, "/objectives/{id}/pause", ActionObjectivePause, false},
 		{http.MethodPost, "/objectives/{id}/resume", ActionObjectivePause, false},
 
+		{http.MethodGet, "/reports", ActionReportRead, false},
+		{http.MethodGet, "/reports/preview", ActionReportRead, false},
+		{http.MethodPost, "/reports", ActionReportWrite, false},
+		{http.MethodDelete, "/reports/{id}", ActionReportWrite, false},
+		{http.MethodPost, "/reports/{id}/send", ActionReportWrite, false},
+
 		{http.MethodPost, "/loops", ActionLoopStart, false},
 		{http.MethodGet, "/loops/{id}/status", ActionLoopRead, false},
 		{http.MethodPost, "/loops/{id}/resume", ActionLoopResume, false},
