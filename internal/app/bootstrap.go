@@ -14,6 +14,7 @@ import (
 	domainagri "github.com/bsenel/karakuri/domains/agriculture"
 	domainconsult "github.com/bsenel/karakuri/domains/consulting"
 	domainhc "github.com/bsenel/karakuri/domains/healthcare"
+	domainkrk "github.com/bsenel/karakuri/domains/karakuri"
 	domainlegal "github.com/bsenel/karakuri/domains/legal"
 	domainmech "github.com/bsenel/karakuri/domains/mechanical"
 	domainsw "github.com/bsenel/karakuri/domains/software"
@@ -34,6 +35,7 @@ import (
 	platmem "github.com/bsenel/karakuri/internal/platform/memory"
 	"github.com/bsenel/karakuri/internal/platform/observability"
 	"github.com/bsenel/karakuri/internal/platform/storage"
+	plattelemetry "github.com/bsenel/karakuri/internal/platform/telemetry"
 	"github.com/bsenel/karakuri/internal/platform/tools"
 	karakuriquota "github.com/bsenel/karakuri/internal/quota"
 	"gorm.io/gorm"
@@ -184,6 +186,7 @@ func BootstrapServer(cfgPath string) (*Bootstrap, error) {
 		domainagri.New(),
 		domainconsult.New(),
 		domainhc.New(),
+		domainkrk.NewWithTools(toolReg),
 		domainlegal.New(),
 		domainmech.New(),
 	}
@@ -258,6 +261,11 @@ func BootstrapServer(cfgPath string) (*Bootstrap, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	// The read-only port through which Karakuri observes itself (Phase 22).
+	// Wired on the registry so every environment factory receives it on its
+	// BuildContext; every pack but karakuri's ignores it.
+	envReg.SetTelemetry(plattelemetry.New(store, quotaDeps))
 
 	apiApp := api.NewApp(cfg, store, providers, toolReg, exporters, wt, hub, otel, capReg, envReg, domReg, allTemplates, semanticBackend, promHandler, authDeps, quotaDeps)
 

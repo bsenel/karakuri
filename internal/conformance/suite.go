@@ -126,8 +126,21 @@ func checkAgentCapabilityRefs(_ context.Context, p domain.Pack) Result {
 	return Result{Check: name, Passed: true, Message: fmt.Sprintf("all agent capability references are valid across %d agents", len(p.AgentDefinitions()))}
 }
 
-// checkCriterionVerifierRefs verifies that every non-empty Criterion.Verifier in all objective
-// templates' SuccessCriteria refers to a capability ID present in the pack.
+// checkCriterionVerifierRefs verifies that every non-empty Criterion.Verifier
+// resolves — locally by default, or in another pack when the criterion says so.
+//
+// A criterion may name a capability this pack does not own, which is what
+// Phase 13's cross-domain objectives are for: a template can require a step
+// only another pack can perform, and be verified by that pack. What it must
+// not do is name one silently. Criterion.Domain is the declaration, and
+// requiring it here means a typo in a local verifier still fails — it would
+// otherwise be indistinguishable from a deliberate cross-pack reference.
+//
+// The named domain is not resolved. A pack is validated on its own, and
+// checking that another one exists and exports the capability is the
+// registry's job at boot (CheckCrossPackCollisions and the environment
+// registry), not a conformance check that would make every pack's validity
+// depend on which other packs happen to be enabled.
 func checkCriterionVerifierRefs(_ context.Context, p domain.Pack) Result {
 	const name = "criterion_verifier_refs"
 
@@ -141,12 +154,18 @@ func checkCriterionVerifierRefs(_ context.Context, p domain.Pack) Result {
 			if crit.Verifier == "" {
 				continue
 			}
-			if _, ok := capSet[string(crit.Verifier)]; !ok {
-				return Result{
-					Check:   name,
-					Passed:  false,
-					Message: fmt.Sprintf("template %q criterion %q references unknown verifier %q", tmpl.ID, crit.ID, crit.Verifier),
-				}
+			if _, ok := capSet[string(crit.Verifier)]; ok {
+				continue
+			}
+			if crit.Domain != "" && crit.Domain != p.ID() {
+				continue // declared as another pack's, which is allowed
+			}
+			return Result{
+				Check:  name,
+				Passed: false,
+				Message: fmt.Sprintf(
+					"template %q criterion %q references unknown verifier %q (set Criterion.Domain if it belongs to another pack)",
+					tmpl.ID, crit.ID, crit.Verifier),
 			}
 		}
 	}
