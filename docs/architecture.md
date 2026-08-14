@@ -91,6 +91,9 @@ Domain packs implement the `domain.Pack` interface and register capabilities, en
 ```
 domains/software/    → 20 capabilities, 6 envs, 7 agents, 7 templates
 domains/agriculture/ → 8 capabilities, 2 envs, 2 agents, 2 templates
+domains/karakuri/    → 3 capabilities, 2 read-only envs, 2 agents, 2 templates
+                       (Phase 22 — this deployment observing itself; it drafts,
+                        and the software pack does the writing)
 domains/*/           → stubs for healthcare, legal, mechanical, consulting
 ```
 

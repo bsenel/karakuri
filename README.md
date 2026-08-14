@@ -168,9 +168,31 @@ Domain packs encapsulate all field-specific knowledge. The core engine imports n
 | `software` | Active (v1) | 20 | 7 | 7 |
 | `agriculture` | Active (v1) | 8 | 2 | 2 |
 | `healthcare` | Active (Phase 10) — strict authority bounds, compliance-aware verifiers | — | — | — |
+| `karakuri` | Active (Phase 22) — this deployment's own telemetry and repository, read-only | 3 | 2 | 2 |
 | `legal`, `mechanical`, `consulting` | Stub | — | — | — |
 
 Cross-domain objectives (Phase 13): set `additional_domains` on an Objective to have the loop runner recruit agents and environment factories across multiple packs in a single iteration; `Criterion.Domain` tags per-domain verify scores on the `loop.step_completed` event.
+
+**Karakuri improving itself** (Phase 22, disabled by default) is a cross-domain
+objective by construction. The `karakuri` pack reads this deployment's own
+telemetry — escalation rates, spend, what keeps failing, what nobody has
+decided — and drafts a roadmap phase or an ADR from it. It owns no capability
+that writes anything: the writing is the `software` pack's, in a git worktree,
+through a pull request somebody reviews.
+
+That split is the point rather than tidiness. One pack that could both conclude
+"Karakuri should be allowed to do more" and carry it out would be one bug away
+from a system that widens its own bounds. `karakuri-maintainer` escalates every
+action however much autonomy its objective has earned, and both of the pack's
+environments refuse to act rather than succeeding quietly. See
+[ADR 017](docs/adr/017-karakuri-as-a-domain-pack.md).
+
+```bash
+# Watch the deployment and spend nothing on a quiet week.
+krk objective create --title "Watch Karakuri" --domain karakuri --twin twin_1 \
+    --template karakuri.objective.watch_health
+krk objective standing <id> --sense 1h --autonomy sense --ceiling sense
+```
 
 Validate any pack with:
 ```bash
@@ -721,7 +743,7 @@ is restricted under the
 
 ## Roadmap
 
-Phases 1–21 have shipped: the core engine, then cross-domain objectives, then the multi-team production layer and the interface for it, and then the supervisor that makes an objective something Karakuri holds rather than something it finishes.
+Phases 1–22 have shipped: the core engine, then cross-domain objectives, then the multi-team production layer and the interface for it, and then the supervisor that makes an objective something Karakuri holds rather than something it finishes.
 
 - **Phase 14:** RBAC + fine-grained authorization, shipped as a standalone module `github.com/bsenel/karakuri/auth` reusable by any net/http or chi server
 - **Phase 15:** API rate limiting + quota management, shipped as `github.com/bsenel/karakuri/quota` with Redis/SQL backend submodules
@@ -731,6 +753,7 @@ Phases 1–21 have shipped: the core engine, then cross-domain objectives, then 
 - **Phase 18:** Quota self-service + cost attribution — per-subject overrides an approval writes, and labelled spend ([ADR 011](docs/adr/011-overrides-and-labelled-spend.md))
 - **Phase 20:** Standing objectives — a desired state held by a supervisor that senses cheaply and spends rarely, with autonomy earned under a declared ceiling ([ADR 015](docs/adr/015-standing-objectives-and-reconciliation.md))
 - **Phase 21:** Digests — what a twin's standing objectives did and what they need decided, assembled from records that already exist ([ADR 016](docs/adr/016-earned-autonomy-and-digests.md))
+- **Phase 22:** The Karakuri domain pack — this deployment's own telemetry as an environment, read-only, with the writing left to the pack an operator already reviews ([ADR 017](docs/adr/017-karakuri-as-a-domain-pack.md))
 
 Full per-phase status, acceptance criteria, and architecture rationale in [docs/roadmap.md](docs/roadmap.md).
 
