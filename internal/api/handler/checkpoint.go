@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"github.com/bsenel/karakuri/auth"
 	corecheckpoint "github.com/bsenel/karakuri/internal/core/checkpoint"
 	featurecp "github.com/bsenel/karakuri/internal/feature/checkpoint"
 	"github.com/go-chi/chi/v5"
@@ -57,10 +58,16 @@ func (h *CheckpointHandler) Resolve(w http.ResponseWriter, r *http.Request) {
 	if choice == "" {
 		choice = req.Choice
 	}
+	// The approver is who the audit trail says authorized this — so it must be
+	// the authenticated caller, not a self-asserted body field. See F-10.
+	approver := req.Approver
+	if p, ok := auth.PrincipalFromContext(r.Context()); ok {
+		approver = p.ID
+	}
 	if err := h.Checkpoints.Resolve(r.Context(), id, corecheckpoint.Decision{
 		Choice:        choice,
 		Note:          req.Note,
-		Approver:      req.Approver,
+		Approver:      approver,
 		Modifications: req.Modifications,
 	}); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)

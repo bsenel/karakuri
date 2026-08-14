@@ -1,0 +1,16 @@
+ZAP baseline (zaproxy/zap-stable) vs http://127.0.0.1:8899, 2026-08-13.
+Result: FAIL 0 · WARN 4 · PASS 57.
+
+WARN (all map to SECURITY_AUDIT F-11):
+  - Missing Anti-clickjacking Header [10020] x3   (no X-Frame-Options)
+  - X-Content-Type-Options Header Missing [10021] x5
+  - Content Security Policy (CSP) Header Not Set [10038] x3
+  - Modern Web Application [10109] x3   (informational: SPA detected)
+
+Notable PASSes (confirm SECURITY_AUDIT Appendix B controls):
+  - Absence of Anti-CSRF Tokens [10202] PASS   (SameSite=Strict covers it)
+  - Information Disclosure - Debug Error Messages [10023] PASS
+  - Strict-Transport-Security [10035] PASS on secure responses
+  - Session ID in URL Rewrite [3] PASS   (no token in URL to the API)
+  - Cookie without SameSite Attribute [10054] PASS
+  - Server/X-Powered-By/X-Backend leaks [10036/10037/10039] PASS

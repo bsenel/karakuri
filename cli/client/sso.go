@@ -145,7 +145,7 @@ func (c *Client) redeem(code, verifier string) (Session, error) {
 	if err := json.Unmarshal(data, &out); err != nil {
 		return Session{}, fmt.Errorf("decode token response: %w", err)
 	}
-	session := out.tokenResponse.session(out.PrincipalID)
+	session := out.session(out.PrincipalID)
 	if err := SaveSession(c.BaseURL, session); err != nil {
 		return Session{}, fmt.Errorf("cache credentials: %w", err)
 	}

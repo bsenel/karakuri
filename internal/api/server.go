@@ -119,6 +119,10 @@ func NewApp(
 	r := chi.NewRouter()
 	r.Use(chimw.Recoverer)
 	r.Use(middleware.Logging)
+	r.Use(middleware.SecurityHeaders)
+	// 1 MiB request-body ceiling. Every handler decodes small JSON documents;
+	// nothing legitimately posts more than this. See SECURITY_AUDIT.md F-05.
+	r.Use(middleware.MaxBytes(1 << 20))
 	// Authentication is scoped to /api/v1 only — the SPA itself (HTML + assets)
 	// is public so unauthenticated visitors can reach the login screen.
 
@@ -216,26 +220,36 @@ func NewApp(
 		InsecureAllowHTTP: cfg.Auth.Cookies.InsecureAllowHTTP,
 	}
 
+	// The public /auth/* routes have no principal to key the quota limiter on,
+	// so they get an IP-keyed brake against credential brute-force and spraying.
+	// See SECURITY_AUDIT.md F-03. 10 attempts/min with a burst of 20 admits an
+	// interactive user retrying a typo while denying an automated attacker.
+	loginLimiter := middleware.NewIPRateLimiter(10, 20)
+
 	r.Route("/api/v1", func(r chi.Router) {
 		// Public: a load balancer and the SPA's login screen both need to
 		// reach a server they cannot yet authenticate against.
 		r.Get("/health", healthH.ServeHTTP)
 
-		// Public: for these the credential *is* the request, so requiring a
-		// credential to reach them would be circular.
-		r.Post("/auth/token", authH.Token)
-		r.Post("/auth/refresh", authH.Refresh)
+		// Public credential-bearing routes: the credential *is* the request, so
+		// requiring a credential to reach them would be circular. They are
+		// rate-limited by client IP because there is no principal to key on.
+		r.Group(func(r chi.Router) {
+			r.Use(loginLimiter.Middleware)
+			r.Post("/auth/token", authH.Token)
+			r.Post("/auth/refresh", authH.Refresh)
 
-		// Federated login, for the same reason. These are mounted whatever the
-		// configured provider is: with none, they answer 404 rather than
-		// vanishing, so a misconfigured client gets an explanation instead of a
-		// route that silently does not exist.
-		r.Get("/auth/sso/config", ssoH.Config)
-		r.Method(http.MethodGet, "/auth/sso/login", ssoH.Login())
-		r.Method(http.MethodGet, "/auth/sso/callback", ssoH.Callback())
-		r.Post("/auth/sso/exchange", ssoH.Exchange)
-		r.Method(http.MethodGet, "/auth/saml/metadata", ssoH.Metadata())
-		r.Method(http.MethodPost, "/auth/saml/acs", ssoH.ACS())
+			// Federated login, for the same reason. These are mounted whatever
+			// the configured provider is: with none, they answer 404 rather
+			// than vanishing, so a misconfigured client gets an explanation
+			// instead of a route that silently does not exist.
+			r.Get("/auth/sso/config", ssoH.Config)
+			r.Method(http.MethodGet, "/auth/sso/login", ssoH.Login())
+			r.Method(http.MethodGet, "/auth/sso/callback", ssoH.Callback())
+			r.Post("/auth/sso/exchange", ssoH.Exchange)
+			r.Method(http.MethodGet, "/auth/saml/metadata", ssoH.Metadata())
+			r.Method(http.MethodPost, "/auth/saml/acs", ssoH.ACS())
+		})
 
 		r.Group(func(r chi.Router) {
 			r.Use(auth.Authenticate(authDeps.Resolver()))

@@ -38,7 +38,12 @@ func (h *ArtifactHandler) Get(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return
 	}
-	w.Header().Set("Content-Type", "text/plain")
+	// Artifact content is agent/attacker-controlled. Serve it as an opaque
+	// download (never inline) with sniffing disabled so a browser cannot be
+	// tricked into rendering it as HTML/JS. See SECURITY_AUDIT.md F-11.
+	w.Header().Set("Content-Type", "application/octet-stream")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("Content-Disposition", "attachment")
 	_, _ = w.Write(content)
 }
 

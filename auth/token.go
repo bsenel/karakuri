@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"sync"
 	"time"
 
 	"github.com/bsenel/karakuri/auth/jwt"
@@ -113,6 +114,34 @@ type TokenService struct {
 	cfg     TokenConfig
 	policy  PasswordPolicy
 	nowFunc func() time.Time
+
+	// decoy is a valid password hash of a random password at the configured
+	// cost, used to spend the same PBKDF2 time on failed-login paths where no
+	// real hash is available. It closes the login timing side channel that
+	// would otherwise distinguish a valid principal (full PBKDF2) from an
+	// unknown one (instant return). See SECURITY_AUDIT.md F-20.
+	decoyOnce sync.Once
+	decoyHash string
+}
+
+// dummyVerify spends the same time VerifyPassword would, discarding the result.
+// Called on the not-found / disabled / no-credential login paths so they cost
+// the same as a real verification.
+func (s *TokenService) dummyVerify(password string) {
+	s.decoyOnce.Do(func() {
+		// A random password so the decoy hash is not a known-plaintext, hashed
+		// at the same cost the real credentials use.
+		secret, err := newOpaqueToken()
+		if err != nil {
+			return
+		}
+		if h, err := s.policy.Hash(secret); err == nil {
+			s.decoyHash = h
+		}
+	})
+	if s.decoyHash != "" {
+		_ = VerifyPassword(s.decoyHash, password)
+	}
 }
 
 // NewTokenService wires a token service. Passing a nil keyring is a programming
@@ -172,14 +201,18 @@ func (s *TokenService) SetPassword(ctx context.Context, principalID, password st
 func (s *TokenService) IssueForPassword(ctx context.Context, principalID, password string) (TokenPair, error) {
 	principal, err := s.store.GetPrincipal(ctx, principalID)
 	if err != nil {
-		// Do not leak whether the principal exists.
+		// Do not leak whether the principal exists — and spend the same PBKDF2
+		// time a real verification would, so latency does not either (F-20).
+		s.dummyVerify(password)
 		return TokenPair{}, ErrBadCredential
 	}
 	if principal.Disabled {
+		s.dummyVerify(password)
 		return TokenPair{}, ErrBadCredential
 	}
 	cred, err := s.creds.GetCredential(ctx, principalID)
 	if err != nil || cred.PasswordHash == "" {
+		s.dummyVerify(password)
 		return TokenPair{}, ErrBadCredential
 	}
 	if err := VerifyPassword(cred.PasswordHash, password); err != nil {

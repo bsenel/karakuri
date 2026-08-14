@@ -1,34 +1,46 @@
+# golangci-lint v2 configuration.
+#
+# This file is v2-format (note `version: "2"`). It was previously v1-format,
+# which golangci-lint v2 refuses to load — so the linter silently never ran in
+# CI (which only invoked `go vet`). See SECURITY_AUDIT.md / ENGINEERING_AUDIT.md
+# F-08. The depguard rules below are the architectural import boundaries from
+# AGENTS.md; keeping them enforced here is the point of the file.
+version: "2"
+
 run:
   timeout: 5m
   modules-download-mode: readonly
 
 linters:
+  # Match the set the v1 config enabled explicitly: only these four run. v2
+  # otherwise turns on a wider default set (errcheck, ineffassign, …) that would
+  # introduce a wall of pre-existing findings and block every PR on day one.
+  # Expanding the set is a deliberate, separate decision (see the CI roadmap).
+  default: none
   enable:
     - govet
     - staticcheck
     - unused
     - depguard
-
-linters-settings:
-  depguard:
+  settings:
+    depguard:
+      rules:
+        no-langchain-in-core-or-feature:
+          files:
+            - "internal/core/**/*.go"
+            - "internal/feature/**/*.go"
+          deny:
+            - pkg: "github.com/tmc/langchaingo"
+              desc: "LangChain Go must only be imported in internal/platform/"
+        no-domain-in-core:
+          files:
+            - "internal/core/**/*.go"
+          deny:
+            - pkg: "github.com/bsenel/karakuri/domains"
+              desc: "domain packs must not be imported in internal/core/"
+  exclusions:
     rules:
-      no-langchain-in-core-or-feature:
-        files:
-          - "internal/core/**/*.go"
-          - "internal/feature/**/*.go"
-        deny:
-          - pkg: "github.com/tmc/langchaingo"
-            desc: "LangChain Go must only be imported in internal/platform/"
-      no-domain-in-core:
-        files:
-          - "internal/core/**/*.go"
-        deny:
-          - pkg: "github.com/bsenel/karakuri/domains"
-            desc: "domain packs must not be imported in internal/core/"
-
-issues:
-  exclude-rules:
-    - path: "_test.go"
-      linters:
-        - depguard
-        - unused
+      - path: "_test.go"
+        linters:
+          - depguard
+          - unused

@@ -25,6 +25,24 @@ resources:
     cpu: "1"
     memory: 512Mi
 
+# Pod + container hardening (SECURITY_AUDIT.md F-07). Defaults are the secure
+# baseline; override only with a clear reason. uid/gid 65532 matches the
+# non-root user baked into the image (see Dockerfile).
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  runAsGroup: 65532
+  fsGroup: 65532
+  seccompProfile:
+    type: RuntimeDefault
+
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+
 secret:
   name: karakuri-secrets
 
@@ -46,7 +64,7 @@ postgresql:
   port: 5432
   database: karakuri
   user: karakuri
-  sslmode: disable
+  sslmode: require
   passwordSecret:
     name: ""   # Secret containing the password (created out of band)
     key: password

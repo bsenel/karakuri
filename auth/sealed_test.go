@@ -146,3 +146,51 @@ func signedBy(s auth.Sealer, encoded string) string {
 	mac.Write([]byte(encoded))
 	return encoded + "." + base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
 }
+
+// SECURITY_AUDIT.md F-16: SealEncrypted must round-trip, reject tampering, and —
+// the point of it — must NOT leak the plaintext payload into the sealed string.
+func TestSealEncryptedRoundTripAndConfidentiality(t *testing.T) {
+	t.Parallel()
+	s := auth.Sealer{Key: []byte("a-signing-and-encryption-key-32b!")}
+
+	secret := "refresh-token-DEADBEEF-do-not-leak"
+	value, err := s.SealEncrypted(flow{State: "st", Nonce: "no", Verifier: secret}, time.Minute)
+	if err != nil {
+		t.Fatalf("SealEncrypted: %v", err)
+	}
+	// The plaintext secret must not appear anywhere in the sealed string, nor
+	// should a base64 decode of it reveal the JSON payload.
+	if strings.Contains(value, secret) {
+		t.Fatalf("sealed value leaks the plaintext secret")
+	}
+	if raw, err := base64.RawURLEncoding.DecodeString(value); err == nil {
+		if strings.Contains(string(raw), secret) || strings.Contains(string(raw), "\"v\"") {
+			t.Fatalf("decoded sealed value leaks plaintext/JSON structure")
+		}
+	}
+
+	var got flow
+	if err := s.OpenEncrypted(value, &got); err != nil {
+		t.Fatalf("OpenEncrypted: %v", err)
+	}
+	if got.Verifier != secret {
+		t.Fatalf("round trip lost data: %+v", got)
+	}
+
+	// A signed-only Open must not accept an encrypted value, and vice versa.
+	if err := s.Open(value, &got); err == nil {
+		t.Fatalf("Open accepted an encrypted value")
+	}
+
+	// A different key cannot open it.
+	other := auth.Sealer{Key: []byte("a-completely-different-key-here!!")}
+	if err := other.OpenEncrypted(value, &got); err == nil {
+		t.Fatalf("OpenEncrypted accepted a value sealed with a different key")
+	}
+
+	// Tampering with the ciphertext is rejected by the GCM tag.
+	tampered := value[:len(value)-2] + "AA"
+	if err := s.OpenEncrypted(tampered, &got); err == nil {
+		t.Fatalf("OpenEncrypted accepted a tampered value")
+	}
+}

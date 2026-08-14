@@ -1,0 +1,577 @@
+{
+	"Golang errors": {},
+	"Issues": [
+		{
+			"severity": "HIGH",
+			"confidence": "MEDIUM",
+			"cwe": {
+				"id": "190",
+				"url": "https://cwe.mitre.org/data/definitions/190.html"
+			},
+			"rule_id": "G115",
+			"details": "integer overflow conversion uint32 -\u003e byte",
+			"file": "/home/user/karakuri/internal/platform/storage/gorm_storage.go",
+			"code": "869: \t\tb[i*4+1] = byte(bits \u003e\u003e 8)\n870: \t\tb[i*4+2] = byte(bits \u003e\u003e 16)\n871: \t\tb[i*4+3] = byte(bits \u003e\u003e 24)\n",
+			"line": "870",
+			"column": "18",
+			"nosec": false,
+			"suppressions": null
+		},
+		{
+			"severity": "HIGH",
+			"confidence": "MEDIUM",
+			"cwe": {
+				"id": "190",
+				"url": "https://cwe.mitre.org/data/definitions/190.html"
+			},
+			"rule_id": "G115",
+			"details": "integer overflow conversion uint32 -\u003e byte",
+			"file": "/home/user/karakuri/internal/platform/storage/gorm_storage.go",
+			"code": "868: \t\tb[i*4] = byte(bits)\n869: \t\tb[i*4+1] = byte(bits \u003e\u003e 8)\n870: \t\tb[i*4+2] = byte(bits \u003e\u003e 16)\n",
+			"line": "869",
+			"column": "18",
+			"nosec": false,
+			"suppressions": null
+		},
+		{
+			"severity": "HIGH",
+			"confidence": "MEDIUM",
+			"cwe": {
+				"id": "190",
+				"url": "https://cwe.mitre.org/data/definitions/190.html"
+			},
+			"rule_id": "G115",
+			"details": "integer overflow conversion uint32 -\u003e byte",
+			"file": "/home/user/karakuri/internal/platform/storage/gorm_storage.go",
+			"code": "867: \t\tbits := math.Float32bits(v)\n868: \t\tb[i*4] = byte(bits)\n869: \t\tb[i*4+1] = byte(bits \u003e\u003e 8)\n",
+			"line": "868",
+			"column": "16",
+			"nosec": false,
+			"suppressions": null
+		},
+		{
+			"severity": "HIGH",
+			"confidence": "MEDIUM",
+			"cwe": {
+				"id": "338",
+				"url": "https://cwe.mitre.org/data/definitions/338.html"
+			},
+			"rule_id": "G404",
+			"details": "Use of weak random number generator (math/rand or math/rand/v2 instead of crypto/rand)",
+			"file": "/home/user/karakuri/cmd/krk-bench/main.go",
+			"code": "104: \n105: \trng := rand.New(rand.NewSource(*seed))\n106: \n",
+			"line": "105",
+			"column": "9",
+			"nosec": false,
+			"suppressions": null
+		},
+		{
+			"severity": "HIGH",
+			"confidence": "MEDIUM",
+			"cwe": {
+				"id": "400",
+				"url": "https://cwe.mitre.org/data/definitions/400.html"
+			},
+			"rule_id": "G118",
+			"details": "Goroutine uses context.Background/TODO while request-scoped context is available",
+			"file": "/home/user/karakuri/internal/feature/loop/service.go",
+			"code": "275: \n276: \t\tgo s.runLoop(context.Background(), st.LoopID, req)\n277: \t}\n",
+			"line": "276",
+			"column": "3",
+			"nosec": false,
+			"suppressions": null
+		},
+		{
+			"severity": "HIGH",
+			"confidence": "MEDIUM",
+			"cwe": {
+				"id": "400",
+				"url": "https://cwe.mitre.org/data/definitions/400.html"
+			},
+			"rule_id": "G118",
+			"details": "Goroutine uses context.Background/TODO while request-scoped context is available",
+			"file": "/home/user/karakuri/internal/feature/loop/service.go",
+			"code": "142: \t// Run the loop in background goroutine\n143: \tgo s.runLoop(context.Background(), id, req)\n144: \n",
+			"line": "143",
+			"column": "2",
+			"nosec": false,
+			"suppressions": null
+		},
+		{
+			"severity": "MEDIUM",
+			"confidence": "HIGH",
+			"cwe": {
+				"id": "614",
+				"url": "https://cwe.mitre.org/data/definitions/614.html"
+			},
+			"rule_id": "G124",
+			"details": "http.Cookie missing or has insecure Secure, HttpOnly, or SameSite attribute",
+			"file": "/home/user/karakuri/internal/api/handler/sso_cli.go",
+			"code": "107: \t// However this ends, the flow is over.\n108: \thttp.SetCookie(w, \u0026http.Cookie{Name: cliFlowCookie, Path: \"/\", MaxAge: -1})\n109: \n",
+			"line": "108",
+			"column": "32",
+			"nosec": false,
+			"suppressions": null
+		},
+		{
+			"severity": "MEDIUM",
+			"confidence": "HIGH",
+			"cwe": {
+				"id": "614",
+				"url": "https://cwe.mitre.org/data/definitions/614.html"
+			},
+			"rule_id": "G124",
+			"details": "http.Cookie missing or has insecure Secure, HttpOnly, or SameSite attribute",
+			"file": "/home/user/karakuri/internal/api/handler/sso_cli.go",
+			"code": "87: \t}\n88: \thttp.SetCookie(w, \u0026http.Cookie{\n89: \t\tName:     cliFlowCookie,\n",
+			"line": "88",
+			"column": "32",
+			"nosec": false,
+			"suppressions": null
+		},
+		{
+			"severity": "MEDIUM",
+			"confidence": "HIGH",
+			"cwe": {
+				"id": "79",
+				"url": "https://cwe.mitre.org/data/definitions/79.html"
+			},
+			"rule_id": "G705",
+			"details": "XSS via taint analysis",
+			"file": "/home/user/karakuri/internal/api/handler/artifact.go",
+			"code": "41: \tw.Header().Set(\"Content-Type\", \"text/plain\")\n42: \t_, _ = w.Write(content)\n43: }\n",
+			"line": "42",
+			"column": "16",
+			"nosec": false,
+			"suppressions": null
+		},
+		{
+			"severity": "MEDIUM",
+			"confidence": "HIGH",
+			"cwe": {
+				"id": "676",
+				"url": "https://cwe.mitre.org/data/definitions/676.html"
+			},
+			"rule_id": "G114",
+			"details": "Use of net/http serve function that has no support for setting timeouts",
+			"file": "/home/user/karakuri/cmd/server/main.go",
+			"code": "19: \tslog.Info(\"karakuri server starting\", \"addr\", addr)\n20: \tif err := http.ListenAndServe(addr, boot.App.Handler()); err != nil {\n21: \t\tslog.Error(\"server failed\", \"err\", err)\n",
+			"line": "20",
+			"column": "12",
+			"nosec": false,
+			"suppressions": null
+		},
+		{
+			"severity": "MEDIUM",
+			"confidence": "HIGH",
+			"cwe": {
+				"id": "78",
+				"url": "https://cwe.mitre.org/data/definitions/78.html"
+			},
+			"rule_id": "G204",
+			"details": "Subprocess launched with variable",
+			"file": "/home/user/karakuri/internal/platform/tools/cliagent/subprocess.go",
+			"code": "28: \n29: \tcmd := exec.CommandContext(ctx, name, args...)\n30: \tcmd.Dir = in.WorktreePath\n",
+			"line": "29",
+			"column": "9",
+			"nosec": false,
+			"suppressions": null
+		},
+		{
+			"severity": "MEDIUM",
+			"confidence": "HIGH",
+			"cwe": {
+				"id": "78",
+				"url": "https://cwe.mitre.org/data/definitions/78.html"
+			},
+			"rule_id": "G204",
+			"details": "Subprocess launched with variable",
+			"file": "/home/user/karakuri/internal/platform/git/gogitwt.go",
+			"code": "120: func (m *GoGitWorktreeManager) runGit(ctx context.Context, args ...string) error {\n121: \tcmd := exec.CommandContext(ctx, \"git\", args...)\n122: \tcmd.Dir = m.repoRoot()\n",
+			"line": "121",
+			"column": "9",
+			"nosec": false,
+			"suppressions": null
+		},
+		{
+			"severity": "MEDIUM",
+			"confidence": "HIGH",
+			"cwe": {
+				"id": "78",
+				"url": "https://cwe.mitre.org/data/definitions/78.html"
+			},
+			"rule_id": "G204",
+			"details": "Subprocess launched with variable",
+			"file": "/home/user/karakuri/domains/software/shell_env.go",
+			"code": "111: \n112: \tc := exec.CommandContext(cmdCtx, \"/bin/sh\", \"-c\", cmd)\n113: \tc.Dir = workdir\n",
+			"line": "112",
+			"column": "7",
+			"nosec": false,
+			"suppressions": null
+		},
+		{
+			"severity": "MEDIUM",
+			"confidence": "HIGH",
+			"cwe": {
+				"id": "78",
+				"url": "https://cwe.mitre.org/data/definitions/78.html"
+			},
+			"rule_id": "G204",
+			"details": "Subprocess launched with variable",
+			"file": "/home/user/karakuri/cli/command/web.go",
+			"code": "35: func run(name string, args ...string) error {\n36: \tcmd := exec.Command(name, args...)\n37: \tcmd.Dir = \"web\"\n",
+			"line": "36",
+			"column": "9",
+			"nosec": false,
+			"suppressions": null
+		},
+		{
+			"severity": "MEDIUM",
+			"confidence": "HIGH",
+			"cwe": {
+				"id": "78",
+				"url": "https://cwe.mitre.org/data/definitions/78.html"
+			},
+			"rule_id": "G204",
+			"details": "Subprocess launched with variable",
+			"file": "/home/user/karakuri/cli/client/sso.go",
+			"code": "218: \t}\n219: \treturn exec.Command(cmd, append(args, target)...).Start()\n220: }\n",
+			"line": "219",
+			"column": "9",
+			"nosec": false,
+			"suppressions": null
+		},
+		{
+			"severity": "MEDIUM",
+			"confidence": "HIGH",
+			"cwe": {
+				"id": "78",
+				"url": "https://cwe.mitre.org/data/definitions/78.html"
+			},
+			"rule_id": "G204",
+			"details": "Subprocess launched with a potential tainted input or cmd arguments",
+			"file": "/home/user/karakuri/internal/platform/tools/testing/playwright.go",
+			"code": "34: \t}\n35: \tcmd := exec.CommandContext(ctx, p.npxBin, args...)\n36: \tcmd.Dir = p.projectDir\n",
+			"line": "35",
+			"column": "9",
+			"nosec": false,
+			"suppressions": null
+		},
+		{
+			"severity": "MEDIUM",
+			"confidence": "HIGH",
+			"cwe": {
+				"id": "78",
+				"url": "https://cwe.mitre.org/data/definitions/78.html"
+			},
+			"rule_id": "G204",
+			"details": "Subprocess launched with a potential tainted input or cmd arguments",
+			"file": "/home/user/karakuri/internal/platform/tools/cliagent/copilot.go",
+			"code": "52: \n53: \tcmd := exec.CommandContext(ctx, c.bin, args...)\n54: \tcmd.Dir = in.WorktreePath\n",
+			"line": "53",
+			"column": "9",
+			"nosec": false,
+			"suppressions": null
+		},
+		{
+			"severity": "MEDIUM",
+			"confidence": "HIGH",
+			"cwe": {
+				"id": "78",
+				"url": "https://cwe.mitre.org/data/definitions/78.html"
+			},
+			"rule_id": "G204",
+			"details": "Subprocess launched with a potential tainted input or cmd arguments",
+			"file": "/home/user/karakuri/internal/platform/llm/gemini_cli.go",
+			"code": "34: \n35: \tcmd := exec.CommandContext(ctx, g.binary, \"--prompt\", prompt)\n36: \tout, err := cmd.Output()\n",
+			"line": "35",
+			"column": "9",
+			"nosec": false,
+			"suppressions": null
+		},
+		{
+			"severity": "MEDIUM",
+			"confidence": "HIGH",
+			"cwe": {
+				"id": "78",
+				"url": "https://cwe.mitre.org/data/definitions/78.html"
+			},
+			"rule_id": "G204",
+			"details": "Subprocess launched with a potential tainted input or cmd arguments",
+			"file": "/home/user/karakuri/internal/platform/llm/claude_cli.go",
+			"code": "48: \n49: \tcmd := exec.CommandContext(ctx, c.binary, \"--print\", \"--output-format\", \"json\")\n50: \tcmd.Stdin = strings.NewReader(prompt)\n",
+			"line": "49",
+			"column": "9",
+			"nosec": false,
+			"suppressions": null
+		},
+		{
+			"severity": "MEDIUM",
+			"confidence": "HIGH",
+			"cwe": {
+				"id": "89",
+				"url": "https://cwe.mitre.org/data/definitions/89.html"
+			},
+			"rule_id": "G201",
+			"details": "SQL string formatting",
+			"file": "/home/user/karakuri/internal/platform/memory/semantic_pgvector.go",
+			"code": "203: \t}\n204: \tstmt := fmt.Sprintf(`DELETE FROM %s WHERE %s`, m.tableName, strings.Join(where, \" AND \"))\n205: \t_, err := m.db.ExecContext(ctx, stmt, args...)\n",
+			"line": "204",
+			"column": "10",
+			"nosec": false,
+			"suppressions": null
+		},
+		{
+			"severity": "MEDIUM",
+			"confidence": "HIGH",
+			"cwe": {
+				"id": "89",
+				"url": "https://cwe.mitre.org/data/definitions/89.html"
+			},
+			"rule_id": "G201",
+			"details": "SQL string formatting",
+			"file": "/home/user/karakuri/internal/platform/memory/semantic_pgvector.go",
+			"code": "138: \n139: \tstmt := fmt.Sprintf(`SELECT id, agent_id, twin_id, domain, content, confidence, sources_json, created_at, expires_at\n140: \t\tFROM %s %s ORDER BY %s LIMIT %d`, m.tableName, whereClause, orderBy, limit)\n141: \n",
+			"line": "139-140",
+			"column": "10",
+			"nosec": false,
+			"suppressions": null
+		},
+		{
+			"severity": "MEDIUM",
+			"confidence": "HIGH",
+			"cwe": {
+				"id": "89",
+				"url": "https://cwe.mitre.org/data/definitions/89.html"
+			},
+			"rule_id": "G201",
+			"details": "SQL string formatting",
+			"file": "/home/user/karakuri/internal/platform/memory/semantic_pgvector.go",
+			"code": "90: \n91: \tstmt := fmt.Sprintf(`INSERT INTO %s\n92: \t\t(id, agent_id, twin_id, domain, content, embedding, confidence, sources_json, created_at, expires_at)\n93: \t\tVALUES ($1, $2, $3, $4, $5, %s, $6, $7, $8, $9)\n94: \t\tON CONFLICT (id) DO UPDATE SET\n95: \t\t\tcontent      = EXCLUDED.content,\n96: \t\t\tembedding    = EXCLUDED.embedding,\n97: \t\t\tconfidence   = EXCLUDED.confidence,\n98: \t\t\tsources_json = EXCLUDED.sources_json,\n99: \t\t\texpires_at   = EXCLUDED.expires_at`, m.tableName, embedding)\n100: \n",
+			"line": "91-99",
+			"column": "10",
+			"nosec": false,
+			"suppressions": null
+		},
+		{
+			"severity": "MEDIUM",
+			"confidence": "HIGH",
+			"cwe": {
+				"id": "22",
+				"url": "https://cwe.mitre.org/data/definitions/22.html"
+			},
+			"rule_id": "G304",
+			"details": "Potential file inclusion via variable",
+			"file": "/home/user/karakuri/internal/platform/observability/format/parquet.go",
+			"code": "36: \tparquetPath := ensureExt(path, \".parquet\")\n37: \tf, err := os.Create(parquetPath)\n38: \tif err != nil {\n",
+			"line": "37",
+			"column": "12",
+			"nosec": false,
+			"suppressions": null,
+			"autofix": "Consider using os.Root to scope file access under a fixed root (Go \u003e=1.24). Prefer root.Open/root.Stat over os.Open/os.Stat to prevent directory traversal."
+		},
+		{
+			"severity": "MEDIUM",
+			"confidence": "HIGH",
+			"cwe": {
+				"id": "22",
+				"url": "https://cwe.mitre.org/data/definitions/22.html"
+			},
+			"rule_id": "G304",
+			"details": "Potential file inclusion via variable",
+			"file": "/home/user/karakuri/internal/platform/observability/format/ndjson.go",
+			"code": "18: func WriteNDJSON(path string, v any) error {\n19: \tf, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)\n20: \tif err != nil {\n",
+			"line": "19",
+			"column": "12",
+			"nosec": false,
+			"suppressions": null,
+			"autofix": "Consider using os.Root to scope file access under a fixed root (Go \u003e=1.24). Prefer root.Open/root.Stat over os.Open/os.Stat to prevent directory traversal."
+		},
+		{
+			"severity": "MEDIUM",
+			"confidence": "HIGH",
+			"cwe": {
+				"id": "22",
+				"url": "https://cwe.mitre.org/data/definitions/22.html"
+			},
+			"rule_id": "G304",
+			"details": "Potential file inclusion via variable",
+			"file": "/home/user/karakuri/internal/platform/observability/format/csv.go",
+			"code": "15: func WriteCSV(path string, v any) error {\n16: \tf, err := os.Create(path)\n17: \tif err != nil {\n",
+			"line": "16",
+			"column": "12",
+			"nosec": false,
+			"suppressions": null,
+			"autofix": "Consider using os.Root to scope file access under a fixed root (Go \u003e=1.24). Prefer root.Open/root.Stat over os.Open/os.Stat to prevent directory traversal."
+		},
+		{
+			"severity": "MEDIUM",
+			"confidence": "HIGH",
+			"cwe": {
+				"id": "22",
+				"url": "https://cwe.mitre.org/data/definitions/22.html"
+			},
+			"rule_id": "G304",
+			"details": "Potential file inclusion via variable",
+			"file": "/home/user/karakuri/internal/auth/keys.go",
+			"code": "128: func readPEM(path string) (*pem.Block, error) {\n129: \tdata, err := os.ReadFile(path)\n130: \tif err != nil {\n",
+			"line": "129",
+			"column": "15",
+			"nosec": false,
+			"suppressions": null,
+			"autofix": "Consider using os.Root to scope file access under a fixed root (Go \u003e=1.24). Prefer root.Open/root.Stat over os.Open/os.Stat to prevent directory traversal."
+		},
+		{
+			"severity": "MEDIUM",
+			"confidence": "HIGH",
+			"cwe": {
+				"id": "22",
+				"url": "https://cwe.mitre.org/data/definitions/22.html"
+			},
+			"rule_id": "G304",
+			"details": "Potential file inclusion via variable",
+			"file": "/home/user/karakuri/config/config.go",
+			"code": "473: func Load(path string) (*Config, error) {\n474: \tdata, err := os.ReadFile(path)\n475: \tif err != nil {\n",
+			"line": "474",
+			"column": "15",
+			"nosec": false,
+			"suppressions": null,
+			"autofix": "Consider using os.Root to scope file access under a fixed root (Go \u003e=1.24). Prefer root.Open/root.Stat over os.Open/os.Stat to prevent directory traversal."
+		},
+		{
+			"severity": "MEDIUM",
+			"confidence": "HIGH",
+			"cwe": {
+				"id": "276",
+				"url": "https://cwe.mitre.org/data/definitions/276.html"
+			},
+			"rule_id": "G302",
+			"details": "Expect file permissions to be 0600 or less",
+			"file": "/home/user/karakuri/internal/platform/observability/format/ndjson.go",
+			"code": "18: func WriteNDJSON(path string, v any) error {\n19: \tf, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)\n20: \tif err != nil {\n",
+			"line": "19",
+			"column": "12",
+			"nosec": false,
+			"suppressions": null
+		},
+		{
+			"severity": "MEDIUM",
+			"confidence": "HIGH",
+			"cwe": {
+				"id": "276",
+				"url": "https://cwe.mitre.org/data/definitions/276.html"
+			},
+			"rule_id": "G301",
+			"details": "Expect directory permissions to be 0750 or less",
+			"file": "/home/user/karakuri/internal/platform/observability/local.go",
+			"code": "60: \tdir := filepath.Join(l.path, kind, date)\n61: \tif err := os.MkdirAll(dir, 0o755); err != nil {\n62: \t\treturn err\n",
+			"line": "61",
+			"column": "12",
+			"nosec": false,
+			"suppressions": null
+		},
+		{
+			"severity": "MEDIUM",
+			"confidence": "HIGH",
+			"cwe": {
+				"id": "276",
+				"url": "https://cwe.mitre.org/data/definitions/276.html"
+			},
+			"rule_id": "G301",
+			"details": "Expect directory permissions to be 0750 or less",
+			"file": "/home/user/karakuri/internal/platform/git/gogitwt.go",
+			"code": "50: \tbasePath := filepath.Join(m.repoRoot(), m.cfg.WorktreeBase, string(opts.ObjectiveID), opts.TaskID)\n51: \tif err := os.MkdirAll(filepath.Dir(basePath), 0o755); err != nil {\n52: \t\treturn Worktree{}, err\n",
+			"line": "51",
+			"column": "12",
+			"nosec": false,
+			"suppressions": null
+		},
+		{
+			"severity": "MEDIUM",
+			"confidence": "HIGH",
+			"cwe": {
+				"id": "276",
+				"url": "https://cwe.mitre.org/data/definitions/276.html"
+			},
+			"rule_id": "G306",
+			"details": "Expect WriteFile permissions to be 0600 or less",
+			"file": "/home/user/karakuri/internal/platform/observability/local.go",
+			"code": "153: \t\t}\n154: \t\treturn os.WriteFile(filename, data, 0o644)\n155: \t}\n",
+			"line": "154",
+			"column": "10",
+			"nosec": false,
+			"suppressions": null
+		},
+		{
+			"severity": "MEDIUM",
+			"confidence": "HIGH",
+			"cwe": {
+				"id": "276",
+				"url": "https://cwe.mitre.org/data/definitions/276.html"
+			},
+			"rule_id": "G306",
+			"details": "Expect WriteFile permissions to be 0600 or less",
+			"file": "/home/user/karakuri/internal/platform/observability/format/json.go",
+			"code": "12: \t}\n13: \treturn os.WriteFile(path, data, 0o644)\n14: }\n",
+			"line": "13",
+			"column": "9",
+			"nosec": false,
+			"suppressions": null
+		},
+		{
+			"severity": "LOW",
+			"confidence": "HIGH",
+			"cwe": {
+				"id": "703",
+				"url": "https://cwe.mitre.org/data/definitions/703.html"
+			},
+			"rule_id": "G104",
+			"details": "Errors unhandled",
+			"file": "/home/user/karakuri/internal/quota/backend.go",
+			"code": "214: \t\tif err != nil {\n215: \t\t\tclient.Close()\n216: \t\t\treturn nil, nil, err\n",
+			"line": "215",
+			"column": "4",
+			"nosec": false,
+			"suppressions": null
+		},
+		{
+			"severity": "LOW",
+			"confidence": "HIGH",
+			"cwe": {
+				"id": "703",
+				"url": "https://cwe.mitre.org/data/definitions/703.html"
+			},
+			"rule_id": "G104",
+			"details": "Errors unhandled",
+			"file": "/home/user/karakuri/cli/client/client.go",
+			"code": "122: \t\tos.Stdout.Write(data)\n123: \t\tos.Stdout.Write([]byte(\"\\n\"))\n124: \tdefault:\n",
+			"line": "123",
+			"column": "3",
+			"nosec": false,
+			"suppressions": null
+		},
+		{
+			"severity": "LOW",
+			"confidence": "HIGH",
+			"cwe": {
+				"id": "703",
+				"url": "https://cwe.mitre.org/data/definitions/703.html"
+			},
+			"rule_id": "G104",
+			"details": "Errors unhandled",
+			"file": "/home/user/karakuri/cli/client/client.go",
+			"code": "121: \tcase \"json\":\n122: \t\tos.Stdout.Write(data)\n123: \t\tos.Stdout.Write([]byte(\"\\n\"))\n",
+			"line": "122",
+			"column": "3",
+			"nosec": false,
+			"suppressions": null
+		}
+	],
+	"Stats": {
+		"files": 216,
+		"lines": 26717,
+		"nosec": 0,
+		"found": 35
+	},
+	"GosecVersion": "dev"
+}

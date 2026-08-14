@@ -7,8 +7,6 @@
 package quota
 
 import (
-	"time"
-
 	"github.com/bsenel/karakuri/config"
 	"github.com/bsenel/karakuri/quota"
 )
@@ -93,7 +91,3 @@ func (t Tiers) Validate() error {
 // is published. Eighty percent leaves enough room to react before anything is
 // actually refused.
 const PressureThreshold = 0.8
-
-// sweepInterval is how often the SQL backend's housekeeping runs, when that
-// backend is in use.
-const sweepInterval = time.Hour

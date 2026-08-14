@@ -21,6 +21,9 @@ export default defineConfig({
   },
   build: {
     outDir: 'dist',
-    sourcemap: true,
+    // Source maps are not emitted for production: the built assets are embedded
+    // into the Go binary and served, so a `true` here shipped full TypeScript
+    // source (and ~2 MB maps) to every client. See SECURITY_AUDIT.md F-14.
+    sourcemap: false,
   },
 });

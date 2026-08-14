@@ -19,17 +19,23 @@ import (
 // a browser, listens on a loopback port, and the server hands the credential
 // back through that port.
 //
-// The handoff is a URL, and a URL lands in browser history. So the code in it
-// is useless on its own: the CLI generates a secret before opening the browser,
-// sends only its hash, and must present the secret to redeem the code. That is
-// PKCE's argument applied to our own handoff, and it means the browser — and
-// anything reading over its shoulder — never sees a usable credential.
+// The handoff is a URL, and a URL lands in browser history. Two properties keep
+// the code in it from being a usable credential:
+//
+//  1. It is redeemed with a PKCE-style secret. The CLI generates a secret
+//     before opening the browser, sends only its hash, and must present the
+//     secret to redeem the code at /exchange.
+//  2. It is ENCRYPTED, not merely signed. The code carries a refresh token, and
+//     a signed-only seal is recoverable by anyone holding the string — decoding
+//     the URL would yield the token, which /auth/refresh accepts without the
+//     PKCE secret (SECURITY_AUDIT.md F-16). Sealing it with SealEncrypted makes
+//     the code ciphertext, so the refresh token cannot be extracted from the URL
+//     at all; only the server, holding the key, can open it inside /exchange.
 //
 // The code is sealed rather than stored, so any replica can redeem one another
-// started. Nothing enforces single use, and nothing needs to: the code carries
-// a refresh token, refresh tokens rotate on first use, and presenting a spent
-// one triggers the reuse detection that revokes the whole family. A replayed
-// code does not grant access, it ends the session it was stolen from.
+// started. Single use is not enforced and need not be: refresh tokens rotate on
+// first use, and presenting a spent one triggers reuse detection that revokes
+// the whole family — a replayed code ends the session it was stolen from.
 
 const (
 	// cliPortParam and cliChallengeParam are what `krk auth login --sso` adds
@@ -111,7 +117,10 @@ func (h *SSOHandler) cliRedirect(w http.ResponseWriter, r *http.Request, p auth.
 	if err := h.Federation.Sealer.Open(cookie.Value, &flow); err != nil {
 		return ""
 	}
-	code, err := h.Federation.Sealer.Seal(cliCode{
+	// Encrypted, not just signed: the code carries a refresh token and travels
+	// through a URL, so it must not be recoverable by anyone who reads the URL.
+	// See SECURITY_AUDIT.md F-16.
+	code, err := h.Federation.Sealer.SealEncrypted(cliCode{
 		Refresh:   pair.RefreshToken,
 		Principal: p.ID,
 		Challenge: flow.Challenge,
@@ -140,7 +149,7 @@ func (h *SSOHandler) Exchange(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var code cliCode
-	if err := h.Federation.Sealer.Open(body.Code, &code); err != nil {
+	if err := h.Federation.Sealer.OpenEncrypted(body.Code, &code); err != nil {
 		authError(w, http.StatusUnauthorized, "invalid_code", "code is not valid")
 		return
 	}

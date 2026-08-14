@@ -15,10 +15,20 @@ spec:
       labels:
         {{- include "karakuri.selectorLabels" . | nindent 8 }}
     spec:
+      # Pod hardening (SECURITY_AUDIT.md F-07). fsGroup makes the PVC writable by
+      # the non-root user the image runs as (uid 65532), and RuntimeDefault
+      # applies the container runtime's seccomp filter.
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
       containers:
         - name: karakuri
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
+          # Container hardening: no privilege escalation, read-only root
+          # filesystem (writable paths are mounted explicitly), all Linux
+          # capabilities dropped.
+          securityContext:
+            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
           ports:
             - name: http
               containerPort: 8080
@@ -66,6 +76,10 @@ spec:
               mountPath: /data
             - name: config
               mountPath: /etc/karakuri
+            # readOnlyRootFilesystem is on, so the entrypoint's scratch writes
+            # (/tmp/runtime.yaml) need an explicitly writable mount.
+            - name: tmp
+              mountPath: /tmp
           livenessProbe:
             httpGet:
               path: {{ .Values.probes.livenessPath }}
@@ -81,6 +95,8 @@ spec:
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
       volumes:
+        - name: tmp
+          emptyDir: {}
         - name: data
           persistentVolumeClaim:
             claimName: {{ include "karakuri.fullname" . }}-data

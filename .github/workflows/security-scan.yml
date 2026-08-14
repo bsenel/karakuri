@@ -1,0 +1,214 @@
+name: Security Scan
+
+# DevSecOps gates for Karakuri (see docs/audit/CI_SECURITY_PIPELINE.md, Matrix E).
+# Complements the existing ci.yml (build/test/coverage) and codeql.yml (SAST) with
+# SCA, secret, IaC, lint, SBOM and container scanning. Results upload to the repo's
+# code-scanning dashboard as SARIF.
+#
+# Action-pinning: this workflow follows the repository's existing convention —
+# major-version tags managed by the github-actions Dependabot ecosystem
+# (.github/dependabot.yml). Digest-pinning (SLSA L3 / OpenSSF Scorecard) is a
+# recommended follow-up applied repo-wide in one pass, not only here.
+
+on:
+  pull_request:
+    branches: [main, "claude/**"]
+  push:
+    branches: [main]
+  schedule:
+    - cron: "0 7 * * 1" # Monday 07:00 UTC — deep re-scan against new advisories
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+# Least privilege by default; jobs that upload SARIF widen to security-events.
+permissions:
+  contents: read
+
+jobs:
+  # ── Lint (golangci-lint, now that .golangci.yml loads again — F-08) ──────────
+  golangci:
+    name: Lint (golangci-lint)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.x"
+          cache: true
+      # The root module's web/embed.go embeds web/dist via //go:embed, so the
+      # frontend must be built before golangci-lint typechecks the root module
+      # (mirrors ci.yml). The auth/quota submodules have no frontend dependency.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci --no-audit --no-fund && npm run build
+        working-directory: web
+      - name: Root module
+        uses: golangci/golangci-lint-action@v7
+        with:
+          version: v2.5.0
+          args: --timeout=5m
+      # The standalone modules have no frontend dependency and their own go.mod.
+      - name: auth module
+        uses: golangci/golangci-lint-action@v7
+        with:
+          version: v2.5.0
+          working-directory: auth
+          args: --timeout=5m --config=${{ github.workspace }}/.golangci.yml
+      - name: quota module
+        uses: golangci/golangci-lint-action@v7
+        with:
+          version: v2.5.0
+          working-directory: quota
+          args: --timeout=5m --config=${{ github.workspace }}/.golangci.yml
+
+  # ── Go SAST (gosec) — report-only until the baseline FPs are triaged ─────────
+  gosec:
+    name: SAST (gosec)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.x"
+          cache: true
+      - name: Run gosec
+        # Most current gosec findings are verified false positives (argv-form
+        # exec, const table names); see SECURITY_AUDIT.md Appendix C. Emit SARIF
+        # to the dashboard but do not block PRs yet — this gate is report-only
+        # until the FPs are annotated with #nosec justifications.
+        continue-on-error: true
+        run: |
+          go install github.com/securego/gosec/v2/cmd/gosec@latest
+          gosec -fmt sarif -out gosec.sarif -exclude-dir=web ./... || true
+      - uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: gosec.sarif
+          category: gosec
+
+  # ── Go dependency vulnerabilities (govulncheck) — reachability-aware, blocks ─
+  govulncheck:
+    name: SCA (govulncheck)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.x"
+          # Always take the newest 1.25.x patch. govulncheck's stdlib analysis is
+          # relative to the running toolchain, so a stale patch would report
+          # stdlib advisories already fixed upstream — close that window here.
+          check-latest: true
+          cache: true
+      - name: Build frontend (embed target)
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: npm ci --no-audit --no-fund && npm run build
+        working-directory: web
+      - name: govulncheck (root + submodules)
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          fail=0
+          govulncheck ./... || fail=1
+          for m in auth quota; do (cd $m && govulncheck ./...) || fail=1; done
+          exit $fail
+
+  # ── npm SCA — production dependencies only (dev toolchain triaged separately) ─
+  npm-audit:
+    name: SCA (npm)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci --no-audit --no-fund
+        working-directory: web
+      # Fail on prod-dependency high/critical only. The dev toolchain
+      # (vite/vitest/esbuild) is never shipped; its majors are tracked in
+      # REMEDIATION_ROADMAP.md rather than blocking every PR.
+      - run: npm audit --omit=dev --audit-level=high
+        working-directory: web
+
+  # ── Secret scan (gitleaks) — blocks on any finding ──────────────────────────
+  gitleaks:
+    name: Secret scan (gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # full history for the secret scan
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ── IaC + filesystem scan (Trivy) — SARIF to dashboard, blocks on HIGH/CRIT ──
+  trivy-fs:
+    name: IaC & FS scan (Trivy)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Trivy config + secret + vuln (fs)
+        uses: aquasecurity/trivy-action@0.35.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln,secret,misconfig
+          severity: HIGH,CRITICAL
+          format: sarif
+          output: trivy-fs.sarif
+          skip-dirs: web/node_modules
+          trivyignores: .trivyignore
+      - uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-fs.sarif
+          category: trivy-fs
+
+  # ── License check — report-only ─────────────────────────────────────────────
+  licenses:
+    name: License check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.x"
+          cache: true
+      - name: go-licenses
+        continue-on-error: true
+        run: |
+          go install github.com/google/go-licenses@latest
+          go-licenses check ./cmd/... \
+            --disallowed_types=forbidden,restricted || \
+            echo "::warning::disallowed licenses found — review before release"
+
+  # ── SBOM (main only) — CycloneDX, uploaded as an artifact ───────────────────
+  sbom:
+    name: SBOM (Syft)
+    if: github.event_name == 'push' || github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: anchore/sbom-action@v0.17.7
+        with:
+          path: .
+          format: cyclonedx-json
+          output-file: sbom.cdx.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sbom
+          path: sbom.cdx.json
+          retention-days: 90
