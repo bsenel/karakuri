@@ -236,6 +236,56 @@ quota:
   # deployment with no database gets neither overrides nor cost reporting, and
   # says so in a log line at startup.
 
+# The supervisor that holds standing objectives at their declared state
+# (Phase 20). A standing objective declares its own cadence and autonomy; these
+# are the ceilings every one of them runs under.
+#
+# Nothing here does anything until somebody declares a standing objective. A
+# deployment that only runs one-shot loops is unaffected by all of it.
+reconcile:
+  enabled: true
+
+  # How often the supervisor asks which objectives are due. This bounds
+  # scheduling precision, not cadence: a 30s tick against an hourly cadence is
+  # accurate to half a minute, which is what a schedule measured in hours
+  # deserves. The query is one indexed comparison, so a short tick is cheap.
+  tick: 30s
+
+  # Reconciles running at once on this replica. Without a ceiling, a hundred
+  # objectives coming due together would launch a hundred concurrent
+  # model-calling loops; the failure mode is a bill and a rate-limit wall, and
+  # it arrives all at once.
+  max_concurrent: 4
+
+  # How long a claim on an objective survives without renewal.
+  #
+  # This is what stops two replicas reconciling the same objective, doing the
+  # work twice and sending the same report twice. It is a row in the database
+  # rather than a coordination service: a crashed replica releases nothing, its
+  # lease simply runs out, and the next replica to ask wins. Shorter recovers
+  # faster from a crash; longer tolerates slower renewals.
+  lease_ttl: 5m
+
+  # Consecutive failures before an objective is paused with a checkpoint
+  # raised. An escalation is NOT a failure — a loop that stopped to ask a
+  # question did the right thing, and a breaker that counted questions would
+  # trip precisely on the objectives being most careful.
+  breaker_failures: 3
+
+  # Expensive runs that may leave the criteria score unmoved before the
+  # objective escalates instead of running again. An objective whose score has
+  # not moved in three full loops is not converging, and a fourth buys nothing.
+  stall_reconciles: 3
+
+  # The floor between reconciles for an objective whose cadence did not name
+  # one. Sensing is unaffected — it is free, and a busy repository should still
+  # be watched closely even when it may only be acted on every ten minutes.
+  default_min_interval: 10m
+
+  # Cap on the exponential backoff after repeated failures, so a long-broken
+  # objective still retries occasionally rather than effectively never.
+  max_backoff: 1h
+
 domains:
   - id: software
     enabled: true

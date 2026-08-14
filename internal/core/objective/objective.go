@@ -16,7 +16,19 @@ const (
 	StatusBlocked   ObjectiveStatus = "blocked"
 	StatusCompleted ObjectiveStatus = "completed"
 	StatusFailed    ObjectiveStatus = "failed"
+
+	// StatusConverged is where a standing objective rests: the criteria are
+	// met and the supervisor is watching for them to stop being met. It is
+	// deliberately not StatusCompleted, which says the work is over and the
+	// row can be forgotten.
+	StatusConverged ObjectiveStatus = "converged"
 )
+
+// Terminal reports whether a status means no further work will happen without
+// somebody asking for it. Standing objectives never reach one.
+func (s ObjectiveStatus) Terminal() bool {
+	return s == StatusCompleted || s == StatusFailed
+}
 
 type Objective struct {
 	ID                ObjectiveID     `json:"id"`
@@ -32,8 +44,42 @@ type Objective struct {
 	Constraints       []Constraint    `json:"constraints,omitempty"`
 	ParentID          *ObjectiveID    `json:"parent_id,omitempty"`
 	Status            ObjectiveStatus `json:"status"`
-	CreatedAt         time.Time       `json:"created_at"`
-	UpdatedAt         time.Time       `json:"updated_at"`
+
+	// Mode says whether this objective finishes or is held. Empty is
+	// oneshot, so every objective that predates standing mode keeps its
+	// behaviour exactly.
+	Mode Mode `json:"mode,omitempty"`
+	// Cadence declares when a standing objective is sensed and reconciled.
+	// Nil on a oneshot objective, and on a standing one that only ever
+	// reconciles when asked.
+	Cadence *Cadence `json:"cadence,omitempty"`
+	// Autonomy declares how much a standing objective may do without
+	// asking, and how much it may earn. Nil means propose-only.
+	Autonomy *Autonomy `json:"autonomy,omitempty"`
+
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// AutonomyDeclaration returns the objective's autonomy declaration, or the
+// safe default for one that declared none. Callers deciding what an objective
+// may do should go through here rather than dereferencing the pointer, so an
+// absent declaration and a zero-valued one mean the same thing.
+func (o Objective) AutonomyDeclaration() Autonomy {
+	if o.Autonomy == nil {
+		return Autonomy{}
+	}
+	return *o.Autonomy
+}
+
+// CadenceDeclaration returns the objective's cadence, or an empty one. An
+// empty cadence never becomes due on its own, which is the correct reading of
+// a standing objective that declared no schedule: it reconciles when asked.
+func (o Objective) CadenceDeclaration() Cadence {
+	if o.Cadence == nil {
+		return Cadence{}
+	}
+	return *o.Cadence
 }
 
 // AllDomains returns the deduplicated union of Domain and AdditionalDomains.
