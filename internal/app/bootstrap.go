@@ -285,6 +285,9 @@ func BootstrapServer(cfgPath string) (*Bootstrap, error) {
 	// deployment that wants the feature off outright.
 	if cfg.Reconcile.IsEnabled() {
 		apiApp.Reconcile.Start(ctx)
+		// The digest sender, which reports on what the supervisor did. It logs
+		// its own refusal when disabled, which it is by default.
+		apiApp.Reports.Start(ctx)
 	} else {
 		slog.Info("reconcile supervisor disabled by configuration",
 			"note", "standing objectives keep their state and stop becoming due")

@@ -6,6 +6,7 @@ import (
 
 	"github.com/bsenel/karakuri/internal/core/checkpoint"
 	"github.com/bsenel/karakuri/internal/core/container"
+	"github.com/bsenel/karakuri/internal/core/digest"
 	coreloop "github.com/bsenel/karakuri/internal/core/loop"
 	"github.com/bsenel/karakuri/internal/core/memory"
 	"github.com/bsenel/karakuri/internal/core/objective"
@@ -283,6 +284,18 @@ type StorageAdapter interface {
 
 	SaveReconcileOutcome(ctx context.Context, o reconcile.Outcome) error
 	ListReconcileOutcomes(ctx context.Context, objectiveID objective.ObjectiveID, limit int) ([]reconcile.Outcome, error)
+
+	// Report schedules (Phase 21 — periodic digests). They carry a lease for
+	// the same reason reconcile states do, and with more at stake: two
+	// replicas reconciling one objective wastes money, while two replicas
+	// sending one morning report send it to a person twice.
+	SaveReportSchedule(ctx context.Context, s digest.Schedule) error
+	GetReportSchedule(ctx context.Context, id string) (digest.Schedule, error)
+	ListReportSchedules(ctx context.Context, twinID string) ([]digest.Schedule, error)
+	DeleteReportSchedule(ctx context.Context, id string) error
+	ListDueReportSchedules(ctx context.Context, holder string, now time.Time, limit int) ([]digest.Schedule, error)
+	ClaimReportSchedule(ctx context.Context, id, holder string, now, until time.Time) (bool, error)
+	ReleaseReportSchedule(ctx context.Context, id, holder string) error
 }
 
 func Now() time.Time { return time.Now().UTC() }

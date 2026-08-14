@@ -43,6 +43,7 @@ func BuiltinRoles() []auth.Role {
 			auth.Allow("viewer-artifact-read", ActionArtifactRead, "*"),
 			auth.Allow("viewer-memory-read", ActionMemoryRead, "*"),
 			auth.Allow("viewer-domain-read", ActionDomainRead, "*"),
+			auth.Allow("viewer-report-read", ActionReportRead, "*"),
 			// Seeing your own ceiling is not privileged: a caller who is being
 			// throttled should be able to find out why without an operator.
 			auth.Allow("viewer-quota-read", ActionQuotaRead, "*"),
@@ -88,6 +89,11 @@ func BuiltinRoles() []auth.Role {
 			auth.Allow("operator-objective-declare", ActionObjectiveDeclare, "*"),
 			auth.Allow("operator-objective-reconcile", ActionObjectiveReconcile, "*"),
 			auth.Allow("operator-objective-pause", ActionObjectivePause, "*"),
+			// An operator sets up the reports for the twins they run. Reading
+			// them is a viewer permission below: knowing that a daily brief
+			// exists and where it goes is not privileged, and somebody
+			// receiving one should be able to find out why.
+			auth.Allow("operator-report-write", ActionReportWrite, "*"),
 			auth.Allow("operator-loop-start", ActionLoopStart, "*"),
 			auth.Allow("operator-loop-resume", ActionLoopResume, "*"),
 			auth.Allow("operator-checkpoint-resolve", ActionCheckpointResolve, "*"),

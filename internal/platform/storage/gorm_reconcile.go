@@ -8,6 +8,7 @@ import (
 
 	"gorm.io/gorm"
 
+	"github.com/bsenel/karakuri/internal/core/digest"
 	coreerrors "github.com/bsenel/karakuri/internal/core/errors"
 	"github.com/bsenel/karakuri/internal/core/objective"
 	"github.com/bsenel/karakuri/internal/core/reconcile"
@@ -268,5 +269,131 @@ func reconcileStateFromModel(m schema.ReconcileStateModel) reconcile.State {
 
 		CreatedAt: m.CreatedAt,
 		UpdatedAt: m.UpdatedAt,
+	}
+}
+
+// ── Report schedules (Phase 21) ───────────────────────────────────────────
+
+func (s *GORMStorage) SaveReportSchedule(ctx context.Context, sch digest.Schedule) error {
+	cadJ, _ := json.Marshal(sch.Cadence)
+	return s.db.WithContext(ctx).Save(&schema.ReportScheduleModel{
+		ID:            sch.ID,
+		TwinID:        sch.TwinID,
+		CadenceJSON:   string(cadJ),
+		Channel:       sch.Channel,
+		Instance:      sch.Instance,
+		Target:        sch.Target,
+		Window:        sch.Window,
+		SendWhenEmpty: sch.SendWhenEmpty,
+		Enabled:       sch.Enabled,
+		NextDueAt:     sch.NextDueAt,
+		LastSentAt:    sch.LastSentAt,
+		LastError:     sch.LastError,
+		Holder:        sch.Holder,
+		LeaseUntil:    sch.LeaseUntil,
+	}).Error
+}
+
+func (s *GORMStorage) GetReportSchedule(ctx context.Context, id string) (digest.Schedule, error) {
+	var m schema.ReportScheduleModel
+	if err := s.db.WithContext(ctx).First(&m, "id = ?", id).Error; err != nil {
+		return digest.Schedule{}, err
+	}
+	return reportScheduleFromModel(m), nil
+}
+
+// ListReportSchedules returns every schedule, or those for one twin.
+func (s *GORMStorage) ListReportSchedules(ctx context.Context, twinID string) ([]digest.Schedule, error) {
+	var models []schema.ReportScheduleModel
+	q := s.db.WithContext(ctx).Order("created_at DESC")
+	if twinID != "" {
+		q = q.Where("twin_id = ?", twinID)
+	}
+	if err := q.Find(&models).Error; err != nil {
+		return nil, err
+	}
+	out := make([]digest.Schedule, len(models))
+	for i, m := range models {
+		out[i] = reportScheduleFromModel(m)
+	}
+	return out, nil
+}
+
+func (s *GORMStorage) DeleteReportSchedule(ctx context.Context, id string) error {
+	return s.db.WithContext(ctx).Delete(&schema.ReportScheduleModel{}, "id = ?", id).Error
+}
+
+// ListDueReportSchedules mirrors ListDueReconcileStates, including the lease
+// predicate in the WHERE rather than filtering after the read.
+func (s *GORMStorage) ListDueReportSchedules(ctx context.Context, holder string, now time.Time, limit int) ([]digest.Schedule, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	var models []schema.ReportScheduleModel
+	err := s.db.WithContext(ctx).
+		Where("enabled = ?", true).
+		Where("next_due_at IS NOT NULL AND next_due_at <= ?", now.UTC()).
+		Where("lease_until IS NULL OR lease_until <= ? OR holder = ?", now.UTC(), holder).
+		Order("next_due_at ASC").
+		Limit(limit).
+		Find(&models).Error
+	if err != nil {
+		return nil, err
+	}
+	out := make([]digest.Schedule, len(models))
+	for i, m := range models {
+		out[i] = reportScheduleFromModel(m)
+	}
+	return out, nil
+}
+
+// ClaimReportSchedule is the same conditional UPDATE as ClaimReconcileState,
+// and matters more: two replicas reconciling one objective wastes money, while
+// two replicas sending one morning report send it to a person twice.
+func (s *GORMStorage) ClaimReportSchedule(ctx context.Context, id, holder string, now, until time.Time) (bool, error) {
+	res := s.db.WithContext(ctx).
+		Model(&schema.ReportScheduleModel{}).
+		Where("id = ?", id).
+		Where("lease_until IS NULL OR lease_until <= ? OR holder = ?", now.UTC(), holder).
+		Updates(map[string]any{
+			"holder":      holder,
+			"lease_until": until.UTC(),
+			"updated_at":  now.UTC(),
+		})
+	if res.Error != nil {
+		return false, res.Error
+	}
+	return res.RowsAffected == 1, nil
+}
+
+func (s *GORMStorage) ReleaseReportSchedule(ctx context.Context, id, holder string) error {
+	return s.db.WithContext(ctx).
+		Model(&schema.ReportScheduleModel{}).
+		Where("id = ? AND holder = ?", id, holder).
+		Updates(map[string]any{"holder": "", "lease_until": nil}).Error
+}
+
+func reportScheduleFromModel(m schema.ReportScheduleModel) digest.Schedule {
+	var cadence objective.Cadence
+	if m.CadenceJSON != "" {
+		_ = json.Unmarshal([]byte(m.CadenceJSON), &cadence)
+	}
+	return digest.Schedule{
+		ID:            m.ID,
+		TwinID:        m.TwinID,
+		Cadence:       cadence,
+		Channel:       m.Channel,
+		Instance:      m.Instance,
+		Target:        m.Target,
+		Window:        m.Window,
+		SendWhenEmpty: m.SendWhenEmpty,
+		Enabled:       m.Enabled,
+		NextDueAt:     m.NextDueAt,
+		LastSentAt:    m.LastSentAt,
+		LastError:     m.LastError,
+		Holder:        m.Holder,
+		LeaseUntil:    m.LeaseUntil,
+		CreatedAt:     m.CreatedAt,
+		UpdatedAt:     m.UpdatedAt,
 	}
 }

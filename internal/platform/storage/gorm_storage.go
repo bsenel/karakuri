@@ -425,6 +425,12 @@ func (s *GORMStorage) SaveCheckpoint(ctx context.Context, c checkpoint.Checkpoin
 		ActionsJSON:  string(actsJ),
 		AuditEventID: c.AuditEventID,
 		Status:       string(c.Status), DecisionJSON: decJ, ResolvedAt: c.ResolvedAt,
+		// Passed through rather than always stamped. GORM's autoCreateTime
+		// fills a zero value, so a caller that does not care still gets now —
+		// but one that does (a backfill, a test fabricating history, a digest
+		// asking how long a decision has been waiting) is no longer silently
+		// overruled by the storage layer.
+		CreatedAt: c.CreatedAt,
 	}).Error
 }
 

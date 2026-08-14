@@ -41,6 +41,13 @@ const (
 	// halt should be the easier permission to hold, not the harder.
 	ActionObjectivePause auth.Action = "objective:pause"
 
+	// Digests (Phase 21). Reading a schedule is one permission and writing
+	// one is another, because a schedule is an instruction to send mail to a
+	// named address on a recurring basis — which is a way to make Karakuri
+	// message somebody who never asked to hear from it.
+	ActionReportRead  auth.Action = "report:read"
+	ActionReportWrite auth.Action = "report:write"
+
 	ActionLoopStart  auth.Action = "loop:start"
 	ActionLoopRead   auth.Action = "loop:read"
 	ActionLoopResume auth.Action = "loop:resume"
@@ -108,6 +115,9 @@ func NewCatalog() *auth.Catalog {
 		ActionObjectiveDeclare:   "declare an objective standing, with a cadence and an autonomy ceiling",
 		ActionObjectiveReconcile: "reconcile a standing objective now, outside its cadence",
 		ActionObjectivePause:     "pause and resume a standing objective",
+
+		ActionReportRead:  "read digest schedules and preview a digest",
+		ActionReportWrite: "declare, delete and send a digest schedule",
 
 		ActionLoopStart:  "start a reasoning loop",
 		ActionLoopRead:   "read loop status",
