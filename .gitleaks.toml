@@ -1,0 +1,26 @@
+# gitleaks configuration for Karakuri.
+#
+# Extends the default rule set and adds an allowlist so the secret scan does not
+# fire on non-secrets. The default config catches real credentials (verified: 0
+# in 50 commits + working tree); these allowlist entries are documented false
+# positives, each with a reason.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Documented false positives — reviewed 2026-08-13"
+paths = [
+  # Raw scanner output committed as audit evidence. govulncheck.json contains
+  # Go symbol hashes (long hex strings) that the sourcegraph-access-token rule
+  # matches; these are call-graph identifiers, not tokens. The whole evidence
+  # directory is machine-generated tool output, not source.
+  '''docs/audit/evidence/.*''',
+]
+regexes = [
+  # Throwaway credentials used only in local test/e2e config and the pentest
+  # transcript — never real, and documented as such in-line.
+  '''e2e-signing-key-not-used-anywhere-else''',
+  '''e2e-bootstrap-password''',
+  '''pentest-only-signing-key-not-used-anywhere-32b''',
+  '''PentestAdminPassw0rd!''',
+]

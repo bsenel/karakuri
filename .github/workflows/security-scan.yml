@@ -38,19 +38,19 @@ jobs:
           go-version: "1.25.x"
           cache: true
       - name: Root module
-        uses: golangci/golangci-lint-action@v6
+        uses: golangci/golangci-lint-action@v7
         with:
           version: v2.5.0
           args: --timeout=5m
       # The standalone modules have no frontend dependency and their own go.mod.
       - name: auth module
-        uses: golangci/golangci-lint-action@v6
+        uses: golangci/golangci-lint-action@v7
         with:
           version: v2.5.0
           working-directory: auth
           args: --timeout=5m --config=${{ github.workspace }}/.golangci.yml
       - name: quota module
-        uses: golangci/golangci-lint-action@v6
+        uses: golangci/golangci-lint-action@v7
         with:
           version: v2.5.0
           working-directory: quota
@@ -92,6 +92,10 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: "1.25.x"
+          # Always take the newest 1.25.x patch. govulncheck's stdlib analysis is
+          # relative to the running toolchain, so a stale patch would report
+          # stdlib advisories already fixed upstream — close that window here.
+          check-latest: true
           cache: true
       - name: Build frontend (embed target)
         uses: actions/setup-node@v4
@@ -148,7 +152,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Trivy config + secret + vuln (fs)
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@0.35.0
         with:
           scan-type: fs
           scan-ref: .

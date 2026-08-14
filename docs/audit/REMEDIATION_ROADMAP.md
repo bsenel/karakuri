@@ -10,7 +10,11 @@ Single prioritized, dated view across every workstream. Findings: `F-*` security
 
 | | Count | Findings |
 |--|------:|----------|
-| ✅ Fixed & verified this branch | 12 | F-01, F-03, F-04, F-05, F-06, F-07, F-08, F-10, F-11, F-13, F-14, F-16, F-20 |
+| ✅ Fixed & verified this branch | 13 | F-01, F-03, F-04, F-05, F-06, F-07, F-08, F-10, F-11, F-13, F-14, F-16, F-20, **F-26** |
+
+**F-26** was surfaced by the new govulncheck gate on the PR's first CI run — a real
+SAML XML-signature-bypass in `goxmldsig` (GO-2026-4753), fixed by bumping v1.4.0→v1.6.0.
+The pipeline earning its keep on day one.
 | 📋 Tracked P1 (target +30d) | 8 | F-02, F-09, F-17, F-18, F-23, E-02, E-03, E-06 |
 | 📋 Tracked P2 (target +90d) | 10 | F-12, F-15, F-19, F-21, F-22, F-24, F-25, E-04, E-05, G-04 |
 | 🏢 Organizational (separate evidence) | — | COMPLIANCE_AUDIT §7 |
@@ -22,6 +26,7 @@ P1 done opportunistically alongside the P0 tranche.)*
 
 | ID | Title | Severity | Remediation commit | Regression / CI gate | Retest |
 |----|-------|----------|--------------------|----------------------|--------|
+| F-26 | goxmldsig SAML signature-bypass (GO-2026-4753) | High | (CI fix commit) | govulncheck gate (it caught this) | ✅ goxmldsig v1.4.0→v1.6.0, govulncheck clean |
 | F-01 | Path traversal via `objective_id` | High | `03502df` | `internal/platform/git/traversal_test.go`; Trivy fs | PT-01 ✅ dir not created |
 | F-03 | No rate limit on unauth routes | High | `117a580` | `ratelimit_test.go`; (login-flood is manual) | PT-03 ✅ 26/30→429 |
 | F-16 | Refresh token in CLI callback URL | High | `befab80` | `auth/sealed_test.go` (confidentiality) | PT-04 ✅ code is ciphertext |
