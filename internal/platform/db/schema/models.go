@@ -233,6 +233,10 @@ type ReconcileStateModel struct {
 	LastTrigger      string     `gorm:"column:last_trigger;not null;default:''"`
 	LastOutcomeID    string     `gorm:"column:last_outcome_id;not null;default:''"`
 	LastError        string     `gorm:"column:last_error;not null;default:''"`
+	// The loop left running when a reconcile escalated. The supervisor does
+	// not sit on a paused loop — a human may take days — so it lets go of the
+	// lease and remembers what it let go of.
+	ActiveLoopID string `gorm:"column:active_loop_id;not null;default:''"`
 
 	CriteriaMet         float64 `gorm:"column:criteria_met;not null;default:0.0"`
 	ScoreStreak         int     `gorm:"column:score_streak;not null;default:0"`

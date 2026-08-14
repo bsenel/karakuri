@@ -279,6 +279,17 @@ func BootstrapServer(cfgPath string) (*Bootstrap, error) {
 	// horizon costs the drill-down and not the totals.
 	startCostRetention(ctx, quotaDeps, cfg.Quota.CostRetentionDays)
 
+	// The supervisor that holds standing objectives at their declared state
+	// (Phase 20). It does nothing on a deployment that has declared none, so
+	// it starts by default; the config flag is the kill switch for a
+	// deployment that wants the feature off outright.
+	if cfg.Reconcile.IsEnabled() {
+		apiApp.Reconcile.Start(ctx)
+	} else {
+		slog.Info("reconcile supervisor disabled by configuration",
+			"note", "standing objectives keep their state and stop becoming due")
+	}
+
 	return &Bootstrap{Config: cfg, App: apiApp, Store: store, Worktrees: wt}, nil
 }
 

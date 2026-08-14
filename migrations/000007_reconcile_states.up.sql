@@ -52,6 +52,10 @@ CREATE TABLE IF NOT EXISTS reconcile_states (
 	last_trigger       TEXT NOT NULL DEFAULT '',
 	last_outcome_id    TEXT NOT NULL DEFAULT '',
 	last_error         TEXT NOT NULL DEFAULT '',
+	-- The loop left running when a reconcile escalated. The supervisor does not
+	-- sit on a paused loop — a human may take days, and holding a lease and a
+	-- concurrency slot that long would starve every other standing objective.
+	active_loop_id     TEXT NOT NULL DEFAULT '',
 
 	criteria_met         DOUBLE PRECISION NOT NULL DEFAULT 0.0,
 	-- Consecutive reconciles that failed to improve the score. An objective

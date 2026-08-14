@@ -67,6 +67,9 @@ type TwinFilter struct {
 type ObjectiveFilter struct {
 	TwinID string
 	Status string
+	// Mode narrows to oneshot or standing objectives. Empty matches both,
+	// which is what every caller predating standing objectives wants.
+	Mode string
 
 	Visible *ScopeSelector
 	Hidden  ScopeSelector
@@ -136,6 +139,16 @@ const (
 	// Attempts belong beside approvals: reviewing who approved what should also
 	// show who was turned away. The payload carries the full decision trace.
 	ToolEventAuthzDenied = "authz_denied"
+	// ToolEventPromotion and ToolEventDemotion (Phase 20) record a standing
+	// objective moving up or down the autonomy ladder.
+	//
+	// They are their own kinds rather than a field on a reconcile outcome
+	// because a change in what Karakuri may do to the world without asking is
+	// a security-relevant event in its own right. Somebody reviewing why an
+	// agent acted unsupervised should be able to find the moment it was
+	// allowed to, in the same log as the approvals and the refusals.
+	ToolEventPromotion = "promotion"
+	ToolEventDemotion  = "demotion"
 )
 
 // ToolEventFilter narrows the audit log query. All fields are optional;
