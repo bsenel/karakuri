@@ -80,6 +80,14 @@ func BuiltinRoles() []auth.Role {
 			auth.Allow("operator-twin-bind", ActionTwinBind, "*"),
 			auth.Allow("operator-objective-create", ActionObjectiveCreate, "*"),
 			auth.Allow("operator-objective-update", ActionObjectiveUpdate, "*"),
+			// An operator declares standing objectives, reconciles them on
+			// demand, and stops them. Declaring one is the heaviest of the
+			// three — it is what commits a deployment to recurring spend —
+			// but an operator already holds loop:start, and a standing
+			// objective is a loop somebody does not have to keep starting.
+			auth.Allow("operator-objective-declare", ActionObjectiveDeclare, "*"),
+			auth.Allow("operator-objective-reconcile", ActionObjectiveReconcile, "*"),
+			auth.Allow("operator-objective-pause", ActionObjectivePause, "*"),
 			auth.Allow("operator-loop-start", ActionLoopStart, "*"),
 			auth.Allow("operator-loop-resume", ActionLoopResume, "*"),
 			auth.Allow("operator-checkpoint-resolve", ActionCheckpointResolve, "*"),
@@ -121,6 +129,11 @@ func BuiltinRoles() []auth.Role {
 			auth.Allow("contributor-twin-bind", ActionTwinBind, "twin:*").When(owned),
 			auth.Allow("contributor-objective-create", ActionObjectiveCreate, "*"),
 			auth.Allow("contributor-loop-start", ActionLoopStart, "*"),
+			// A contributor may stop a standing objective but not declare one.
+			// Halting should be the easier permission to hold: at 3am the
+			// person who can see something is wrong is not always the person
+			// who was allowed to start it.
+			auth.Allow("contributor-objective-pause", ActionObjectivePause, "*"),
 		},
 	}
 

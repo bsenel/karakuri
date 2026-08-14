@@ -11,6 +11,7 @@ func objectiveCmd() *cobra.Command {
 		Short: "Manage objectives",
 	}
 	cmd.AddCommand(objectiveCreateCmd(), objectiveGetCmd(), objectiveListCmd(), objectiveTemplatesCmd())
+	cmd.AddCommand(standingCmds()...)
 	return cmd
 }
 
@@ -85,7 +86,7 @@ func objectiveListCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&twinID, "twin", "", "Filter by twin ID")
-	cmd.Flags().StringVar(&status, "status", "", "Filter by status (pending|active|completed|failed)")
+	cmd.Flags().StringVar(&status, "status", "", "Filter by status (pending|active|blocked|converged|completed|failed)")
 	return cmd
 }
 
