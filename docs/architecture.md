@@ -38,7 +38,40 @@ Each step is a separate file in `internal/feature/loop/`:
 | Verify  | verify.go   | Evaluate success criteria via agent or env results; compute weighted score |
 | Learn   | learn.go    | Write episodic + procedural memory; trigger consolidation to semantic tier |
 
-Watch mode (`watch.go`): after loop completes, subscribes to all environments and emits checkpoints when SHA changes.
+## The Outer Loop — Standing Objectives
+
+The loop above converges once. `internal/feature/reconcile` is what keeps
+calling it for an objective declared **standing** (Phase 20, [ADR 015](adr/015-standing-objectives-and-reconciliation.md)):
+
+```
+        due-wheel tick (one goroutine, indexed next_due_at)
+                        │
+                   claim lease
+                        │
+        SENSE ── Snapshot() ×N → sorted composite hash
+                        │            (adapter calls, no model call)
+       ┌────────────────┴────────────────┐
+  unchanged                     drift, schedule, or resync
+       │                                 │
+  record, sleep              RECONCILE ── loop.Service.Run(req)
+                                          with req.Agent.Authority
+                                          rewritten by earned autonomy
+```
+
+It is a **caller** of the loop, not a change to it: the six steps are
+untouched, and autonomy becomes enforcement by writing
+`agent.AuthorityBounds` into the request — the struct the decide step has
+enforced since Phase 1, so there is no second gate to disagree with the first.
+
+| Concern | Where |
+|---------|-------|
+| Declaration (mode, cadence, autonomy) | `internal/core/objective/standing.go` |
+| Runtime state, drift, outcomes | `internal/core/reconcile/` |
+| Supervisor, sense tier, authority mapping | `internal/feature/reconcile/` |
+| Cadence maths (cron, timezone, quiet windows) | `internal/platform/schedule/` |
+
+Watch mode used to live in `loop/watch.go`; it is now a standing objective at
+`sense` autonomy, which behaves the same and survives a restart.
 
 ## Four-Tier Memory
 
