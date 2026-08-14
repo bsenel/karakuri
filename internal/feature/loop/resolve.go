@@ -79,7 +79,13 @@ func BuildEnvironments(
 			adapterBindings = t.AdapterBindings
 		}
 	}
-	buildCtx := environment.BuildContext{TwinID: obj.TwinID, AdapterBindings: adapterBindings}
+	buildCtx := environment.BuildContext{
+		TwinID:          obj.TwinID,
+		AdapterBindings: adapterBindings,
+		// Nil unless bootstrap wired it, which is the ordinary case for every
+		// pack except karakuri's.
+		Telemetry: envReg.Telemetry(),
+	}
 
 	var envs []environment.Environment
 	seen := make(map[string]bool)
