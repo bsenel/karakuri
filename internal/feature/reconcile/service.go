@@ -17,6 +17,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -25,6 +26,7 @@ import (
 
 	"github.com/bsenel/karakuri/internal/core/domain"
 	"github.com/bsenel/karakuri/internal/core/environment"
+	coreerrors "github.com/bsenel/karakuri/internal/core/errors"
 	"github.com/bsenel/karakuri/internal/core/event"
 	coreloop "github.com/bsenel/karakuri/internal/core/loop"
 	"github.com/bsenel/karakuri/internal/core/objective"
@@ -60,6 +62,15 @@ type Config struct {
 	// unnoticed, and neither side of that is an operator's decision. Tests
 	// set it so they do not pay two seconds per loop.
 	LoopPoll time.Duration
+
+	// MaxLoopWait bounds how long one pass will watch a single loop before
+	// letting go of it. The lease heartbeat rides on the same ticker, so a
+	// loop whose goroutine has died — a panic, a wedged adapter, a provider
+	// socket that never answers — leaves a row that is neither completed nor
+	// paused, and a watcher that renews its own claim forever. Without a
+	// ceiling that pass holds one of MaxConcurrent slots for the life of the
+	// process, and four of them stop the supervisor dead.
+	MaxLoopWait time.Duration
 }
 
 func (c Config) withDefaults() Config {
@@ -83,6 +94,12 @@ func (c Config) withDefaults() Config {
 	}
 	if c.MaxBackoff <= 0 {
 		c.MaxBackoff = time.Hour
+	}
+	if c.MaxLoopWait <= 0 {
+		// Generous on purpose: a real reconcile can run for hours, and
+		// cutting a working loop loose is worse than watching a dead one
+		// for a while. This is a stuck-detector, not a timeout.
+		c.MaxLoopWait = 6 * time.Hour
 	}
 	if c.LoopPoll <= 0 {
 		c.LoopPoll = 2 * time.Second
@@ -266,11 +283,46 @@ func (s *Service) Adopt(ctx context.Context) error {
 		return fmt.Errorf("list standing objectives: %w", err)
 	}
 	for _, obj := range standing {
-		if _, err := s.store.GetReconcileState(ctx, obj.ID); err == nil {
+		_, err := s.store.GetReconcileState(ctx, obj.ID)
+		if err == nil {
+			continue
+		}
+		if !errors.Is(err, coreerrors.ErrNotFound) {
+			// A database that answered "I cannot tell you" is not a
+			// database that said "there is no such row". Adopting on this
+			// error would rebuild the state from scratch and throw away
+			// earned autonomy, the failure counters and the converged
+			// fingerprint. Skip; adoption is periodic and will retry.
+			slog.Warn("could not read reconcile state; leaving it alone",
+				"objective", string(obj.ID), "err", err)
 			continue
 		}
 		if err := s.Declare(ctx, obj); err != nil {
 			slog.Warn("could not adopt standing objective", "objective", string(obj.ID), "err", err)
+		}
+	}
+
+	// And the other half of the promise: take the control loop away from
+	// anything that has stopped being standing. Undeclaring through the API
+	// already does this, but a mode changed by a migration or a hand-edited
+	// row leaves a state row nothing else will ever collect — the due query
+	// only returns rows that are due, so an orphan parked far in the future
+	// is invisible to every other path.
+	ids, err := s.store.ListReconcileStateIDs(ctx)
+	if err != nil {
+		// Adoption already did its useful half; sweeping is best effort.
+		return nil
+	}
+	keep := make(map[objective.ObjectiveID]struct{}, len(standing))
+	for _, obj := range standing {
+		keep[obj.ID] = struct{}{}
+	}
+	for _, id := range ids {
+		if _, ok := keep[id]; ok {
+			continue
+		}
+		if err := s.store.DeleteReconcileState(ctx, id); err != nil {
+			slog.Warn("could not drop orphaned reconcile state", "objective", string(id), "err", err)
 		}
 	}
 	return nil
@@ -293,6 +345,13 @@ func (s *Service) Declare(ctx context.Context, obj objective.Objective) error {
 
 	now := s.now()
 	existing, err := s.store.GetReconcileState(ctx, obj.ID)
+	if err != nil && !errors.Is(err, coreerrors.ErrNotFound) {
+		// Creating a fresh state here would silently discard whatever the
+		// existing row holds — earned autonomy, the breaker's pause, the
+		// converged fingerprint. A read that failed for any reason other
+		// than absence is a reason to stop, not to start over.
+		return fmt.Errorf("read reconcile state: %w", err)
+	}
 	if err != nil {
 		st := reconcile.State{
 			ObjectiveID: obj.ID,
@@ -380,7 +439,15 @@ func (s *Service) Trigger(ctx context.Context, id objective.ObjectiveID) error {
 	if st.Paused {
 		return fmt.Errorf("objective %q is paused: %s", id, st.PausedReason)
 	}
-	s.dispatch(ctx, id, reconcile.TriggerManual)
+	// Detached from the caller. This is reached from an HTTP handler that
+	// returns 202 the moment dispatch hands off, and net/http cancels the
+	// request context at that point — so a pass holding it would be killed
+	// before its first query and the operator would be told the reconcile
+	// had started when nothing ever ran.
+	//
+	// Tick's context is deliberately left alone: there, cancellation is how
+	// shutdown stops the wheel.
+	s.dispatch(context.WithoutCancel(ctx), id, reconcile.TriggerManual)
 	return nil
 }
 

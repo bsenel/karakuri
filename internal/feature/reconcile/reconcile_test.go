@@ -480,6 +480,38 @@ func TestStallDetectorStopsBurningTokens(t *testing.T) {
 	}
 }
 
+// The other half of the stall detector, and the half that was wrong: an
+// objective climbing 0.2 → 0.5 → 0.8 is working, and pausing it for "no
+// improvement" takes a converging objective out of rotation three passes
+// before it would have arrived.
+//
+// The bug was invisible to the test above because flat scores stall either
+// way. finish() assigned st.CriteriaMet from the outcome and then compared the
+// outcome against st.CriteriaMet — a value against itself, so every pass
+// counted as no improvement.
+func TestStallDetectorLeavesImprovingObjectivesAlone(t *testing.T) {
+	f := newFixture(t, Config{StallReconciles: 3})
+	f.use(t, map[string]string{"git": "aaa"})
+	obj := f.declare(t, objective.Objective{
+		Cadence:  &objective.Cadence{Every: "1h"},
+		Autonomy: &objective.Autonomy{Level: objective.AutonomyAct, Ceiling: objective.AutonomyAct},
+	})
+
+	for _, score := range []float64{0.2, 0.5, 0.8} {
+		f.loops.criteriaMet = score
+		f.pass(t, obj.ID, reconcile.TriggerManual)
+		f.clock = f.clock.Add(time.Hour)
+	}
+
+	st := f.state(t, obj.ID)
+	if st.Paused {
+		t.Fatalf("an objective improving 0.2 -> 0.5 -> 0.8 was paused as stalled: %s", st.PausedReason)
+	}
+	if st.ScoreStreak != 0 {
+		t.Errorf("score_streak = %d after three straight improvements, want 0", st.ScoreStreak)
+	}
+}
+
 // An escalation is not a failure. A loop that stopped to ask a question did
 // the right thing, and a breaker counting questions would trip precisely on
 // the objectives being most careful.

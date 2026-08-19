@@ -251,6 +251,12 @@ type StorageAdapter interface {
 	GetReconcileState(ctx context.Context, objectiveID objective.ObjectiveID) (reconcile.State, error)
 	DeleteReconcileState(ctx context.Context, objectiveID objective.ObjectiveID) error
 
+	// ListReconcileStateIDs names every objective holding a control-loop
+	// state row. Adoption needs it to find rows whose objective has stopped
+	// being standing: the due query only ever returns rows that are due, so
+	// an orphan that is never due would otherwise live forever.
+	ListReconcileStateIDs(ctx context.Context) ([]objective.ObjectiveID, error)
+
 	// ListDueReconcileStates returns unpaused states whose next due time has
 	// arrived and whose lease is free or held by holder. It is the
 	// supervisor's hot path, run on every tick.

@@ -2,10 +2,10 @@ package reconcile
 
 import (
 	"context"
-	"fmt"
-	"time"
-
 	"encoding/json"
+	"fmt"
+	"log/slog"
+	"time"
 
 	coreagent "github.com/bsenel/karakuri/internal/core/agent"
 	"github.com/bsenel/karakuri/internal/core/event"
@@ -67,22 +67,29 @@ func (s *Service) pass(ctx context.Context, id objective.ObjectiveID, forced rec
 		return nil
 	}
 
-	cadence := obj.CadenceDeclaration()
+	cadence := s.effectiveCadence(obj.CadenceDeclaration())
 	decl := obj.AutonomyDeclaration()
 	level := st.EffectiveAutonomy(decl)
 
 	// A loop this objective left running, because a previous pass escalated
 	// and let go rather than sit on a human for a day.
+	var settledConverged bool
 	if st.ActiveLoopID != "" {
-		done, err := s.settleActiveLoop(ctx, &st, obj, decl)
+		done, converged, err := s.settleActiveLoop(ctx, &st, obj, decl)
 		if err != nil {
 			return err
 		}
+		settledConverged = converged
 		if !done {
 			// Still with the human, or still running. Come back later; do
 			// not start a second loop on the same objective.
+			//
+			// The re-arm has to be persisted, not just held in memory: an
+			// unsaved next_due_at leaves the row due on every tick, so a
+			// checkpoint nobody answers for a week is a claim, a lease and
+			// a concurrency slot burned every thirty seconds for a week.
 			s.reschedule(&st, cadence, now.Add(s.cfg.LeaseTTL))
-			return nil
+			return s.store.SaveReconcileState(ctx, st)
 		}
 	}
 
@@ -93,6 +100,21 @@ func (s *Service) pass(ctx context.Context, id objective.ObjectiveID, forced rec
 	// scheduled reconcile still wants to know what moved so its outcome can
 	// say so, and it costs the same handful of adapter calls either way.
 	fp := fingerprint(ctx, envs)
+
+	// A loop that settled just now converged against the world as it stands
+	// at this moment, so the baseline moves here — before the comparison, not
+	// after it. Re-baselining afterwards would let the very change that loop
+	// was approved to handle read as fresh drift, and a propose-level
+	// objective would escalate the same change on every pass forever.
+	if settledConverged && fp.SHA != "" {
+		st.Converged = fp
+		st.Converged.TakenAt = started
+		s.publish(ctx, event.TypeConverged, obj, map[string]any{
+			"criteria_met": st.CriteriaMet,
+			"fingerprint":  fp.SHA,
+		})
+	}
+
 	drift := compare(st.Converged, fp)
 	st.LastRunAt = &started
 
@@ -270,12 +292,27 @@ func (s *Service) awaitLoop(ctx context.Context, loopID string, objID objective.
 	ticker := time.NewTicker(s.cfg.LoopPoll)
 	defer ticker.Stop()
 
+	// The displacement check below cannot rescue a wedged watch on its own:
+	// this pass renews its own lease on every tick, so it can never be
+	// displaced by anybody. The deadline is what stops a loop whose goroutine
+	// died from holding a concurrency slot until the process restarts.
+	deadline := s.now().Add(s.cfg.MaxLoopWait)
+
 	var last coreloop.State
 	for {
 		select {
 		case <-ctx.Done():
 			return last, false
 		case <-ticker.C:
+			if s.now().After(deadline) {
+				slog.Warn("gave up watching a reconcile loop",
+					"objective", string(objID), "loop", loopID,
+					"waited", s.cfg.MaxLoopWait.String())
+				// Let go the same way an escalation does: the objective
+				// keeps ActiveLoopID, so a later pass settles it if it ever
+				// finishes, and the slot is freed meanwhile.
+				return last, true
+			}
 			ls, err := s.store.GetLoopState(ctx, loopID)
 			if err != nil {
 				continue
@@ -300,23 +337,29 @@ func (s *Service) awaitLoop(ctx context.Context, loopID string, objID objective.
 
 // settleActiveLoop folds in a loop that a previous pass left running.
 //
-// Returns whether the objective is free to be worked on again. A loop still
-// waiting on a human is not, and neither is one still executing.
-func (s *Service) settleActiveLoop(ctx context.Context, st *reconcile.State, obj objective.Objective, decl objective.Autonomy) (bool, error) {
+// Returns whether the objective is free to be worked on again, and whether the
+// loop that just settled reached its criteria. A loop still waiting on a human
+// is not free, and neither is one still executing.
+//
+// The caller needs the second answer because a loop that converged while the
+// supervisor was away converged against the world as it stands now. Its
+// baseline has to move with it, and only the caller holds the fresh
+// fingerprint to move it to.
+func (s *Service) settleActiveLoop(ctx context.Context, st *reconcile.State, obj objective.Objective, decl objective.Autonomy) (done, converged bool, err error) {
 	ls, err := s.store.GetLoopState(ctx, st.ActiveLoopID)
 	if err != nil {
 		// The row is gone — a pruned database, or a loop that never
 		// persisted. Nothing to wait for.
 		st.ActiveLoopID = ""
-		return true, nil
+		return true, false, nil
 	}
 	if !ls.Completed {
 		if ls.Paused {
 			st.Phase = reconcile.PhaseWaiting
-			return false, nil
+			return false, false, nil
 		}
 		st.Phase = reconcile.PhaseReconciling
-		return false, nil
+		return false, false, nil
 	}
 
 	// The human answered and the loop ran on to its end. What they answered
@@ -338,10 +381,17 @@ func (s *Service) settleActiveLoop(ctx context.Context, st *reconcile.State, obj
 	if rejected {
 		s.applyDemotion(ctx, st, obj, decl, "checkpoint_rejected")
 		st.CleanRuns = 0
-	} else if ls.CriteriaMet >= 1.0 {
-		s.applyCleanRun(ctx, st, obj, decl)
+		return true, false, s.store.SaveReconcileState(ctx, *st)
 	}
-	return true, s.store.SaveReconcileState(ctx, *st)
+
+	if ls.CriteriaMet >= 1.0 {
+		st.LastConvergedAt = &now
+		st.ScoreStreak = 0
+		s.applyCleanRun(ctx, st, obj, decl)
+		_ = s.store.UpdateObjectiveStatus(ctx, obj.ID, objective.StatusConverged)
+		return true, true, s.store.SaveReconcileState(ctx, *st)
+	}
+	return true, false, s.store.SaveReconcileState(ctx, *st)
 }
 
 // finish records the pass, moves the counters, and re-arms the schedule. It is
@@ -357,6 +407,12 @@ func (s *Service) finish(
 ) error {
 	now := s.now()
 	decl := obj.AutonomyDeclaration()
+
+	// The score this pass has to beat, captured before st.CriteriaMet is
+	// overwritten below. Comparing the outcome against the field it was just
+	// written into compares a value with itself, which is always "no
+	// improvement" — and stalls objectives that are converging nicely.
+	previousScore := st.CriteriaMet
 
 	st.LastOutcomeID = outcome.ID
 	st.CriteriaMet = outcome.CriteriaMet
@@ -418,7 +474,7 @@ func (s *Service) finish(
 				"criteria_met": outcome.CriteriaMet,
 				"fingerprint":  st.Converged.SHA,
 			})
-		} else if outcome.CriteriaMet <= st.CriteriaMet {
+		} else if outcome.CriteriaMet <= previousScore {
 			st.ScoreStreak++
 		} else {
 			st.ScoreStreak = 0
@@ -527,6 +583,21 @@ func (s *Service) recordAutonomyChange(ctx context.Context, obj objective.Object
 		"to":     string(to),
 		"reason": reason,
 	})
+}
+
+// effectiveCadence fills in the deployment-wide floor for an objective whose
+// own declaration did not name one.
+//
+// Without this, reconcile.default_min_interval is a setting that reads as a
+// guardrail and does nothing: schedule.Allowed only ever sees the cadence, and
+// a cadence with no min_interval imposes no floor at all. An objective sensing
+// every 30 seconds against a busy repository would then drive a paid loop on
+// every push, which is the exact thing the setting claims to prevent.
+func (s *Service) effectiveCadence(c objective.Cadence) objective.Cadence {
+	if c.MinIntervalDuration() <= 0 && s.cfg.DefaultMinInterval > 0 {
+		c.MinInterval = s.cfg.DefaultMinInterval.String()
+	}
+	return c
 }
 
 // reschedule re-arms the due-wheel. A non-zero floor (a backoff, a lease we
