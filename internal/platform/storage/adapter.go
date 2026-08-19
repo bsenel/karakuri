@@ -9,6 +9,7 @@ import (
 	coreloop "github.com/bsenel/karakuri/internal/core/loop"
 	"github.com/bsenel/karakuri/internal/core/memory"
 	"github.com/bsenel/karakuri/internal/core/objective"
+	"github.com/bsenel/karakuri/internal/core/reconcile"
 	"github.com/bsenel/karakuri/internal/core/twin"
 	"github.com/bsenel/karakuri/internal/core/vfs"
 )
@@ -230,6 +231,39 @@ type StorageAdapter interface {
 	GetResourceScopes(ctx context.Context, resourceType, resourceID string) (container.ResourceScopes, error)
 	ListScopedResources(ctx context.Context, f container.ScopeFilter) ([]container.ResourceScopes, error)
 	DeleteResourceScopes(ctx context.Context, resourceType, resourceID string) error
+
+	// Reconcile state (Phase 20 — the outer control loop over standing
+	// objectives).
+	SaveReconcileState(ctx context.Context, s reconcile.State) error
+	GetReconcileState(ctx context.Context, objectiveID objective.ObjectiveID) (reconcile.State, error)
+	DeleteReconcileState(ctx context.Context, objectiveID objective.ObjectiveID) error
+
+	// ListDueReconcileStates returns unpaused states whose next due time has
+	// arrived and whose lease is free or held by holder. It is the
+	// supervisor's hot path, run on every tick.
+	ListDueReconcileStates(ctx context.Context, holder string, now time.Time, limit int) ([]reconcile.State, error)
+
+	// ClaimReconcileState takes the lease on one objective, returning false
+	// when somebody else holds a live one.
+	//
+	// This is a conditional UPDATE rather than a read followed by a write:
+	// the database arbitrates, which is what makes two replicas racing for
+	// the same objective safe without a coordination service Karakuri does
+	// not have. A crashed holder releases nothing — its lease simply runs
+	// out, and the next replica to ask wins.
+	ClaimReconcileState(ctx context.Context, objectiveID objective.ObjectiveID, holder string, now, until time.Time) (bool, error)
+
+	// RenewReconcileLease extends a claim the caller already holds. It fails
+	// rather than steals: a holder whose lease expired mid-run has to accept
+	// that somebody else may have taken over.
+	RenewReconcileLease(ctx context.Context, objectiveID objective.ObjectiveID, holder string, now, until time.Time) (bool, error)
+
+	// ReleaseReconcileLease drops a claim on the ordinary path, so the next
+	// due objective does not wait out a lease nobody is using.
+	ReleaseReconcileLease(ctx context.Context, objectiveID objective.ObjectiveID, holder string) error
+
+	SaveReconcileOutcome(ctx context.Context, o reconcile.Outcome) error
+	ListReconcileOutcomes(ctx context.Context, objectiveID objective.ObjectiveID, limit int) ([]reconcile.Outcome, error)
 }
 
 func Now() time.Time { return time.Now().UTC() }

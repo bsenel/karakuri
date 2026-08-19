@@ -41,6 +41,7 @@ require (
 	github.com/go-chi/chi/v5 v5.3.1
 	github.com/go-git/go-git/v5 v5.19.2
 	github.com/parquet-go/parquet-go v0.30.1
+	github.com/robfig/cron/v3 v3.0.1
 	github.com/spf13/cobra v1.10.2
 	github.com/tmc/langchaingo v0.1.14
 	go.opentelemetry.io/otel v1.45.0

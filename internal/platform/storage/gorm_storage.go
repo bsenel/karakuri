@@ -163,12 +163,23 @@ func (s *GORMStorage) SaveObjective(ctx context.Context, o objective.Objective) 
 		pid := string(*o.ParentID)
 		parentID = &pid
 	}
+	// Nil cadence and nil autonomy store as the empty string rather than as
+	// "null", so the round trip below can tell "never declared" from
+	// "declared and empty" without a nullable column.
+	var cadenceJ, autonomyJ []byte
+	if o.Cadence != nil {
+		cadenceJ, _ = json.Marshal(o.Cadence)
+	}
+	if o.Autonomy != nil {
+		autonomyJ, _ = json.Marshal(o.Autonomy)
+	}
 	return s.db.WithContext(ctx).Save(&schema.ObjectiveModel{
 		ID: string(o.ID), Title: o.Title, Description: o.Description, Domain: o.Domain,
 		AdditionalDomainsJSON: string(addJ),
 		TwinID:                o.TwinID, Priority: o.Priority, MaxIterations: o.MaxIterations, Deadline: o.Deadline,
 		CriteriaJSON: string(critJ), ConstraintsJSON: string(constrJ), ParentID: parentID,
 		Status: string(o.Status),
+		Mode:   string(o.Mode), CadenceJSON: string(cadenceJ), AutonomyJSON: string(autonomyJ),
 	}).Error
 }
 
@@ -219,12 +230,29 @@ func objectiveFromModel(m schema.ObjectiveModel) objective.Objective {
 		pid := objective.ObjectiveID(*m.ParentID)
 		parentID = &pid
 	}
+	var cadence *objective.Cadence
+	if m.CadenceJSON != "" {
+		var c objective.Cadence
+		if err := json.Unmarshal([]byte(m.CadenceJSON), &c); err == nil {
+			cadence = &c
+		}
+	}
+	var autonomy *objective.Autonomy
+	if m.AutonomyJSON != "" {
+		var a objective.Autonomy
+		if err := json.Unmarshal([]byte(m.AutonomyJSON), &a); err == nil {
+			autonomy = &a
+		}
+	}
 	return objective.Objective{
 		ID: objective.ObjectiveID(m.ID), Title: m.Title, Description: m.Description,
 		Domain: m.Domain, AdditionalDomains: additionalDomains,
 		TwinID: m.TwinID, Priority: m.Priority, MaxIterations: m.MaxIterations, Deadline: m.Deadline,
 		SuccessCriteria: criteria, Constraints: constraints, ParentID: parentID,
 		Status:    objective.ObjectiveStatus(m.Status),
+		Mode:      objective.Mode(m.Mode),
+		Cadence:   cadence,
+		Autonomy:  autonomy,
 		CreatedAt: m.CreatedAt, UpdatedAt: m.UpdatedAt,
 	}
 }

@@ -34,8 +34,15 @@ type ObjectiveModel struct {
 	ParentID              *string    `gorm:"column:parent_id"`
 	Status                string     `gorm:"column:status;not null;default:'pending'"`
 	TwinID                string     `gorm:"column:twin_id;index"`
-	CreatedAt             time.Time  `gorm:"column:created_at;autoCreateTime"`
-	UpdatedAt             time.Time  `gorm:"column:updated_at;autoUpdateTime"`
+	// Standing-objective declaration (Phase 20). Mode is indexed because the
+	// supervisor's boot scan asks for standing objectives and nothing else.
+	// Empty means oneshot, which is what every row written before Phase 20
+	// reads as — adding a column must not change what an existing row means.
+	Mode         string    `gorm:"column:mode;not null;default:'';index"`
+	CadenceJSON  string    `gorm:"column:cadence_json;not null;default:''"`
+	AutonomyJSON string    `gorm:"column:autonomy_json;not null;default:''"`
+	CreatedAt    time.Time `gorm:"column:created_at;autoCreateTime"`
+	UpdatedAt    time.Time `gorm:"column:updated_at;autoUpdateTime"`
 }
 
 func (ObjectiveModel) TableName() string { return "objectives" }
@@ -186,6 +193,94 @@ type LoopStateModel struct {
 }
 
 func (LoopStateModel) TableName() string { return "loop_states" }
+
+// ReconcileStateModel persists one standing objective's outer control loop
+// (Phase 20): when it is next due, what the world looked like when it last
+// converged, how it has been going, and who is currently working on it.
+//
+// The primary key is the objective ID rather than a synthetic one. A standing
+// objective has exactly one control loop by definition, and keying on the
+// objective makes "claim this objective" a single-row conditional UPDATE with
+// nothing to disambiguate.
+//
+// Three indices carry the design. next_due_at is the due-wheel query and the
+// only one on the hot path — the supervisor asks "what is due" every tick and
+// must not scan. lease_until lets an operator find claims that outlived their
+// holder. paused keeps stopped objectives out of the due scan entirely.
+type ReconcileStateModel struct {
+	ObjectiveID  string `gorm:"primaryKey;column:objective_id"`
+	TwinID       string `gorm:"column:twin_id;not null;default:'';index"`
+	Phase        string `gorm:"column:phase;not null;default:'idle'"`
+	Paused       bool   `gorm:"column:paused;not null;default:false;index"`
+	PausedReason string `gorm:"column:paused_reason;not null;default:''"`
+
+	// Nullable because "never due on its own" is a real state — a standing
+	// objective that reconciles only when asked. A zero timestamp here would
+	// read as overdue since year one and put it in every due scan forever.
+	NextDueAt       *time.Time `gorm:"column:next_due_at;index"`
+	NextSenseAt     *time.Time `gorm:"column:next_sense_at"`
+	NextReconcileAt *time.Time `gorm:"column:next_reconcile_at"`
+
+	// ConvergedJSON is the fingerprint at the last convergence: the composite
+	// hash, the per-environment hashes behind it, and which environments
+	// could not be hashed at all. Stored as JSON because the set of
+	// environments is the objective's to change, not the schema's.
+	ConvergedJSON   string     `gorm:"column:converged_json;not null;default:'{}'"`
+	LastConvergedAt *time.Time `gorm:"column:last_converged_at"`
+
+	LastRunAt        *time.Time `gorm:"column:last_run_at"`
+	LastReconciledAt *time.Time `gorm:"column:last_reconciled_at"`
+	LastTrigger      string     `gorm:"column:last_trigger;not null;default:''"`
+	LastOutcomeID    string     `gorm:"column:last_outcome_id;not null;default:''"`
+	LastError        string     `gorm:"column:last_error;not null;default:''"`
+
+	CriteriaMet         float64 `gorm:"column:criteria_met;not null;default:0.0"`
+	ScoreStreak         int     `gorm:"column:score_streak;not null;default:0"`
+	ConsecutiveFailures int     `gorm:"column:consecutive_failures;not null;default:0"`
+
+	Autonomy  string `gorm:"column:autonomy;not null;default:''"`
+	CleanRuns int    `gorm:"column:clean_runs;not null;default:0"`
+
+	Holder     string     `gorm:"column:holder;not null;default:''"`
+	LeaseUntil *time.Time `gorm:"column:lease_until;index"`
+
+	CreatedAt time.Time `gorm:"column:created_at;autoCreateTime"`
+	UpdatedAt time.Time `gorm:"column:updated_at;autoUpdateTime"`
+}
+
+func (ReconcileStateModel) TableName() string { return "reconcile_states" }
+
+// ReconcileOutcomeModel is one completed pass of the outer loop, cheap or
+// expensive (Phase 20).
+//
+// Sense-only passes are recorded too, and they are the majority. That is the
+// point of keeping them: "this objective has been checked forty-eight times
+// today and cost nothing" is the evidence that the two-tier split is working,
+// and without the cheap rows the history would show only the expensive ones
+// and look like the system was barely watching.
+type ReconcileOutcomeModel struct {
+	ID          string `gorm:"primaryKey;column:id"`
+	ObjectiveID string `gorm:"column:objective_id;not null;index:idx_reconcile_outcomes_objective_time,priority:1"`
+	TwinID      string `gorm:"column:twin_id;not null;default:''"`
+
+	Trigger string `gorm:"column:trigger;not null"`
+	LoopID  string `gorm:"column:loop_id;not null;default:''"`
+
+	DriftJSON string `gorm:"column:drift_json;not null;default:'{}'"`
+	Autonomy  string `gorm:"column:autonomy;not null;default:''"`
+
+	CriteriaMet float64 `gorm:"column:criteria_met;not null;default:0.0"`
+	Converged   bool    `gorm:"column:converged;not null;default:false"`
+
+	Escalated    bool   `gorm:"column:escalated;not null;default:false"`
+	CheckpointID string `gorm:"column:checkpoint_id;not null;default:''"`
+	Error        string `gorm:"column:error;not null;default:''"`
+
+	StartedAt time.Time `gorm:"column:started_at;index:idx_reconcile_outcomes_objective_time,priority:2,sort:desc"`
+	EndedAt   time.Time `gorm:"column:ended_at"`
+}
+
+func (ReconcileOutcomeModel) TableName() string { return "reconcile_outcomes" }
 
 // ContainerModel is one node of the tenancy tree — an org, a team or a project
 // (Phase 17).
