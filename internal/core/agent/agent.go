@@ -29,7 +29,15 @@ type Definition struct {
 	LLMHints          capability.LLMHints
 }
 
+// UnlimitedActions opts an agent out of the autonomous-action cap. It is
+// deliberately not the zero value: an AuthorityBounds nobody filled in should
+// permit nothing, so that forgetting to set bounds fails toward asking.
+const UnlimitedActions = -1
+
 type AuthorityBounds struct {
+	// MaxAutonomousActions caps how many actions a plan may carry out
+	// without a human. Zero means none — the plan is drafted and
+	// escalated. Use UnlimitedActions for no cap.
 	MaxAutonomousActions int
 	RequiresApprovalFor  []capability.CapabilityID
 	CanDelegate          bool

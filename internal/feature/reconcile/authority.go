@@ -34,10 +34,11 @@ func effectiveAuthority(def agent.Definition, level objective.AutonomyLevel) age
 
 	case objective.AutonomyPropose:
 		// Plans, then escalates whatever it planned. Zero autonomous
-		// actions is what the decide step already reads as "draft and
-		// ask"; the threshold above any attainable confidence closes the
-		// other door, since a plan confident enough to clear a normal bar
-		// would otherwise slip through on the count alone.
+		// actions is what the decide step reads as "draft and ask"; the
+		// threshold above any attainable confidence closes the other
+		// door, since an operator resolving a checkpoint with modify can
+		// lower the threshold for that iteration, and the count is what
+		// still holds the line when they do.
 		bounds.MaxAutonomousActions = 0
 		bounds.ConfidenceThreshold = confidenceAlwaysEscalates
 		bounds.CanModifyObjective = false

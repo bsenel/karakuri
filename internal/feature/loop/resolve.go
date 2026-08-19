@@ -47,6 +47,12 @@ func SelectAgent(domReg *domain.Registry, obj objective.Objective, explicit core
 		Name:              obj.Domain + " Agent",
 		Domain:            obj.Domain,
 		ReasoningStrategy: coreagent.ReasoningReAct,
+		// No pack claimed this domain, so nobody has declared what this
+		// agent may do. Zero autonomous actions is the honest bound: it
+		// plans, and a human approves before anything happens. Stated
+		// rather than left to the zero value, because a bound nobody
+		// wrote down is the thing that goes wrong quietly.
+		Authority: coreagent.AuthorityBounds{MaxAutonomousActions: 0},
 	}
 }
 
