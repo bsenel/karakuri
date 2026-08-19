@@ -115,6 +115,11 @@ func NewApp(
 	resSvc := research.NewService(toolReg, artSvc)
 	agentFactory := platformagent.NewFactory(providers, hub, otel)
 	loopSvc := featureloop.NewService(store, agentFactory, capReg, envReg, memSvc, cpSvc, artSvc, wt, hub, otel, domReg, quotaDeps)
+	// Closes the cycle: the loop raises checkpoints, and resolving one has to
+	// reach back into the loop that is blocked on it. Constructor injection
+	// cannot express that in either direction, so the second edge is wired
+	// here, immediately after both services exist.
+	cpSvc.SetResumer(loopSvc)
 
 	r := chi.NewRouter()
 	r.Use(chimw.Recoverer)
