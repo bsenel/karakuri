@@ -200,6 +200,9 @@ func (s *GORMStorage) ListObjectives(ctx context.Context, f ObjectiveFilter) ([]
 	if f.Status != "" {
 		q = q.Where("status = ?", f.Status)
 	}
+	if f.Mode != "" {
+		q = q.Where("mode = ?", f.Mode)
+	}
 	q = applyScopeSelectors(q, "objective", "id", f.Visible, f.Hidden)
 	if err := q.Find(&models).Error; err != nil {
 		return nil, err

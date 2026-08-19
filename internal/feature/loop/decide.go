@@ -124,7 +124,20 @@ func stepDecide(ctx context.Context, sc *stepContext, p plan, mods *corecheckpoi
 		}
 	}
 
-	// Trim actions if exceeds max autonomous
+	// A cap of zero means no autonomous actions at all, which is the
+	// "draft and ask" bound. It escalates rather than trimming: the plan
+	// has to survive intact so the checkpoint shows a reviewer what they
+	// are approving, and because an approval falls straight through to
+	// act — an emptied plan would silently discard the approved work.
+	//
+	// This is checked after the threshold and approval-set tests so an
+	// escalation that already has a more specific reason keeps it.
+	if authority.MaxAutonomousActions == 0 && len(p.Actions) > 0 && !escalate {
+		escalate = true
+		escalateReason = "agent is bounded to no autonomous actions"
+	}
+
+	// Trim actions if exceeds max autonomous. UnlimitedActions opts out.
 	if authority.MaxAutonomousActions > 0 && len(p.Actions) > authority.MaxAutonomousActions {
 		p.Actions = p.Actions[:authority.MaxAutonomousActions]
 	}

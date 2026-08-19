@@ -46,33 +46,7 @@ func (s *serviceImpl) runLoop(ctx context.Context, loopID string, req loop.Reque
 	// declared domains in order and pick the first pack that exposes an
 	// agent. If none do, fall back to a minimal default tagged with the
 	// primary domain.
-	var agentDef coreagent.Definition
-	if req.Agent.ID != "" {
-		agentDef = req.Agent
-	} else {
-		domains := obj.AllDomains()
-		if len(domains) == 0 {
-			domains = []string{obj.Domain}
-		}
-		var picked bool
-		for _, d := range domains {
-			pack, ok := s.domReg.Get(d)
-			if !ok || len(pack.AgentDefinitions()) == 0 {
-				continue
-			}
-			agentDef = pack.AgentDefinitions()[0]
-			picked = true
-			break
-		}
-		if !picked {
-			agentDef = coreagent.Definition{
-				ID:                coreagent.AgentID(obj.Domain + "-default"),
-				Name:              obj.Domain + " Agent",
-				Domain:            obj.Domain,
-				ReasoningStrategy: coreagent.ReasoningReAct,
-			}
-		}
-	}
+	agentDef := SelectAgent(s.domReg, obj, req.Agent)
 
 	// 3. Create the agent
 	agent, err := s.factory.New(ctx, agentDef)
@@ -87,36 +61,7 @@ func (s *serviceImpl) runLoop(ctx context.Context, loopID string, req loop.Reque
 
 	// 4. Build all environments for the domain. Fetch twin bindings so envs
 	// can resolve the correct adapter instance per tenant (ADR 006).
-	var adapterBindings map[string]string
-	if obj.TwinID != "" {
-		if t, terr := s.store.GetTwin(ctx, obj.TwinID); terr == nil {
-			adapterBindings = t.AdapterBindings
-		}
-	}
-	buildCtx := environment.BuildContext{TwinID: obj.TwinID, AdapterBindings: adapterBindings}
-	var envs []environment.Environment
-	seenEnv := make(map[string]bool)
-	for _, d := range obj.AllDomains() {
-		for _, fac := range s.envReg.ListByDomain(d) {
-			key := string(fac.EnvID)
-			if seenEnv[key] {
-				continue
-			}
-			seenEnv[key] = true
-			env, err := fac.Build(buildCtx)
-			if err != nil {
-				// Log but don't fail — some envs may be optional
-				s.hub.Publish(ctx, event.Event{
-					Type:        event.TypeAdapterSkipped,
-					ObjectiveID: string(obj.ID),
-					Payload:     map[string]any{"env_id": string(fac.EnvID), "error": err.Error()},
-					Timestamp:   time.Now().UTC(),
-				})
-				continue
-			}
-			envs = append(envs, env)
-		}
-	}
+	envs := BuildEnvironments(ctx, s.store, s.envReg, s.hub, obj)
 
 	// 5. Set objective status to active
 	_ = s.store.UpdateObjectiveStatus(ctx, obj.ID, objective.StatusActive)
@@ -303,11 +248,6 @@ func (s *serviceImpl) runLoop(ctx context.Context, loopID string, req loop.Reque
 	}
 
 	s.finalizeLoop(ctx, state, obj, iterations, criteriaMet, nil)
-
-	// Watch mode: after completing, subscribe to environment events and wait
-	if req.WatchMode && len(envs) > 0 {
-		s.runWatchMode(ctx, state, obj, envs, sc)
-	}
 }
 
 // applyModification realizes a Decision.Choice="modify" against the
@@ -403,7 +343,17 @@ func (s *serviceImpl) finalizeLoop(ctx context.Context, state *loopState, obj ob
 		evtType = event.TypeObjectiveFailed
 	}
 
-	if obj.ID != "" {
+	// A standing objective has no terminal state to be put into. "Completed"
+	// would say the work is over on something whose whole point is that it
+	// never is, and "failed" would say the same about a single unlucky pass.
+	// The supervisor owns those transitions: it writes `converged` when
+	// desired and actual agree, and leaves the objective active — with the
+	// failure counted, and the circuit breaker deciding when the count is
+	// enough to stop — when they do not.
+	//
+	// The loop's own result still reports what this run achieved. Only the
+	// objective row is left alone.
+	if obj.ID != "" && !obj.IsStanding() {
 		_ = s.store.UpdateObjectiveStatus(ctx, obj.ID, finalStatus)
 	}
 

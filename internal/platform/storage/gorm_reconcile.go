@@ -3,8 +3,12 @@ package storage
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"time"
 
+	"gorm.io/gorm"
+
+	coreerrors "github.com/bsenel/karakuri/internal/core/errors"
 	"github.com/bsenel/karakuri/internal/core/objective"
 	"github.com/bsenel/karakuri/internal/core/reconcile"
 	"github.com/bsenel/karakuri/internal/platform/db/schema"
@@ -33,6 +37,7 @@ func (s *GORMStorage) SaveReconcileState(ctx context.Context, st reconcile.State
 		LastTrigger:      string(st.LastTrigger),
 		LastOutcomeID:    st.LastOutcomeID,
 		LastError:        st.LastError,
+		ActiveLoopID:     st.ActiveLoopID,
 
 		CriteriaMet:         st.CriteriaMet,
 		ScoreStreak:         st.ScoreStreak,
@@ -49,6 +54,13 @@ func (s *GORMStorage) SaveReconcileState(ctx context.Context, st reconcile.State
 func (s *GORMStorage) GetReconcileState(ctx context.Context, objectiveID objective.ObjectiveID) (reconcile.State, error) {
 	var m schema.ReconcileStateModel
 	if err := s.db.WithContext(ctx).First(&m, "objective_id = ?", string(objectiveID)).Error; err != nil {
+		// "No such row" and "the database is unreachable" are opposite
+		// answers, and callers decide whether to create a fresh state from
+		// this error. Translating only the first keeps a transient outage
+		// from reading as an objective that has never been seen before.
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return reconcile.State{}, coreerrors.ErrNotFound
+		}
 		return reconcile.State{}, err
 	}
 	return reconcileStateFromModel(m), nil
@@ -57,6 +69,20 @@ func (s *GORMStorage) GetReconcileState(ctx context.Context, objectiveID objecti
 func (s *GORMStorage) DeleteReconcileState(ctx context.Context, objectiveID objective.ObjectiveID) error {
 	return s.db.WithContext(ctx).
 		Delete(&schema.ReconcileStateModel{}, "objective_id = ?", string(objectiveID)).Error
+}
+
+func (s *GORMStorage) ListReconcileStateIDs(ctx context.Context) ([]objective.ObjectiveID, error) {
+	var ids []string
+	if err := s.db.WithContext(ctx).
+		Model(&schema.ReconcileStateModel{}).
+		Pluck("objective_id", &ids).Error; err != nil {
+		return nil, err
+	}
+	out := make([]objective.ObjectiveID, 0, len(ids))
+	for _, id := range ids {
+		out = append(out, objective.ObjectiveID(id))
+	}
+	return out, nil
 }
 
 // ListDueReconcileStates is the supervisor's tick query.
@@ -228,6 +254,7 @@ func reconcileStateFromModel(m schema.ReconcileStateModel) reconcile.State {
 		LastTrigger:      reconcile.Trigger(m.LastTrigger),
 		LastOutcomeID:    m.LastOutcomeID,
 		LastError:        m.LastError,
+		ActiveLoopID:     m.ActiveLoopID,
 
 		CriteriaMet:         m.CriteriaMet,
 		ScoreStreak:         m.ScoreStreak,

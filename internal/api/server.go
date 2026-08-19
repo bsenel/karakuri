@@ -20,6 +20,7 @@ import (
 	featureloop "github.com/bsenel/karakuri/internal/feature/loop"
 	"github.com/bsenel/karakuri/internal/feature/memory"
 	"github.com/bsenel/karakuri/internal/feature/objective"
+	featurereconcile "github.com/bsenel/karakuri/internal/feature/reconcile"
 	"github.com/bsenel/karakuri/internal/feature/research"
 	"github.com/bsenel/karakuri/internal/feature/twin"
 	platformagent "github.com/bsenel/karakuri/internal/platform/agent"
@@ -38,6 +39,10 @@ type App struct {
 	Router *chi.Mux
 	Loop   featureloop.Service // exposed so bootstrap can call ResumeStoredLoops post-construction
 	Memory *memory.Service     // exposed so bootstrap can drive the retention scheduler
+	// Reconcile is exposed so bootstrap can start the supervisor, for the
+	// same reason Loop and Memory are: it owns a goroutine whose lifetime is
+	// the process's, not a request's.
+	Reconcile *featurereconcile.Service
 }
 
 // AuthDeps carries the authentication and authorization wiring built by
@@ -120,6 +125,15 @@ func NewApp(
 	// cannot express that in either direction, so the second edge is wired
 	// here, immediately after both services exist.
 	cpSvc.SetResumer(loopSvc)
+	reconcileSvc := featurereconcile.NewService(store, loopSvc, envReg, domReg, cpSvc, hub, featurereconcile.Config{
+		Tick:               cfg.Reconcile.TickDuration(),
+		MaxConcurrent:      cfg.Reconcile.MaxConcurrent,
+		LeaseTTL:           cfg.Reconcile.LeaseTTLDuration(),
+		BreakerFailures:    cfg.Reconcile.BreakerFailures,
+		StallReconciles:    cfg.Reconcile.StallReconciles,
+		DefaultMinInterval: cfg.Reconcile.DefaultMinIntervalDuration(),
+		MaxBackoff:         cfg.Reconcile.MaxBackoffDuration(),
+	})
 
 	r := chi.NewRouter()
 	r.Use(chimw.Recoverer)
@@ -191,7 +205,7 @@ func NewApp(
 	healthH := &handler.HealthHandler{Providers: providers, Tools: toolReg, Exporters: exporters, Worktrees: wt, RepoPath: cfg.Git.RepoPath}
 	twinH := &handler.TwinHandler{Twins: twinSvc, Scopes: authDeps.Authorizer}
 	objH := &handler.ObjectiveHandler{Objectives: objSvc, Scopes: authDeps.Authorizer}
-	loopH := &handler.LoopHandler{Loop: loopSvc}
+	loopH := &handler.LoopHandler{Loop: loopSvc, Store: store, Reconcile: reconcileSvc}
 	cpH := &handler.CheckpointHandler{Checkpoints: cpSvc}
 	artH := &handler.ArtifactHandler{Artifacts: artSvc}
 	memH := &handler.MemoryHandler{Memory: memSvc}
@@ -402,7 +416,7 @@ func NewApp(
 	// registered so REST + SSE win over the catch-all SPA fallback.
 	r.Handle("/*", karakuriweb.Handler())
 
-	return &App{Router: r, Loop: loopSvc, Memory: memSvc}
+	return &App{Router: r, Loop: loopSvc, Memory: memSvc, Reconcile: reconcileSvc}
 }
 
 func (a *App) Handler() http.Handler { return a.Router }
