@@ -2,7 +2,7 @@
 
 ## Context
 
-Karakuri replaced the original role-based workflow simulator with an autonomous platform built on four primitives: **Capabilities, Environments, Objectives, and Agents**. No backward compatibility is maintained. The CLI binary is `krk`. This document records what shipped (Phases 1–20). Starting with Phase 14, the auth and quota engines ship as standalone Go modules under `github.com/bsenel/karakuri/{auth,quota}` and their submodules — fully reusable by other repos without pulling Karakuri itself.
+Karakuri replaced the original role-based workflow simulator with an autonomous platform built on four primitives: **Capabilities, Environments, Objectives, and Agents**. No backward compatibility is maintained. The CLI binary is `krk`. This document records what shipped (Phases 1–21). Starting with Phase 14, the auth and quota engines ship as standalone Go modules under `github.com/bsenel/karakuri/{auth,quota}` and their submodules — fully reusable by other repos without pulling Karakuri itself.
 
 ## Status Summary
 
@@ -29,6 +29,7 @@ Karakuri replaced the original role-based workflow simulator with an autonomous 
 | 18    | Quota Self-Service + Cost Attribution      | **Completed** |
 | 19    | Frontend for Auth, Quota, Cost, Audit      | **Completed** |
 | 20    | Standing Objectives + Reconciliation       | **Completed** |
+| 21    | Digests                                    | **Completed** |
 
 
 ---
@@ -1449,12 +1450,152 @@ krk objective resume obj_123
 
 ---
 
+## Phase 21 — Digests (Completed)
+
+**Goal:** A standing objective that works unsupervised has to report unsupervised. A twin sends one message on a cadence saying what its objectives did and what they need a person to decide.
+
+**What shipped — and why the model writes so little of it.**
+[ADR 016](adr/016-earned-autonomy-and-digests.md) records the design.
+
+Both of the things Phase 20 was built for end the same way: "and tell me what
+happened". Neither is served by a console somebody has to remember to open.
+
+- **`internal/core/digest`** — the shape of a report and of a schedule.
+- **`internal/feature/report`** — assembly, rendering, delivery, and a sender
+  on its own ticker with its own lease.
+- **`report_schedules`**, keyed on a twin. A CTO twin holding nine standing
+  objectives produces one message a day, not nine.
+- **`POST/GET/DELETE /reports`**, `GET /reports/preview`,
+  `POST /reports/{id}/send`; `report:read` and `report:write`;
+  `krk report create|list|preview|send|delete`.
+
+**A digest is a read.** Reconcile outcomes, `tool_events`, pending checkpoints
+and the cost ledger already record everything it says, so nothing is
+accumulated between deliveries and no write is added to any hot path. The
+consequence that matters is reproducibility: the same window produces the same
+report tomorrow, so a failed delivery is simply retried, and `krk report
+preview` shows exactly what tonight's will contain rather than an approximation.
+
+**It ends with the decisions, oldest first.** Every pending checkpoint with the
+actions the agent proposed and the command that answers it — ordered against
+the usual newest-first, because the one that has been waiting three days is the
+one blocking work and burying it under this morning's is how a queue grows.
+Ages render as "waiting 3 days", not "76h12m4.331s".
+
+**It reports the cheap passes.** "90 checks, 2 reconciles, 4 actions" — the
+ratio is the answer to "is this costing me anything", and a summary showing
+only the reconciles would make a well-behaved objective look idle. An unpriced
+deployment reads "not priced" rather than rendering $0.00, which would be
+claiming something untrue.
+
+**The model writes the prose and nothing else.** It never decides what is in
+the report, what counts as a decision, or what is urgent: the structured digest
+is complete before the model is called, the plain rendering of it is what gets
+delivered when none is available, and the prose is prepended above that
+rendering rather than replacing it. This is not defensive scaffolding around an
+unreliable component — a summary that could silently omit a pending decision
+because a model judged it unimportant would defeat the entire exercise.
+
+**Silence is the default.** A window in which nothing happened is not sent;
+`--send-when-empty` opts in. A daily mail that says "nothing happened" is a
+mail people stop reading, and the cost is paid three weeks later by the report
+that matters. The suppression is narrow — any decision, autonomy change, spend,
+failure, drift or action makes a window worth reporting, and only "checked
+ninety times, nothing moved" is silence. `last_sent_at` advances anyway, so a
+quiet fortnight does not produce a fortnight-long report the moment something
+happens.
+
+**Delivery is audited.** Through the twin's bound adapter (ADR 006), and every
+attempt writes a `tool_events` row whether it succeeded or not: a message
+Karakuri sent on somebody's behalf is a thing it did to the world, and a
+delivery invisible to `krk audit` would be the one kind of action nobody could
+review. Schedules carry the same lease `reconcile_states` does, and it matters
+more here — two replicas reconciling one objective wastes money and shows up in
+a graph; two replicas sending one morning report send it to a person twice,
+every morning.
+
+**Deviations from the plan, recorded:**
+
+- **The autonomy ladder shipped in Phase 20, not here.** The plan had it as
+  Phase 21's first slice. It could not wait: the supervisor needs a level to
+  write into `agent.AuthorityBounds` on every reconcile, and stubbing one in
+  order to replace it a phase later would have meant building the enforcement
+  path twice. What remained for this phase was surfacing the movements, which
+  the digest does.
+- **Delivery is not a capability executed by the act step.** The plan had it
+  routed through the loop to inherit quota, cost recording and the audit row.
+  Attractive, and rejected: a scheduled digest is not something an agent
+  decided to do, and routing it through the planner would put a model in charge
+  of whether this morning's report goes out. The audit row — the part that
+  actually mattered — is written directly.
+- **`projectmgmt` and `versioncontrol` are declared channels that refuse.**
+  Messaging and email deliver; the other two return an error recorded on the
+  schedule rather than a silent success, so an operator who configured one sees
+  why nothing arrived.
+
+**One bug fixed on the way:** `SaveCheckpoint` discarded the caller's
+`CreatedAt` and let GORM stamp its own. Benign in production, a lie in the
+type, and it made "how long has this been waiting" — the one number a decision
+list needs — unanswerable for any row the storage layer did not create itself.
+
+**Acceptance — met:**
+
+- Build clean; `go test ./... -count=1` passes.
+- The cheap/expensive split is pinned in the digest as it is in the supervisor:
+  ninety sense passes and one reconcile are counted and reported separately,
+  and an outcome outside the window is excluded.
+- Suppression is pinned in both directions — ninety quiet checks are not news,
+  one pending decision is.
+- Decision ordering, decision age, and the "proposed actions" passthrough are
+  pinned, as is the ordering of objectives by how much attention they want.
+- The plain rendering is asserted directly: decisions lead the report, a
+  demotion reads as a narrowing, a paused objective says so, and an unpriced
+  window says "not priced" rather than zero.
+- Declaration refuses a malformed cadence, an unknown channel, two schedules
+  and a bad window, and arms a valid one for its next firing rather than for
+  now.
+
+**Operator quickstart:**
+
+```bash
+# A weekday morning brief to Slack.
+krk report create --twin twin_1 --daily-at 08:00 --timezone Europe/Istanbul \
+    --channel messaging --target '#eng-standup'
+
+# See exactly what tomorrow's will say, without sending it.
+krk report preview --twin twin_1 --window 24h
+
+# A weekly mail covering the whole week.
+krk report create --twin twin_1 --cron "0 17 * * 5" \
+    --channel email --target lead@example.com --window 168h
+
+krk report list --twin twin_1
+krk report send rep_ab12cd34   # now, outside the cadence
+```
+
+Enable the sender in `reports:` — it is off by default, because a supervisor
+with no standing objectives does nothing while a sender that runs will mail
+somebody.
+
+**What's deferred:**
+
+- **Per-objective spend ceilings.** The quota module supports arbitrary
+  subjects, so `objective:<id>` is a small addition; a standing objective still
+  spends against its twin's daily allowance.
+- **Digest delivery to project trackers and repositories.** The channels are
+  declared and refuse honestly; wiring them is adapter work, not design work.
+- **A console page for schedules.** They are reachable from `krk` and the API;
+  the objective page already shows the control loop each digest reports on.
+
+---
+
 ## Phase Ordering Rationale
 
 Phases 7–13 are **independent except where noted** and can be reordered to match priority. The dependencies that DO exist:
 
 - **Phase 11** (distributed execution) benefits from **Phase 8**'s Postgres backend for shared state (now available) but Restate has its own state store and works without it.
 - **Phase 13** (cross-domain) is now unblocked — Phase 10 shipped Healthcare as a second non-software production pack to combine with Software.
+- **Phase 21** (digests) depends on **Phase 20** for the outcomes it reports and on **Phase 6**'s adapters for delivery. It reads only: nothing is accumulated between deliveries, so a digest can be regenerated for any past window.
 - **Phase 20** (standing objectives) depends on **Phase 11**'s durable loop state, which is what the supervisor watches to know a loop has finished, and on **Phase 13.5**'s actionable checkpoints, which are what an escalating reconcile hands a human. It also had to fix the disconnect between resolving a checkpoint and resuming a loop before either could be relied on. Its lease discharges Phase 11's deferred "active-active multi-node coordination" for the outer loop only; loop execution itself is still single-node-resume.
 - **Phase 9** (frontend) can run in parallel with any other phase; the API contract is already stable.
 - **Phase 12** is a pure adapter implementation — can ship independently (Phases 6 and 7 already followed this pattern).
@@ -1887,7 +2028,9 @@ Checks (run via `krk domain test <id>`):
 | Multi-replica coordination (outer loop)                               | **Fully implemented** (Phase 20) — DB lease on `reconcile_states`, one conditional UPDATE; discharges part of Phase 11's deferred leader election. Loop execution itself is still single-node-resume |
 | Circuit breaker + stall detector                                      | **Fully implemented** (Phase 20) — both pause the objective and raise a checkpoint; the stall brake is the one the Phase 1 risk table promised and never built |
 | Watch mode                                                            | **Superseded** (Phase 20) — `watch.go` deleted; `--watch` / `watch_mode: true` now declare a standing objective at sense-only autonomy, which behaves the same and survives a restart |
-| Digests / periodic reports                                            | Planned (Phase 21) — the material is recorded (reconcile outcomes, `tool_events`, pending checkpoints, `cost_daily`); composing and delivering it is not built |
+| Digests / periodic reports                                            | **Fully implemented** (Phase 21) — per-twin schedules with their own lease; assembled from existing records so a window is reproducible; delivered through the twin's bound adapter and audited as a `tool_events` row |
+| Digest delivery: Slack, email                                         | **Fully implemented** (Phase 21) — via the `messaging` and `email` slots, twin-bound (ADR 006) |
+| Digest delivery: project trackers, repositories                       | Declared and refusing (Phase 21) — the channels are accepted and return an error recorded on the schedule, rather than a silent success |
 
 
 ---

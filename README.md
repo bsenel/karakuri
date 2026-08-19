@@ -127,6 +127,38 @@ Configure the ceilings in `reconcile:` (see [config/default.yaml](config/default
 > standing objective at `sense` autonomy, which behaves the same and survives a
 > server restart.
 
+### Digests
+
+A standing objective that works unsupervised should report unsupervised. A
+digest covers a **twin** — one message a day, not one per objective — and ends
+with the decisions it needs from you.
+
+```bash
+# A weekday morning brief to Slack.
+krk report create --twin twin_1 --daily-at 08:00 --timezone Europe/Istanbul \
+    --channel messaging --target '#eng-standup'
+
+# See exactly what tomorrow's will say, without sending it.
+krk report preview --twin twin_1 --window 24h
+```
+
+A digest is assembled from records that already exist — reconcile outcomes, the
+audit log, pending checkpoints, the cost ledger — so the same window produces
+the same report tomorrow, and a preview is not an approximation of tonight's
+delivery but a copy of it.
+
+An agent writes the narrative and nothing else: it never decides what is in the
+report or what counts as a decision. When no model is available the structured
+rendering is delivered on its own, and when one is, that rendering is appended
+beneath the prose.
+
+Nothing is sent for a window in which nothing happened (`--send-when-empty`
+opts in) — a daily mail that says "nothing happened" is a mail people stop
+reading, and the cost is paid by the one that matters. Delivery goes through the
+twin's bound adapter and is recorded in the audit log like any other action.
+Enable the sender in `reports:`; it is off by default. Rationale in
+[ADR 016](docs/adr/016-earned-autonomy-and-digests.md).
+
 ## Domain Packs
 
 Domain packs encapsulate all field-specific knowledge. The core engine imports none of it.
@@ -193,6 +225,11 @@ krk objective reconcile <id>
 krk objective pause <id> --reason "..."
 krk objective resume <id>
 krk objective unstanding <id>
+
+# Digests (Phase 21) — per twin, ending with the decisions you owe
+krk report create --twin <id> --daily-at 08:00 --channel messaging --target '#eng'
+krk report preview --twin <id> --window 24h
+krk report list [--twin <id>] / krk report send <id> / krk report delete <id>
 
 # Loop (start returns JSON `{"loop_id":"..."}` with --output json; jq
 # selector is `.loop_id`, not `.id`)
@@ -684,7 +721,7 @@ is restricted under the
 
 ## Roadmap
 
-Phases 1–20 have shipped: the core engine, then cross-domain objectives, then the multi-team production layer and the interface for it, and then the supervisor that makes an objective something Karakuri holds rather than something it finishes.
+Phases 1–21 have shipped: the core engine, then cross-domain objectives, then the multi-team production layer and the interface for it, and then the supervisor that makes an objective something Karakuri holds rather than something it finishes.
 
 - **Phase 14:** RBAC + fine-grained authorization, shipped as a standalone module `github.com/bsenel/karakuri/auth` reusable by any net/http or chi server
 - **Phase 15:** API rate limiting + quota management, shipped as `github.com/bsenel/karakuri/quota` with Redis/SQL backend submodules
@@ -693,6 +730,7 @@ Phases 1–20 have shipped: the core engine, then cross-domain objectives, then 
 - **Phase 19:** Web interface for auth, quota, cost and audit; limits become resolved state ([ADR 012](docs/adr/012-limits-as-resolved-state.md))
 - **Phase 18:** Quota self-service + cost attribution — per-subject overrides an approval writes, and labelled spend ([ADR 011](docs/adr/011-overrides-and-labelled-spend.md))
 - **Phase 20:** Standing objectives — a desired state held by a supervisor that senses cheaply and spends rarely, with autonomy earned under a declared ceiling ([ADR 015](docs/adr/015-standing-objectives-and-reconciliation.md))
+- **Phase 21:** Digests — what a twin's standing objectives did and what they need decided, assembled from records that already exist ([ADR 016](docs/adr/016-earned-autonomy-and-digests.md))
 
 Full per-phase status, acceptance criteria, and architecture rationale in [docs/roadmap.md](docs/roadmap.md).
 
