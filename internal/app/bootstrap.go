@@ -290,6 +290,13 @@ func BootstrapServer(cfgPath string) (*Bootstrap, error) {
 			"note", "standing objectives keep their state and stop becoming due")
 	}
 
+	// The digest sender, which reports on what the supervisor did. Started
+	// independently of it: the two have separate config blocks and separate
+	// Enabled flags, and an operator who turns the supervisor off still wants
+	// the morning brief covering the decisions waiting on them. It logs its
+	// own refusal when disabled, which it is by default.
+	apiApp.Reports.Start(ctx)
+
 	return &Bootstrap{Config: cfg, App: apiApp, Store: store, Worktrees: wt}, nil
 }
 

@@ -286,6 +286,47 @@ type ReconcileOutcomeModel struct {
 
 func (ReconcileOutcomeModel) TableName() string { return "reconcile_outcomes" }
 
+// ReportScheduleModel is a standing instruction to report (Phase 21): who to
+// tell, how often, and through which adapter.
+//
+// Keyed on a twin rather than an objective. The reader wants one morning brief
+// covering everything they are responsible for; a twin holding nine standing
+// objectives should produce one message a day, not nine.
+//
+// It carries a lease for the same reason reconcile_states does, and with more
+// at stake: two replicas reconciling the same objective wastes money, while two
+// replicas sending the same morning report send it to a person twice.
+type ReportScheduleModel struct {
+	ID     string `gorm:"primaryKey;column:id"`
+	TwinID string `gorm:"column:twin_id;not null;index"`
+
+	CadenceJSON string `gorm:"column:cadence_json;not null;default:'{}'"`
+
+	Channel  string `gorm:"column:channel;not null"`
+	Instance string `gorm:"column:instance;not null;default:''"`
+	Target   string `gorm:"column:target;not null;default:''"`
+
+	Window string `gorm:"column:window;not null;default:''"`
+	// Off by default: a daily mail that says "nothing happened" is a mail
+	// people stop reading, which costs the ones that matter their audience.
+	SendWhenEmpty bool `gorm:"column:send_when_empty;not null;default:false"`
+	Enabled       bool `gorm:"column:enabled;not null;default:true;index"`
+
+	NextDueAt  *time.Time `gorm:"column:next_due_at;index"`
+	LastSentAt *time.Time `gorm:"column:last_sent_at"`
+	LastError  string     `gorm:"column:last_error;not null;default:''"`
+
+	ConsecutiveFailures int `gorm:"column:consecutive_failures;not null;default:0"`
+
+	Holder     string     `gorm:"column:holder;not null;default:''"`
+	LeaseUntil *time.Time `gorm:"column:lease_until;index"`
+
+	CreatedAt time.Time `gorm:"column:created_at;autoCreateTime"`
+	UpdatedAt time.Time `gorm:"column:updated_at;autoUpdateTime"`
+}
+
+func (ReportScheduleModel) TableName() string { return "report_schedules" }
+
 // ContainerModel is one node of the tenancy tree — an org, a team or a project
 // (Phase 17).
 //

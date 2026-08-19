@@ -286,6 +286,20 @@ reconcile:
   # objective still retries occasionally rather than effectively never.
   max_backoff: 1h
 
+# Periodic digests (Phase 21) — what a twin's standing objectives did, and what
+# they need you to decide.
+#
+# Off by default, unlike the reconcile supervisor above. A supervisor with no
+# standing objectives does nothing; a sender that runs will mail somebody, and
+# that is a decision an operator makes rather than one they discover. Schedules
+# are per twin — one morning brief covering everything, not one per objective.
+reports:
+  enabled: false
+  tick: 1m
+  # A claim on a schedule, so two replicas cannot send the same report to the
+  # same person. Short because a digest takes seconds.
+  lease_ttl: 2m
+
 domains:
   - id: software
     enabled: true

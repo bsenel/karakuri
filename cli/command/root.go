@@ -37,6 +37,7 @@ func NewRoot() *cobra.Command {
 	root.AddCommand(
 		twinCmd(),
 		objectiveCmd(),
+		reportCmd(),
 		loopCmd(),
 		checkpointCmd(),
 		memoryCmd(),

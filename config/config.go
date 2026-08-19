@@ -23,6 +23,32 @@ type Config struct {
 	Tools         ToolsConfig         `yaml:"tools"`
 	Quota         QuotaConfig         `yaml:"quota"`
 	Reconcile     ReconcileConfig     `yaml:"reconcile"`
+	Reports       ReportsConfig       `yaml:"reports"`
+}
+
+// ReportsConfig bounds the digest sender (Phase 21).
+//
+// Off by default, unlike the reconcile supervisor. A supervisor that runs with
+// no standing objectives does nothing; a sender that runs will mail somebody,
+// and turning that on is a decision an operator makes rather than one they
+// discover.
+type ReportsConfig struct {
+	Enabled bool `yaml:"enabled"`
+	// Tick is how often the sender asks what is due. A minute is ample for
+	// schedules measured in hours.
+	Tick string `yaml:"tick"`
+	// LeaseTTL is how long a claim on a schedule survives. Short, because a
+	// digest takes seconds and a stuck lease delays a report somebody is
+	// waiting for.
+	LeaseTTL string `yaml:"lease_ttl"`
+}
+
+func (r ReportsConfig) TickDuration() time.Duration {
+	return parseDurationOr(r.Tick, time.Minute)
+}
+
+func (r ReportsConfig) LeaseTTLDuration() time.Duration {
+	return parseDurationOr(r.LeaseTTL, 2*time.Minute)
 }
 
 // ReconcileConfig bounds the supervisor that holds standing objectives at their
