@@ -98,10 +98,48 @@ func (e *telemetryEnv) Observe(ctx context.Context, _ environment.ObservationQue
 	return obs, nil
 }
 
-func (e *telemetryEnv) Act(_ context.Context, a environment.Action) (environment.ActionResult, error) {
-	// Read-only, and it says so rather than silently succeeding. The whole
-	// value of letting Karakuri watch itself is that the watching cannot be
-	// edited by the thing being watched.
+func (e *telemetryEnv) Act(ctx context.Context, a environment.Action) (environment.ActionResult, error) {
+	// "Read-only" means this environment cannot change the deployment. It does
+	// not mean it can do nothing: the loop runs every capability through Act,
+	// including the ones that only look, so refusing unconditionally left the
+	// pack unable to execute the analysis it exists to perform.
+	if a.CapabilityID == CapAnalyseUsage {
+		if e.reader == nil {
+			return environment.ActionResult{
+				Success: false,
+				Error:   "no telemetry reader is wired into this deployment",
+			}, nil
+		}
+		snap, err := e.reader.Snapshot(ctx, coretelemetry.Query{
+			Since:  time.Now().UTC().Add(-telemetryWindow),
+			TwinID: e.twinID,
+		})
+		if err != nil {
+			return environment.ActionResult{Success: false, Error: err.Error()}, nil
+		}
+		// Reported alongside the numbers rather than left to be inferred from
+		// them: a window with nothing in it and a deployment with nothing
+		// wrong produce the same zeroes, and a pack reasoning about what to
+		// improve must be able to tell them apart.
+		return environment.ActionResult{
+			Success: true,
+			StateDelta: map[string]any{
+				"capability":    string(CapAnalyseUsage),
+				"since":         snap.Since,
+				"objectives":    snap.Objectives,
+				"work":          snap.Work,
+				"escalation":    snap.Escalation,
+				"approval_rate": snap.Escalation.ApprovalRate(),
+				"spend":         snap.Spend,
+				"bottlenecks":   snap.Bottlenecks,
+				"sufficient":    snap.Objectives.Total > 0 || snap.Work.Senses > 0 || snap.Work.Reconciles > 0,
+			},
+		}, nil
+	}
+
+	// Anything else is refused out loud rather than succeeding quietly. The
+	// whole value of letting Karakuri watch itself is that the watching cannot
+	// be edited by the thing being watched.
 	return environment.ActionResult{
 		Success: false,
 		Error:   fmt.Sprintf("%s is read-only; %s cannot be executed here", EnvTelemetry, a.CapabilityID),
@@ -232,9 +270,25 @@ func (e *repoEnv) Observe(ctx context.Context, _ environment.ObservationQuery) (
 }
 
 func (e *repoEnv) Act(_ context.Context, a environment.Action) (environment.ActionResult, error) {
-	// Also read-only. Changing the repository is the software pack's job, in a
-	// worktree, through capabilities an operator already reviews — this
-	// environment exists to see, not to touch.
+	// Drafting is not writing. propose_roadmap_phase and draft_adr produce
+	// text for a human to read, and the checkpoint that carries it is the
+	// review — nothing here touches the repository. Changing it is still the
+	// software pack's job, in a worktree, through capabilities an operator
+	// already reviews.
+	switch a.CapabilityID {
+	case CapProposeRoadmap, CapDraftADR:
+		draft := map[string]any{
+			"capability": string(a.CapabilityID),
+			"drafted":    true,
+			// The agent's own params are the draft. Echoed back so the verify
+			// step scores what was actually produced, and so the checkpoint
+			// shows a reviewer the text rather than the fact that text exists.
+			"content": a.Params,
+			"note":    "a draft only; applying it to the repository is the software pack's job",
+		}
+		return environment.ActionResult{Success: true, StateDelta: draft}, nil
+	}
+
 	return environment.ActionResult{
 		Success: false,
 		Error:   fmt.Sprintf("%s is read-only; use the software pack to change the repository (%s)", EnvRepo, a.CapabilityID),

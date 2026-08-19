@@ -8,6 +8,7 @@ import (
 
 	"github.com/bsenel/karakuri/internal/conformance"
 	coreagent "github.com/bsenel/karakuri/internal/core/agent"
+	"github.com/bsenel/karakuri/internal/core/capability"
 	"github.com/bsenel/karakuri/internal/core/environment"
 	coretelemetry "github.com/bsenel/karakuri/internal/core/telemetry"
 )
@@ -73,9 +74,9 @@ func TestMaintainerCannotActUnsupervised(t *testing.T) {
 	}
 }
 
-// Both environments observe. Neither changes anything, and both say so rather
-// than succeeding quietly — the value of letting Karakuri watch itself is that
-// the watching cannot be edited by the thing being watched.
+// Neither environment changes anything, and both say so rather than
+// succeeding quietly — the value of letting Karakuri watch itself is that the
+// watching cannot be edited by the thing being watched.
 func TestEnvironmentsRefuseToAct(t *testing.T) {
 	ctx := context.Background()
 	for _, f := range New().EnvironmentFactories() {
@@ -94,6 +95,74 @@ func TestEnvironmentsRefuseToAct(t *testing.T) {
 			t.Errorf("%s refused silently; a refusal nobody can read is a silent success", f.EnvID)
 		}
 	}
+}
+
+// The other half, and the half that was missing: refusing everything is not
+// the same as refusing writes, and the test above cannot tell them apart —
+// it only ever offers a foreign capability, which both a correct environment
+// and a wholly inert one decline.
+//
+// Both environments did refuse everything, so the pack could not execute the
+// three capabilities it exists to provide. Enabling it and running
+// self_improve produced six failed actions and no analysis at all.
+func TestEnvironmentsExecuteThePackOwnCapabilities(t *testing.T) {
+	ctx := context.Background()
+	envs := map[environment.EnvironmentID]environment.Environment{}
+	for _, f := range New().EnvironmentFactories() {
+		env, err := f.Build(environment.BuildContext{Telemetry: stubReader{}})
+		if err != nil {
+			t.Fatalf("build %s: %v", f.EnvID, err)
+		}
+		envs[f.EnvID] = env
+	}
+
+	for _, tc := range []struct {
+		env environment.EnvironmentID
+		cap string
+	}{
+		{EnvTelemetry, CapAnalyseUsage},
+		{EnvRepo, CapProposeRoadmap},
+		{EnvRepo, CapDraftADR},
+	} {
+		res, err := envs[tc.env].Act(ctx, environment.Action{
+			CapabilityID: capability.CapabilityID(tc.cap),
+			Params:       map[string]any{"topic": "test"},
+		})
+		if err != nil {
+			t.Fatalf("act %s on %s: %v", tc.cap, tc.env, err)
+		}
+		if !res.Success {
+			t.Errorf("%s refused %s, which is one of the three capabilities this pack owns: %s",
+				tc.env, tc.cap, res.Error)
+		}
+		if len(res.StateDelta) == 0 {
+			t.Errorf("%s executed %s and returned nothing for the loop to reason about", tc.env, tc.cap)
+		}
+	}
+}
+
+// A window with nothing in it and a deployment with nothing wrong produce the
+// same zeroes. The analysis says which one it saw, so a proposal built on no
+// evidence cannot present itself as one built on good news.
+func TestAnalyseUsageReportsInsufficientEvidence(t *testing.T) {
+	env := &telemetryEnv{reader: stubReader{}}
+	res, err := env.Act(context.Background(), environment.Action{CapabilityID: CapAnalyseUsage})
+	if err != nil {
+		t.Fatalf("act: %v", err)
+	}
+	if !res.Success {
+		t.Fatalf("analyse_usage refused: %s", res.Error)
+	}
+	if res.StateDelta["sufficient"] != false {
+		t.Error("an empty deployment reported its telemetry as sufficient evidence")
+	}
+}
+
+// stubReader is an empty deployment: wired, and with nothing to report.
+type stubReader struct{}
+
+func (stubReader) Snapshot(context.Context, coretelemetry.Query) (coretelemetry.Snapshot, error) {
+	return coretelemetry.Snapshot{}, nil
 }
 
 // A deployment with no telemetry wired says so, rather than reporting zeroes
