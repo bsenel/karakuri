@@ -31,6 +31,9 @@ Karakuri replaced the original role-based workflow simulator with an autonomous 
 | 20    | Standing Objectives + Reconciliation       | **Completed** |
 | 21    | Digests                                    | **Completed** |
 | 22    | The Karakuri Domain Pack                   | **Completed** |
+| 23    | Per-Objective Spend Ceilings               | Planned       |
+| 24    | Conformance That Tests Behaviour           | Planned       |
+| 25    | Self-Improvement Without a History         | Planned       |
 
 
 ---
@@ -1710,6 +1713,154 @@ krk objective standing <id> --cron "0 9 * * 1" --sense 6h --autonomy propose
 
 ---
 
+## Phase 23 — Per-Objective Spend Ceilings (Planned)
+
+**Goal:** An operator can cap what one objective may spend, separately from its
+twin's allowance, so a standing objective reconciling hourly cannot quietly
+consume a team's daily budget.
+
+Deferred three times — from Phases 20, 21 and 22 — which is the signal that it
+should stop being deferred. Phase 22 named the specific case: a self-improvement
+objective is exactly the one an operator wants capped separately, because it is
+the one whose appetite nobody has calibrated yet.
+
+**Steps:**
+
+1. **A new subject, not a new mechanism.** Phase 15's quota module already
+   supports arbitrary `quota.Key` subjects, and Phase 18 already has the
+   override path. `internal/quota.CostSubject` gains an `objective:<id>`
+   sibling; nothing in the quota module changes.
+2. **`objective.Budget` on the declaration**, beside `Cadence` and `Autonomy`
+   and nil-safe like both: `{Daily, PerReconcile}`. Nil means "no ceiling of
+   its own", which is today's behaviour, so every existing objective is
+   untouched.
+3. **The supervisor checks the ceiling before dispatching**, and records
+   `budget_exhausted` as a distinct pause reason. It is not a failure and must
+   not touch the circuit breaker — an objective that has run out of money is
+   not an objective that is broken, and conflating them would demote an
+   agent for its operator's budgeting.
+4. **Sensing continues while the budget is exhausted.** The cheap tier costs
+   adapter calls and no tokens, so an objective that cannot afford to act can
+   still afford to notice — and the digest can say what it would have done.
+   This is the sense/reconcile split earning its keep a second time.
+5. **The two pauses clear differently.** `krk objective resume` clears the
+   breaker; a budget clears itself at the window boundary with no operator
+   involved. A single `paused` flag that needed a human to clear either one
+   would turn a nightly budget into a nightly chore.
+6. **Surfaces:** `krk objective standing --budget-daily`, the console panel,
+   and a digest section naming which objectives hit their ceiling and what
+   they were mid-way through.
+
+**Acceptance:** An objective with a daily ceiling stops reconciling when it is
+reached and resumes at the boundary without an operator. Its twin's allowance
+is unaffected by the pause. Sensing continues throughout and the drift it
+observes is reported. `ConsecutiveFailures` is still zero after a budget pause,
+and the objective's earned autonomy survives it.
+
+---
+
+## Phase 24 — Conformance That Tests Behaviour, Not Shape (Planned)
+
+**Goal:** A pack's declared bounds are verified by *running* them, so a bound
+that does nothing fails the suite in the pack that declares it.
+
+This phase exists because of a specific bug. Phase 20's review found that
+`MaxAutonomousActions: 0` — written by four packs to mean "plans but never
+acts", with healthcare saying so in a comment on the line — was read by the
+decide step as "no cap at all". None of those agents were bounded. It survived
+three phases and a conformance suite because **every test asserted the field
+*was* zero and none asserted what zero *did***. The karakuri pack's own
+"cannot act unsupervised" test passed throughout while the guarantee it names
+was absent.
+
+The lesson generalises past the one bug: a declaration is a claim, and a suite
+that reads claims back to itself verifies nothing.
+
+**Steps:**
+
+1. **A behavioural section in `internal/conformance`.** For each agent
+   definition a pack exports, build a plan with N actions and run the real
+   `stepDecide` against the declared bounds, asserting the outcome matches
+   what the declaration claims about itself.
+2. **Assert the whole ladder**, so the fix cannot be "escalate everything": a
+   definition declaring no autonomous actions must escalate; one declaring a
+   cap must trim to exactly that cap and proceed; one declaring
+   `agent.UnlimitedActions` must not be trimmed at all.
+3. **`RequiresApprovalFor` gets the same treatment** — a capability listed
+   there must actually escalate when planned, rather than being a list nobody
+   reads.
+4. **Run it per pack in CI**, so a pack added later cannot declare a bound
+   that silently does nothing.
+5. **A registry-level verifier check at boot.** The per-pack check
+   deliberately does not resolve foreign domains (a pack is valid on its own,
+   ADR 017), which leaves nothing at all checking that a declared
+   `Criterion.Domain` names a capability some enabled pack actually exports.
+   The registry is where that question has an answer; a dangling verifier
+   should be logged loudly at startup rather than discovered when an objective
+   fails to verify.
+
+**Acceptance:** The suite fails against a deliberately reintroduced `> 0`
+guard in `decide.go` — the regression that motivated the phase is caught by
+the mechanism built to catch it, in every pack rather than in one hand-written
+test. Every existing pack passes unmodified. A pack declaring an approval
+requirement for a capability it then plans autonomously fails with a message
+naming both.
+
+---
+
+## Phase 25 — Self-Improvement Without a History (Planned)
+
+**Goal:** The karakuri pack can propose useful work on a deployment that has
+not been running for months — because that is every deployment on the day
+somebody enables it.
+
+Phase 22 shipped `self_improve` with a hard `evidence-first` constraint and a
+first criterion reading "the proposal names the telemetry that says the problem
+is real". On a fresh deployment the telemetry snapshot is empty: no objectives,
+no reconcile outcomes, no audit rows, no spend. The pack has nothing to say and
+the constraint cannot be satisfied. **The deployment that most needs a roadmap
+is the one that cannot produce one**, and the feature is unusable for exactly as
+long as it takes to accumulate the history it needs — which nobody will wait
+through.
+
+**Steps:**
+
+1. **`karakuri.env.repo` grows from "open pull requests" into the repository as
+   evidence**: the roadmap's own deferred lists, `AGENTS.md` rules, TODO and
+   FIXME density by package, and test coverage per package. All of it exists on
+   day one, and the deferred lists in particular are a backlog somebody already
+   justified in prose.
+2. **A `karakuri.analyse_repo` capability beside `analyse_usage`**, so
+   `evidence-first` can be satisfied by either source — and so the proposal has
+   to say which one it used. A phase proposed from repository evidence and a
+   phase proposed from observed pain are different claims and should not be
+   presented identically.
+3. **Reading CI status per pull request** (deferred from Phase 22). The
+   version-control adapter gains a check-status call, so "what is currently
+   broken" becomes evidence rather than something an operator relays.
+4. **A research environment in the pack** (deferred from Phase 22), ranking the
+   field the way the telemetry environment ranks bottlenecks — pre-ranked for
+   the same reason, so a model does not re-derive the ordering slightly
+   differently on every run.
+5. **The telemetry environment reports insufficiency rather than health.** With
+   a window containing nothing, it currently returns zeroes that read as a
+   calm, well-run deployment. It should report `sufficient: false` alongside the
+   window it examined — the same distinction Phase 22 already draws between an
+   unwired reader (`available: false`, blind) and a quiet one, applied one level
+   up. "I have no evidence" and "the evidence says nothing is wrong" are
+   opposite claims, and a system reasoning about its own improvement must not
+   confuse them.
+
+**Acceptance:** A self-improvement objective on a deployment with zero usage
+history produces a proposal citing repository evidence and stating plainly that
+it had no usage telemetry to draw on. The same objective on a deployment with
+history prefers telemetry and says so. Neither can satisfy `evidence-first` with
+no evidence of either kind — the constraint still bites, it simply has two ways
+to be met. The maintainer still escalates every proposal, unchanged: this phase
+widens what it can see, never what it may do.
+
+---
+
 ## Phase Ordering Rationale
 
 Phases 7–13 are **independent except where noted** and can be reordered to match priority. The dependencies that DO exist:
@@ -1728,6 +1879,12 @@ Phases 14–19 introduce a new architectural pattern: **the auth and quota engin
 - **Phase 16** depends on Phase 14 (OIDC/SAML resolvers implement `auth.TokenResolver`). **Phase 17** also depends on Phase 14, and — as built — on Phase 16: scoped role mapping is what closes the hole Phase 16 opened by binding every federated user at `*`.
 - **Phase 18** depends on Phase 15 — extends the quota module with a self-service workflow and adds a sister cost-attribution module — and, as built, on Phase 17: approving a raise is bounded by the container the subject sits in, and a spend report is filtered by the same scope sets as a twin listing.
 - **Phase 19** lands last; it surfaces Phases 14, 15, 17, and 18 in the React frontend and reuses the Phase 13 audit endpoint. As built it also changed the backend twice — tiers became database-backed state, and a scope-filtered global event stream was added — because two of its steps had no backend to surface.
+
+Phases 23–25 are the follow-on from the standing-objectives line, and are ordered by how much each one unblocks the next rather than by size.
+
+- **Phase 23** (per-objective spend ceilings) depends on **Phase 15**'s quota subjects and **Phase 18**'s override path, and on **Phase 20** for the thing being capped. It is independent of 24 and 25 and could ship first or last; it is placed first because it is the only one of the three that a running deployment is currently exposed without.
+- **Phase 24** (behavioural conformance) depends on nothing new. It is placed before 25 because 25 adds capabilities and an environment to the karakuri pack, and the point of 24 is that new declarations should meet a suite that runs them rather than reads them. Shipping 25 first would add the exact kind of claim 24 exists to check.
+- **Phase 25** (self-improvement without a history) depends on **Phase 22** for the pack it extends and on **Phase 6**'s version-control adapter for CI status. It is the phase that makes Phase 22 usable on the day it is enabled rather than months later, and it is deliberately scoped to widen what the maintainer can *see* — never what it may *do*, which stays bounded by ADR 017 and by Phase 20's ceiling.
 
 ---
 
