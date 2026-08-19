@@ -230,7 +230,12 @@ func (a Autonomy) EffectiveCeiling() AutonomyLevel {
 func (a Autonomy) Clamp(l AutonomyLevel) AutonomyLevel {
 	ceiling := a.EffectiveCeiling()
 	if !l.Valid() {
-		return a.EffectiveLevel()
+		// An unrecognised level is a typo or a hand-edited row. Fall back
+		// to the declared starting level — but fall back *through* the
+		// ceiling rather than around it. Returning the starting level
+		// directly would let a corrupt stored value resolve above the
+		// ceiling, which is the one thing this function exists to prevent.
+		l = a.EffectiveLevel()
 	}
 	if l.Rank() > ceiling.Rank() {
 		return ceiling

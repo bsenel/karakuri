@@ -54,6 +54,17 @@ func TestClampNeverExceedsTheCeiling(t *testing.T) {
 			in:   AutonomyLevel("superuser"),
 			want: AutonomyPropose,
 		},
+		{
+			// The case above cannot catch a fallback that skips the
+			// ceiling, because its starting level is already under it.
+			// This one can: a hand-edited row holding a typo, on an
+			// objective whose ceiling was deliberately lowered beneath
+			// where it started. The fallback must land on the ceiling.
+			name: "an unrecognised level falls back through the ceiling, not around it",
+			decl: Autonomy{Level: AutonomyAct, Ceiling: AutonomySense},
+			in:   AutonomyLevel("act_wtih_notice"),
+			want: AutonomySense,
+		},
 	}
 
 	for _, tc := range tests {
