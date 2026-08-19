@@ -545,6 +545,14 @@ func (s *GORMStorage) ListToolEvents(ctx context.Context, f ToolEventFilter) ([]
 	if f.ObjectiveID != "" {
 		q = q.Where("objective_id = ?", f.ObjectiveID)
 	}
+	if f.ObjectiveIDs != nil {
+		if len(f.ObjectiveIDs) == 0 {
+			// The caller's scope covers no objectives. Returning everything
+			// here is the leak this filter exists to prevent.
+			return []ToolEvent{}, nil
+		}
+		q = q.Where("objective_id IN ?", f.ObjectiveIDs)
+	}
 	if f.AgentID != "" {
 		q = q.Where("agent_id = ?", f.AgentID)
 	}

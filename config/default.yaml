@@ -307,6 +307,13 @@ domains:
     enabled: true
   - id: healthcare
     enabled: true
+  # Karakuri's own telemetry and repository as environments, so it can improve
+  # itself (Phase 22). Off by default: it does nothing until somebody declares
+  # an objective in it, but turning it on is a decision worth making rather
+  # than one to discover. The pack reads and drafts; the writing is the
+  # software pack's, in a worktree, through a pull request somebody reviews.
+  - id: karakuri
+    enabled: false
 
 memory:
   consolidation_threshold: 20

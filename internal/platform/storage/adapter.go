@@ -155,7 +155,18 @@ const (
 // ToolEventFilter narrows the audit log query. All fields are optional;
 // CreatedAtSince applies an inclusive lower bound on event timestamps.
 type ToolEventFilter struct {
-	ObjectiveID     string
+	ObjectiveID string
+
+	// ObjectiveIDs narrows to a set, which is how a caller scopes the audit
+	// log to one tenant: tool_events carries no twin, so the only honest
+	// route from a twin to its events is through the objectives it owns.
+	//
+	// Nil means unfiltered. Non-nil and empty means match nothing — a
+	// caller whose scope resolved to no objectives must see no events, and
+	// a filter that widens to everything when its input is empty is exactly
+	// how a listing leaks across tenants.
+	ObjectiveIDs []string
+
 	AgentID         string
 	Kind            string
 	BoundsViolation *bool      // tri-state: nil = ignore, &true = only violations, &false = only clean
