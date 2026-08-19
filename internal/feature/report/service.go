@@ -230,6 +230,9 @@ func (s *Service) rearm(ctx context.Context, sch digest.Schedule, sendErr error)
 	sch.LastError = ""
 	if sendErr != nil {
 		sch.LastError = sendErr.Error()
+		sch.ConsecutiveFailures++
+	} else {
+		sch.ConsecutiveFailures = 0
 	}
 	now := s.now()
 	if plan, err := schedule.Next(sch.Cadence, s.reference(sch)); err == nil {
@@ -240,10 +243,43 @@ func (s *Service) rearm(ctx context.Context, sch digest.Schedule, sendErr error)
 		next := now.Add(time.Hour)
 		sch.NextDueAt = &next
 	}
+
+	// A failed send leaves LastSentAt where it was, so the schedule still
+	// reads as never-run and schedule.Next hands back "now" — which on a
+	// one-minute tick is a misconfigured channel retried 1,440 times a day,
+	// each one writing an audit row. Push the next attempt out instead. The
+	// declared cadence still wins whenever it is the later of the two, so a
+	// daily report recovering after one bad night does not drift off its
+	// hour.
+	if sendErr != nil {
+		retryAt := now.Add(sendBackoff(sch.ConsecutiveFailures))
+		if sch.NextDueAt == nil || sch.NextDueAt.Before(retryAt) {
+			sch.NextDueAt = &retryAt
+		}
+	}
+
 	if err := s.store.SaveReportSchedule(ctx, sch); err != nil {
 		return err
 	}
 	return sendErr
+}
+
+// sendBackoff doubles from a minute and stops at an hour. A report is not
+// urgent enough to hammer a broken adapter, and not unimportant enough to give
+// up on: an hourly floor means a channel fixed at lunchtime still delivers
+// that afternoon without anybody touching the schedule.
+func sendBackoff(failures int) time.Duration {
+	if failures <= 0 {
+		return 0
+	}
+	d := time.Minute
+	for i := 1; i < failures && d < time.Hour; i++ {
+		d *= 2
+	}
+	if d > time.Hour {
+		d = time.Hour
+	}
+	return d
 }
 
 func (s *Service) reference(sch digest.Schedule) schedule.Reference {

@@ -316,6 +316,8 @@ type ReportScheduleModel struct {
 	LastSentAt *time.Time `gorm:"column:last_sent_at"`
 	LastError  string     `gorm:"column:last_error;not null;default:''"`
 
+	ConsecutiveFailures int `gorm:"column:consecutive_failures;not null;default:0"`
+
 	Holder     string     `gorm:"column:holder;not null;default:''"`
 	LeaseUntil *time.Time `gorm:"column:lease_until;index"`
 

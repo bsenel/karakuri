@@ -25,7 +25,11 @@ CREATE TABLE IF NOT EXISTS report_schedules (
 
 	-- How far back to look. Empty means "since the last one was sent", which
 	-- makes a missed run catch up rather than lose a day.
-	window TEXT NOT NULL DEFAULT '',
+	-- Quoted: "window" is a reserved word in PostgreSQL. GORM quotes its
+	-- identifiers, so AutoMigrate creates this column happily and only the
+	-- hand-applied path breaks — on the deployments least likely to notice
+	-- quickly, and with the whole table missing rather than one column.
+	"window" TEXT NOT NULL DEFAULT '',
 
 	-- Off by default. A daily mail that says "nothing happened" is a mail
 	-- people stop reading, which costs the ones that matter their audience.
@@ -35,6 +39,10 @@ CREATE TABLE IF NOT EXISTS report_schedules (
 	next_due_at  TIMESTAMP,
 	last_sent_at TIMESTAMP,
 	last_error   TEXT NOT NULL DEFAULT '',
+
+	-- Grows the gap between retries after a failed send, so a schedule
+	-- pointed at a misconfigured channel does not retry on every tick.
+	consecutive_failures INTEGER NOT NULL DEFAULT 0,
 
 	-- The lease, as reconcile_states carries one and for the same reason —
 	-- with more at stake here. Two replicas reconciling one objective wastes

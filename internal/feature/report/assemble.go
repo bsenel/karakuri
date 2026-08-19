@@ -203,9 +203,17 @@ func proposedCapabilities(actions []corecheckpoint.Action) []string {
 func (s *Service) spend(ctx context.Context, twinID string, since, until time.Time) digest.Spend {
 	sp := digest.Spend{ByProvider: map[string]float64{}}
 	buckets, err := s.costs(ctx, twinID, since, until)
-	if err != nil || len(buckets) == 0 {
+	if err != nil {
+		// The ledger could not be read. Priced stays false: "we could not
+		// cost this" is nearer the truth than a confident $0.00.
 		return sp
 	}
+	// Nothing happened in the window. That is a quiet week, not a missing
+	// rate table, and a brief that says "nothing was costed" on a fully
+	// priced deployment is simply wrong.
+	sp.Priced = true
+
+	var units float64
 	for _, b := range buckets {
 		provider := ""
 		if len(b.Key) > 0 {
@@ -213,8 +221,16 @@ func (s *Service) spend(ctx context.Context, twinID string, since, until time.Ti
 		}
 		sp.Cost += b.Cost
 		sp.ByProvider[provider] += b.Cost
+		units += b.Units
 	}
-	sp.Priced = sp.Cost > 0
+
+	// Priced asks whether a rate table exists, not whether anything was
+	// spent. Units recorded with no cost against them is what says none
+	// does — deriving it from the total instead made Priced a restatement
+	// of Cost, so every genuinely quiet window was reported as unpriced.
+	if units > 0 && sp.Cost == 0 {
+		sp.Priced = false
+	}
 	return sp
 }
 

@@ -50,6 +50,13 @@ type Schedule struct {
 	LastSentAt *time.Time `json:"last_sent_at,omitempty"`
 	LastError  string     `json:"last_error,omitempty"`
 
+	// ConsecutiveFailures grows the gap between retries after a failed send.
+	// Without it a schedule pointed at a misconfigured channel retries on
+	// every tick forever — the failure path never advances LastSentAt, so the
+	// schedule reads as never-run and is therefore always due. A daily report
+	// then becomes 1,440 failed deliveries and 1,440 audit rows a day.
+	ConsecutiveFailures int `json:"consecutive_failures,omitempty"`
+
 	// The lease, exactly as reconcile_states carries one and for exactly the
 	// same reason: two replicas sending the same morning report to the same
 	// person is the failure this feature would otherwise introduce.

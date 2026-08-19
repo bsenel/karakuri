@@ -377,3 +377,48 @@ func titles(d digest.Digest) []string {
 	}
 	return out
 }
+
+// A quiet window on a fully priced deployment is quiet, not unpriced.
+//
+// Priced was derived as `Cost > 0`, which made it a restatement of the total:
+// any window in which nothing was spent printed "not priced — no rate table is
+// configured" into the operator's morning brief, which for most deployments is
+// simply untrue. It asks whether prices exist, not whether money was spent.
+func TestQuietWindowIsNotReportedAsUnpriced(t *testing.T) {
+	svc, store, clock := newService(t)
+	seedTwin(t, store, "twin-1", "Ops")
+	seedStanding(t, store, "twin-1", "obj-1", "Watch the repo")
+
+	d, err := svc.Assemble(context.Background(), "twin-1", clock.Add(-24*time.Hour), *clock)
+	if err != nil {
+		t.Fatalf("assemble: %v", err)
+	}
+	if d.Spend.Cost != 0 {
+		t.Fatalf("expected a quiet window, got cost %v", d.Spend.Cost)
+	}
+	if !d.Spend.Priced {
+		t.Error("a window in which nothing was spent was reported as having no rate table")
+	}
+}
+
+// A failed send must not retry on every tick. The failure path leaves
+// LastSentAt untouched, so without a backoff the schedule reads as never-run
+// and is due again immediately — 1,440 failed deliveries and 1,440 audit rows
+// a day against a channel nobody has fixed yet.
+func TestFailedSendBacksOff(t *testing.T) {
+	if got := sendBackoff(0); got != 0 {
+		t.Errorf("sendBackoff(0) = %v, want 0", got)
+	}
+	first := sendBackoff(1)
+	if first <= 0 {
+		t.Fatalf("sendBackoff(1) = %v, want a positive delay", first)
+	}
+	if second := sendBackoff(2); second <= first {
+		t.Errorf("sendBackoff(2) = %v, want more than sendBackoff(1) = %v", second, first)
+	}
+	// It stops growing, so a long-broken channel still gets retried rather
+	// than effectively never.
+	if capped := sendBackoff(50); capped != time.Hour {
+		t.Errorf("sendBackoff(50) = %v, want it capped at an hour", capped)
+	}
+}
