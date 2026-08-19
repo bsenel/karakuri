@@ -154,6 +154,19 @@ other objective to babysit one.
   stopped to ask did the right thing, and a circuit breaker that counted
   questions would trip precisely on the objectives being most careful.
 
+- **The single gate had to be repaired before it could be leant on.** Writing
+  autonomy into `AuthorityBounds` is only safe because the decide step already
+  enforces those bounds, and on inspection it did not: the action cap was
+  guarded with `MaxAutonomousActions > 0`, so a cap of zero fell through and
+  imposed nothing. Every declaration in the repository that writes `0` means
+  "plans but never acts" — the propose level, the karakuri maintainer,
+  healthcare's triage agent — and none of them were bounded. Zero now means
+  none and escalates; `UnlimitedActions` (-1) is the explicit opt-out, chosen
+  so the zero value of `AuthorityBounds` permits nothing rather than
+  everything. The lesson generalises past this bug: the tests all asserted the
+  field *was* zero and none asserted what zero *did*, which is why a bound
+  nobody enforced looked enforced for three phases.
+
 - **The stall detector finally exists.** The Phase 1 risk table promised "if
   score doesn't improve for N consecutive iterations, emit checkpoint rather
   than burning tokens" and nothing implemented it; the only brake was the
