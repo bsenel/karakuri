@@ -214,6 +214,12 @@ func Routes() []Route {
 		{http.MethodGet, "/objectives/{id}", ActionObjectiveRead, false},
 		{http.MethodPost, "/objectives/{id}/status", ActionObjectiveUpdate, false},
 		{http.MethodGet, "/objectives/{id}/events", ActionObjectiveRead, false},
+		{http.MethodGet, "/objectives/{id}/reconcile", ActionObjectiveRead, false},
+		{http.MethodPut, "/objectives/{id}/standing", ActionObjectiveDeclare, false},
+		{http.MethodDelete, "/objectives/{id}/standing", ActionObjectiveDeclare, false},
+		{http.MethodPost, "/objectives/{id}/reconcile", ActionObjectiveReconcile, false},
+		{http.MethodPost, "/objectives/{id}/pause", ActionObjectivePause, false},
+		{http.MethodPost, "/objectives/{id}/resume", ActionObjectivePause, false},
 
 		{http.MethodPost, "/loops", ActionLoopStart, false},
 		{http.MethodGet, "/loops/{id}/status", ActionLoopRead, false},

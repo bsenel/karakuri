@@ -119,6 +119,15 @@ func TestRBACRouteMatrix(t *testing.T) {
 			"twin:read": true, "twin:create": true, "twin:update": true,
 			"twin:delete": true, "twin:bind": true,
 			"objective:read": true, "objective:create": true, "objective:update": true,
+			// An operator declares standing objectives, reconciles them on
+			// demand, and stops them. Declaring is the heaviest of the three —
+			// it commits the deployment to recurring spend — but an operator
+			// already holds loop:start, and a standing objective is a loop
+			// somebody does not have to keep starting.
+			//
+			// A viewer holds none of them: reading an objective says nothing
+			// about being allowed to commit money to it every hour.
+			"objective:declare": true, "objective:reconcile": true, "objective:pause": true,
 			"loop:read": true, "loop:start": true, "loop:resume": true,
 			"checkpoint:read": true, "checkpoint:resolve": true,
 			"artifact:read": true, "artifact:write": true,

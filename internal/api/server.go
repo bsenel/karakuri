@@ -206,6 +206,7 @@ func NewApp(
 	twinH := &handler.TwinHandler{Twins: twinSvc, Scopes: authDeps.Authorizer}
 	objH := &handler.ObjectiveHandler{Objectives: objSvc, Scopes: authDeps.Authorizer}
 	loopH := &handler.LoopHandler{Loop: loopSvc, Store: store, Reconcile: reconcileSvc}
+	recH := &handler.ReconcileHandler{Reconcile: reconcileSvc, Store: store}
 	cpH := &handler.CheckpointHandler{Checkpoints: cpSvc}
 	artH := &handler.ArtifactHandler{Artifacts: artSvc}
 	memH := &handler.MemoryHandler{Memory: memSvc}
@@ -315,6 +316,19 @@ func NewApp(
 				r.With(require(karakuriauth.ActionObjectiveRead, objectiveRes)).Get("/{id}", objH.Get)
 				r.With(require(karakuriauth.ActionObjectiveUpdate, objectiveRes)).Post("/{id}/status", objH.UpdateStatus)
 				r.With(require(karakuriauth.ActionObjectiveRead, objectiveRes)).Get("/{id}/events", evtH.StreamObjective)
+
+				// Standing objectives (Phase 20). Declaring is its own
+				// permission: a one-shot objective spends what one run costs
+				// and stops, while a standing one spends on a cadence
+				// indefinitely. Pausing is a third, deliberately easier to
+				// hold than declaring — the person who can see something is
+				// wrong at 3am is not always the one who started it.
+				r.With(require(karakuriauth.ActionObjectiveRead, objectiveRes)).Get("/{id}/reconcile", recH.Get)
+				r.With(require(karakuriauth.ActionObjectiveDeclare, objectiveRes)).Put("/{id}/standing", recH.Declare)
+				r.With(require(karakuriauth.ActionObjectiveDeclare, objectiveRes)).Delete("/{id}/standing", recH.Undeclare)
+				r.With(require(karakuriauth.ActionObjectiveReconcile, objectiveRes)).Post("/{id}/reconcile", recH.Trigger)
+				r.With(require(karakuriauth.ActionObjectivePause, objectiveRes)).Post("/{id}/pause", recH.Pause)
+				r.With(require(karakuriauth.ActionObjectivePause, objectiveRes)).Post("/{id}/resume", recH.Resume)
 			})
 
 			r.Route("/loops", func(r chi.Router) {

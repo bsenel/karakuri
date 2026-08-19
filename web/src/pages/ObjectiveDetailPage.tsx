@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { api } from '@/api/client';
 import { streamObjective } from '@/api/sse';
+import { StandingPanel } from '@/components/StandingPanel';
 import type { LoopStatus, Objective, SSEEvent } from '@/api/types';
 
 // Drill-down for one objective + the live SSE loop runner. Subscribes to the
@@ -85,6 +86,7 @@ export function ObjectiveDetailPage() {
       <div className="row" style={{ marginBottom: 16 }}>
         <span className="pill accent">{obj.domain}</span>
         <span className="pill">{obj.status}</span>
+        {obj.mode === 'standing' && <span className="pill accent">standing</span>}
         {obj.twin_id && <Link to={`/twins/${obj.twin_id}`} className="small">twin: {obj.twin_id}</Link>}
       </div>
 
@@ -99,6 +101,8 @@ export function ObjectiveDetailPage() {
           </span>
         )}
       </div>
+
+      <StandingPanel objectiveID={id} />
 
       {obj.success_criteria && obj.success_criteria.length > 0 && (
         <div className="card" style={{ marginTop: 16 }}>
