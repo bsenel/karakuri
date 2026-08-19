@@ -63,8 +63,20 @@ func (r *Reader) Snapshot(ctx context.Context, q coretelemetry.Query) (coretelem
 	failing := map[objective.ObjectiveID]int{}
 	titles := map[objective.ObjectiveID]string{}
 
+	// The objectives above are already scoped to the twin, and they are the
+	// only route from a twin to its audit rows — tool_events carries no twin
+	// of its own. Left nil for a deployment-wide query, so an operator asking
+	// about everything still sees everything.
+	var scope []string
+	if q.TwinID != "" {
+		scope = make([]string, 0, len(objectives))
+	}
+
 	for _, obj := range objectives {
 		titles[obj.ID] = obj.Title
+		if q.TwinID != "" {
+			scope = append(scope, string(obj.ID))
+		}
 		snap.Objectives.Total++
 		switch obj.Status {
 		case objective.StatusConverged:
@@ -118,7 +130,7 @@ func (r *Reader) Snapshot(ctx context.Context, q coretelemetry.Query) (coretelem
 		})
 	}
 
-	r.readAudit(ctx, &snap, since, now)
+	r.readAudit(ctx, &snap, scope, since, now)
 	r.readPending(ctx, &snap, q.TwinID, now)
 	r.readSpend(ctx, &snap, q.TwinID, since, now)
 
@@ -137,10 +149,15 @@ func (r *Reader) Snapshot(ctx context.Context, q coretelemetry.Query) (coretelem
 // readAudit counts actions and escalation outcomes, and finds capabilities
 // failing across objectives — which points at an adapter rather than at any
 // one objective.
-func (r *Reader) readAudit(ctx context.Context, snap *coretelemetry.Snapshot, since, until time.Time) {
+//
+// scope narrows every query to one tenant's objectives; nil means the whole
+// deployment. Without it a twin-scoped snapshot reported every other tenant's
+// escalations, approvals and actions as its own, which for a pack reasoning
+// about its own trustworthiness is worse than no number at all.
+func (r *Reader) readAudit(ctx context.Context, snap *coretelemetry.Snapshot, scope []string, since, until time.Time) {
 	count := func(kind string) int {
 		events, err := r.store.ListToolEvents(ctx, storage.ToolEventFilter{
-			Kind: kind, CreatedAtSince: &since, Limit: 5000,
+			Kind: kind, ObjectiveIDs: scope, CreatedAtSince: &since, Limit: 5000,
 		})
 		if err != nil {
 			return 0
@@ -158,7 +175,7 @@ func (r *Reader) readAudit(ctx context.Context, snap *coretelemetry.Snapshot, si
 	snap.Escalation.Rejections = count(storage.ToolEventRejection)
 
 	executes, err := r.store.ListToolEvents(ctx, storage.ToolEventFilter{
-		Kind: storage.ToolEventExecute, CreatedAtSince: &since, Limit: 5000,
+		Kind: storage.ToolEventExecute, ObjectiveIDs: scope, CreatedAtSince: &since, Limit: 5000,
 	})
 	if err != nil {
 		return
@@ -212,10 +229,16 @@ func (r *Reader) readSpend(ctx context.Context, snap *coretelemetry.Snapshot, tw
 		q.Subjects = []quota.Key{karakuriquota.CostSubject(twinID)}
 	}
 	buckets, err := r.quota.CostReport(ctx, q)
-	if err != nil || len(buckets) == 0 {
+	if err != nil {
+		// Unread, not unpriced. Priced stays false.
 		return
 	}
 	snap.Spend.ByProvider = map[string]float64{}
+	// A window with no spend in it is a quiet window, not a deployment
+	// without a rate table.
+	snap.Spend.Priced = true
+
+	var units float64
 	for _, b := range buckets {
 		provider := ""
 		if len(b.Key) > 0 {
@@ -223,6 +246,14 @@ func (r *Reader) readSpend(ctx context.Context, snap *coretelemetry.Snapshot, tw
 		}
 		snap.Spend.Cost += b.Cost
 		snap.Spend.ByProvider[provider] += b.Cost
+		units += b.Units
 	}
-	snap.Spend.Priced = snap.Spend.Cost > 0
+
+	// Priced asks whether prices exist, not whether money was spent. Units
+	// counted with no cost against them is what says they do not; deriving it
+	// from the total made the flag a restatement of Cost, and fed the pack's
+	// own self-analysis a "no rate table" signal on every quiet week.
+	if units > 0 && snap.Spend.Cost == 0 {
+		snap.Spend.Priced = false
+	}
 }

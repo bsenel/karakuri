@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/bsenel/karakuri/internal/conformance"
+	coreagent "github.com/bsenel/karakuri/internal/core/agent"
 	"github.com/bsenel/karakuri/internal/core/environment"
 	coretelemetry "github.com/bsenel/karakuri/internal/core/telemetry"
 )
@@ -48,6 +49,14 @@ func TestMaintainerCannotActUnsupervised(t *testing.T) {
 		found = true
 		if def.Authority.MaxAutonomousActions != 0 {
 			t.Errorf("MaxAutonomousActions = %d, want 0", def.Authority.MaxAutonomousActions)
+		}
+		// Named explicitly, because this assertion was worthless until the
+		// decide step was fixed: it read a cap of 0 as "no cap", so the field
+		// this test checks was doing nothing at all. What 0 *means* is pinned
+		// by TestZeroAutonomousActionsEscalatesRatherThanActing in the loop
+		// package; this only has to make sure nobody writes the opt-out here.
+		if def.Authority.MaxAutonomousActions == coreagent.UnlimitedActions {
+			t.Error("the maintainer opted out of the autonomous-action cap")
 		}
 		if def.Authority.ConfidenceThreshold < 1.0 {
 			t.Errorf("ConfidenceThreshold = %v, want at least 1.0", def.Authority.ConfidenceThreshold)
