@@ -33,7 +33,7 @@ Karakuri replaced the original role-based workflow simulator with an autonomous 
 | 22    | The Karakuri Domain Pack                   | **Superseded**|
 | 23    | Per-Objective Spend Ceilings               | **Partial**   |
 | 24    | Conformance That Tests Behaviour           | **Completed** |
-| 25    | Self-Improvement Without a History         | Planned       |
+| 25    | Self-Improvement Without a History         | **Completed** |
 | 26    | The Write Path                             | **Completed** |
 
 
@@ -1891,7 +1891,7 @@ adapter, and nothing covers the rest.
 
 ---
 
-## Phase 25 — Self-Improvement Without a History (Planned)
+## Phase 25 — Self-Improvement Without a History (Completed)
 
 **Goal:** The karakuri pack can propose useful work on a deployment that has
 not been running for months — because that is every deployment on the day
@@ -1952,6 +1952,75 @@ history prefers telemetry and says so. Neither can satisfy `evidence-first` with
 no evidence of either kind — the constraint still bites, it simply has two ways
 to be met. The maintainer still escalates every proposal, unchanged: this phase
 widens what it can see, never what it may do.
+
+**Shipped (all six steps).**
+
+*Steps 1–2, the goal.* `software.reason.analyse_repo` reads the repository: the
+roadmap's own deferred and still-open items, TODO and FIXME density by package,
+packages with Go source and no test file, and where `AGENTS.md` rules live. The
+deferred lists are the valuable part and the cheapest to read — each line is
+work somebody already justified in prose. Against this repository the scan finds
+Phase 23's unenforced `PerReconcile` and Phase 24's uncovered conformance check,
+which is the test that matters: a scan finding nothing in a roadmap full of
+deferred work is one nobody should propose from. `evidence-first` now names both
+sources and requires the proposal to say which it stood on, because a phase
+proposed from repository evidence and one proposed from observed pain are
+different claims.
+
+It is deliberately **not** called coverage: untested packages are counted by
+file, not by line, and reporting a file ratio under a name meaning "proportion
+of lines executed" would be the same dishonesty this pack keeps finding.
+
+*Step 3.* `PRSummary` carries `CheckState` and `FailingChecks`; `gitEnv` pulls
+the red ones into `failing_prs`. A skipped check is not a failing one, and a red
+check outranks a pending one — a run still going cannot un-fail what already
+failed.
+
+*Step 4.* The research environment needed no new capability:
+`software.reason.research` has been declared since Phase 2 and the
+`ResearchAdapter` built since Phase 6, and nothing had introduced them. Findings
+come back ranked by confidence then title, and research contributes no drift SHA
+— a standing objective must not reconcile because a search engine's results
+moved.
+
+*Step 5.* Evidence is graded `none` / `thin` / `adequate` rather than a boolean
+whose test was "the window contains anything at all", under which one sense pass
+in a week counted the same as a thousand. The threshold is not invented here: it
+is the one the telemetry reader already applies before it will call a capability
+failing, because fewer is noise. One justified number, used twice.
+
+*Step 6, and the one that mattered most.* `evaluateWithAgent` now receives what
+the actions produced. Two further defects surfaced in the same function:
+
+- **A negated verdict counted as a positive one.** The parser searched the whole
+  reply for "pass", "met", "approved" or "yes" and returned true on any hit, so
+  *"this does not pass"* and *"the criterion is not met"* both scored as
+  satisfied — a model's rejection turned into a completed objective.
+- **An unrelated success satisfied a criterion.** A criterion whose verifier ID
+  merely *contained* `run_tests` or `lint` was met if any action succeeded, so a
+  `send_message` could satisfy a criterion about the test suite.
+
+Fixing them needed the pairing that was missing: `stepAct` returns
+`actionOutcome{CapabilityID, EnvID, Result}` instead of bare results. verify had
+no way to tell which action produced which result, and learn paired them by
+slice index.
+
+**Found while doing it, and worth its own line.** Four criteria named
+`analyse_usage` as their verifier — a capability that *produces* evidence rather
+than deciding anything, and one that succeeds even with no reader wired. That
+was harmless while every criterion was judged by a model shown nothing; once a
+verifier settles a criterion deterministically it means "met whenever the
+analysis ran", which is every time, on any deployment, including one with no
+telemetry at all. "The proposal names the telemetry that says the problem is
+real" would have scored 0.3 for running an analysis that found nothing. The
+templates now spell the distinction with two constructors, `crit` and `judged`.
+
+**Still open.** There is no declarative marker separating an adapter-backed
+`reason.*` capability from a model-only one, so the "every capability is served"
+check in `domains/software` covers `software.act.*` only. Both capabilities
+found unserved in this phase — `analyse_repo`'s home and `research` — were
+`reason.*`, which is exactly where the check does not look. That is the ninth
+instance of the class and the next one to close.
 
 ---
 
@@ -2062,10 +2131,10 @@ and the change still arrives as a pull request somebody reviews.
 running it: every step routes, the CLI receives a real worktree, and the pull
 request is handed a path and a branch. Whether a given run *scores* the
 criterion still depends on the deployment — a bound coding-agent CLI, a bound
-version-control adapter, and a plan that uses them — and on Phase 25 step 6,
-where `evaluateWithAgent` scores criteria from the description alone and never
-reads what the actions produced. Reachable is the claim this phase makes;
-reliably met is Phase 25's.
+version-control adapter, and a plan that uses them. The scoring half — where
+`evaluateWithAgent` read nothing the actions produced — was Phase 25 step 6 and
+has since shipped, so the criterion is now judged on evidence rather than on the
+plausibility of its own wording.
 
 ---
 
