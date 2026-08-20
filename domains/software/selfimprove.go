@@ -59,18 +59,26 @@ const (
 // single day's noise and well by a week's shape.
 const telemetryWindow = 7 * 24 * time.Hour
 
-// servedBy names the environment expected to execute each self-improvement
-// capability.
+// servedBy answers which environment executes a capability, by reading the
+// Serves declarations the loop itself routes on.
 //
-// It does not drive routing — the environments' own Act methods do that. It
-// is the declaration a test checks by *executing* each capability where this
-// map says it lives, so a capability added here without a route, or routed
-// without an entry, fails rather than shipping unroutable. That is how these
-// capabilities once shipped inert: refused at runtime with every test passing.
-var servedBy = map[capability.CapabilityID]environment.EnvironmentID{
-	CapAnalyseUsage:   EnvPlatformTelemetry,
-	CapProposeRoadmap: EnvGit,
-	CapDraftADR:       EnvGit,
+// It used to be a hand-written map beside them — a second copy of the routing,
+// kept honest only by a test remembering to check it. Now the declaration and
+// the route are the same fact: Phase 26 promoted Serves onto
+// environment.Factory and stepAct resolves through it, so a capability listed
+// here wrong is a capability that misroutes in production, not one that fails
+// a mirror test. The executing test above still runs each capability where
+// this says it lives, which is what catches a route pointing at an environment
+// whose Act refuses it.
+func servedBy(capID capability.CapabilityID) (environment.EnvironmentID, bool) {
+	for _, f := range New().EnvironmentFactories() {
+		for _, served := range f.Serves {
+			if served == capID {
+				return f.EnvID, true
+			}
+		}
+	}
+	return "", false
 }
 
 type telemetryEnv struct {
@@ -542,6 +550,7 @@ func platformTelemetryFactory() environment.Factory {
 		EnvID:       EnvPlatformTelemetry,
 		Domain:      "software",
 		Description: "This deployment's own behaviour: escalation rates, spend, failing objectives, unanswered decisions",
+		Serves:      []capability.CapabilityID{CapAnalyseUsage},
 		Build: func(bc environment.BuildContext) (environment.Environment, error) {
 			// A nil reader is the ordinary case for a deployment that has not
 			// wired telemetry. The environment says so rather than reporting

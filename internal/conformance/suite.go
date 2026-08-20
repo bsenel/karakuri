@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/bsenel/karakuri/internal/core/capability"
 	"github.com/bsenel/karakuri/internal/core/domain"
 	"github.com/bsenel/karakuri/internal/core/environment"
 )
@@ -29,6 +30,7 @@ func (s *Suite) Run(ctx context.Context, p domain.Pack) []Result {
 		checkIDFormat,
 		checkCapabilitySchemas,
 		checkEnvironmentFactories,
+		checkCapabilityRouting,
 		checkAgentCapabilityRefs,
 		checkCriterionVerifierRefs,
 		checkNoCapabilityIDCollision,
@@ -100,6 +102,74 @@ func checkEnvironmentFactories(_ context.Context, p domain.Pack) Result {
 		}
 	}
 	return Result{Check: name, Passed: true, Message: fmt.Sprintf("all %d environment factories build successfully", len(p.EnvironmentFactories()))}
+}
+
+// checkCapabilityRouting verifies the pack's Serves declarations can actually
+// route, which is now what the loop resolves actions through.
+//
+// Three ways a declaration fails to be one:
+//
+//   - It names a capability the pack does not declare. A route to nothing is a
+//     typo that surfaces as an action reaching noopEnv.
+//   - Two of the pack's environments claim the same capability. The registry
+//     refuses to pick between them and falls back to the plan's env_id, so an
+//     ambiguous declaration silently returns routing to the model it was built
+//     to take it away from.
+//   - A capability declares NeedsWorkspace and nothing serves it. That is the
+//     exact shape of the bug this phase exists for: write_code was given a git
+//     worktree and had no environment behind it, so every plan that used it
+//     created a branch and returned "unimplemented". A capability that writes
+//     and routes nowhere is inert in the most expensive way available.
+//
+// A capability with no route is otherwise fine and common: most are reasoned
+// about or verified rather than executed, and packs with no environments at all
+// pass this trivially.
+func checkCapabilityRouting(_ context.Context, p domain.Pack) Result {
+	const name = "capability_routing"
+
+	declared := make(map[capability.CapabilityID]capability.Capability, len(p.Capabilities()))
+	for _, c := range p.Capabilities() {
+		declared[c.ID] = c
+	}
+
+	servedBy := make(map[capability.CapabilityID]environment.EnvironmentID)
+	for _, f := range p.EnvironmentFactories() {
+		for _, capID := range f.Serves {
+			if _, ok := declared[capID]; !ok {
+				return Result{
+					Check:  name,
+					Passed: false,
+					Message: fmt.Sprintf("environment %q serves %q, which this pack does not declare",
+						f.EnvID, capID),
+				}
+			}
+			if other, dup := servedBy[capID]; dup {
+				return Result{
+					Check:  name,
+					Passed: false,
+					Message: fmt.Sprintf("capability %q is served by both %q and %q; routing cannot choose between them",
+						capID, other, f.EnvID),
+				}
+			}
+			servedBy[capID] = f.EnvID
+		}
+	}
+
+	for _, c := range p.Capabilities() {
+		if c.NeedsWorkspace && servedBy[c.ID] == "" {
+			return Result{
+				Check:  name,
+				Passed: false,
+				Message: fmt.Sprintf("capability %q declares NeedsWorkspace but no environment serves it: it would be given a worktree and then fail", c.ID),
+			}
+		}
+	}
+
+	return Result{
+		Check:   name,
+		Passed:  true,
+		Message: fmt.Sprintf("%d capabilities route to an environment that serves them", len(servedBy)),
+	}
 }
 
 // checkAgentCapabilityRefs verifies that all capability IDs referenced by each agent definition

@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/bsenel/karakuri/internal/core/capability"
 	"github.com/bsenel/karakuri/internal/core/environment"
 	"github.com/bsenel/karakuri/internal/platform/tools"
 	"github.com/bsenel/karakuri/internal/platform/tools/cliagent"
@@ -36,6 +37,16 @@ func softwareEnvironmentFactories(reg *tools.Registry) []environment.Factory {
 			EnvID:       EnvGit,
 			Domain:      "software",
 			Description: "Git repository: commits, branches, PRs, worktrees, diffs",
+			Serves: []capability.CapabilityID{
+				"software.act.create_pr",
+				// Drafting lives here because a roadmap phase and an ADR are
+				// files in this repository, and because gitEnv answers both
+				// before its adapter check — a deployment with no version
+				// control wired can still draft.
+				CapProposeRoadmap,
+				CapDraftADR,
+				"software.act.write_design_doc",
+			},
 			Build: func(ctx environment.BuildContext) (environment.Environment, error) {
 				var vc versioncontrol.VersionControlAdapter = versioncontrol.NewNoOp()
 				if reg != nil {
@@ -50,6 +61,7 @@ func softwareEnvironmentFactories(reg *tools.Registry) []environment.Factory {
 			EnvID:       "software.env.ticket",
 			Domain:      "software",
 			Description: "Project management: issues, epics, sprints",
+			Serves:      []capability.CapabilityID{"software.act.create_ticket"},
 			Build: func(ctx environment.BuildContext) (environment.Environment, error) {
 				var pm projectmgmt.ProjectManagementAdapter = projectmgmt.NewNoOp()
 				if reg != nil {
@@ -64,6 +76,7 @@ func softwareEnvironmentFactories(reg *tools.Registry) []environment.Factory {
 			EnvID:       "software.env.communication",
 			Domain:      "software",
 			Description: "Team signals: messages, threads, mentions",
+			Serves:      []capability.CapabilityID{"software.act.send_message"},
 			Build: func(ctx environment.BuildContext) (environment.Environment, error) {
 				var msg messaging.MessagingAdapter = messaging.NewNoOp()
 				if reg != nil {
@@ -78,6 +91,13 @@ func softwareEnvironmentFactories(reg *tools.Registry) []environment.Factory {
 			EnvID:       "software.env.cli_agent",
 			Domain:      "software",
 			Description: "Coding-agent CLI delegate (Claude Code, Cursor, Gemini, Copilot)",
+			// The three capabilities that write source. This is the routing
+			// the planner hint used to describe and could not enforce.
+			Serves: []capability.CapabilityID{
+				"software.act.delegate_to_cli",
+				"software.act.write_code",
+				"software.act.write_test",
+			},
 			Build: func(ctx environment.BuildContext) (environment.Environment, error) {
 				var cli cliagent.CLIAgentAdapter = cliagent.NewNoOp()
 				if reg != nil {
@@ -95,6 +115,7 @@ func softwareEnvironmentFactories(reg *tools.Registry) []environment.Factory {
 			EnvID:       "software.env.shell",
 			Domain:      "software",
 			Description: "Local shell executor (/bin/sh) — runs software.act.shell_exec actions with timeout, output capture, and safety guardrails. Defaults to the server's CWD; configurable per-deployment.",
+			Serves:      []capability.CapabilityID{"software.act.shell_exec"},
 			Build: func(_ environment.BuildContext) (environment.Environment, error) {
 				return newShellEnv("software.env.shell", "", 60*time.Second), nil
 			},
@@ -193,6 +214,13 @@ func (e *gitEnv) Act(ctx context.Context, a environment.Action) (environment.Act
 		return recordDraft(a, "problem")
 	case CapDraftADR:
 		return recordDraft(a, "decision")
+	case "software.act.write_design_doc":
+		// Declared in Phase 2, on two agents' capability lists, and required
+		// by a priority-9 hint before any write_code action — and served by
+		// nothing until Phase 26, so every plan that obeyed the hint got "no
+		// active adapter" for the step the hint made mandatory. It is a draft
+		// like the two above and is recorded the same way.
+		return recordDraft(a, "design")
 	}
 
 	adapter := e.vc

@@ -109,7 +109,7 @@ func TestSelfImproveCapabilitiesAreRouted(t *testing.T) {
 	}
 
 	for _, c := range selfImproveCapabilities() {
-		envID, routed := servedBy[c.ID]
+		envID, routed := servedBy(c.ID)
 		if !routed {
 			t.Errorf("capability %q is declared but no environment serves it", c.ID)
 			continue

@@ -40,7 +40,23 @@ func softwareCapabilities() []capability.Capability {
 
 		writes(act("software.act.write_code", "Write Code", "Write implementation into an isolated worktree, via the configured coding-agent CLI", false)),
 		writes(act("software.act.write_test", "Write Test", "Write tests into an isolated worktree, via the configured coding-agent CLI", false)),
-		act("software.act.write_design_doc", "Write Design Doc", "Produce mandatory design document before implementation", false),
+		// Takes params.design: the document text. Declared here because a
+		// capability whose only required input is undocumented is one models
+		// call with an empty payload — and this one is planned by two agents
+		// and required by a priority-9 hint before any write_code action, so
+		// it is called often.
+		{
+			ID: "software.act.write_design_doc", Name: "Write Design Doc", Domain: "software",
+			Description: "Produce mandatory design document before implementation. Requires params.design (the document text).",
+			InputSchema: capability.Schema{
+				Type: "object",
+				Properties: map[string]capability.SchemaProperty{
+					"design": {Type: "string", Description: "The design document: the problem, the approach, and what was rejected"},
+				},
+				Required: []string{"design"},
+			},
+			OutputSchema: capability.Schema{Type: "object"},
+		},
 		writes(act("software.act.create_pr", "Create PR", "Submit a worktree branch as a pull request", false)),
 		act("software.act.create_ticket", "Create Ticket", "Create ticket in project management tool", false),
 		act("software.act.send_message", "Send Message", "Send a message via MessagingAdapter", false),

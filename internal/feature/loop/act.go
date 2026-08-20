@@ -32,25 +32,8 @@ func stepAct(ctx context.Context, sc *stepContext, p plan) []environment.ActionR
 	successCount := 0
 
 	for i, action := range p.Actions {
-		// a. Find matching environment. If the agent specified an
-		// EnvID, it must match an environment registered by the twin's
-		// active domain packs. Previously an unmatched EnvID fell
-		// through to envs[0] — silently routing the action to whatever
-		// happened to be first in the slice, almost always wrong, and
-		// the main reason the Phase 13.5 dogfood loop "completed" with
-		// every action a noop. Now an unmatched EnvID fails honestly.
-		var targetEnv environment.Environment
-		if action.EnvID != "" {
-			for _, env := range sc.envs {
-				if string(env.ID()) == action.EnvID {
-					targetEnv = env
-					break
-				}
-			}
-		} else if len(sc.envs) == 1 {
-			// No EnvID given but only one env registered — unambiguous.
-			targetEnv = sc.envs[0]
-		}
+		// a. Find the environment that runs this action.
+		targetEnv, routedBy := sc.svc.resolveEnv(sc.envs, action)
 
 		params := action.Params
 		if params == nil {
@@ -121,23 +104,60 @@ func stepAct(ctx context.Context, sc *stepContext, p plan) []environment.ActionR
 				}
 			}
 		} else {
-			// No environment matched the agent's EnvID (or no EnvID
-			// was given and the twin has multiple envs registered).
-			// Used to silently succeed with Success=true; now fails
-			// honestly so the audit trail and verify step see the
-			// gap instead of treating it as work done.
+			// Nothing declared it serves this capability, and the plan's
+			// env_id matched nothing either. Used to silently succeed with
+			// Success=true; now fails honestly so the audit trail and verify
+			// step see the gap instead of treating it as work done.
 			available := make([]string, 0, len(sc.envs))
 			for _, env := range sc.envs {
 				available = append(available, string(env.ID()))
 			}
+
+			// Which failure this is decides what an operator does about it, so
+			// the message has to distinguish them rather than defaulting to
+			// "no environment matches env_id" and sending whoever reads it
+			// looking in the wrong place.
+			var serves []string
+			activeServers := 0
+			if sc.svc.envReg != nil {
+				for _, id := range sc.svc.envReg.ServedBy(capability.CapabilityID(action.CapabilityID)) {
+					serves = append(serves, string(id))
+					for _, env := range sc.envs {
+						if env.ID() == id {
+							activeServers++
+							break
+						}
+					}
+				}
+			}
+
+			var errMsg string
+			switch {
+			case len(serves) == 0:
+				// Nothing anywhere claims it: the plan named a capability no
+				// enabled pack serves.
+				errMsg = fmt.Sprintf("no environment matches env_id=%q (available: %v)", action.EnvID, available)
+			case activeServers == 0:
+				// A pack to enable or an adapter to bind.
+				errMsg = fmt.Sprintf("capability %q is served by %v, none of which this twin has active (available: %v)",
+					action.CapabilityID, serves, available)
+			default:
+				// Several active environments claim it, so routing declined to
+				// choose and the plan's env_id matched nothing. The pack is
+				// what needs fixing; conformance names it.
+				errMsg = fmt.Sprintf("capability %q is served by %v — more than one, so routing deferred to env_id=%q, which matches no active environment (available: %v)",
+					action.CapabilityID, serves, action.EnvID, available)
+			}
+
 			result = environment.ActionResult{
 				Success: false,
-				Error:   fmt.Sprintf("no environment matches env_id=%q (available: %v)", action.EnvID, available),
+				Error:   errMsg,
 				StateDelta: map[string]any{
 					"capability": action.CapabilityID,
 					"status":     "unrouted",
 					"env_id":     action.EnvID,
 					"available":  available,
+					"served_by":  serves,
 				},
 			}
 			sc.svc.hub.Publish(ctx, event.Event{
@@ -148,6 +168,7 @@ func stepAct(ctx context.Context, sc *stepContext, p plan) []environment.ActionR
 					"reason":     "unrouted",
 					"env_id":     action.EnvID,
 					"available":  available,
+					"served_by":  serves,
 				},
 				Timestamp: time.Now().UTC(),
 			})
@@ -167,8 +188,15 @@ func stepAct(ctx context.Context, sc *stepContext, p plan) []environment.ActionR
 			successCount++
 		}
 
-		// f. Save ToolEvent
-		payloadJSON, _ := json.Marshal(map[string]any{"params": params, "result": result})
+		// f. Save ToolEvent. routed_by records which rule picked the
+		// environment, because "the pack said so" and "the model said so" are
+		// different claims about the same successful action, and the second
+		// one is the one worth noticing when it stops being true.
+		payloadJSON, _ := json.Marshal(map[string]any{
+			"params":    params,
+			"result":    result,
+			"routed_by": routedBy,
+		})
 		agentIDStr := string(sc.agentDef.ID)
 		envAdapter := ""
 		if targetEnv != nil {
@@ -219,6 +247,70 @@ func stepAct(ctx context.Context, sc *stepContext, p plan) []environment.ActionR
 	})
 
 	return results
+}
+
+// resolveEnv picks the environment that will run an action, and reports which
+// of the three rules chose it.
+//
+// The order is deliberate. A capability exactly one environment declares it
+// serves goes there whatever the plan said, because that is not a choice: the
+// pack already answered it, and the planner is the one party in the exchange
+// that does not know. Deferring to Action.EnvID there is what let a plan that
+// wrote code without naming software.env.cli_agent reach noopEnv and report
+// "unimplemented" — the model got the routing wrong, and the system treated
+// its guess as authoritative. See ADR 019.
+//
+// EnvID still decides when the registry cannot: a capability nothing claims,
+// or one two environments both claim. Ambiguity is not resolved by picking —
+// conformance fails the pack that created it, and until then the plan's
+// preference is better than map iteration order.
+func (s *serviceImpl) resolveEnv(envs []environment.Environment, action plannedAction) (environment.Environment, string) {
+	byID := func(id string) environment.Environment {
+		for _, env := range envs {
+			if string(env.ID()) == id {
+				return env
+			}
+		}
+		return nil
+	}
+
+	// 1. What the pack declared, narrowed to the environments this loop built.
+	var claimed []environment.EnvironmentID
+	if s.envReg != nil {
+		claimed = s.envReg.ServedBy(capability.CapabilityID(action.CapabilityID))
+		var matched []environment.Environment
+		for _, id := range claimed {
+			if env := byID(string(id)); env != nil {
+				matched = append(matched, env)
+			}
+		}
+		if len(matched) == 1 {
+			return matched[0], "capability"
+		}
+		// Something serves this capability and none of it was built here: the
+		// twin has not enabled that pack, or its adapter is unbound. That is a
+		// missing environment, not a free choice — falling through to the
+		// plan's env_id would run a capability on an environment its own pack
+		// never said could run it, which is the fall-through this replaced.
+		if len(matched) == 0 && len(claimed) > 0 {
+			return nil, "unrouted"
+		}
+	}
+
+	// 2. What the plan asked for.
+	if action.EnvID != "" {
+		if env := byID(action.EnvID); env != nil {
+			return env, "env_id"
+		}
+	}
+
+	// 3. Nothing claims it, no EnvID given, and only one environment built —
+	// unambiguous.
+	if action.EnvID == "" && len(envs) == 1 {
+		return envs[0], "sole_env"
+	}
+
+	return nil, "unrouted"
 }
 
 // needsWorkspace reports whether a capability declared that it writes files.

@@ -50,6 +50,28 @@ func (s SlotInstances[T]) Resolve(name string) (T, bool) {
 // DefaultName returns the configured default instance name (may be "").
 func (s SlotInstances[T]) DefaultName() string { return s.defaultName }
 
+// Set installs an adapter under a name, becoming the default if the slot has
+// none. Overwrites an existing entry with the same name.
+//
+// It exists because the slot could otherwise only be filled by buildXSlot,
+// which switches on a type string and can only construct the shipped adapters.
+// An adapter that is not one of those — a stub standing in for a coding-agent
+// CLI or a forge — had no way into the registry at all, which is why the write
+// path had no end-to-end test until Phase 26: the chain it needed could be
+// described but not assembled.
+func (s *SlotInstances[T]) Set(name, typeName string, adapter T) {
+	if name == "" {
+		return
+	}
+	if s.instances == nil {
+		s.instances = map[string]instanceEntry[T]{}
+	}
+	s.instances[name] = instanceEntry[T]{typeName: typeName, adapter: adapter}
+	if s.defaultName == "" {
+		s.defaultName = name
+	}
+}
+
 // Names returns instance names + their type, ordered as-is (map iteration).
 // Used by /health to enumerate the topology.
 func (s SlotInstances[T]) List() []InstanceInfo {

@@ -25,13 +25,21 @@ func softwarePlannerHints() []domain.PlannerHint {
 			Priority:  9,
 		},
 		{
-			// The routing hint, and the load-bearing one for anything that
-			// writes. stepAct sends an action to the environment its env_id
-			// names, so a plan that writes code without naming the CLI
-			// environment reaches noopEnv and fails as unimplemented.
+			// This used to be the load-bearing routing rule for anything that
+			// writes: stepAct sent an action to whatever environment its
+			// env_id named, so a plan that wrote code without naming the CLI
+			// environment reached noopEnv and failed as unimplemented — and a
+			// hint is guidance, not a guarantee.
+			//
+			// Routing is now the registry's, from Factory.Serves (ADR 019), so
+			// the env_id half of this is no longer a warning about how to
+			// avoid a failure. What remains is the part a model genuinely has
+			// to get right: which parameters to fill in, and where not to
+			// write.
 			Condition: "capability.id in ['software.act.write_code', 'software.act.write_test', 'software.act.delegate_to_cli']",
-			Guidance: "set env_id to 'software.env.cli_agent' and put the task in params.prompt. " +
-				"The worktree is provisioned for you and arrives in params.worktree_path; never write to the checked-out tree.",
+			Guidance: "put the task in params.prompt. The worktree is provisioned for you and arrives in " +
+				"params.worktree_path; never write to the checked-out tree. Routing is automatic — " +
+				"env_id is not needed for these.",
 			Priority: 10,
 		},
 		{
