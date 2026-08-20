@@ -56,6 +56,10 @@ type Objective struct {
 	// Autonomy declares how much a standing objective may do without
 	// asking, and how much it may earn. Nil means propose-only.
 	Autonomy *Autonomy `json:"autonomy,omitempty"`
+	// Budget caps what this objective may spend on its own, separately from
+	// its twin's allowance. Nil means no ceiling of its own, which is what
+	// every objective written before Phase 23 has.
+	Budget *Budget `json:"budget,omitempty"`
 
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
@@ -70,6 +74,17 @@ func (o Objective) AutonomyDeclaration() Autonomy {
 		return Autonomy{}
 	}
 	return *o.Autonomy
+}
+
+// BudgetDeclaration returns the objective's spend ceiling, or the zero value
+// when none was declared. Nil-safe for the same reason as the others: an
+// absent declaration and a zero-valued one mean the same thing, and no caller
+// should have to know which it got.
+func (o Objective) BudgetDeclaration() Budget {
+	if o.Budget == nil {
+		return Budget{}
+	}
+	return *o.Budget
 }
 
 // CadenceDeclaration returns the objective's cadence, or an empty one. An

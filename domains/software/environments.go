@@ -33,7 +33,7 @@ func softwareEnvironmentFactories(reg *tools.Registry) []environment.Factory {
 	}
 	return []environment.Factory{
 		{
-			EnvID:       "software.env.git",
+			EnvID:       EnvGit,
 			Domain:      "software",
 			Description: "Git repository: commits, branches, PRs, worktrees, diffs",
 			Build: func(ctx environment.BuildContext) (environment.Environment, error) {
@@ -43,7 +43,7 @@ func softwareEnvironmentFactories(reg *tools.Registry) []environment.Factory {
 						vc = a
 					}
 				}
-				return &gitEnv{id: "software.env.git", vc: vc}, nil
+				return &gitEnv{id: EnvGit, vc: vc}, nil
 			},
 		},
 		{
@@ -183,6 +183,18 @@ func (e *gitEnv) Observe(ctx context.Context, q environment.ObservationQuery) (e
 }
 
 func (e *gitEnv) Act(ctx context.Context, a environment.Action) (environment.ActionResult, error) {
+	// Drafting needs no adapter and touches no repository, so it is answered
+	// before the adapter check: a deployment with no version control wired can
+	// still draft a roadmap phase for a human to read. Checking the adapter
+	// first would route these to noopAct and report a draft that never
+	// happened.
+	switch a.CapabilityID {
+	case CapProposeRoadmap:
+		return recordDraft(a, "problem")
+	case CapDraftADR:
+		return recordDraft(a, "decision")
+	}
+
 	adapter := e.vc
 	if adapter == nil || !adapter.Active() {
 		return noopAct(a), nil

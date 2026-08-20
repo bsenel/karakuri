@@ -18,6 +18,8 @@ import (
 	featurecp "github.com/bsenel/karakuri/internal/feature/checkpoint"
 	platformdb "github.com/bsenel/karakuri/internal/platform/db"
 	"github.com/bsenel/karakuri/internal/platform/storage"
+	karakuriquota "github.com/bsenel/karakuri/internal/quota"
+	"github.com/bsenel/karakuri/quota/cost"
 )
 
 // ── fakes ─────────────────────────────────────────────────────────────────
@@ -154,7 +156,7 @@ func newFixture(t *testing.T, cfg Config) *fixture {
 	if cfg.LoopPoll == 0 {
 		cfg.LoopPoll = time.Millisecond
 	}
-	f.svc = NewService(store, loops, envReg, nil, featurecp.NewService(store, hub), hub, cfg)
+	f.svc = NewService(store, loops, envReg, nil, featurecp.NewService(store, hub), hub, karakuriquota.Deps{}, cfg)
 	f.svc.now = func() time.Time { return f.clock }
 	return f
 }
@@ -721,5 +723,144 @@ func TestBackoffGrowsAndStops(t *testing.T) {
 	}
 	if backoff(12, max) != max {
 		t.Errorf("backoff never reached its ceiling: %s", backoff(12, max))
+	}
+}
+
+// ── Phase 23: per-objective spend ceilings ────────────────────────────────
+
+// budgetFixture wires a real in-memory ledger and pre-charges it, so the
+// supervisor reads spend the same way it will in production rather than
+// through a stub that cannot disagree with the recorder.
+func budgetFixture(t *testing.T, spent float64) (*fixture, objective.Objective) {
+	t.Helper()
+	f := newFixture(t, Config{})
+	ledger := cost.NewMemoryLedger()
+	f.svc.quota = karakuriquota.Deps{Costs: &karakuriquota.Recorder{Ledger: ledger}}
+
+	obj := f.declare(t, objective.Objective{
+		TwinID:   "twin-1",
+		Cadence:  &objective.Cadence{Every: "1h"},
+		Autonomy: &objective.Autonomy{Level: objective.AutonomyAct, Ceiling: objective.AutonomyAct},
+		Budget:   &objective.Budget{Daily: 10},
+	})
+	if spent > 0 {
+		// Recorded exactly as the loop records it: the twin is the subject
+		// that pays, the objective is the resource that spent.
+		if err := ledger.Record(context.Background(), cost.Event{
+			Subject:      karakuriquota.CostSubject("twin-1"),
+			ResourceType: "objective",
+			ResourceID:   string(obj.ID),
+			Provider:     "claude",
+			Units:        1,
+			UnitKind:     cost.UnitTokens,
+			Cost:         spent,
+			OccurredAt:   f.clock,
+		}); err != nil {
+			t.Fatalf("seed ledger: %v", err)
+		}
+	}
+	f.use(t, map[string]string{"git": "aaa"})
+	return f, obj
+}
+
+// An objective that has spent its ceiling stops reconciling — and does so
+// without being marked failed, blocked or paused, because none of those is
+// what happened.
+func TestBudgetExhaustionDefersRatherThanFailing(t *testing.T) {
+	f, obj := budgetFixture(t, 12) // over the declared 10
+	f.loops.criteriaMet = 1.0
+
+	f.pass(t, obj.ID, reconcile.TriggerManual)
+
+	if f.loops.runs != 0 {
+		t.Errorf("ran %d loops after the daily ceiling was reached", f.loops.runs)
+	}
+	st := f.state(t, obj.ID)
+	if st.Paused {
+		t.Errorf("a budget pause needs an operator to clear it; reason=%q", st.PausedReason)
+	}
+	if st.ConsecutiveFailures != 0 {
+		t.Errorf("consecutive_failures = %d; running out of money is not misbehaving", st.ConsecutiveFailures)
+	}
+	if st.NextDueAt == nil {
+		t.Fatal("a deferred objective was left with no next due time")
+	}
+	// Deferred to the window boundary, not to the next cadence tick.
+	if !st.NextDueAt.After(f.clock.Add(time.Hour)) {
+		t.Errorf("next due %v is within the hour; the cadence scheduled over the deferral", st.NextDueAt)
+	}
+}
+
+// Sensing costs adapter calls and no tokens, so an objective that cannot
+// afford to act can still afford to notice — and what it noticed is recorded.
+func TestSensingContinuesWhileOverBudget(t *testing.T) {
+	f, obj := budgetFixture(t, 12)
+	f.pass(t, obj.ID, reconcile.TriggerManual)
+
+	history, err := f.svc.History(context.Background(), obj.ID, 10)
+	if err != nil {
+		t.Fatalf("history: %v", err)
+	}
+	if len(history) == 0 {
+		t.Fatal("a deferred pass recorded no outcome; the digest has nothing to report")
+	}
+	if history[0].Deferred != "budget_exhausted" {
+		t.Errorf("outcome.Deferred = %q, want budget_exhausted", history[0].Deferred)
+	}
+	if history[0].Failed() {
+		t.Error("a deferral reported itself as a failed pass")
+	}
+}
+
+// Under the ceiling, nothing changes. The gate must not stop an objective
+// that has room left, or the feature is just an off switch.
+func TestSpendUnderTheCeilingReconcilesNormally(t *testing.T) {
+	f, obj := budgetFixture(t, 3) // well under 10
+	f.loops.criteriaMet = 1.0
+
+	f.pass(t, obj.ID, reconcile.TriggerManual)
+
+	if f.loops.runs != 1 {
+		t.Errorf("ran %d loops with budget remaining, want 1", f.loops.runs)
+	}
+}
+
+// A ceiling declared on a deployment with no ledger cannot be enforced. It
+// must not silently stop the objective either — an unenforceable ceiling is a
+// configuration problem, and refusing to run would be a worse answer than
+// running and saying so.
+func TestBudgetWithoutALedgerDoesNotStopTheObjective(t *testing.T) {
+	f := newFixture(t, Config{})
+	f.use(t, map[string]string{"git": "aaa"})
+	f.loops.criteriaMet = 1.0
+	obj := f.declare(t, objective.Objective{
+		TwinID:   "twin-1",
+		Cadence:  &objective.Cadence{Every: "1h"},
+		Autonomy: &objective.Autonomy{Level: objective.AutonomyAct, Ceiling: objective.AutonomyAct},
+		Budget:   &objective.Budget{Daily: 10},
+	})
+
+	f.pass(t, obj.ID, reconcile.TriggerManual)
+
+	if f.loops.runs != 1 {
+		t.Errorf("ran %d loops; an unenforceable ceiling stopped the objective", f.loops.runs)
+	}
+}
+
+// An objective with no budget is exactly what it was before Phase 23.
+func TestNoBudgetIsUnchanged(t *testing.T) {
+	f := newFixture(t, Config{})
+	f.use(t, map[string]string{"git": "aaa"})
+	f.loops.criteriaMet = 1.0
+	obj := f.declare(t, objective.Objective{
+		TwinID:   "twin-1",
+		Cadence:  &objective.Cadence{Every: "1h"},
+		Autonomy: &objective.Autonomy{Level: objective.AutonomyAct, Ceiling: objective.AutonomyAct},
+	})
+
+	f.pass(t, obj.ID, reconcile.TriggerManual)
+
+	if f.loops.runs != 1 {
+		t.Errorf("ran %d loops without a declared budget, want 1", f.loops.runs)
 	}
 }

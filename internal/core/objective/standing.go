@@ -242,3 +242,42 @@ func (a Autonomy) Clamp(l AutonomyLevel) AutonomyLevel {
 	}
 	return l
 }
+
+// Budget caps what one objective may spend, separately from the twin whose
+// allowance it otherwise draws on.
+//
+// A standing objective is the thing that most needs its own ceiling and least
+// has one by default: it reconciles on a clock nobody watches, and its
+// appetite is the part an operator has had no chance to calibrate. A
+// self-improvement objective is the clearest case — Phase 22 named it while
+// deferring this — but any objective on an hourly cadence has the same shape.
+//
+// Exhaustion is deliberately not a failure and not a pause. An objective that
+// has run out of money is not broken and does not need an operator: it needs
+// the next window. See the supervisor, which defers rather than pausing, for
+// why that distinction is load-bearing.
+type Budget struct {
+	// Daily is the most this objective may spend in a UTC day, in the
+	// ledger's currency. Zero means no daily ceiling of its own.
+	Daily float64 `json:"daily,omitempty"`
+
+	// PerReconcile caps a single expensive pass. Zero means uncapped.
+	//
+	// Distinct from Daily because they answer different questions: Daily
+	// bounds the month's bill, PerReconcile bounds the blast radius of one
+	// pass that goes wrong — a loop that spends a day's allowance in a single
+	// run has stayed inside its daily ceiling and still wants stopping.
+	PerReconcile float64 `json:"per_reconcile,omitempty"`
+}
+
+// Declared reports whether this budget constrains anything at all.
+func (b Budget) Declared() bool { return b.Daily > 0 || b.PerReconcile > 0 }
+
+// ExceedsDaily reports whether spend has reached the daily ceiling.
+//
+// Reached, not passed: a ledger is written after the work, so an objective
+// sitting exactly on its ceiling has already spent it. Treating that as room
+// left is how a ceiling gets rounded up by one reconcile every day.
+func (b Budget) ExceedsDaily(spent float64) bool {
+	return b.Daily > 0 && spent >= b.Daily
+}

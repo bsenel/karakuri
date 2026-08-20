@@ -189,8 +189,16 @@ func (s *GORMStorage) SaveReconcileOutcome(ctx context.Context, o reconcile.Outc
 		Escalated:    o.Escalated,
 		CheckpointID: o.CheckpointID,
 		Error:        o.Error,
-		StartedAt:    o.StartedAt,
-		EndedAt:      o.EndedAt,
+		Deferred:     o.Deferred,
+		DeferredUntil: func() *time.Time {
+			if o.DeferredUntil.IsZero() {
+				return nil
+			}
+			t := o.DeferredUntil
+			return &t
+		}(),
+		StartedAt: o.StartedAt,
+		EndedAt:   o.EndedAt,
 	}).Error
 }
 
@@ -224,8 +232,15 @@ func (s *GORMStorage) ListReconcileOutcomes(ctx context.Context, objectiveID obj
 			Escalated:    m.Escalated,
 			CheckpointID: m.CheckpointID,
 			Error:        m.Error,
-			StartedAt:    m.StartedAt,
-			EndedAt:      m.EndedAt,
+			Deferred:     m.Deferred,
+			DeferredUntil: func() time.Time {
+				if m.DeferredUntil == nil {
+					return time.Time{}
+				}
+				return *m.DeferredUntil
+			}(),
+			StartedAt: m.StartedAt,
+			EndedAt:   m.EndedAt,
 		}
 	}
 	return out, nil

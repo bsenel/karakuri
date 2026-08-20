@@ -57,7 +57,7 @@ func (s *serviceImpl) runLoop(ctx context.Context, loopID string, req loop.Reque
 	// Every model call the loop makes goes through the agent, so charging the
 	// twin's token budget here covers all four of the reflexion call sites
 	// rather than only the one in stepReason.
-	agent = withBudget(agent, s.budget, s.costs, obj.TwinID)
+	agent = withBudget(agent, s.budget, s.costs, obj.TwinID, obj.ID)
 
 	// 4. Build all environments for the domain. Fetch twin bindings so envs
 	// can resolve the correct adapter instance per tenant (ADR 006).

@@ -173,6 +173,10 @@ func (s *GORMStorage) SaveObjective(ctx context.Context, o objective.Objective) 
 	if o.Autonomy != nil {
 		autonomyJ, _ = json.Marshal(o.Autonomy)
 	}
+	var budgetJ []byte
+	if o.Budget != nil {
+		budgetJ, _ = json.Marshal(o.Budget)
+	}
 	return s.db.WithContext(ctx).Save(&schema.ObjectiveModel{
 		ID: string(o.ID), Title: o.Title, Description: o.Description, Domain: o.Domain,
 		AdditionalDomainsJSON: string(addJ),
@@ -180,6 +184,7 @@ func (s *GORMStorage) SaveObjective(ctx context.Context, o objective.Objective) 
 		CriteriaJSON: string(critJ), ConstraintsJSON: string(constrJ), ParentID: parentID,
 		Status: string(o.Status),
 		Mode:   string(o.Mode), CadenceJSON: string(cadenceJ), AutonomyJSON: string(autonomyJ),
+		BudgetJSON: string(budgetJ),
 	}).Error
 }
 
@@ -247,6 +252,13 @@ func objectiveFromModel(m schema.ObjectiveModel) objective.Objective {
 			autonomy = &a
 		}
 	}
+	var budget *objective.Budget
+	if m.BudgetJSON != "" {
+		var b objective.Budget
+		if err := json.Unmarshal([]byte(m.BudgetJSON), &b); err == nil {
+			budget = &b
+		}
+	}
 	return objective.Objective{
 		ID: objective.ObjectiveID(m.ID), Title: m.Title, Description: m.Description,
 		Domain: m.Domain, AdditionalDomains: additionalDomains,
@@ -256,6 +268,7 @@ func objectiveFromModel(m schema.ObjectiveModel) objective.Objective {
 		Mode:      objective.Mode(m.Mode),
 		Cadence:   cadence,
 		Autonomy:  autonomy,
+		Budget:    budget,
 		CreatedAt: m.CreatedAt, UpdatedAt: m.UpdatedAt,
 	}
 }
