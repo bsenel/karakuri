@@ -30,7 +30,7 @@ Karakuri replaced the original role-based workflow simulator with an autonomous 
 | 19    | Frontend for Auth, Quota, Cost, Audit      | **Completed** |
 | 20    | Standing Objectives + Reconciliation       | **Completed** |
 | 21    | Digests                                    | **Completed** |
-| 22    | The Karakuri Domain Pack                   | **Completed** |
+| 22    | The Karakuri Domain Pack                   | **Superseded**|
 | 23    | Per-Objective Spend Ceilings               | **Partial**   |
 | 24    | Conformance That Tests Behaviour           | Planned       |
 | 25    | Self-Improvement Without a History         | Planned       |
@@ -1594,7 +1594,17 @@ somebody.
 
 ---
 
-## Phase 22 — The Karakuri Domain Pack (Completed)
+## Phase 22 — The Karakuri Domain Pack (Superseded by ADR 018)
+
+> The capability shipped; the shape did not survive review. Self-improvement
+> now lives in the software pack — see
+> [ADR 018](adr/018-self-improvement-belongs-to-the-software-pack.md). The
+> separate pack was justified by a boundary that does not enforce anything,
+> two of its capabilities were generic software practices, and its repository
+> environment duplicated `software.env.git`. What was genuinely
+> platform-specific — the telemetry environment — remains, gated on whether a
+> reader is wired rather than on a config flag. The section below is kept for
+> the reasoning it records, not as a description of the current tree.
 
 **Goal:** Karakuri can read its own usage, find what limits it, and open a pull request that fixes it — under its own repository rules, and never from the pack that decided what to fix.
 

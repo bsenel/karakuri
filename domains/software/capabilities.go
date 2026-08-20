@@ -6,7 +6,7 @@ func softwareCapabilities() []capability.Capability {
 	obs := func(id, name, desc string) capability.Capability {
 		return capability.Capability{
 			ID: capability.CapabilityID(id), Name: name, Domain: "software",
-			Description: desc,
+			Description:  desc,
 			InputSchema:  capability.Schema{Type: "object", Properties: map[string]capability.SchemaProperty{}},
 			OutputSchema: capability.Schema{Type: "object"},
 		}

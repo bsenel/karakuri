@@ -14,7 +14,6 @@ import (
 	domainagri "github.com/bsenel/karakuri/domains/agriculture"
 	domainconsult "github.com/bsenel/karakuri/domains/consulting"
 	domainhc "github.com/bsenel/karakuri/domains/healthcare"
-	domainkrk "github.com/bsenel/karakuri/domains/karakuri"
 	domainlegal "github.com/bsenel/karakuri/domains/legal"
 	domainmech "github.com/bsenel/karakuri/domains/mechanical"
 	domainsw "github.com/bsenel/karakuri/domains/software"
@@ -186,7 +185,6 @@ func BootstrapServer(cfgPath string) (*Bootstrap, error) {
 		domainagri.New(),
 		domainconsult.New(),
 		domainhc.New(),
-		domainkrk.NewWithTools(toolReg),
 		domainlegal.New(),
 		domainmech.New(),
 	}

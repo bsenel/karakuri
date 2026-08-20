@@ -256,15 +256,21 @@ The port is read-only and stays that way. A pack that could write there could
 rewrite the evidence of what it did, and the value of Karakuri watching itself
 depends on the watching being trustworthy.
 
-Two rules follow, and `domains/karakuri` is the worked example of both:
+Two rules follow, and `software.env.platform_telemetry` is the worked example:
 
-- **An environment that observes should refuse to act, out loud.** Return
-  `ActionResult{Success: false, Error: "..."}` rather than succeeding quietly.
-  A silent success is the failure mode Phase 13.5 spent a dogfood run finding.
-- **Keep deciding and doing in separate packs.** The karakuri pack analyses and
-  drafts; the software pack writes, in a worktree, through a pull request
-  somebody reviews. A pack that could both conclude something about its own
-  authority and act on it is one bug away from widening its own bounds.
+- **An environment that observes should refuse the actions it cannot perform,
+  out loud** — `ActionResult{Success: false, Error: "..."}` rather than
+  succeeding quietly. Refusing *everything* is a different mistake: the loop
+  runs every capability through `Act`, including the ones that only read, so an
+  environment that declines unconditionally cannot execute the capability it
+  exists to provide. Both halves want a test, and one that offers only a
+  foreign capability cannot tell them apart.
+- **Keep deciding and doing in separate *agents*, not separate packs.** A pack
+  is a namespace: `stepAct` resolves an action's environment across every
+  domain an objective names, so a boundary between packs enforces nothing. The
+  agent that drafts holds no capability that writes, and carries
+  `MaxAutonomousActions: 0` so every plan escalates. See
+  [ADR 018](adr/018-self-improvement-belongs-to-the-software-pack.md).
 
 ### Cross-pack criteria
 
@@ -274,7 +280,7 @@ cross-domain objectives are for — by declaring the domain on the criterion:
 ```go
 objective.Criterion{
     ID:       "pull-request",
-    Verifier: "software.act.open_pull_request",
+    Verifier: "software.act.create_pr",
     Domain:   "software", // required; without it this is a dangling reference
     Weight:   0.4,
 }
@@ -282,8 +288,14 @@ objective.Criterion{
 
 The conformance suite accepts a foreign verifier only when `Domain` says so, so
 a typo in a local one still fails. It does not check that the named pack is
-enabled: a pack is validated on its own, and which others are configured is the
+enabled — a pack is validated on its own, and which others are configured is the
 registry's business at boot.
+
+**That gap is real, and it has bitten.** Because a foreign verifier is not
+resolved, `software.act.open_pull_request` sat in a template for a whole phase
+naming a capability nothing exports; the criterion carried 0.4 of the score and
+could never be satisfied. Prefer a same-pack verifier where the choice exists,
+and see Phase 24 for the registry-level check that closes it.
 
 ### Fingerprints should be lossy on purpose
 
@@ -291,7 +303,7 @@ registry's business at boot.
 anything changed. It should answer *"has anything changed that would change
 what I do"*, not *"has anything changed"*.
 
-`karakuri.env.telemetry` buckets its counts by order of magnitude and bands its
+`software.env.platform_telemetry` buckets its counts by order of magnitude and bands its
 rates, so an ordinary busy week does not move the hash while a new bottleneck
 or a decision queue growing tenfold does. An environment that hashed raw
 counters would wake a standing objective continuously to discover that work had
