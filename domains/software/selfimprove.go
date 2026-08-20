@@ -50,6 +50,16 @@ const (
 	// rather than platform ones.
 	CapProposeRoadmap = "software.act.propose_roadmap_phase"
 	CapDraftADR       = "software.act.draft_adr"
+
+	// CapAnalyseRepo reads the repository as evidence, so evidence-first can
+	// be satisfied on a deployment with no history — which is every deployment
+	// on the day somebody enables self-improvement.
+	//
+	// Beside analyse_usage rather than folded into it, so a proposal has to
+	// say which source it stood on. A phase proposed from repository evidence
+	// and a phase proposed from observed pain are different claims and should
+	// not be presented identically.
+	CapAnalyseRepo = "software.reason.analyse_repo"
 )
 
 // telemetryWindow is how far back the telemetry environment looks.
@@ -381,7 +391,7 @@ func recordDraft(a environment.Action, required string) (environment.ActionResul
 	}, nil
 }
 
-// selfImproveCapabilities are the three this file adds to the software pack.
+// selfImproveCapabilities are the four this file adds to the software pack.
 func selfImproveCapabilities() []capability.Capability {
 	prop := func(t, d string) capability.SchemaProperty {
 		return capability.SchemaProperty{Type: t, Description: d}
@@ -406,6 +416,26 @@ func selfImproveCapabilities() []capability.Capability {
 					"approval_rate": prop("number", "Share of resolved escalations approved; -1 when nothing was decided"),
 					"sufficient":    prop("boolean", "Whether the window held enough to reason from: true only at evidence=adequate"),
 					"evidence":      prop("string", "How much the window held: none, thin, or adequate. A proposal must say which it stood on."),
+				},
+			},
+			Verifiable: true,
+		},
+		{
+			ID:          CapAnalyseRepo,
+			Name:        "Analyse Repository",
+			Domain:      "software",
+			Description: "Read the repository as evidence: the roadmap's own deferred work, TODO density by package, packages with no tests, and where AGENTS.md rules live. Available on day one, unlike telemetry.",
+			InputSchema: capability.Schema{
+				Type:       "object",
+				Properties: map[string]capability.SchemaProperty{},
+			},
+			OutputSchema: capability.Schema{
+				Type: "object",
+				Properties: map[string]capability.SchemaProperty{
+					"deferred_work":     prop("array", "Work the roadmap itself marks still open or deferred — already justified in prose"),
+					"todo_density":      prop("array", "Packages with the most TODO and FIXME comments, ranked"),
+					"untested_packages": prop("array", "Packages with Go source and no test file at all. Counts files, not lines: this is not coverage"),
+					"evidence":          prop("string", "How much the repository held: none, thin, or adequate"),
 				},
 			},
 			Verifiable: true,
@@ -486,7 +516,10 @@ func selfImproveAgents() []agent.Definition {
 			Name:   "Platform Maintainer",
 			Domain: "software",
 			Capabilities: []capability.CapabilityID{
-				CapAnalyseUsage, CapProposeRoadmap, CapDraftADR,
+				// Both sources of evidence. On a deployment with no history
+				// the telemetry window is empty and the repository is not,
+				// which is the whole of Phase 25.
+				CapAnalyseUsage, CapAnalyseRepo, CapProposeRoadmap, CapDraftADR,
 			},
 			// Reflexion, because this agent's output is a proposal somebody
 			// will read as evidence-backed, and a critique-and-revise pass is
@@ -519,7 +552,7 @@ func selfImproveAgents() []agent.Definition {
 			// run "tell me what is limiting this deployment" at sense
 			// autonomy without ever putting an agent that drafts changes into
 			// the rotation.
-			Capabilities:      []capability.CapabilityID{CapAnalyseUsage},
+			Capabilities:      []capability.CapabilityID{CapAnalyseUsage, CapAnalyseRepo},
 			ReasoningStrategy: agent.ReasoningChainOfThought,
 			Authority: agent.AuthorityBounds{
 				MaxAutonomousActions: 1,
@@ -597,8 +630,9 @@ func selfImproveTemplates() []objective.Template {
 			// safety story rests on. Before SuggestedAgents was read, this
 			// ran under the strategist and the guarantee held by luck.
 			SuggestedAgents: []agent.Definition{{ID: "software.agent.maintainer"}},
-			Description: "Analyse telemetry, decide what is worth changing, and open a pull request that changes it. " +
-				"The maintainer analyses and drafts; the writing capabilities belong to other agents in this pack, " +
+			Description: "Analyse this deployment's telemetry and its repository, decide what is worth changing, and open a pull request that changes it. " +
+				"On a deployment with no history the telemetry is empty and the repository is not: the roadmap's own deferred work is a backlog " +
+				"somebody already justified in prose. The maintainer analyses and drafts; the writing capabilities belong to other agents in this pack, " +
 				"so the change still arrives as a pull request somebody reviews.",
 			SuccessCriteria: []objective.Criterion{
 				judged("evidence", "The proposal names the specific telemetry that says the problem is real, and the analysis reported evidence adequate to support it", 0.3),
@@ -610,7 +644,14 @@ func selfImproveTemplates() []objective.Template {
 				crit("pull-request", "A pull request is open with the change and its tests", "software.act.create_pr", 0.4),
 			},
 			Constraints: []objective.Constraint{
-				hard("evidence-first", "No proposal may be drafted before analyse_usage has run", "analysis_complete"),
+				// Either source, and the proposal has to say which. Phase 22
+				// spelled this as analyse_usage alone, which made the
+				// constraint unsatisfiable on a deployment with no history —
+				// the deployment that most needs a roadmap was the one that
+				// could not produce one.
+				hard("evidence-first",
+					"No proposal may be drafted before analyse_usage or analyse_repo has run, and the proposal must name which source it stood on",
+					"analysis_complete"),
 				hard("human-approves", "Every change to the repository requires explicit approval", "change_approved"),
 				hard("respect-repo-rules", "Changes must follow AGENTS.md: clean-architecture boundaries, tests for non-trivial logic, docs updated", "repo_rules_followed"),
 			},

@@ -110,7 +110,17 @@ func softwareEnvironmentFactories(reg *tools.Registry) []environment.Factory {
 		},
 		noopFactory("software.env.ci", "CI pipeline: build status, test results, coverage"),
 		noopFactory("software.env.observability", "Runtime: logs, metrics, alerts"),
-		noopFactory("software.env.codebase", "Static analysis: file tree, symbols, dependency graph"),
+		{
+			EnvID:       "software.env.codebase",
+			Domain:      "software",
+			Description: "The repository as evidence: the roadmap's own deferred work, TODO density by package, packages with no tests, and where AGENTS.md rules live",
+			Serves:      []capability.CapabilityID{CapAnalyseRepo},
+			Build: func(_ environment.BuildContext) (environment.Environment, error) {
+				// Root defaults to the server's working directory, like
+				// shellEnv. Declared since Phase 2 and a noop until Phase 25.
+				return newCodebaseEnv("software.env.codebase", ""), nil
+			},
+		},
 		{
 			EnvID:       "software.env.shell",
 			Domain:      "software",
