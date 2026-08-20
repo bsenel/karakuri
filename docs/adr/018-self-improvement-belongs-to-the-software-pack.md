@@ -134,13 +134,18 @@ learn it from.
   that did not run. A live run confirmed it: the escalation came from the
   strategist's 0.90 confidence threshold, not from the maintainer's bounds.
 
-  The escalation property survives by luck rather than design — the strategist
-  also carries `MaxAutonomousActions: 0`, so every plan still escalates — but
-  the stricter threshold, the no-delegate and no-modify-objective flags do
-  not apply. `Template.SuggestedAgents` exists for exactly this and is read by
-  nothing; wiring it needs the objective to remember its template. Recorded as
-  Phase 24 step 5 rather than fixed here, because it is a core field and a
-  schema change rather than part of a refactor.
+  The escalation property survived by luck rather than design — the strategist
+  also carries `MaxAutonomousActions: 0`, so every plan still escalated — but
+  the stricter threshold and the no-delegate and no-modify-objective flags did
+  not apply.
+
+  **Resolved by [ADR 019](019-capabilities-declare-what-they-need.md).**
+  `Objective.AgentID` carries the template's suggested agent and `SelectAgent`
+  honours it, so `self_improve` runs under the maintainer and the test
+  guarding its bounds guards the agent that runs. Left in this ADR rather than
+  edited out: the regression is the clearest evidence for what ADR 019
+  concludes, which is that a property inferred from an identifier is a
+  property nobody is enforcing.
 
 ## Alternatives considered
 
