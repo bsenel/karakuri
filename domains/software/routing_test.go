@@ -122,3 +122,42 @@ func TestWriteDesignDocIsServedAndRefusesEmptyInput(t *testing.T) {
 		t.Errorf("refusal %q does not name the missing parameter", res.Error)
 	}
 }
+
+// A criterion's verifier must be a capability whose success *answers* the
+// criterion, not one that supplies the material for answering it.
+//
+// The distinction was invisible until the verify step started reading action
+// results. Before that every criterion was effectively judged by a model shown
+// nothing, so naming a verifier that could not decide the question cost
+// nothing — and four criteria in this pack named analyse_usage, which produces
+// telemetry rather than deciding anything. Once a verifier settles a criterion
+// deterministically, that spelling means "met whenever the analysis ran",
+// which is every time, including on a deployment with no telemetry at all.
+//
+// analyse_usage in particular succeeds even with no reader wired, deliberately
+// — so it can never be a verifier for anything.
+func TestNoCriterionIsVerifiedByEvidenceGathering(t *testing.T) {
+	// Capabilities that report on the world rather than change it. Their
+	// success says "I looked", never "the thing you asked about is true".
+	reporting := map[capability.CapabilityID]bool{
+		CapAnalyseUsage: true,
+	}
+
+	checked := 0
+	for _, tpl := range New().ObjectiveTemplates() {
+		for _, crit := range tpl.SuccessCriteria {
+			if crit.Verifier == "" {
+				continue // judged from the results, which is the other correct answer
+			}
+			checked++
+			if reporting[crit.Verifier] {
+				t.Errorf("template %q criterion %q is verified by %q, which succeeds whenever it runs — "+
+					"the criterion would be met on a deployment with no telemetry at all",
+					tpl.ID, crit.ID, crit.Verifier)
+			}
+		}
+	}
+	if checked == 0 {
+		t.Fatal("no criterion in this pack declares a verifier; this test is checking nothing")
+	}
+}
