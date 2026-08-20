@@ -2,6 +2,7 @@ package loop
 
 import (
 	"context"
+	"log/slog"
 	"time"
 
 	coreagent "github.com/bsenel/karakuri/internal/core/agent"
@@ -34,6 +35,29 @@ func SelectAgent(domReg *domain.Registry, obj objective.Objective, explicit core
 		domains = []string{obj.Domain}
 	}
 	if domReg != nil {
+		// An objective that names an agent gets that agent. This is what a
+		// template's SuggestedAgents becomes at creation time, and it has to
+		// be checked before the fallback: "the first agent the domain
+		// declares" is an arbitrary answer that happened to be right while
+		// packs were small.
+		if obj.AgentID != "" {
+			for _, d := range domains {
+				pack, ok := domReg.Get(d)
+				if !ok {
+					continue
+				}
+				for _, def := range pack.AgentDefinitions() {
+					if string(def.ID) == obj.AgentID {
+						return def
+					}
+				}
+			}
+			// Named and not found: fall through to the default rather than
+			// failing the objective, but say so — a typo in an agent name
+			// should not silently run something else without a trace.
+			slog.Warn("objective names an agent no enabled pack declares; falling back to the domain default",
+				"objective", string(obj.ID), "agent", obj.AgentID)
+		}
 		for _, d := range domains {
 			pack, ok := domReg.Get(d)
 			if !ok || len(pack.AgentDefinitions()) == 0 {

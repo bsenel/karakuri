@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/bsenel/karakuri/internal/core/capability"
@@ -76,9 +75,13 @@ func stepAct(ctx context.Context, sc *stepContext, p plan) []environment.ActionR
 			continue
 		}
 
-		// b. Worktree for code-writing capabilities
-		capLower := strings.ToLower(action.CapabilityID)
-		if strings.HasSuffix(capLower, ".write_code") || strings.HasSuffix(capLower, ".write_test") {
+		// b. Worktree for capabilities that declare they write files.
+		//
+		// Asked of the capability registry rather than matched on the name:
+		// the suffix test gave a worktree to two capabilities that had no
+		// implementation and withheld one from delegate_to_cli, which is the
+		// only one that can actually write. See ADR 019.
+		if sc.svc.needsWorkspace(action.CapabilityID) {
 			taskID := fmt.Sprintf("%s-%d", sc.loopID[:8], i)
 			wt, err := sc.svc.wt.Create(ctx, git.WorktreeOptions{
 				ObjectiveID: sc.obj.ID,
@@ -216,4 +219,17 @@ func stepAct(ctx context.Context, sc *stepContext, p plan) []environment.ActionR
 	})
 
 	return results
+}
+
+// needsWorkspace reports whether a capability declared that it writes files.
+//
+// Unknown capabilities get no workspace: a capability the registry has never
+// heard of is one no pack declared, and provisioning a git worktree for a
+// name a model invented would create a branch per hallucination.
+func (s *serviceImpl) needsWorkspace(capID string) bool {
+	if s.capReg == nil {
+		return false
+	}
+	cap, ok := s.capReg.Get(capability.CapabilityID(capID))
+	return ok && cap.NeedsWorkspace
 }

@@ -19,6 +19,13 @@ func softwareCapabilities() []capability.Capability {
 			OutputSchema: capability.Schema{Type: "object"},
 		}
 	}
+	// writes marks a capability that produces files and therefore needs an
+	// isolated worktree. Declared here so the loop provisions one by what the
+	// capability says it does rather than by what it is called.
+	writes := func(c capability.Capability) capability.Capability {
+		c.NeedsWorkspace = true
+		return c
+	}
 	return []capability.Capability{
 		obs("software.observe.fetch_commits", "Fetch Commits", "Fetch recent commits from GitEnvironment"),
 		obs("software.observe.fetch_prs", "Fetch PRs", "Fetch pull requests awaiting review"),
@@ -31,13 +38,13 @@ func softwareCapabilities() []capability.Capability {
 
 		act("software.decide.prioritize_tasks", "Prioritize Tasks", "Order a task list by impact and risk", false),
 
-		act("software.act.write_code", "Write Code", "Produce implementation artifact in worktree", false),
-		act("software.act.write_test", "Write Test", "Produce test artifact in worktree (TDD)", false),
+		writes(act("software.act.write_code", "Write Code", "Write implementation into an isolated worktree, via the configured coding-agent CLI", false)),
+		writes(act("software.act.write_test", "Write Test", "Write tests into an isolated worktree, via the configured coding-agent CLI", false)),
 		act("software.act.write_design_doc", "Write Design Doc", "Produce mandatory design document before implementation", false),
-		act("software.act.create_pr", "Create PR", "Submit worktree branch as pull request", false),
+		writes(act("software.act.create_pr", "Create PR", "Submit a worktree branch as a pull request", false)),
 		act("software.act.create_ticket", "Create Ticket", "Create ticket in project management tool", false),
 		act("software.act.send_message", "Send Message", "Send a message via MessagingAdapter", false),
-		act("software.act.delegate_to_cli", "Delegate to CLI Agent", "Hand a task to a coding-agent CLI (Claude Code, Cursor, Gemini, Copilot) in the active worktree", false),
+		writes(act("software.act.delegate_to_cli", "Delegate to CLI Agent", "Hand a task to a coding-agent CLI (Claude Code, Cursor, Gemini, Copilot) in an isolated worktree", false)),
 		act("software.act.shell_exec", "Shell Exec", "Run a /bin/sh command with params.cmd (required), optional params.workdir and params.timeout_sec (max 600). Result includes exit_code, stdout, stderr. Dangerous patterns (rm -rf /, mkfs, sudo, curl|sh) are blocked.", true),
 
 		act("software.verify.run_tests", "Run Tests", "Execute test suite in worktree", true),

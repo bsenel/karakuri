@@ -34,7 +34,7 @@ Karakuri replaced the original role-based workflow simulator with an autonomous 
 | 23    | Per-Objective Spend Ceilings               | **Partial**   |
 | 24    | Conformance That Tests Behaviour           | Planned       |
 | 25    | Self-Improvement Without a History         | Planned       |
-| 26    | The Write Path                             | Planned       |
+| 26    | The Write Path                             | **Partial**   |
 
 
 ---
@@ -1911,7 +1911,7 @@ widens what it can see, never what it may do.
 
 ---
 
-## Phase 26 — The Write Path (Planned)
+## Phase 26 — The Write Path (Partial)
 
 **Goal:** Karakuri can produce a change, not only a proposal about one.
 
@@ -1958,7 +1958,30 @@ human until this closes.
    pull request, exercised in CI against a scratch repository with a stub
    version-control adapter.
 
-**Acceptance:** `karakuri.objective.self_improve` can reach all three of its
+**Shipped (steps 1-3).** See
+[ADR 019](adr/019-capabilities-declare-what-they-need.md).
+`Capability.NeedsWorkspace` replaces the name-suffix test, so a worktree goes
+to the capabilities that declare they write — including `delegate_to_cli`,
+which could write and never got one, and `create_pr`, which needs a worktree
+path the loop never supplied. `write_code` and `write_test` are implemented by
+delegating to the same coding-agent CLI rather than left as declared stubs
+that routed to `noopEnv`; both refuse an empty task or a missing worktree
+rather than guessing.
+
+Fixed alongside, because the write path is worth nothing under the wrong
+agent: `Template.SuggestedAgents` was read by nothing, so `self_improve` ran
+under the strategist. Objectives now carry `AgentID`, template instantiation
+fills it, and `SelectAgent` honours it.
+
+**Still open (step 4, and the part that matters most).** Routing is by
+`EnvID`, which the *model* chooses: a plan that writes code without naming
+`software.env.cli_agent` still reaches `noopEnv`. A priority-10 planner hint
+states the pairing, which is guidance rather than a guarantee. Making the
+registry route a capability to the environment that serves it — the same
+`servedBy` idea, enforced rather than mirrored — is the remaining work, along
+with the end-to-end acceptance objective in CI.
+
+**Acceptance:** `software.objective.self_improve` can reach all three of its
 criteria rather than two. The pull-request criterion — 0.4 of the score, and
 the entire point of the cross-domain shape — becomes satisfiable for the first
 time. The maintainer's bounds are unchanged: it still escalates every plan,

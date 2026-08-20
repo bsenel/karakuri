@@ -42,6 +42,7 @@ type ObjectiveModel struct {
 	CadenceJSON  string    `gorm:"column:cadence_json;not null;default:''"`
 	AutonomyJSON string    `gorm:"column:autonomy_json;not null;default:''"`
 	BudgetJSON   string    `gorm:"column:budget_json;not null;default:''"`
+	AgentID      string    `gorm:"column:agent_id;not null;default:''"`
 	CreatedAt    time.Time `gorm:"column:created_at;autoCreateTime"`
 	UpdatedAt    time.Time `gorm:"column:updated_at;autoUpdateTime"`
 }
