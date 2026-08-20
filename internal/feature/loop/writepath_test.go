@@ -125,9 +125,9 @@ func TestWritePathEndToEnd(t *testing.T) {
 	if len(results) != 4 {
 		t.Fatalf("got %d results, want 4", len(results))
 	}
-	for i, r := range results {
-		if !r.Success {
-			t.Errorf("action %d failed: %s", i, r.Error)
+	for i, o := range results {
+		if !o.Result.Success {
+			t.Errorf("action %d (%s) failed: %s", i, o.CapabilityID, o.Result.Error)
 		}
 	}
 
@@ -211,7 +211,7 @@ func TestWritePathSurvivesAWrongEnvID(t *testing.T) {
 		}},
 	})
 
-	if len(results) != 1 || !results[0].Success {
+	if len(results) != 1 || !results[0].Result.Success {
 		t.Fatalf("write_code failed despite the pack declaring who serves it: %+v", results)
 	}
 	if len(cli.calls) != 1 {

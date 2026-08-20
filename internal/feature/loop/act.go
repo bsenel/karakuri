@@ -16,7 +16,35 @@ import (
 	"github.com/bsenel/karakuri/quota/cost"
 )
 
-func stepAct(ctx context.Context, sc *stepContext, p plan) []environment.ActionResult {
+// actionOutcome pairs an action with what it produced.
+//
+// stepAct returns these rather than bare results because a result cannot say
+// which capability made it, and the two steps downstream both need to know:
+// verify, to match a criterion's verifier against the action that was supposed
+// to satisfy it, and learn, to attribute a success rate to the right
+// capability.
+//
+// They were paired by slice index before — stepLearn read results[i] beside
+// p.Actions[i] — which holds only while nothing ever skips or reorders. verify
+// did not pair them at all: a criterion verified by run_tests was met if *any*
+// action succeeded, so an unrelated send_message could satisfy it.
+type actionOutcome struct {
+	CapabilityID string
+	EnvID        string
+	Result       environment.ActionResult
+}
+
+// results extracts the bare results, for the callers that genuinely do not
+// care which action produced which.
+func results(outcomes []actionOutcome) []environment.ActionResult {
+	out := make([]environment.ActionResult, 0, len(outcomes))
+	for _, o := range outcomes {
+		out = append(out, o.Result)
+	}
+	return out
+}
+
+func stepAct(ctx context.Context, sc *stepContext, p plan) []actionOutcome {
 	// 1. Emit step started
 	sc.svc.hub.Publish(ctx, event.Event{
 		Type:        event.TypeLoopStepStarted,
@@ -28,7 +56,7 @@ func stepAct(ctx context.Context, sc *stepContext, p plan) []environment.ActionR
 		Timestamp: time.Now().UTC(),
 	})
 
-	results := make([]environment.ActionResult, 0, len(p.Actions))
+	outcomes := make([]actionOutcome, 0, len(p.Actions))
 	successCount := 0
 
 	for i, action := range p.Actions {
@@ -51,9 +79,12 @@ func stepAct(ctx context.Context, sc *stepContext, p plan) []environment.ActionR
 		// iteration: the loop can still make progress on whatever else it
 		// planned, and the operator sees a bounded twin rather than a broken one.
 		if !sc.svc.allowCapability(ctx, sc, action.CapabilityID, i) {
-			results = append(results, environment.ActionResult{
-				Success: false,
-				Error:   "capability quota exhausted for the day",
+			outcomes = append(outcomes, actionOutcome{
+				CapabilityID: action.CapabilityID,
+				Result: environment.ActionResult{
+					Success: false,
+					Error:   "capability quota exhausted for the day",
+				},
 			})
 			continue
 		}
@@ -227,7 +258,11 @@ func stepAct(ctx context.Context, sc *stepContext, p plan) []environment.ActionR
 			UnitKind:     cost.UnitCalls,
 		})
 
-		results = append(results, result)
+		outcomes = append(outcomes, actionOutcome{
+			CapabilityID: action.CapabilityID,
+			EnvID:        envAdapter,
+			Result:       result,
+		})
 	}
 
 	// 3. Emit step completed
@@ -246,7 +281,7 @@ func stepAct(ctx context.Context, sc *stepContext, p plan) []environment.ActionR
 		Timestamp: time.Now().UTC(),
 	})
 
-	return results
+	return outcomes
 }
 
 // resolveEnv picks the environment that will run an action, and reports which

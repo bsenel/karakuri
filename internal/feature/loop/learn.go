@@ -7,14 +7,13 @@ import (
 	"time"
 
 	coreagent "github.com/bsenel/karakuri/internal/core/agent"
-	"github.com/bsenel/karakuri/internal/core/environment"
 	"github.com/bsenel/karakuri/internal/core/event"
 	"github.com/bsenel/karakuri/internal/core/loop"
 	"github.com/bsenel/karakuri/internal/core/memory"
 	"github.com/bsenel/karakuri/internal/platform/storage"
 )
 
-func stepLearn(ctx context.Context, sc *stepContext, ws loop.WorldState, p plan, results []environment.ActionResult, score float64) {
+func stepLearn(ctx context.Context, sc *stepContext, ws loop.WorldState, p plan, outcomes []actionOutcome, score float64) {
 	// 1. Emit step started
 	sc.svc.hub.Publish(ctx, event.Event{
 		Type:        event.TypeLoopStepStarted,
@@ -32,7 +31,7 @@ func stepLearn(ctx context.Context, sc *stepContext, ws loop.WorldState, p plan,
 		"plan":        p,
 	})
 	outputJSON, _ := json.Marshal(map[string]any{
-		"results": results,
+		"results": results(outcomes),
 		"score":   score,
 	})
 	_ = sc.svc.store.SaveLoopIteration(ctx, storage.LoopIteration{
@@ -47,14 +46,14 @@ func stepLearn(ctx context.Context, sc *stepContext, ws loop.WorldState, p plan,
 
 	// 3. Write episodic memory entry
 	successCount := 0
-	for _, r := range results {
-		if r.Success {
+	for _, o := range outcomes {
+		if o.Result.Success {
 			successCount++
 		}
 	}
 	episodicContent := fmt.Sprintf(
 		"Iteration %d: executed %d actions (%d successful), score=%.2f, objective=%q",
-		sc.iteration, len(results), successCount, score, sc.obj.Title,
+		sc.iteration, len(outcomes), successCount, score, sc.obj.Title,
 	)
 	_ = sc.svc.memSvc.Store(ctx, memory.Entry{
 		ID:         fmt.Sprintf("ep-%d", time.Now().UnixNano()),
@@ -69,14 +68,13 @@ func stepLearn(ctx context.Context, sc *stepContext, ws loop.WorldState, p plan,
 
 	// 4. Upsert procedural memory for each action result
 	memoriesWritten := 1 // episodic entry above
-	for i, action := range p.Actions {
-		var actionResult environment.ActionResult
-		if i < len(results) {
-			actionResult = results[i]
-		}
-
+	// Over the outcomes rather than over p.Actions paired by index: an
+	// outcome knows which capability produced it, so a procedural success rate
+	// is attributed to the capability that earned it even if the two slices
+	// ever stop lining up.
+	for i, o := range outcomes {
 		confidence := 0.8
-		if !actionResult.Success {
+		if !o.Result.Success {
 			confidence = 0.2
 		}
 
@@ -86,8 +84,8 @@ func stepLearn(ctx context.Context, sc *stepContext, ws loop.WorldState, p plan,
 			AgentID:    coreagent.AgentID(sc.agentDef.ID),
 			TwinID:     sc.twinID,
 			Tier:       string(memory.TierProcedural),
-			Domain:     action.CapabilityID, // capability ID stored in Domain for procedural
-			Content:    fmt.Sprintf("capability=%s success=%v", action.CapabilityID, actionResult.Success),
+			Domain:     o.CapabilityID, // capability ID stored in Domain for procedural
+			Content:    fmt.Sprintf("capability=%s success=%v", o.CapabilityID, o.Result.Success),
 			Confidence: confidence,
 			CreatedAt:  time.Now().UTC(),
 		})
