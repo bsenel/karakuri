@@ -59,12 +59,14 @@ const (
 // single day's noise and well by a week's shape.
 const telemetryWindow = 7 * 24 * time.Hour
 
-// servedBy names the environment that executes each self-improvement
-// capability, pinned by a test against the pack's declarations.
+// servedBy names the environment expected to execute each self-improvement
+// capability.
 //
-// One table rather than a switch in each environment with nothing tying them
-// together: that shape is how these capabilities once shipped unroutable,
-// refused at runtime with every test still passing.
+// It does not drive routing — the environments' own Act methods do that. It
+// is the declaration a test checks by *executing* each capability where this
+// map says it lives, so a capability added here without a route, or routed
+// without an entry, fails rather than shipping unroutable. That is how these
+// capabilities once shipped inert: refused at runtime with every test passing.
 var servedBy = map[capability.CapabilityID]environment.EnvironmentID{
 	CapAnalyseUsage:   EnvPlatformTelemetry,
 	CapProposeRoadmap: EnvGit,
@@ -352,6 +354,14 @@ func selfImproveCapabilities() []capability.Capability {
 					"scope":    prop("string", "What is in, and explicitly what is out"),
 				},
 			},
+			OutputSchema: capability.Schema{
+				Type: "object",
+				Properties: map[string]capability.SchemaProperty{
+					"recorded": prop("boolean", "Whether a draft was accepted"),
+					"draft":    prop("object", "The drafted fields, as supplied"),
+					"note":     prop("string", "What happens to the draft next"),
+				},
+			},
 			Verifiable: true,
 		},
 		{
@@ -366,6 +376,14 @@ func selfImproveCapabilities() []capability.Capability {
 					"decision":     prop("string", "The decision, stated as a claim rather than a topic"),
 					"context":      prop("string", "What made it necessary"),
 					"alternatives": prop("string", "What else was considered, and why it lost"),
+				},
+			},
+			OutputSchema: capability.Schema{
+				Type: "object",
+				Properties: map[string]capability.SchemaProperty{
+					"recorded": prop("boolean", "Whether a draft was accepted"),
+					"draft":    prop("object", "The drafted fields, as supplied"),
+					"note":     prop("string", "What happens to the draft next"),
 				},
 			},
 			Verifiable: true,
@@ -501,23 +519,26 @@ func selfImproveTemplates() []objective.Template {
 	}
 }
 
-// platformTelemetryFactory builds the environment only where a telemetry
-// reader is wired.
+// platformTelemetryFactory builds the environment; the wired reader is what
+// gates it.
 //
-// This is the gating that replaces the karakuri pack's config flag, and it is
-// finer: a deployment that has not wired the port gets no environment rather
-// than one that answers "unavailable" to everything. A plan naming
-// analyse_usage there fails honestly through the unmatched-EnvID path, which
-// is the behaviour Phase 13.5 chose for exactly this case.
+// An earlier version refused to build without a reader, on the theory that a
+// deployment which has not opted in should not get the environment at all.
+// The conformance suite caught it: a declared factory must be constructible,
+// and every other adapter-backed environment in this pack builds and degrades
+// honestly rather than failing construction. Building and reporting
+// `available: false` is both the convention here and enough for the property
+// that mattered — an unwired deployment learns nothing about the platform,
+// because there is nothing behind the port to learn it from.
 func platformTelemetryFactory() environment.Factory {
 	return environment.Factory{
 		EnvID:       EnvPlatformTelemetry,
 		Domain:      "software",
 		Description: "This deployment's own behaviour: escalation rates, spend, failing objectives, unanswered decisions",
 		Build: func(bc environment.BuildContext) (environment.Environment, error) {
-			if bc.Telemetry == nil {
-				return nil, fmt.Errorf("%s needs a telemetry reader; none is wired into this deployment", EnvPlatformTelemetry)
-			}
+			// A nil reader is the ordinary case for a deployment that has not
+			// wired telemetry. The environment says so rather than reporting
+			// zeroes that read as a healthy system.
 			return &telemetryEnv{reader: bc.Telemetry, twinID: bc.TwinID}, nil
 		},
 	}

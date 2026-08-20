@@ -76,12 +76,20 @@ product should not casually acquire an environment exposing the platform's
 internals to their objectives.
 
 That distinction needs a name, not a pack. It is `software.env.platform_telemetry`,
-and its factory **returns an error when no telemetry reader is wired** — so the
-environment does not exist on deployments that have not opted in. This is
-strictly finer than the pack-level `domains[].enabled` flag it replaces: gating
-is per deployment, decided by whether the port is present, and a plan naming
-`analyse_usage` where it is absent fails honestly through the unmatched-`EnvID`
-path Phase 13.5 built for this case.
+and **the wired reader is the gate**: with none, the environment reports
+`available: false` and `sufficient: false` rather than zeroes that read as a
+healthy deployment, and `analyse_usage` says so instead of inventing an
+answer. Gating is therefore per deployment — decided by whether the port is
+present — rather than by the pack-level `domains[].enabled` flag it replaces.
+
+A first attempt had the factory *refuse to build* without a reader, on the
+theory that a deployment which had not opted in should not get the environment
+at all. The conformance suite rejected it: a declared factory must be
+constructible, and every other adapter-backed environment in this pack builds
+and degrades honestly rather than failing construction. The suite was right,
+and the property that mattered survives without it — an unwired deployment
+learns nothing about the platform, because there is nothing behind the port to
+learn it from.
 
 ## Consequences
 
@@ -108,15 +116,25 @@ path Phase 13.5 built for this case.
 - **`domains/karakuri` is deleted.** The engine registers one fewer pack, and
   the platform stops appearing in a list of industries.
 
+- **The conformance suite now runs in CI, for every pack.** It was reachable
+  only by a human typing `krk domain test <pack>`: bootstrap runs the
+  cross-pack collision check and nothing else, and no pack had a test of its
+  own — the deleted karakuri pack held the only one in the tree. This refactor
+  shipped a capability with no `OutputSchema` and an unbuildable factory with
+  the full suite passing throughout, which is exactly the gap. All six shipped
+  packs are checked now, plus an assertion that the checked set matches the
+  set bootstrap registers.
+
 ## Alternatives considered
 
 **Keeping the pack.** The status quo, and defensible only if the boundary
 enforced something. It does not.
 
-**Merging everything into software, telemetry environment included, with no
-gate.** Simpler by one factory error path, and it would hand every software
-deployment an environment describing a platform its objectives have no business
-reading. The nil-reader check costs three lines and keeps the subjects apart.
+**Merging everything into software with the telemetry environment reporting
+like any other.** Nearly what shipped, and the difference is only that the
+environment is explicit about having no reader rather than returning zeroes. A
+deployment reading zeroes cannot tell "nothing is wrong" from "I cannot see",
+and a system reasoning about its own improvement must not confuse them.
 
 **Keeping a `karakuri` pack holding only the telemetry environment.** A whole
 pack, an entry in the domain registry, and a config flag, to carry one

@@ -161,15 +161,43 @@ func TestDraftingRefusesEmptyInput(t *testing.T) {
 	}
 }
 
-// A deployment with no telemetry reader gets no telemetry environment, rather
-// than one that answers "unavailable" to everything. This is the gating that
-// replaces the karakuri pack's config flag.
-func TestPlatformTelemetryNeedsAReader(t *testing.T) {
-	if _, err := platformTelemetryFactory().Build(environment.BuildContext{}); err == nil {
-		t.Error("the telemetry environment built with no reader wired")
+// The wired reader is the gate, and it gates by answering honestly rather
+// than by refusing to exist.
+//
+// An earlier version had the factory error without a reader. Conformance
+// rejected it — a declared factory must be constructible — and it was right:
+// every other adapter-backed environment here builds and degrades. What the
+// property needs is that an unwired deployment learns nothing about the
+// platform, and it learns nothing because there is nothing behind the port.
+func TestPlatformTelemetryGatesOnItsReader(t *testing.T) {
+	env, err := platformTelemetryFactory().Build(environment.BuildContext{})
+	if err != nil {
+		t.Fatalf("the telemetry environment must be constructible: %v", err)
 	}
-	if _, err := platformTelemetryFactory().Build(environment.BuildContext{Telemetry: stubReader{}}); err != nil {
-		t.Errorf("the telemetry environment refused to build with a reader wired: %v", err)
+
+	obs, err := env.Observe(context.Background(), environment.ObservationQuery{})
+	if err != nil {
+		t.Fatalf("observe: %v", err)
+	}
+	if obs.State["available"] != false {
+		t.Error("an unwired telemetry environment did not report itself unavailable")
+	}
+	if obs.Version != "" {
+		t.Error("an unwired environment produced a fingerprint, which reads as a still world")
+	}
+
+	res, err := env.Act(context.Background(), environment.Action{CapabilityID: CapAnalyseUsage})
+	if err != nil {
+		t.Fatalf("act: %v", err)
+	}
+	// Not a capability failure: recorded as one, three of them would raise a
+	// failing_capability bottleneck against the pack's own analysis and bias
+	// its procedural confidence down for a configuration gap.
+	if !res.Success {
+		t.Error("an unwired reader was recorded as the capability failing")
+	}
+	if res.StateDelta["available"] != false || res.StateDelta["sufficient"] != false {
+		t.Error("an unwired reader did not report itself unavailable and without evidence")
 	}
 }
 

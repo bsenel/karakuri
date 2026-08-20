@@ -33,7 +33,7 @@ func softwareEnvironmentFactories(reg *tools.Registry) []environment.Factory {
 	}
 	return []environment.Factory{
 		{
-			EnvID:       "software.env.git",
+			EnvID:       EnvGit,
 			Domain:      "software",
 			Description: "Git repository: commits, branches, PRs, worktrees, diffs",
 			Build: func(ctx environment.BuildContext) (environment.Environment, error) {
@@ -43,7 +43,7 @@ func softwareEnvironmentFactories(reg *tools.Registry) []environment.Factory {
 						vc = a
 					}
 				}
-				return &gitEnv{id: "software.env.git", vc: vc}, nil
+				return &gitEnv{id: EnvGit, vc: vc}, nil
 			},
 		},
 		{
