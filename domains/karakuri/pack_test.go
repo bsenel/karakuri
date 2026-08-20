@@ -116,45 +116,147 @@ func TestEnvironmentsExecuteThePackOwnCapabilities(t *testing.T) {
 		envs[f.EnvID] = env
 	}
 
-	for _, tc := range []struct {
-		env environment.EnvironmentID
-		cap string
-	}{
-		{EnvTelemetry, CapAnalyseUsage},
-		{EnvRepo, CapProposeRoadmap},
-		{EnvRepo, CapDraftADR},
-	} {
-		res, err := envs[tc.env].Act(ctx, environment.Action{
-			CapabilityID: capability.CapabilityID(tc.cap),
-			Params:       map[string]any{"topic": "test"},
-		})
+	// Params that satisfy each capability's declared Required set. Passing
+	// something that satisfies none of them would assert that invalid input
+	// succeeds, which is not the property under test.
+	valid := map[capability.CapabilityID]map[string]any{
+		CapAnalyseUsage:   {},
+		CapProposeRoadmap: {"problem": "sensing costs nothing and nobody reads the result"},
+		CapDraftADR:       {"decision": "the supervisor is a caller, not a second policy gate"},
+	}
+
+	// Driven from the pack's own declarations rather than a hardcoded list, so
+	// a capability added later without a route fails here.
+	for _, c := range New().Capabilities() {
+		envID, routed := servedBy[c.ID]
+		if !routed {
+			t.Errorf("capability %q is declared but no environment serves it; it would be refused at runtime", c.ID)
+			continue
+		}
+		res, err := envs[envID].Act(ctx, environment.Action{CapabilityID: c.ID, Params: valid[c.ID]})
 		if err != nil {
-			t.Fatalf("act %s on %s: %v", tc.cap, tc.env, err)
+			t.Fatalf("act %s on %s: %v", c.ID, envID, err)
 		}
 		if !res.Success {
-			t.Errorf("%s refused %s, which is one of the three capabilities this pack owns: %s",
-				tc.env, tc.cap, res.Error)
-		}
-		if len(res.StateDelta) == 0 {
-			t.Errorf("%s executed %s and returned nothing for the loop to reason about", tc.env, tc.cap)
+			t.Errorf("%s refused %s, a capability this pack declares: %s", envID, c.ID, res.Error)
 		}
 	}
 }
 
-// A window with nothing in it and a deployment with nothing wrong produce the
-// same zeroes. The analysis says which one it saw, so a proposal built on no
-// evidence cannot present itself as one built on good news.
-func TestAnalyseUsageReportsInsufficientEvidence(t *testing.T) {
-	env := &telemetryEnv{reader: stubReader{}}
-	res, err := env.Act(context.Background(), environment.Action{CapabilityID: CapAnalyseUsage})
+// The drafting capabilities declare a required input. A capability that
+// returns success for empty input feeds a perfect success rate into
+// procedural memory, which biases the next plan's confidence upward for
+// having produced nothing.
+func TestDraftingRefusesEmptyInput(t *testing.T) {
+	env := &repoEnv{}
+	for _, tc := range []struct {
+		cap     capability.CapabilityID
+		missing string
+	}{
+		{CapProposeRoadmap, "problem"},
+		{CapDraftADR, "decision"},
+	} {
+		for _, params := range []map[string]any{nil, {}, {tc.missing: "   "}} {
+			res, err := env.Act(context.Background(), environment.Action{CapabilityID: tc.cap, Params: params})
+			if err != nil {
+				t.Fatalf("act %s: %v", tc.cap, err)
+			}
+			if res.Success {
+				t.Errorf("%s reported a draft with no %q in it", tc.cap, tc.missing)
+			}
+		}
+	}
+}
+
+// The recorded draft must not alias the caller's map: stepAct writes into
+// params for some capabilities and persists it beside this result, so an alias
+// would let a later write retroactively edit what was recorded.
+func TestRecordedDraftIsCopied(t *testing.T) {
+	params := map[string]any{"problem": "original"}
+	res, err := (&repoEnv{}).Act(context.Background(),
+		environment.Action{CapabilityID: CapProposeRoadmap, Params: params})
+	if err != nil || !res.Success {
+		t.Fatalf("act: %v %s", err, res.Error)
+	}
+	params["problem"] = "mutated after the fact"
+	if got := res.StateDelta["draft"].(map[string]any)["problem"]; got != "original" {
+		t.Errorf("recorded draft followed a later mutation: %v", got)
+	}
+}
+
+// "Sufficient" has to be able to be both. The earlier version ORed in an
+// objective count the reader never windows, so it was true in every real
+// deployment — including one whose entire window was empty.
+func TestSufficientDistinguishesAnEmptyWindow(t *testing.T) {
+	// The production shape that the degenerate version got wrong: objectives
+	// exist, and nothing at all happened in the window.
+	quiet := coretelemetry.Snapshot{Objectives: coretelemetry.ObjectiveStats{Total: 7, Standing: 3}}
+	if sufficient(quiet) {
+		t.Error("a window with no work, no escalations and no bottlenecks reported sufficient evidence")
+	}
+
+	for name, snap := range map[string]coretelemetry.Snapshot{
+		"senses":      {Work: coretelemetry.WorkStats{Senses: 1}},
+		"reconciles":  {Work: coretelemetry.WorkStats{Reconciles: 1}},
+		"actions":     {Work: coretelemetry.WorkStats{Actions: 1}},
+		"escalations": {Escalation: coretelemetry.EscalationStats{Escalations: 1}},
+		"bottleneck":  {Bottlenecks: []coretelemetry.Bottleneck{{Kind: "x", Count: 1}}},
+	} {
+		if !sufficient(snap) {
+			t.Errorf("a window containing %s reported no evidence", name)
+		}
+	}
+}
+
+// The insufficiency marker has to reach the path that plans. stepObserve's
+// result is what stepReason reasons from; a marker only on the Act result
+// informs nothing, because Act runs after the decision it would have changed.
+func TestObserveCarriesTheEvidenceMarker(t *testing.T) {
+	obs, err := (&telemetryEnv{reader: stubReader{}}).Observe(context.Background(), environment.ObservationQuery{})
+	if err != nil {
+		t.Fatalf("observe: %v", err)
+	}
+	if obs.State["sufficient"] != false {
+		t.Error("Observe reported an empty deployment without saying its evidence was insufficient")
+	}
+}
+
+// A deployment that enabled the pack without wiring the reader has a
+// configuration gap, not a broken capability. Recording it as a failed action
+// would raise a failing_capability bottleneck against the pack's own core
+// capability and bias its procedural confidence down.
+func TestUnwiredReaderIsNotACapabilityFailure(t *testing.T) {
+	res, err := (&telemetryEnv{}).Act(context.Background(), environment.Action{CapabilityID: CapAnalyseUsage})
 	if err != nil {
 		t.Fatalf("act: %v", err)
 	}
 	if !res.Success {
-		t.Fatalf("analyse_usage refused: %s", res.Error)
+		t.Error("an unwired reader was recorded as the capability failing")
 	}
-	if res.StateDelta["sufficient"] != false {
-		t.Error("an empty deployment reported its telemetry as sufficient evidence")
+	if res.StateDelta["available"] != false || res.StateDelta["sufficient"] != false {
+		t.Error("an unwired reader did not report itself unavailable and without evidence")
+	}
+}
+
+// The environment's twin is a ceiling. A plan asking for the whole deployment
+// from inside one tenant is asking for the cross-tenant read the telemetry
+// reader was fixed to prevent.
+func TestAnalyseUsageCannotWidenBeyondItsTwin(t *testing.T) {
+	spy := &recordingReader{}
+	env := &telemetryEnv{reader: spy, twinID: "twin-a"}
+	_, err := env.Act(context.Background(), environment.Action{
+		CapabilityID: CapAnalyseUsage,
+		Params:       map[string]any{"twin_id": "", "window": "24h"},
+	})
+	if err != nil {
+		t.Fatalf("act: %v", err)
+	}
+	if spy.last.TwinID != "twin-a" {
+		t.Errorf("query twin = %q, want twin-a: a plan widened its own scope", spy.last.TwinID)
+	}
+	// The window is the caller's to choose; only the twin is bounded.
+	if got := spy.last.Since; time.Since(got) > 25*time.Hour {
+		t.Errorf("declared window of 24h was ignored (since=%v)", got)
 	}
 }
 
@@ -162,6 +264,14 @@ func TestAnalyseUsageReportsInsufficientEvidence(t *testing.T) {
 type stubReader struct{}
 
 func (stubReader) Snapshot(context.Context, coretelemetry.Query) (coretelemetry.Snapshot, error) {
+	return coretelemetry.Snapshot{}, nil
+}
+
+// recordingReader captures the query it was asked for.
+type recordingReader struct{ last coretelemetry.Query }
+
+func (r *recordingReader) Snapshot(_ context.Context, q coretelemetry.Query) (coretelemetry.Snapshot, error) {
+	r.last = q
 	return coretelemetry.Snapshot{}, nil
 }
 

@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/bsenel/karakuri/internal/core/capability"
 	"github.com/bsenel/karakuri/internal/core/environment"
 	coretelemetry "github.com/bsenel/karakuri/internal/core/telemetry"
 	"github.com/bsenel/karakuri/internal/core/vfs"
@@ -60,6 +61,21 @@ func karakuriEnvironmentFactories(reg *tools.Registry) []environment.Factory {
 
 // ── telemetry ─────────────────────────────────────────────────────────────
 
+// servedBy names the environment that executes each capability this pack
+// owns.
+//
+// One table, pinned by a test against the pack's declared capabilities. The
+// alternative — a switch inside each environment's Act and nothing tying them
+// together — is how this pack shipped inert: a capability nobody routed is
+// refused at runtime with every test still passing. Phase 25 plans
+// karakuri.analyse_repo, and adding it without an entry here should fail the
+// suite rather than fail in production.
+var servedBy = map[capability.CapabilityID]environment.EnvironmentID{
+	CapAnalyseUsage:   EnvTelemetry,
+	CapProposeRoadmap: EnvRepo,
+	CapDraftADR:       EnvRepo,
+}
+
 type telemetryEnv struct {
 	reader coretelemetry.Reader
 	twinID string
@@ -84,18 +100,47 @@ func (e *telemetryEnv) Observe(ctx context.Context, _ environment.ObservationQue
 	if err != nil {
 		return obs, err
 	}
-	obs.State = map[string]any{
+	obs.State = snapshotState(snap)
+	obs.Version = coarseFingerprint(snap)
+	return obs, nil
+}
+
+// snapshotState renders a telemetry snapshot for both Observe and Act.
+//
+// One builder rather than two copies, because the two had already diverged on
+// the fields that matter: the insufficiency marker existed only on the Act
+// path, and Act is not the path that feeds planning. stepObserve's result is
+// what stepReason reasons from, so a distinction absent from Observe is
+// absent from the decision it was added to inform.
+func snapshotState(snap coretelemetry.Snapshot) map[string]any {
+	return map[string]any{
 		"available":     true,
 		"since":         snap.Since,
+		"taken_at":      snap.TakenAt,
 		"objectives":    snap.Objectives,
 		"work":          snap.Work,
 		"escalation":    snap.Escalation,
 		"approval_rate": snap.Escalation.ApprovalRate(),
 		"spend":         snap.Spend,
 		"bottlenecks":   snap.Bottlenecks,
+		"sufficient":    sufficient(snap),
 	}
-	obs.Version = coarseFingerprint(snap)
-	return obs, nil
+}
+
+// sufficient reports whether the window holds enough to reason from.
+//
+// Only window-scoped terms count. An earlier version ORed in
+// Objectives.Total, which the reader computes with no time bound at all — so
+// it was true in any deployment that had ever created an objective, including
+// the self-improvement objective doing the asking. A flag that cannot be
+// false in production is worse than no flag: it answers the question it was
+// added to answer, wrongly, every time.
+func sufficient(snap coretelemetry.Snapshot) bool {
+	return snap.Work.Senses > 0 ||
+		snap.Work.Reconciles > 0 ||
+		snap.Work.Actions > 0 ||
+		snap.Escalation.Escalations > 0 ||
+		len(snap.Bottlenecks) > 0
 }
 
 func (e *telemetryEnv) Act(ctx context.Context, a environment.Action) (environment.ActionResult, error) {
@@ -105,36 +150,50 @@ func (e *telemetryEnv) Act(ctx context.Context, a environment.Action) (environme
 	// pack unable to execute the analysis it exists to perform.
 	if a.CapabilityID == CapAnalyseUsage {
 		if e.reader == nil {
+			// Unwired is not broken. Observe and Snapshot both report a nil
+			// reader as blind; a failed action here would be recorded as the
+			// pack's own core capability failing, and after three such the
+			// reader would raise a failing_capability bottleneck against it —
+			// the pack diagnosing its own missing configuration as a defect.
 			return environment.ActionResult{
-				Success: false,
-				Error:   "no telemetry reader is wired into this deployment",
+				Success: true,
+				StateDelta: map[string]any{
+					"capability": string(CapAnalyseUsage),
+					"available":  false,
+					"sufficient": false,
+					"reason":     "no telemetry reader is wired into this deployment",
+				},
 			}, nil
 		}
+
+		window := telemetryWindow
+		if s, ok := a.Params["window"].(string); ok && s != "" {
+			if d, err := time.ParseDuration(s); err == nil && d > 0 {
+				window = d
+			}
+		}
+
+		// The environment's twin is a ceiling, not a default. A plan asking
+		// for another tenant's numbers — or for the whole deployment from
+		// inside one tenant — is asking for the cross-tenant read that the
+		// telemetry reader was fixed to prevent, and it gets the same answer
+		// here: narrowing is allowed, widening is not.
+		twinID := e.twinID
+		if s, ok := a.Params["twin_id"].(string); ok && s != "" && e.twinID == "" {
+			twinID = s
+		}
+
 		snap, err := e.reader.Snapshot(ctx, coretelemetry.Query{
-			Since:  time.Now().UTC().Add(-telemetryWindow),
-			TwinID: e.twinID,
+			Since:  time.Now().UTC().Add(-window),
+			TwinID: twinID,
 		})
 		if err != nil {
 			return environment.ActionResult{Success: false, Error: err.Error()}, nil
 		}
-		// Reported alongside the numbers rather than left to be inferred from
-		// them: a window with nothing in it and a deployment with nothing
-		// wrong produce the same zeroes, and a pack reasoning about what to
-		// improve must be able to tell them apart.
-		return environment.ActionResult{
-			Success: true,
-			StateDelta: map[string]any{
-				"capability":    string(CapAnalyseUsage),
-				"since":         snap.Since,
-				"objectives":    snap.Objectives,
-				"work":          snap.Work,
-				"escalation":    snap.Escalation,
-				"approval_rate": snap.Escalation.ApprovalRate(),
-				"spend":         snap.Spend,
-				"bottlenecks":   snap.Bottlenecks,
-				"sufficient":    snap.Objectives.Total > 0 || snap.Work.Senses > 0 || snap.Work.Reconciles > 0,
-			},
-		}, nil
+		state := snapshotState(snap)
+		state["capability"] = string(CapAnalyseUsage)
+		state["window"] = window.String()
+		return environment.ActionResult{Success: true, StateDelta: state}, nil
 	}
 
 	// Anything else is refused out loud rather than succeeding quietly. The
@@ -276,22 +335,58 @@ func (e *repoEnv) Act(_ context.Context, a environment.Action) (environment.Acti
 	// software pack's job, in a worktree, through capabilities an operator
 	// already reviews.
 	switch a.CapabilityID {
-	case CapProposeRoadmap, CapDraftADR:
-		draft := map[string]any{
-			"capability": string(a.CapabilityID),
-			"drafted":    true,
-			// The agent's own params are the draft. Echoed back so the verify
-			// step scores what was actually produced, and so the checkpoint
-			// shows a reviewer the text rather than the fact that text exists.
-			"content": a.Params,
-			"note":    "a draft only; applying it to the repository is the software pack's job",
-		}
-		return environment.ActionResult{Success: true, StateDelta: draft}, nil
+	case CapProposeRoadmap:
+		return recordDraft(a, "problem")
+	case CapDraftADR:
+		return recordDraft(a, "decision")
 	}
 
 	return environment.ActionResult{
 		Success: false,
 		Error:   fmt.Sprintf("%s is read-only; use the software pack to change the repository (%s)", EnvRepo, a.CapabilityID),
+	}, nil
+}
+
+// recordDraft accepts a drafted proposal and carries it, refusing one that is
+// missing the input its capability declares as required.
+//
+// The agent is the drafter — the text arrives in the action's params, and
+// this environment neither writes it to the repository nor generates it. What
+// it must not do is report a draft that is not there: a capability that
+// returns success for empty input feeds a 100% success rate into procedural
+// memory, which biases the next plan's confidence *upward* for having
+// produced nothing. That is the silently-succeeding no-op this codebase has
+// already had to fix in the act and verify steps.
+//
+// Note that the declared OutputSchema (title, goal, steps / title, body,
+// consequences) is not produced here, because turning a problem statement
+// into a phase is model work and nothing calls a model inside Act. Recording
+// what actually arrived is the honest half; closing that gap is Phase 25's.
+func recordDraft(a environment.Action, required string) (environment.ActionResult, error) {
+	text, _ := a.Params[required].(string)
+	if strings.TrimSpace(text) == "" {
+		return environment.ActionResult{
+			Success: false,
+			Error: fmt.Sprintf("%s requires a non-empty %q; a proposal without one is not a proposal",
+				a.CapabilityID, required),
+		}, nil
+	}
+
+	// Copied rather than aliased: stepAct writes into the params map for some
+	// capabilities and persists it beside this result, so holding a reference
+	// would let a later write retroactively edit the recorded draft.
+	recorded := make(map[string]any, len(a.Params))
+	for k, v := range a.Params {
+		recorded[k] = v
+	}
+	return environment.ActionResult{
+		Success: true,
+		StateDelta: map[string]any{
+			"capability": string(a.CapabilityID),
+			"recorded":   true,
+			"draft":      recorded,
+			"note":       "carried for review; writing it into the repository is the software pack's job",
+		},
 	}, nil
 }
 

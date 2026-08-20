@@ -1842,14 +1842,25 @@ through.
    field the way the telemetry environment ranks bottlenecks — pre-ranked for
    the same reason, so a model does not re-derive the ordering slightly
    differently on every run.
-5. **The telemetry environment reports insufficiency rather than health.** With
-   a window containing nothing, it currently returns zeroes that read as a
-   calm, well-run deployment. It should report `sufficient: false` alongside the
-   window it examined — the same distinction Phase 22 already draws between an
-   unwired reader (`available: false`, blind) and a quiet one, applied one level
-   up. "I have no evidence" and "the evidence says nothing is wrong" are
-   opposite claims, and a system reasoning about its own improvement must not
-   confuse them.
+5. **Make the insufficiency judgement worth trusting.** The environment already
+   reports `sufficient` alongside the window it examined, on both the observe
+   and act paths — "I have no evidence" and "the evidence says nothing is
+   wrong" are opposite claims, and the flag exists so a system reasoning about
+   its own improvement cannot confuse them. What it does not yet do is say
+   *how much* evidence: the test is currently "the window contains anything at
+   all", so one sense pass in a week counts the same as a thousand. A
+   proposal's confidence should scale with the evidence behind it, and that
+   needs a threshold somebody has justified rather than a boolean somebody
+   defaulted.
+6. **Score the criteria against what actually happened.** `evaluateWithAgent`
+   takes the action results and never reads them: the task string is built
+   from the criterion's description alone, with `WorldState` and `Memory` both
+   nil. So `self_improve`'s "the proposal names the telemetry that says the
+   problem is real" is judged by a model that has been shown neither the
+   telemetry nor the proposal. This is not specific to this pack — every
+   verified criterion in every domain is scored this way — but it is the
+   criterion this phase depends on, and evidence-first means nothing while the
+   thing checking it sees no evidence.
 
 **Acceptance:** A self-improvement objective on a deployment with zero usage
 history produces a proposal citing repository evidence and stating plainly that
