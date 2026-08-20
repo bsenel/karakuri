@@ -35,6 +35,12 @@ func (r *recordingReader) Snapshot(_ context.Context, q coretelemetry.Query) (co
 //
 // The agent's own capability list is where the property actually lives, and
 // it survives the two sets living in one pack.
+// NOTE: this guards the maintainer, and SelectAgent does not currently pick
+// it. An objective created from self_improve gets the first agent the domain
+// declares — the strategist, in a nine-agent pack. Template.SuggestedAgents
+// exists for this and is read by nothing; see Phase 24 step 5. The escalation
+// property still holds because the strategist also carries
+// MaxAutonomousActions: 0, but that is luck rather than this test's doing.
 func TestMaintainerHoldsNoMutatingCapability(t *testing.T) {
 	var found bool
 	for _, def := range New().AgentDefinitions() {
@@ -273,5 +279,26 @@ func TestSelfImproveVerifiersResolve(t *testing.T) {
 	}
 	if checked == 0 {
 		t.Fatal("software.objective.self_improve is not defined")
+	}
+}
+
+// The default agent for a software objective must escalate too, because it is
+// the one that actually runs a self_improve objective today.
+//
+// Written after a live run showed the strategist handling it and escalating on
+// its confidence threshold rather than the maintainer's bounds. If somebody
+// reorders the pack's agents or loosens the first one's cap, self-improvement
+// silently starts acting unsupervised, and the maintainer test above would not
+// notice.
+func TestTheDefaultSoftwareAgentAlsoEscalates(t *testing.T) {
+	defs := New().AgentDefinitions()
+	if len(defs) == 0 {
+		t.Fatal("the software pack declares no agents")
+	}
+	first := defs[0]
+	if first.Authority.MaxAutonomousActions != 0 {
+		t.Errorf("the default agent %q has MaxAutonomousActions = %d; a self_improve objective "+
+			"runs under it and would act without asking",
+			first.ID, first.Authority.MaxAutonomousActions)
 	}
 }

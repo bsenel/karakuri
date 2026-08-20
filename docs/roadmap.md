@@ -1820,7 +1820,17 @@ that reads claims back to itself verifies nothing.
    reads.
 4. **Run it per pack in CI**, so a pack added later cannot declare a bound
    that silently does nothing.
-5. **A registry-level verifier check at boot.** The per-pack check
+5. **`Template.SuggestedAgents` is declared and read by nothing.** It is the
+   same shape as the bounds this phase exists for: a field a pack fills in
+   that changes no behaviour. `SelectAgent` takes the first agent the domain
+   declares when an objective does not name one, so an objective created from
+   `software.objective.self_improve` gets the software pack's *strategist*,
+   not its maintainer — the agent whose bounds the template's whole design
+   depends on. It mattered less when self-improvement was a pack with two
+   agents and the maintainer was first; in a nine-agent pack it decides the
+   outcome. Honouring it needs the objective to remember its template, which
+   is a core field, a column and a round trip.
+6. **A registry-level verifier check at boot.** The per-pack check
    deliberately does not resolve foreign domains (a pack is valid on its own,
    ADR 017), which leaves nothing at all checking that a declared
    `Criterion.Domain` names a capability some enabled pack actually exports.

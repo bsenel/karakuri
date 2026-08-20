@@ -125,6 +125,23 @@ learn it from.
   packs are checked now, plus an assertion that the checked set matches the
   set bootstrap registers.
 
+- **The maintainer is no longer selected by default, and that is a real
+  regression.** `SelectAgent` takes the first agent a domain declares when an
+  objective does not name one. In a two-agent pack the maintainer was first;
+  in the nine-agent software pack the strategist is. So an objective created
+  from `self_improve` runs under the strategist unless the caller names an
+  agent — and `TestMaintainerHoldsNoMutatingCapability` then guards an agent
+  that did not run. A live run confirmed it: the escalation came from the
+  strategist's 0.90 confidence threshold, not from the maintainer's bounds.
+
+  The escalation property survives by luck rather than design — the strategist
+  also carries `MaxAutonomousActions: 0`, so every plan still escalates — but
+  the stricter threshold, the no-delegate and no-modify-objective flags do
+  not apply. `Template.SuggestedAgents` exists for exactly this and is read by
+  nothing; wiring it needs the objective to remember its template. Recorded as
+  Phase 24 step 5 rather than fixed here, because it is a core field and a
+  schema change rather than part of a refactor.
+
 ## Alternatives considered
 
 **Keeping the pack.** The status quo, and defensible only if the boundary
