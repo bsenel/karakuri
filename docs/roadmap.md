@@ -31,7 +31,7 @@ Karakuri replaced the original role-based workflow simulator with an autonomous 
 | 20    | Standing Objectives + Reconciliation       | **Completed** |
 | 21    | Digests                                    | **Completed** |
 | 22    | The Karakuri Domain Pack                   | **Superseded**|
-| 23    | Per-Objective Spend Ceilings               | **Partial**   |
+| 23    | Per-Objective Spend Ceilings               | **Completed** |
 | 24    | Conformance That Tests Behaviour           | **Completed** |
 | 25    | Self-Improvement Without a History         | **Completed** |
 | 26    | The Write Path                             | **Completed** |
@@ -1724,7 +1724,7 @@ krk objective standing <id> --cron "0 9 * * 1" --sense 6h --autonomy propose
 
 ---
 
-## Phase 23 — Per-Objective Spend Ceilings (Partial)
+## Phase 23 — Per-Objective Spend Ceilings (Completed)
 
 **Goal:** An operator can cap what one objective may spend, separately from its
 twin's allowance, so a standing objective reconciling hourly cannot quietly
@@ -1780,11 +1780,42 @@ objective at all.** `stepAct` attributed adapter calls, but the budgeted agent �
 which charges the expensive half — recorded with no resource, so it landed under
 the twin. A per-objective ceiling had nothing to measure until that was closed.
 
-**Still open:** `PerReconcile` is declared and read but not yet enforced (the
-daily ceiling is), and the surfaces from step 6 — the `krk` flag, the console
-panel and the digest section naming which objectives hit their ceiling — are
-not built. The mechanism works and is untestable from the outside until they
-are.
+**Shipped (step 6, and the field steps 1-5 left unread).**
+
+`PerReconcile` was declared and enforced by nothing. It cannot share the daily
+ceiling's mechanism: `Daily` is a pre-check the supervisor makes from the ledger
+before dispatching, and `PerReconcile` bounds one pass that goes wrong — which
+the ledger cannot answer in time, because the run is what is being measured.
+`budgetedAgent` accumulates what the run has cost, priced by the same recorder
+that writes the ledger so the running total and the eventual bill agree, and a
+`budgetedAgent` is built once per `runLoop`, which makes its lifetime exactly
+the window the ceiling is about.
+
+The check sits at the iteration boundary beside the twin's token budget, for
+the same reason: stopping mid-iteration would leave a half-applied plan,
+actions taken and none verified. Unlike the twin's budget it raises no
+checkpoint and is not a failure — a per-pass ceiling needs no human, the next
+pass starts with a fresh one, so the loop stops where it is and the circuit
+breaker never sees it.
+
+*The surfaces.* `krk objective standing --budget-daily --budget-per-reconcile`
+and the `PUT` handler behind them, which rejects a negative ceiling rather than
+accepting one: every check downstream is `> 0`, so an operator meaning to
+tighten a limit would remove it.
+
+The digest gains a **"Stopped for want of budget"** section, assembled from the
+deferral outcomes the supervisor already writes — a pure read like the rest of
+the digest. It sits below the decisions and deliberately not among them: a
+budget clears itself at the window boundary, and filing it under "decisions I
+need from you" would make a nightly ceiling a nightly chore. It reports how
+often, against what ceiling, what the run was mid-way through, and when it
+resumes, because once at the end of a busy day is a budget working and a dozen
+times is a ceiling set below what the cadence asks for.
+
+The console panel rendered a deferred pass as *"sensed; nothing moved, nothing
+spent"* — the opposite of what happened, on the row where an operator most
+needs the truth. A deferral now renders as itself, and the declared ceilings
+appear beside the other facts.
 
 ---
 
