@@ -118,8 +118,27 @@ func (e *codebaseEnv) scan() (map[string]any, error) {
 		}, nil
 	}
 
-	markers, todos, tests := e.walk()
-	deferred := e.deferredWork()
+	// Every read below goes through this rather than through os.Open on a
+	// path built from the walk.
+	//
+	// os.Root confines an open to the directory it was created for: a symlink
+	// out of the tree, or a path that climbs above it, fails rather than
+	// resolving. The root is operator-configurable and the walk follows
+	// whatever is on disk, so "the paths all came from inside" is a property
+	// worth having the filesystem enforce rather than one worth asserting in
+	// a comment. gosec's G304 was right to ask.
+	root, err := os.OpenRoot(e.root)
+	if err != nil {
+		return map[string]any{
+			"available": false,
+			"reason":    fmt.Sprintf("repository root %q could not be opened: %v", e.root, err),
+			"evidence":  EvidenceNone,
+		}, nil
+	}
+	defer func() { _ = root.Close() }()
+
+	markers, todos, tests := e.walk(root)
+	deferred := deferredWork(root)
 
 	state := map[string]any{
 		"available":         true,
@@ -137,7 +156,7 @@ func (e *codebaseEnv) scan() (map[string]any, error) {
 // walk collects the three per-package facts in one pass, because three walks
 // over a repository on every sense tick is three times the I/O for the same
 // answer.
-func (e *codebaseEnv) walk() (rules []string, todos map[string]int, untested []string) {
+func (e *codebaseEnv) walk(root *os.Root) (rules []string, todos map[string]int, untested []string) {
 	todos = map[string]int{}
 	sourceFiles := map[string]int{}
 	testFiles := map[string]int{}
@@ -169,7 +188,9 @@ func (e *codebaseEnv) walk() (rules []string, todos map[string]int, untested []s
 			testFiles[pkg]++
 		case strings.HasSuffix(d.Name(), ".go"):
 			sourceFiles[pkg]++
-			if n := countMarkers(path); n > 0 {
+			// Read by the path relative to the root, so the open is confined
+			// to it whatever the walk turned up.
+			if n := countMarkers(root, filepath.ToSlash(rel)); n > 0 {
 				todos[pkg] += n
 			}
 		}
@@ -190,9 +211,10 @@ func (e *codebaseEnv) walk() (rules []string, todos map[string]int, untested []s
 	return rules, todos, untested
 }
 
-// countMarkers counts TODO and FIXME comments in one file.
-func countMarkers(path string) int {
-	f, err := os.Open(path) //nolint:gosec // paths come from walking the configured root
+// countMarkers counts TODO and FIXME comments in one file, read through the
+// confined root.
+func countMarkers(root *os.Root, rel string) int {
+	f, err := root.Open(rel)
 	if err != nil {
 		return 0
 	}
@@ -221,8 +243,8 @@ func countMarkers(path string) int {
 // The most valuable evidence in the repository and the cheapest to read: each
 // line is a piece of work somebody already argued for in prose, which is a
 // better starting point than anything derivable from counting files.
-func (e *codebaseEnv) deferredWork() []string {
-	f, err := os.Open(filepath.Join(e.root, "docs", "roadmap.md")) //nolint:gosec // fixed path under the configured root
+func deferredWork(root *os.Root) []string {
+	f, err := root.Open("docs/roadmap.md")
 	if err != nil {
 		return nil
 	}
