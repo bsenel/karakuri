@@ -25,6 +25,16 @@ func softwarePlannerHints() []domain.PlannerHint {
 			Priority:  9,
 		},
 		{
+			// The routing hint, and the load-bearing one for anything that
+			// writes. stepAct sends an action to the environment its env_id
+			// names, so a plan that writes code without naming the CLI
+			// environment reaches noopEnv and fails as unimplemented.
+			Condition: "capability.id in ['software.act.write_code', 'software.act.write_test', 'software.act.delegate_to_cli']",
+			Guidance: "set env_id to 'software.env.cli_agent' and put the task in params.prompt. " +
+				"The worktree is provisioned for you and arrives in params.worktree_path; never write to the checked-out tree.",
+			Priority: 10,
+		},
+		{
 			Condition: "capability.id startswith 'software.reason.research'",
 			Guidance:  "prefer Gemini provider for research capabilities",
 			Priority:  5,

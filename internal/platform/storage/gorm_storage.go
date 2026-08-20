@@ -184,7 +184,7 @@ func (s *GORMStorage) SaveObjective(ctx context.Context, o objective.Objective) 
 		CriteriaJSON: string(critJ), ConstraintsJSON: string(constrJ), ParentID: parentID,
 		Status: string(o.Status),
 		Mode:   string(o.Mode), CadenceJSON: string(cadenceJ), AutonomyJSON: string(autonomyJ),
-		BudgetJSON: string(budgetJ),
+		BudgetJSON: string(budgetJ), AgentID: o.AgentID,
 	}).Error
 }
 
@@ -269,6 +269,7 @@ func objectiveFromModel(m schema.ObjectiveModel) objective.Objective {
 		Cadence:   cadence,
 		Autonomy:  autonomy,
 		Budget:    budget,
+		AgentID:   m.AgentID,
 		CreatedAt: m.CreatedAt, UpdatedAt: m.UpdatedAt,
 	}
 }

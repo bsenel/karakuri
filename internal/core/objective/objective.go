@@ -61,6 +61,17 @@ type Objective struct {
 	// every objective written before Phase 23 has.
 	Budget *Budget `json:"budget,omitempty"`
 
+	// AgentID names the agent this objective runs under. Empty falls back to
+	// the first agent its domain declares, which is what every objective did
+	// before templates could say otherwise.
+	//
+	// It exists because Template.SuggestedAgents was declared and read by
+	// nothing: an objective created from a template kept no reference to it,
+	// so a template naming the right agent could not make that agent run. In
+	// a two-agent pack the default happened to be correct; in a nine-agent
+	// pack it silently was not.
+	AgentID string `json:"agent_id,omitempty"`
+
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }

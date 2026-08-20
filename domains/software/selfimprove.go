@@ -484,6 +484,9 @@ func selfImproveTemplates() []objective.Template {
 			ID:     "software.objective.watch_platform_health",
 			Title:  "Watch this deployment's health",
 			Domain: "software",
+			// Named, because selection otherwise takes the first agent the
+			// pack declares — the strategist, which is not this.
+			SuggestedAgents: []agent.Definition{{ID: "software.agent.analyst"}},
 			Description: "Read the deployment's own telemetry and report what is limiting it. " +
 				"Reads only — declare it standing at sense autonomy and it will never spend a model call on a quiet week.",
 			SuccessCriteria: []objective.Criterion{
@@ -498,6 +501,10 @@ func selfImproveTemplates() []objective.Template {
 			ID:     "software.objective.self_improve",
 			Title:  "Improve this deployment from its own evidence",
 			Domain: "software",
+			// The maintainer, whose bounds are the ones this template's
+			// safety story rests on. Before SuggestedAgents was read, this
+			// ran under the strategist and the guarantee held by luck.
+			SuggestedAgents: []agent.Definition{{ID: "software.agent.maintainer"}},
 			Description: "Analyse telemetry, decide what is worth changing, and open a pull request that changes it. " +
 				"The maintainer analyses and drafts; the writing capabilities belong to other agents in this pack, " +
 				"so the change still arrives as a pull request somebody reviews.",

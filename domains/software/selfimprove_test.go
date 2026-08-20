@@ -2,12 +2,14 @@ package software
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	coreagent "github.com/bsenel/karakuri/internal/core/agent"
 	"github.com/bsenel/karakuri/internal/core/capability"
 	"github.com/bsenel/karakuri/internal/core/environment"
 	coretelemetry "github.com/bsenel/karakuri/internal/core/telemetry"
+	"github.com/bsenel/karakuri/internal/platform/tools/cliagent"
 )
 
 // stubReader is an empty deployment: wired, and with nothing to report.
@@ -35,12 +37,12 @@ func (r *recordingReader) Snapshot(_ context.Context, q coretelemetry.Query) (co
 //
 // The agent's own capability list is where the property actually lives, and
 // it survives the two sets living in one pack.
-// NOTE: this guards the maintainer, and SelectAgent does not currently pick
-// it. An objective created from self_improve gets the first agent the domain
-// declares — the strategist, in a nine-agent pack. Template.SuggestedAgents
-// exists for this and is read by nothing; see Phase 24 step 5. The escalation
-// property still holds because the strategist also carries
-// MaxAutonomousActions: 0, but that is luck rather than this test's doing.
+// It guards the agent that actually runs, which it did not always: selection
+// took the first agent a domain declared, so self_improve ran under the
+// strategist in a nine-agent pack and this test guarded someone else.
+// Template.SuggestedAgents now reaches the objective and selection honours it,
+// pinned by TestSelfImproveTemplatesNameTheirAgent below and by
+// TestSelectAgentHonoursTheObjectiveAgent in the loop package.
 func TestMaintainerHoldsNoMutatingCapability(t *testing.T) {
 	var found bool
 	for _, def := range New().AgentDefinitions() {
@@ -300,5 +302,162 @@ func TestTheDefaultSoftwareAgentAlsoEscalates(t *testing.T) {
 		t.Errorf("the default agent %q has MaxAutonomousActions = %d; a self_improve objective "+
 			"runs under it and would act without asking",
 			first.ID, first.Authority.MaxAutonomousActions)
+	}
+}
+
+// ── Phase 26: the write path ─────────────────────────────────────────────
+
+// The capabilities that write declare that they need a workspace.
+//
+// This was decided by matching the capability's name against ".write_code"
+// and ".write_test", which gave a worktree to two capabilities with no
+// implementation and withheld one from delegate_to_cli — the only one that
+// could actually write. A capability that needs a workspace is something only
+// the capability knows.
+func TestWritingCapabilitiesDeclareTheirWorkspace(t *testing.T) {
+	need := map[capability.CapabilityID]bool{
+		"software.act.write_code":      true,
+		"software.act.write_test":      true,
+		"software.act.delegate_to_cli": true,
+		"software.act.create_pr":       true,
+	}
+	seen := map[capability.CapabilityID]bool{}
+	for _, c := range New().Capabilities() {
+		seen[c.ID] = true
+		if need[c.ID] && !c.NeedsWorkspace {
+			t.Errorf("%q writes files but does not declare NeedsWorkspace", c.ID)
+		}
+		if !need[c.ID] && c.NeedsWorkspace {
+			t.Errorf("%q declares NeedsWorkspace but does not write", c.ID)
+		}
+	}
+	for id := range need {
+		if !seen[id] {
+			t.Errorf("%q is expected to write but this pack does not declare it", id)
+		}
+	}
+}
+
+// write_code and write_test are delegated to the coding-agent CLI rather than
+// left declared and unimplemented. They were stubs for three phases: the loop
+// provisioned a worktree for them and then routed them to noopEnv.
+func TestWriteCapabilitiesReachTheCLI(t *testing.T) {
+	for _, capID := range []string{
+		"software.act.write_code",
+		"software.act.write_test",
+		"software.act.delegate_to_cli",
+	} {
+		if _, served := cliPrompt(environment.Action{
+			CapabilityID: capability.CapabilityID(capID),
+			Params:       map[string]any{"prompt": "add a test"},
+		}); !served {
+			t.Errorf("%q is not served by the CLI environment; it would reach noopEnv", capID)
+		}
+	}
+	// And nothing else is swept in.
+	if _, served := cliPrompt(environment.Action{CapabilityID: "software.act.create_pr"}); served {
+		t.Error("create_pr was routed to the CLI delegate")
+	}
+}
+
+// write_test says so in the prompt. The CLI receives text, and the
+// distinction from write_code is not implied by an ID it never sees.
+func TestWriteTestAsksForTestsOnly(t *testing.T) {
+	got, _ := cliPrompt(environment.Action{
+		CapabilityID: "software.act.write_test",
+		Params:       map[string]any{"prompt": "cover the budget deferral"},
+	})
+	if !strings.Contains(strings.ToLower(got), "tests only") {
+		t.Errorf("write_test prompt does not distinguish itself from write_code: %q", got)
+	}
+}
+
+// Arriving with no worktree means provisioning failed. Writing into the
+// checked-out tree instead is the one outcome a planner hint explicitly
+// forbids, so it refuses rather than guessing a path.
+func TestWritingRefusesWithoutAWorktree(t *testing.T) {
+	env := &cliEnv{id: "software.env.cli_agent", cli: activeStubCLI{}}
+	res, err := env.Act(context.Background(), environment.Action{
+		CapabilityID: "software.act.write_code",
+		Params:       map[string]any{"prompt": "do the thing"},
+	})
+	if err != nil {
+		t.Fatalf("act: %v", err)
+	}
+	if res.Success {
+		t.Error("wrote code with no worktree provisioned")
+	}
+	if !strings.Contains(res.Error, "worktree") {
+		t.Errorf("refusal does not say why: %q", res.Error)
+	}
+}
+
+// And an empty task is refused rather than delegated, so a plan that names
+// the capability and forgets the prompt does not bill a CLI run to say
+// nothing.
+func TestWritingRefusesAnEmptyTask(t *testing.T) {
+	env := &cliEnv{id: "software.env.cli_agent", cli: activeStubCLI{}}
+	res, err := env.Act(context.Background(), environment.Action{
+		CapabilityID: "software.act.write_code",
+		Params:       map[string]any{"worktree_path": "/tmp/wt"},
+	})
+	if err != nil {
+		t.Fatalf("act: %v", err)
+	}
+	if res.Success {
+		t.Error("delegated an empty task to the CLI")
+	}
+}
+
+// activeStubCLI is a wired coding-agent adapter that records nothing.
+type activeStubCLI struct{}
+
+func (activeStubCLI) Name() string { return "stub" }
+func (activeStubCLI) Active() bool { return true }
+func (activeStubCLI) Delegate(_ context.Context, in cliagent.DelegateInput) (cliagent.DelegateOutput, error) {
+	return cliagent.DelegateOutput{Summary: "did " + in.Prompt}, nil
+}
+func (activeStubCLI) Stream(context.Context, cliagent.DelegateInput) (<-chan cliagent.DelegateChunk, error) {
+	ch := make(chan cliagent.DelegateChunk)
+	close(ch)
+	return ch, nil
+}
+
+// The templates name the agent whose bounds their safety story rests on.
+//
+// Without this the objective inherits "whichever agent this pack declares
+// first", which is an arbitrary answer that was right for a two-agent pack and
+// wrong the moment self-improvement moved into a nine-agent one.
+func TestSelfImproveTemplatesNameTheirAgent(t *testing.T) {
+	want := map[string]string{
+		"software.objective.self_improve":          "software.agent.maintainer",
+		"software.objective.watch_platform_health": "software.agent.analyst",
+	}
+	declared := map[string]bool{}
+	for _, a := range New().AgentDefinitions() {
+		declared[string(a.ID)] = true
+	}
+
+	var checked int
+	for _, tpl := range New().ObjectiveTemplates() {
+		expect, ok := want[tpl.ID]
+		if !ok {
+			continue
+		}
+		checked++
+		if len(tpl.SuggestedAgents) == 0 {
+			t.Errorf("%s names no agent; it would run under whichever this pack declares first", tpl.ID)
+			continue
+		}
+		got := string(tpl.SuggestedAgents[0].ID)
+		if got != expect {
+			t.Errorf("%s names %q, want %q", tpl.ID, got, expect)
+		}
+		if !declared[got] {
+			t.Errorf("%s names agent %q, which this pack does not declare", tpl.ID, got)
+		}
+	}
+	if checked != len(want) {
+		t.Errorf("checked %d templates, want %d", checked, len(want))
 	}
 }
