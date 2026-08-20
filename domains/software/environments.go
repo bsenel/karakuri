@@ -14,6 +14,7 @@ import (
 	"github.com/bsenel/karakuri/internal/platform/tools/cliagent"
 	"github.com/bsenel/karakuri/internal/platform/tools/messaging"
 	"github.com/bsenel/karakuri/internal/platform/tools/projectmgmt"
+	"github.com/bsenel/karakuri/internal/platform/tools/research"
 	"github.com/bsenel/karakuri/internal/platform/tools/versioncontrol"
 )
 
@@ -111,6 +112,22 @@ func softwareEnvironmentFactories(reg *tools.Registry) []environment.Factory {
 		noopFactory("software.env.ci", "CI pipeline: build status, test results, coverage"),
 		noopFactory("software.env.observability", "Runtime: logs, metrics, alerts"),
 		{
+			EnvID:       "software.env.research",
+			Domain:      "software",
+			Description: "External sources: what the field has published on a topic, ranked by confidence",
+			Serves:      []capability.CapabilityID{CapResearch},
+			Build: func(_ environment.BuildContext) (environment.Environment, error) {
+				// Single-instance slot, so no adapter binding to resolve. The
+				// capability has been declared since Phase 2 and the adapter
+				// built since Phase 6; nothing had introduced them.
+				var rs research.ResearchAdapter
+				if reg != nil {
+					rs = reg.Research
+				}
+				return newResearchEnv("software.env.research", rs), nil
+			},
+		},
+		{
 			EnvID:       "software.env.codebase",
 			Domain:      "software",
 			Description: "The repository as evidence: the roadmap's own deferred work, TODO density by package, packages with no tests, and where AGENTS.md rules live",
@@ -207,6 +224,20 @@ func (e *gitEnv) Observe(ctx context.Context, q environment.ObservationQuery) (e
 		state["prs_error"] = err.Error()
 	} else {
 		state["prs"] = prs
+		// What is currently broken, pulled out of the list rather than left
+		// for a reader to derive. Deferred from Phase 22, where "an operator
+		// relays it" was the plan; a pack proposing work from evidence should
+		// be able to see a red build without being told.
+		var broken []map[string]any
+		for _, pr := range prs {
+			if pr.CheckState != "failure" {
+				continue
+			}
+			broken = append(broken, map[string]any{
+				"pr": pr.ID, "title": pr.Title, "url": pr.URL, "failing": pr.FailingChecks,
+			})
+		}
+		state["failing_prs"] = broken
 	}
 	return environment.Observation{
 		EnvID: e.id, State: state, Version: stateVersion(state), Timestamp: time.Now().UTC(),
