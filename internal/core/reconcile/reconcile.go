@@ -126,6 +126,19 @@ type Outcome struct {
 	// Error is why the pass failed, empty when it did not.
 	Error string `json:"error,omitempty"`
 
+	// Deferred names why a pass that was due did not spend — a budget
+	// exhausted, a quiet window — and is empty when it went ahead.
+	//
+	// Deliberately not an Error. A deferral is the system working: nothing
+	// misbehaved, the conditions for spending were simply not met. Recording
+	// it as failure would walk an objective into the circuit breaker for
+	// staying inside a ceiling its operator set.
+	Deferred string `json:"deferred,omitempty"`
+
+	// DeferredUntil is when the condition clears. It becomes the floor on the
+	// next due time, so a deferral cannot be scheduled over by the cadence.
+	DeferredUntil time.Time `json:"deferred_until,omitempty"`
+
 	StartedAt time.Time `json:"started_at"`
 	EndedAt   time.Time `json:"ended_at"`
 }

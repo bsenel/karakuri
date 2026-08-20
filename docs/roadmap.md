@@ -31,9 +31,10 @@ Karakuri replaced the original role-based workflow simulator with an autonomous 
 | 20    | Standing Objectives + Reconciliation       | **Completed** |
 | 21    | Digests                                    | **Completed** |
 | 22    | The Karakuri Domain Pack                   | **Completed** |
-| 23    | Per-Objective Spend Ceilings               | Planned       |
+| 23    | Per-Objective Spend Ceilings               | **Partial**   |
 | 24    | Conformance That Tests Behaviour           | Planned       |
 | 25    | Self-Improvement Without a History         | Planned       |
+| 26    | The Write Path                             | Planned       |
 
 
 ---
@@ -1713,7 +1714,7 @@ krk objective standing <id> --cron "0 9 * * 1" --sense 6h --autonomy propose
 
 ---
 
-## Phase 23 — Per-Objective Spend Ceilings (Planned)
+## Phase 23 — Per-Objective Spend Ceilings (Partial)
 
 **Goal:** An operator can cap what one objective may spend, separately from its
 twin's allowance, so a standing objective reconciling hourly cannot quietly
@@ -1756,6 +1757,24 @@ reached and resumes at the boundary without an operator. Its twin's allowance
 is unaffected by the pause. Sensing continues throughout and the drift it
 observes is reported. `ConsecutiveFailures` is still zero after a budget pause,
 and the objective's earned autonomy survives it.
+
+**Shipped (steps 1–5).** `objective.Budget{Daily, PerReconcile}` on the
+declaration, nil-safe like `Cadence` and `Autonomy`; the ceiling checked at the
+expensive gate beside the quiet-window deferral it mirrors; `budget_exhausted`
+recorded as `Outcome.Deferred` rather than as an error, so the breaker is
+untouched and earned autonomy survives; the next due time floored at the window
+boundary so the cadence cannot schedule over it; sensing unaffected throughout.
+
+One thing had to be fixed first: **token spend was not attributed to the
+objective at all.** `stepAct` attributed adapter calls, but the budgeted agent —
+which charges the expensive half — recorded with no resource, so it landed under
+the twin. A per-objective ceiling had nothing to measure until that was closed.
+
+**Still open:** `PerReconcile` is declared and read but not yet enforced (the
+daily ceiling is), and the surfaces from step 6 — the `krk` flag, the console
+panel and the digest section naming which objectives hit their ceiling — are
+not built. The mechanism works and is untestable from the outside until they
+are.
 
 ---
 
@@ -1872,6 +1891,61 @@ widens what it can see, never what it may do.
 
 ---
 
+## Phase 26 — The Write Path (Planned)
+
+**Goal:** Karakuri can produce a change, not only a proposal about one.
+
+ADR 017 divides self-improvement in two: the karakuri pack analyses and
+drafts, and the software pack does the writing, in a worktree, through a pull
+request an operator reviews. The first half works. **The second half does not
+exist**, and the two capabilities that would provide it each have exactly the
+half the other is missing:
+
+- `software.act.write_code` and `software.act.write_test` are declared, and
+  `stepAct` provisions a git worktree for them by name suffix
+  (`internal/feature/loop/act.go`). No environment implements either, so both
+  route to `noopEnv` and return `"unimplemented"` — after the worktree has
+  been created.
+- `software.act.delegate_to_cli` *is* implemented: `cliEnv` hands the task to
+  a coding-agent CLI in the active worktree. But it does not match the suffix
+  check, so no worktree is ever provisioned for it, and the adapter is called
+  with an empty `worktree_path` — into which a planner hint explicitly
+  forbids writing ("never write to the checked-out working tree directly").
+
+So the capability with a workspace cannot write, and the capability that can
+write has no workspace. Every roadmap phase from here on is written by a
+human until this closes.
+
+**Steps:**
+
+1. **Provision the worktree by what a capability *does*, not by what it is
+   called.** The suffix test is a string match on two names; a capability
+   declaring that it needs a workspace should get one. That belongs on
+   `capability.Capability` as a field the pack declares, checked the way the
+   authority bounds are checked in Phase 24 — by running it, not by reading
+   it.
+2. **Implement `write_code` and `write_test`, or remove them.** A declared
+   capability that always fails is worse than an absent one: it is planned by
+   models, costs a worktree, and reports `unimplemented` after the fact. If
+   `delegate_to_cli` is the real mechanism then these two should be aliases
+   for it rather than stubs beside it.
+3. **Give `create_pr` a worktree it can push.** The version-control adapter
+   takes `worktree_path` today and the loop never supplies one outside the
+   two stub capabilities, so the pull-request half is unreachable by the same
+   gap.
+4. **An end-to-end acceptance objective**: a cross-domain objective that
+   analyses telemetry, drafts a phase, writes it in a worktree and opens a
+   pull request, exercised in CI against a scratch repository with a stub
+   version-control adapter.
+
+**Acceptance:** `karakuri.objective.self_improve` can reach all three of its
+criteria rather than two. The pull-request criterion — 0.4 of the score, and
+the entire point of the cross-domain shape — becomes satisfiable for the first
+time. The maintainer's bounds are unchanged: it still escalates every plan,
+and the change still arrives as a pull request somebody reviews.
+
+---
+
 ## Phase Ordering Rationale
 
 Phases 7–13 are **independent except where noted** and can be reordered to match priority. The dependencies that DO exist:
@@ -1895,6 +1969,7 @@ Phases 23–25 are the follow-on from the standing-objectives line, and are orde
 
 - **Phase 23** (per-objective spend ceilings) depends on **Phase 15**'s quota subjects and **Phase 18**'s override path, and on **Phase 20** for the thing being capped. It is independent of 24 and 25 and could ship first or last; it is placed first because it is the only one of the three that a running deployment is currently exposed without.
 - **Phase 24** (behavioural conformance) depends on nothing new. It is placed before 25 because 25 adds capabilities and an environment to the karakuri pack, and the point of 24 is that new declarations should meet a suite that runs them rather than reads them. Shipping 25 first would add the exact kind of claim 24 exists to check.
+- **Phase 26** (the write path) is the one that unblocks everything else in this group: until it lands, `self_improve` can reach two of its three criteria and every roadmap phase is written by a human. It was found by trying to have Karakuri develop Phase 23 and discovering that the capability with a worktree cannot write and the capability that can write has no worktree.
 - **Phase 25** (self-improvement without a history) depends on **Phase 22** for the pack it extends and on **Phase 6**'s version-control adapter for CI status. It is the phase that makes Phase 22 usable on the day it is enabled rather than months later, and it is deliberately scoped to widen what the maintainer can *see* — never what it may *do*, which stays bounded by ADR 017 and by Phase 20's ceiling.
 
 ---

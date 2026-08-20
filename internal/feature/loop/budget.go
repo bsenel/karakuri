@@ -9,6 +9,7 @@ import (
 
 	coreagent "github.com/bsenel/karakuri/internal/core/agent"
 	"github.com/bsenel/karakuri/internal/core/event"
+	"github.com/bsenel/karakuri/internal/core/objective"
 	featurecp "github.com/bsenel/karakuri/internal/feature/checkpoint"
 	"github.com/bsenel/karakuri/internal/platform/llm"
 	karakuriquota "github.com/bsenel/karakuri/internal/quota"
@@ -26,21 +27,30 @@ type budgetedAgent struct {
 	inner  coreagent.Agent
 	budget karakuriquota.TokenBudget
 	twinID string
-	costs  *karakuriquota.Recorder
-	now    func() time.Time
+	// objectiveID attributes the charge to the piece of work that incurred
+	// it. The twin still pays — it is the subject on the ledger event — but
+	// without this the expensive half of a loop's spend lands under
+	// resourceType "twin" and there is no way to ask what one objective
+	// cost. A per-objective ceiling has nothing to measure until this is set.
+	objectiveID objective.ObjectiveID
+	costs       *karakuriquota.Recorder
+	now         func() time.Time
 }
 
 var _ coreagent.Agent = (*budgetedAgent)(nil)
 
 // withBudget wraps agent unless there is nothing to enforce.
-func withBudget(agent coreagent.Agent, budget karakuriquota.TokenBudget, costs *karakuriquota.Recorder, twinID string) coreagent.Agent {
+func withBudget(agent coreagent.Agent, budget karakuriquota.TokenBudget, costs *karakuriquota.Recorder, twinID string, objectiveID objective.ObjectiveID) coreagent.Agent {
 	if budget == nil || twinID == "" {
 		// No twin means no subject to charge — an ad-hoc objective created
 		// without one. Metering it against a shared bucket would be worse than
 		// not metering it.
 		return agent
 	}
-	return &budgetedAgent{inner: agent, budget: budget, costs: costs, twinID: twinID, now: time.Now}
+	return &budgetedAgent{
+		inner: agent, budget: budget, costs: costs,
+		twinID: twinID, objectiveID: objectiveID, now: time.Now,
+	}
 }
 
 func (a *budgetedAgent) Run(ctx context.Context, input coreagent.Input) (coreagent.Output, error) {
@@ -71,11 +81,17 @@ func (a *budgetedAgent) Run(ctx context.Context, input coreagent.Input) (coreage
 	// Both, because a token count is not a bill and a bill does not stop a
 	// runaway loop.
 	a.costs.Record(ctx, karakuriquota.Spend{
-		TwinID:   a.twinID,
-		Provider: out.Provider,
-		Model:    out.Model,
-		Units:    float64(out.TokensUsed),
-		UnitKind: cost.UnitTokens,
+		TwinID: a.twinID,
+		// Attributed to the objective, matching how stepAct already
+		// attributes adapter calls. Tokens are the expensive half, so
+		// leaving them on the twin made per-objective spend answerable for
+		// the cheap half only.
+		ResourceType: resourceTypeFor(a.objectiveID),
+		ResourceID:   string(a.objectiveID),
+		Provider:     out.Provider,
+		Model:        out.Model,
+		Units:        float64(out.TokensUsed),
+		UnitKind:     cost.UnitTokens,
 	})
 	return out, nil
 }
@@ -199,4 +215,14 @@ func (s *serviceImpl) allowCapability(ctx context.Context, sc *stepContext, capa
 		Timestamp: time.Now().UTC(),
 	})
 	return false
+}
+
+// resourceTypeFor keeps an ad-hoc loop — one with no objective behind it —
+// attributed the way it was before, rather than under an "objective" resource
+// with an empty ID that no query could name.
+func resourceTypeFor(id objective.ObjectiveID) string {
+	if id == "" {
+		return ""
+	}
+	return "objective"
 }
