@@ -34,7 +34,7 @@ Karakuri replaced the original role-based workflow simulator with an autonomous 
 | 23    | Per-Objective Spend Ceilings               | **Partial**   |
 | 24    | Conformance That Tests Behaviour           | Planned       |
 | 25    | Self-Improvement Without a History         | Planned       |
-| 26    | The Write Path                             | **Partial**   |
+| 26    | The Write Path                             | **Completed** |
 
 
 ---
@@ -1820,16 +1820,20 @@ that reads claims back to itself verifies nothing.
    reads.
 4. **Run it per pack in CI**, so a pack added later cannot declare a bound
    that silently does nothing.
-5. **`Template.SuggestedAgents` is declared and read by nothing.** It is the
-   same shape as the bounds this phase exists for: a field a pack fills in
-   that changes no behaviour. `SelectAgent` takes the first agent the domain
-   declares when an objective does not name one, so an objective created from
-   `software.objective.self_improve` gets the software pack's *strategist*,
-   not its maintainer — the agent whose bounds the template's whole design
-   depends on. It mattered less when self-improvement was a pack with two
-   agents and the maintainer was first; in a nine-agent pack it decides the
-   outcome. Honouring it needs the objective to remember its template, which
-   is a core field, a column and a round trip.
+5. ~~**`Template.SuggestedAgents` is declared and read by nothing.**~~
+   **Shipped early, in Phase 26.** It was the same shape as the bounds this
+   phase exists for — a field a pack fills in that changes no behaviour — and
+   it had to be fixed there because a write path is worth nothing under the
+   wrong agent: `self_improve` ran under the software pack's *strategist*, and
+   `TestMaintainerHoldsNoMutatingCapability` guarded an agent that never ran.
+   `Objective.AgentID` carries it now (migration `000010`) and `SelectAgent`
+   honours it. See [ADR 019](adr/019-capabilities-declare-what-they-need.md).
+
+   Phase 26 also closed the same defect at the routing level and found a fifth
+   instance while doing it — `software.act.write_design_doc`, declared since
+   Phase 2 and served by no environment. **Both were found by reading code**,
+   which is exactly the argument for this phase: five instances over four
+   phases, none caught by a suite that read declarations back to itself.
 6. **A registry-level verifier check at boot.** The per-pack check
    deliberately does not resolve foreign domains (a pack is valid on its own,
    ADR 017), which leaves nothing at all checking that a declared
@@ -1911,7 +1915,7 @@ widens what it can see, never what it may do.
 
 ---
 
-## Phase 26 — The Write Path (Partial)
+## Phase 26 — The Write Path (Completed)
 
 **Goal:** Karakuri can produce a change, not only a proposal about one.
 
@@ -1958,7 +1962,7 @@ human until this closes.
    pull request, exercised in CI against a scratch repository with a stub
    version-control adapter.
 
-**Shipped (steps 1-3).** See
+**Shipped (steps 1–3).** See
 [ADR 019](adr/019-capabilities-declare-what-they-need.md).
 `Capability.NeedsWorkspace` replaces the name-suffix test, so a worktree goes
 to the capabilities that declare they write — including `delegate_to_cli`,
@@ -1973,19 +1977,55 @@ agent: `Template.SuggestedAgents` was read by nothing, so `self_improve` ran
 under the strategist. Objectives now carry `AgentID`, template instantiation
 fills it, and `SelectAgent` honours it.
 
-**Still open (step 4, and the part that matters most).** Routing is by
-`EnvID`, which the *model* chooses: a plan that writes code without naming
-`software.env.cli_agent` still reaches `noopEnv`. A priority-10 planner hint
-states the pairing, which is guidance rather than a guarantee. Making the
-registry route a capability to the environment that serves it — the same
-`servedBy` idea, enforced rather than mirrored — is the remaining work, along
-with the end-to-end acceptance objective in CI.
+**Shipped (step 4).** `environment.Factory.Serves` declares which capabilities
+an environment executes; the registry indexes it and `stepAct` resolves through
+the index, so the pack decides the route and the planner is no longer asked a
+question it cannot answer. `EnvID` remains the fallback for the cases the
+registry has no answer to — nothing claims the capability, or two environments
+both do — and ambiguity is never resolved by picking, because map iteration
+order deciding which environment writes files is the misrouting this replaced.
+A route to an environment this loop did not build now fails instead of falling
+through to "only one environment, so use it".
+
+The planner hint that stated the routing pairing is no longer the thing holding
+it together, and says so: what remains of it is the part a model does have to
+get right — which parameters to fill in, and where not to write.
+
+The end-to-end acceptance test drives `write_design_doc` → `write_test` →
+`write_code` → `create_pr` against a scratch git repository with stub CLI and
+version-control adapters, asserting the CLI ran *in a real worktree* and the
+pull request was handed a path and a branch. Disabling the routing turns it red
+with "the CLI was called 0 times". `tools.SlotInstances` gained `Set` to make it
+possible at all: the slot could previously only be filled by a type-string
+switch over the shipped adapters, which is why this chain had no test until now.
+
+**Found while wiring it.** `software.act.write_design_doc` has been declared
+since Phase 2, sits on the strategist's and the architect's capability lists,
+and is required by a priority-9 planner hint before any `write_code` action —
+and no environment has ever served it. Every plan that obeyed the hint failed
+the step the hint made mandatory. It is a draft like `propose_roadmap_phase`
+and `draft_adr` and is now recorded the same way, with `params.design`
+documented in its schema and empty input refused.
+
+That is the fifth instance of the defect class Phase 24 exists for, and the
+last one findable by inspection: three new tests now assert the property
+generally — every `software.act.*` capability is served, every agent's act
+capabilities are runnable, and nothing is served that is not declared.
 
 **Acceptance:** `software.objective.self_improve` can reach all three of its
 criteria rather than two. The pull-request criterion — 0.4 of the score, and
 the entire point of the cross-domain shape — becomes satisfiable for the first
 time. The maintainer's bounds are unchanged: it still escalates every plan,
 and the change still arrives as a pull request somebody reviews.
+
+**What "satisfiable" is and is not.** The chain is now reachable, proved by
+running it: every step routes, the CLI receives a real worktree, and the pull
+request is handed a path and a branch. Whether a given run *scores* the
+criterion still depends on the deployment — a bound coding-agent CLI, a bound
+version-control adapter, and a plan that uses them — and on Phase 25 step 6,
+where `evaluateWithAgent` scores criteria from the description alone and never
+reads what the actions produced. Reachable is the claim this phase makes;
+reliably met is Phase 25's.
 
 ---
 
@@ -2012,7 +2052,7 @@ Phases 23–25 are the follow-on from the standing-objectives line, and are orde
 
 - **Phase 23** (per-objective spend ceilings) depends on **Phase 15**'s quota subjects and **Phase 18**'s override path, and on **Phase 20** for the thing being capped. It is independent of 24 and 25 and could ship first or last; it is placed first because it is the only one of the three that a running deployment is currently exposed without.
 - **Phase 24** (behavioural conformance) depends on nothing new. It is placed before 25 because 25 adds capabilities and an environment to the karakuri pack, and the point of 24 is that new declarations should meet a suite that runs them rather than reads them. Shipping 25 first would add the exact kind of claim 24 exists to check.
-- **Phase 26** (the write path) is the one that unblocks everything else in this group: until it lands, `self_improve` can reach two of its three criteria and every roadmap phase is written by a human. It was found by trying to have Karakuri develop Phase 23 and discovering that the capability with a worktree cannot write and the capability that can write has no worktree.
+- **Phase 26** (the write path) was the one blocking everything else in this group: until it landed, `self_improve` could reach two of its three criteria and every roadmap phase was written by a human. It was found by trying to have Karakuri develop Phase 23 and discovering that the capability with a worktree could not write and the capability that could write had no worktree. Both halves of the fix — the workspace and the route — turned out to be the same mistake, recorded in [ADR 019](adr/019-capabilities-declare-what-they-need.md): a property the system needed was inferred from an identifier instead of declared by the thing that knows it.
 - **Phase 25** (self-improvement without a history) depends on **Phase 22** for the pack it extends and on **Phase 6**'s version-control adapter for CI status. It is the phase that makes Phase 22 usable on the day it is enabled rather than months later, and it is deliberately scoped to widen what the maintainer can *see* — never what it may *do*, which stays bounded by ADR 017 and by Phase 20's ceiling.
 
 ---
