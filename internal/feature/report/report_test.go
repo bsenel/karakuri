@@ -422,3 +422,96 @@ func TestFailedSendBacksOff(t *testing.T) {
 		t.Errorf("sendBackoff(50) = %v, want it capped at an hour", capped)
 	}
 }
+
+// An objective that stopped for want of money gets its own section.
+//
+// Separate from the objective roll-call because the two look identical there:
+// an objective with no reconciles because nothing drifted is healthy, and one
+// with no reconciles because it hit its ceiling is an operator decision waiting
+// to be made. Phase 23 declared the budget and shipped the deferral; the
+// section that tells anybody about it was step 6 and was not built.
+func TestDigestNamesObjectivesThatRanOutOfBudget(t *testing.T) {
+	svc, store, clock := newService(t)
+	ctx := context.Background()
+	seedTwin(t, store, "twin-1", "CTO twin")
+
+	obj := seedStanding(t, store, "twin-1", "obj-1", "improve this deployment")
+	obj.Budget = &objective.Budget{Daily: 5}
+	if err := store.SaveObjective(ctx, obj); err != nil {
+		t.Fatalf("save objective: %v", err)
+	}
+	// A second, unbudgeted objective that must not appear.
+	quiet := seedStanding(t, store, "twin-1", "obj-2", "watch the build")
+
+	since := clock.Add(-24 * time.Hour)
+	resets := clock.Add(2 * time.Hour)
+	for i, at := range []time.Time{since.Add(time.Hour), since.Add(5 * time.Hour)} {
+		mustOutcome(t, store, reconcile.Outcome{
+			ID: id(100 + i), ObjectiveID: obj.ID, LoopID: "loop-x",
+			Trigger:       reconcile.TriggerSchedule,
+			Deferred:      "budget_exhausted",
+			DeferredUntil: resets,
+			CriteriaMet:   0.8,
+			StartedAt:     at,
+		})
+	}
+	mustOutcome(t, store, reconcile.Outcome{
+		ID: "q1", ObjectiveID: quiet.ID, LoopID: "loop-y",
+		Trigger: reconcile.TriggerSchedule, StartedAt: since.Add(time.Hour),
+	})
+
+	d, err := svc.Assemble(ctx, "twin-1", since, *clock)
+	if err != nil {
+		t.Fatalf("assemble: %v", err)
+	}
+
+	if len(d.Exhausted) != 1 {
+		t.Fatalf("got %d exhausted objectives, want 1: %+v", len(d.Exhausted), d.Exhausted)
+	}
+	x := d.Exhausted[0]
+	if x.ObjectiveID != obj.ID {
+		t.Errorf("named %q, want %q", x.ObjectiveID, obj.ID)
+	}
+	// The count is what separates a budget doing its job from a ceiling set
+	// below what the cadence asks for.
+	if x.Times != 2 {
+		t.Errorf("Times = %d, want 2", x.Times)
+	}
+	if x.Ceiling != 5 {
+		t.Errorf("Ceiling = %v, want 5", x.Ceiling)
+	}
+	if !x.ResumesAt.Equal(resets) {
+		t.Errorf("ResumesAt = %v, want %v", x.ResumesAt, resets)
+	}
+	// What it was mid-way through: 0.8 of the way is a different message from
+	// having had nothing left to do.
+	if x.InterruptedBy == "" {
+		t.Error("nothing said what it was interrupted mid-way through")
+	}
+
+	// And it reaches the reader.
+	prose := Plain(d)
+	if !strings.Contains(prose, "Stopped for want of budget") {
+		t.Error("the rendered digest has no budget section")
+	}
+	if !strings.Contains(prose, "improve this deployment") {
+		t.Error("the rendered digest does not name the objective that stopped")
+	}
+	// A budget clears itself, so it must not be filed under decisions.
+	for _, dec := range d.Decisions {
+		if dec.ObjectiveID == obj.ID {
+			t.Error("a budget exhaustion was filed as a decision somebody has to make")
+		}
+	}
+}
+
+// A digest whose only news is an exhausted budget is still worth sending: it
+// is the reason every other number reads as quiet.
+func TestADigestWithOnlyAnExhaustedBudgetIsNotEmpty(t *testing.T) {
+	d := digest.Digest{Exhausted: []digest.BudgetExhaustion{{
+		ObjectiveID: "obj-1", Times: 1,
+	}}}
+	if d.Empty() {
+		t.Error("a digest reporting an exhausted budget was treated as nothing to send")
+	}
+}

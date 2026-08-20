@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"sync"
 	"time"
 
 	coreagent "github.com/bsenel/karakuri/internal/core/agent"
@@ -35,6 +36,26 @@ type budgetedAgent struct {
 	objectiveID objective.ObjectiveID
 	costs       *karakuriquota.Recorder
 	now         func() time.Time
+
+	// mu guards spent, which accumulates what this run has cost so far.
+	//
+	// Per run rather than per day, and the distinction is the point:
+	// Budget.Daily bounds the month's bill and is answerable from the ledger
+	// after the fact, while Budget.PerReconcile bounds the blast radius of one
+	// pass that goes wrong — a loop that spends a day's allowance in a single
+	// run has stayed inside its daily ceiling and still wants stopping. The
+	// ledger cannot answer that in time, because the run is what is being
+	// measured. A budgetedAgent is built once per runLoop, so its lifetime is
+	// exactly the window the ceiling is about.
+	mu    sync.Mutex
+	spent float64
+}
+
+// Spent reports what this run has cost so far, priced.
+func (a *budgetedAgent) Spent() float64 {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.spent
 }
 
 var _ coreagent.Agent = (*budgetedAgent)(nil)
@@ -80,7 +101,7 @@ func (a *budgetedAgent) Run(ctx context.Context, input coreagent.Input) (coreage
 	// The budget says whether there is room left; the ledger says what it cost.
 	// Both, because a token count is not a bill and a bill does not stop a
 	// runaway loop.
-	a.costs.Record(ctx, karakuriquota.Spend{
+	spend := karakuriquota.Spend{
 		TwinID: a.twinID,
 		// Attributed to the objective, matching how stepAct already
 		// attributes adapter calls. Tokens are the expensive half, so
@@ -92,7 +113,14 @@ func (a *budgetedAgent) Run(ctx context.Context, input coreagent.Input) (coreage
 		Model:        out.Model,
 		Units:        float64(out.TokensUsed),
 		UnitKind:     cost.UnitTokens,
-	})
+	}
+	a.costs.Record(ctx, spend)
+
+	// Priced from the same recorder that writes the ledger, so the running
+	// total and the eventual bill agree.
+	a.mu.Lock()
+	a.spent += a.costs.Price(spend)
+	a.mu.Unlock()
 	return out, nil
 }
 
@@ -225,4 +253,32 @@ func resourceTypeFor(id objective.ObjectiveID) string {
 		return ""
 	}
 	return "objective"
+}
+
+// perPassCeilingReached reports whether this run has spent the objective's
+// Budget.PerReconcile, with what it spent and what the ceiling was.
+//
+// Budget.Daily and Budget.PerReconcile answer different questions and are
+// enforced in different places. Daily bounds the month's bill and is a
+// pre-check the supervisor makes from the ledger before dispatching at all;
+// PerReconcile bounds the blast radius of one pass that goes wrong, which the
+// ledger cannot answer in time because the run is what is being measured.
+//
+// It was declared in Phase 23 and read by nothing until Phase 23's close-out —
+// another field holding a plausible value that changed no behaviour, in the
+// same line of work that found five others.
+func perPassCeilingReached(metered *budgetedAgent, obj objective.Objective) (spent, ceiling float64, over bool) {
+	if metered == nil {
+		return 0, 0, false
+	}
+	ceiling = obj.BudgetDeclaration().PerReconcile
+	if ceiling <= 0 {
+		return 0, 0, false
+	}
+	spent = metered.Spent()
+	// Reached, not passed, matching Budget.ExceedsDaily: a ledger is written
+	// after the work, so a run sitting exactly on its ceiling has already
+	// spent it. Treating that as room left is how a ceiling gets rounded up by
+	// one iteration every pass.
+	return spent, ceiling, spent >= ceiling
 }

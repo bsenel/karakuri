@@ -10,6 +10,7 @@ package report
 
 import (
 	"context"
+	"fmt"
 	"sort"
 	"time"
 
@@ -45,6 +46,9 @@ func (s *Service) Assemble(ctx context.Context, twinID string, since, until time
 		titles[obj.ID] = obj.Title
 		d.Objectives = append(d.Objectives, s.summarise(ctx, obj, since, until))
 		d.AutonomyChanges = append(d.AutonomyChanges, s.autonomyChanges(ctx, obj, since)...)
+		if x, ok := s.exhaustion(ctx, obj, since, until); ok {
+			d.Exhausted = append(d.Exhausted, x)
+		}
 	}
 
 	// Noisiest first. A reader skimming a morning brief should meet the
@@ -54,6 +58,12 @@ func (s *Service) Assemble(ctx context.Context, twinID string, since, until time
 	})
 	sort.SliceStable(d.AutonomyChanges, func(i, j int) bool {
 		return d.AutonomyChanges[i].At.After(d.AutonomyChanges[j].At)
+	})
+	// Most often stopped first: once at the end of a busy day is a budget
+	// doing its job, and a dozen times is a ceiling set below what the cadence
+	// asks for.
+	sort.SliceStable(d.Exhausted, func(i, j int) bool {
+		return d.Exhausted[i].Times > d.Exhausted[j].Times
 	})
 
 	d.Decisions = s.decisions(ctx, twinID, titles)
@@ -238,3 +248,61 @@ func (s *Service) spend(ctx context.Context, twinID string, since, until time.Ti
 func windowOf(sch digest.Schedule, now time.Time) (since, until time.Time) {
 	return sch.Since(now).UTC(), now.UTC()
 }
+
+// exhaustion reports whether an objective stopped for want of money in the
+// window, and what it was mid-way through when it did.
+//
+// Read from the outcomes the supervisor already writes: a budget deferral is
+// recorded as an Outcome with Deferred set, deliberately not as a failure, so
+// the circuit breaker never sees it and earned autonomy survives. That makes
+// this a pure read like everything else in the digest — nothing new is written
+// as work happens.
+func (s *Service) exhaustion(ctx context.Context, obj objective.Objective, since, until time.Time) (digest.BudgetExhaustion, bool) {
+	budget := obj.BudgetDeclaration()
+	if !budget.Declared() {
+		return digest.BudgetExhaustion{}, false
+	}
+
+	outcomes, err := s.store.ListReconcileOutcomes(ctx, obj.ID, 2000)
+	if err != nil {
+		return digest.BudgetExhaustion{}, false
+	}
+
+	x := digest.BudgetExhaustion{
+		ObjectiveID:    obj.ID,
+		ObjectiveTitle: obj.Title,
+		Ceiling:        budget.Daily,
+	}
+	// Outcomes arrive newest first, so the first deferral seen is the most
+	// recent — which is the one whose reset time has not yet passed and the
+	// one worth reporting.
+	var latest time.Time
+	for _, o := range outcomes {
+		if o.StartedAt.Before(since) || o.StartedAt.After(until) {
+			continue
+		}
+		if o.Deferred != budgetExhaustedOutcome {
+			continue
+		}
+		x.Times++
+		if o.StartedAt.After(latest) {
+			latest = o.StartedAt
+			x.ResumesAt = o.DeferredUntil
+			// What it was mid-way through, from the score it had reached. An
+			// objective that ran out of money at 0.8 is a different message
+			// from one that had nothing left to do.
+			if o.CriteriaMet > 0 && o.CriteriaMet < 1 {
+				x.InterruptedBy = fmt.Sprintf("%.0f%% of the way to its criteria", o.CriteriaMet*100)
+			}
+		}
+	}
+	if x.Times == 0 {
+		return digest.BudgetExhaustion{}, false
+	}
+	return x, true
+}
+
+// budgetExhaustedOutcome is the Deferred marker the supervisor writes. Kept as
+// a constant here rather than repeated as a literal, because a digest section
+// that silently matches nothing is exactly the failure this phase is closing.
+const budgetExhaustedOutcome = "budget_exhausted"
