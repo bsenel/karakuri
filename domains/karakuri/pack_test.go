@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	software "github.com/bsenel/karakuri/domains/software"
 	"github.com/bsenel/karakuri/internal/conformance"
 	coreagent "github.com/bsenel/karakuri/internal/core/agent"
 	"github.com/bsenel/karakuri/internal/core/capability"
@@ -257,6 +258,47 @@ func TestAnalyseUsageCannotWidenBeyondItsTwin(t *testing.T) {
 	// The window is the caller's to choose; only the twin is bounded.
 	if got := spy.last.Since; time.Since(got) > 25*time.Hour {
 		t.Errorf("declared window of 24h was ignored (since=%v)", got)
+	}
+}
+
+// A cross-domain criterion has to name a capability the pack it points at
+// actually exports.
+//
+// self_improve named software.act.open_pull_request, which nothing declares —
+// the software pack calls it software.act.create_pr. The criterion carrying
+// the most weight in the template could never be satisfied. Nothing caught it
+// because the conformance suite deliberately does not resolve foreign domains
+// (correct per ADR 017: a pack is valid on its own), which leaves exactly this
+// unchecked. Phase 24 puts the general check on the registry at boot; this
+// pins the one cross-pack reference this pack actually makes.
+func TestForeignVerifiersResolveInTheDomainTheyName(t *testing.T) {
+	exported := map[string]map[capability.CapabilityID]bool{
+		"software": {},
+	}
+	for _, c := range software.New().Capabilities() {
+		exported["software"][c.ID] = true
+	}
+
+	var checked int
+	for _, tpl := range New().ObjectiveTemplates() {
+		for _, crit := range tpl.SuccessCriteria {
+			if crit.Domain == "" || crit.Domain == "karakuri" {
+				continue
+			}
+			owned, known := exported[crit.Domain]
+			if !known {
+				t.Fatalf("%s: criterion %q names domain %q, which this test does not know how to resolve",
+					tpl.ID, crit.ID, crit.Domain)
+			}
+			checked++
+			if !owned[crit.Verifier] {
+				t.Errorf("%s: criterion %q is verified by %q, which the %s pack does not export",
+					tpl.ID, crit.ID, crit.Verifier, crit.Domain)
+			}
+		}
+	}
+	if checked == 0 {
+		t.Error("no cross-domain criterion was checked; this test has stopped testing anything")
 	}
 }
 

@@ -56,8 +56,16 @@ func karakuriObjectiveTemplates() []objective.Template {
 				// Verified by the software pack, which is the point of the
 				// cross-domain shape: this pack cannot mark its own homework
 				// on the part it does not do.
+				//
+				// The ID has to be one the software pack actually exports.
+				// This named software.act.open_pull_request, which nothing
+				// declares — so the criterion carrying the most weight in the
+				// template could never be satisfied, and nothing caught it:
+				// the conformance suite deliberately does not resolve foreign
+				// domains, which is correct per ADR 017 and leaves this
+				// unchecked until the registry-level check in Phase 24.
 				foreign("pull-request", "A pull request is open with the change and its tests",
-					"software", "software.act.open_pull_request", 0.4),
+					"software", "software.act.create_pr", 0.4),
 			},
 			Constraints: []objective.Constraint{
 				hard("evidence-first", "No proposal may be drafted before analyse_usage has run", "analysis_complete"),
