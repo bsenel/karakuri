@@ -32,7 +32,7 @@ Karakuri replaced the original role-based workflow simulator with an autonomous 
 | 21    | Digests                                    | **Completed** |
 | 22    | The Karakuri Domain Pack                   | **Superseded**|
 | 23    | Per-Objective Spend Ceilings               | **Partial**   |
-| 24    | Conformance That Tests Behaviour           | Planned       |
+| 24    | Conformance That Tests Behaviour           | **Completed** |
 | 25    | Self-Improvement Without a History         | Planned       |
 | 26    | The Write Path                             | **Completed** |
 
@@ -1788,7 +1788,7 @@ are.
 
 ---
 
-## Phase 24 — Conformance That Tests Behaviour, Not Shape (Planned)
+## Phase 24 — Conformance That Tests Behaviour, Not Shape (Completed)
 
 **Goal:** A pack's declared bounds are verified by *running* them, so a bound
 that does nothing fails the suite in the pack that declares it.
@@ -1848,6 +1848,46 @@ the mechanism built to catch it, in every pack rather than in one hand-written
 test. Every existing pack passes unmodified. A pack declaring an approval
 requirement for a capability it then plans autonomously fails with a message
 naming both.
+
+**Shipped.** See
+[ADR 020](adr/020-a-declaration-is-verified-by-running-it.md).
+
+The enabling move was extracting the decision policy out of `stepDecide` and
+onto `agent.AuthorityBounds.Decide`. A conformance check cannot run
+`stepDecide` — it would need a store, an event hub, a checkpoint service and a
+loop state to answer a question involving none of them — and it can run
+`Decide` with nothing at all. `stepDecide` now carries out the verdict and
+holds no policy of its own, so there is one implementation rather than a
+mechanism and a check that could drift.
+
+`checkAgentBoundsBehave` runs it per agent definition and asserts the whole
+ladder, deliberately: a check that only tested the zero case could be satisfied
+by escalating everything, which is a different bug with the same green suite.
+A cap of zero must escalate a three-action plan *and leave it intact* — an
+approval falls straight through to `act`, so trimming would discard what was
+approved. A cap of N must trim N+2 to exactly N and leave N alone.
+`UnlimitedActions` must not trim fifty. Every `RequiresApprovalFor` entry must
+escalate when planned and must name a capability the pack declares. A declared
+threshold must escalate below itself and not above.
+
+**The acceptance criterion was checked by doing it.** Reintroducing the `> 0`
+guard fails conformance in three packs — software, agriculture and healthcare —
+each naming its own agent. Every shipped pack passes unmodified.
+
+**Step 6 shipped as `CheckDanglingVerifiers`**, run at boot beside the
+cross-pack collision audit. It distinguishes *the pack that owns it is
+switched off* from *nothing anywhere exports it*, because those have different
+owners and different fixes, and it warns rather than refusing to start: an
+operator may be mid-rollout, and a deployment that will not boot over a
+template naming a not-yet-enabled pack is worse than one that says so loudly.
+
+**Not covered, and worth naming.** No check asserts that a served capability's
+environment actually *accepts* it. The environments answer an unknown
+capability with the same "no active adapter" result they give a known one whose
+adapter is unbound, so from outside the two are indistinguishable. Making them
+distinguishable is what this argument asks for next; until then the executing
+test in `domains/software` covers the capabilities that can run without an
+adapter, and nothing covers the rest.
 
 ---
 
