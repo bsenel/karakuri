@@ -48,12 +48,24 @@ rather than better prompting.
 
 **This tree.** `stepObserve` (`internal/feature/loop/observe.go`) fans out
 across every environment and merges the results into one flat `WorldState`.
-Nothing on `environment.Observation` says where a payload came from, so the
-planner sees the repository's commit list and a scraped web page as the same
-kind of fact. The environments that carry third-party prose are already built
-and already wired: `gitEnv` (pull request and issue bodies), `commsEnv` (Slack),
-`research_env` (scraped pages, Phase 25), and the email slot's four providers.
-And Karakuri acts on what it concludes — it opens pull requests and sends mail.
+Nothing on `environment.Observation` says where a payload came from, so every
+fact in it is equally trusted by the planner that reads it next. And Karakuri
+acts on what it concludes — it opens pull requests and sends mail.
+
+**What actually reaches the planner is narrower than the threat model suggests,
+and reading the code changed the shape of the phase.** `gitEnv` carries commit
+lists and `PRSummary` records — title, URL, check state, failing checks — with
+no body and no issue operation. `commsEnv` reads `q.Filter["channel"]`, and
+`stepObserve` passes `ObservationQuery{Limit: 20}` with no filter, so Slack
+message bodies are reachable and never fetched. `researchEnv.Observe` returns
+only whether an adapter is wired, deliberately and with a comment saying why;
+scraped pages arrive on the **act** path as `ActionResult.StateDelta`. No domain
+pack registers an email environment at all — `Registry.Email` is consumed only
+by digest delivery.
+
+So the widest untrusted surface today is action results rather than
+observations. A phase that marked only `Observation` — which is what the field's
+framing points at — would leave the larger hole open.
 
 A second defect sits in the same loop. An environment whose `Observe` returns an
 error is skipped with a bare `continue`, so an environment that went blind is
@@ -106,8 +118,8 @@ span from another.
 
 **This tree.** `internal/platform/observability/otel.go` records metrics and
 logs and emits no spans; `grep` for `gen_ai` returns nothing. The names are
-Karakuri's own: `loop_iteration`, `agent_invocation`, `tokens`,
-`memory_recall`.
+Karakuri's own: `loop_iteration_duration_ms`, `agent_invocation`,
+`agent_latency_ms`, `tokens_used`, `memory_recall_count`.
 
 The gap is worth more here than it would be in most projects, because Phase 12
 already shipped exporters to Datadog, New Relic, Elasticsearch, Loki, OTLP and
@@ -136,9 +148,18 @@ writes a checkpoint carrying the planner's proposed `Actions`
 (`internal/core/checkpoint`), and every resolution writes a human verdict —
 `kind=approval`, `rejection` or `modification` in `tool_events`
 (`internal/platform/storage/adapter.go:108`), with `Decision.Choice`,
-`Approver` and `Modifications` alongside. Those are human-labelled trajectories,
+`Approver` and `Modifications` alongside. Those are human-labelled *plans*,
 accumulating in every deployment, produced by people doing their jobs rather
 than by an annotation budget.
+
+**Not trajectories, though, and the difference decides the phase.** What the
+agent saw is not kept: `loop_states` holds counters and the request, the
+escalation audit payload holds actions and confidence, and the checkpoint holds
+neither. So calibrating the judge — would it have said what the person said —
+works on stored rows today, and replaying a *planner* against the same situation
+does not, because the situation was never written down. Phase 30 has to record
+that before it can replay anything, and saying otherwise would be claiming a
+corpus this deployment does not have.
 
 What exists instead is `cmd/krk-bench`, which says in its own header that it
 drives a seeded stochastic mock rather than a real provider — reproducible and
@@ -148,9 +169,10 @@ anything. Phase 25 gave it the evidence it was previously judging without; how
 often it agrees with a person is still unmeasured.
 
 **What follows.** Phase 30, and the phase text has to state what the set is not:
-a resolved checkpoint labels one world state, replay is not a re-run, agreement
-is not correctness, and a corpus drawn from escalations over-represents hard
-cases by construction.
+a resolved checkpoint labels one plan in one situation, agreement is not
+correctness, and a corpus drawn from escalations over-represents hard cases by
+construction — routine competence never escalates, so it never generates a
+label.
 
 ## Finding 5 — The high-risk deadline passed three weeks ago
 
@@ -200,7 +222,11 @@ self-healing control loop with a human gate, and Phase 20 already built it.
 **This tree.** The use case is declared throughout and served nowhere.
 `ObservabilityAdapter` (`internal/platform/tools/observability/adapter.go`) is
 an interface and a no-op; Phase 6 shipped ten adapter implementations and none
-of them was this one. `software.env.observability`
+of them was this one. It is also the only slot that never became multi-instance
+— `Registry.Observability` is a bare interface field rather than a
+`SlotInstances[T]`, so it consults no `AdapterBindings` — and the interface
+exposes `GetAlerts` and `Active` only, while the capabilities to be served are
+`fetch_logs` and `fetch_metrics`. `software.env.observability`
 (`domains/software/environments.go:113`) is a `noopFactory` — it declares no
 `Serves` and builds a `noopEnv`. The `sre` agent
 (`domains/software/agents.go:75`) lists `software.observe.fetch_logs` and
@@ -211,12 +237,14 @@ since Phase 2.
 
 This is the defect class Phases 24, 25 and 26 each closed an instance of —
 declared, planned by models, served by nothing — and it is sitting in the part
-of the namespace where the check does not look. Phase 26's three routing tests
-cover `software.act.*`; Phase 25 recorded that `reason.*` is uncovered and
+of the namespace where the check does not look. The property tests Phase 26
+added cover `software.act.*`; Phase 25 recorded that `reason.*` is uncovered and
 called it the ninth instance. `observe.*` is uncovered on the same grounds.
 
-**What follows.** Phase 32, and the phase is adapter work plus one environment,
-not new engine.
+**What follows.** Phase 32 — a slot brought up to ADR 006, a widened adapter
+interface, its implementations, and one environment. No new engine, but more
+than the "just adapter work" it looks like from the outside, which is worth
+saying before somebody sizes it from the outside.
 
 ## Finding 7 — Memory is where this tree is ahead
 
