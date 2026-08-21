@@ -2,7 +2,9 @@
 
 ## Context
 
-Karakuri replaced the original role-based workflow simulator with an autonomous platform built on four primitives: **Capabilities, Environments, Objectives, and Agents**. No backward compatibility is maintained. The CLI binary is `krk`. This document records what shipped (Phases 1–22). Starting with Phase 14, the auth and quota engines ship as standalone Go modules under `github.com/bsenel/karakuri/{auth,quota}` and their submodules — fully reusable by other repos without pulling Karakuri itself.
+Karakuri replaced the original role-based workflow simulator with an autonomous platform built on four primitives: **Capabilities, Environments, Objectives, and Agents**. No backward compatibility is maintained. The CLI binary is `krk`. This document records what shipped (Phases 1–26) and what is planned next (Phases 27–32). Starting with Phase 14, the auth and quota engines ship as standalone Go modules under `github.com/bsenel/karakuri/{auth,quota}` and their submodules — fully reusable by other repos without pulling Karakuri itself.
+
+Phases 27–32 were proposed from two kinds of evidence: what this repository declares and does not serve, and what the field published in 2026. The second is recorded once, with sources and with its own limits stated, in [docs/research/ai-use-cases-2026.md](research/ai-use-cases-2026.md) — so a phase can cite it rather than re-deriving the landscape, and so a claim about the field stays distinguishable from a claim about this tree.
 
 ## Status Summary
 
@@ -35,6 +37,12 @@ Karakuri replaced the original role-based workflow simulator with an autonomous 
 | 24    | Conformance That Tests Behaviour           | **Completed** |
 | 25    | Self-Improvement Without a History         | **Completed** |
 | 26    | The Write Path                             | **Completed** |
+| 27    | Observations Carry Provenance              | Planned       |
+| 28    | MCP — The Tools Nobody Has To Write        | Planned       |
+| 29    | Telemetry Other Tools Already Understand   | Planned       |
+| 30    | The Evaluation Set Karakuri Already Has    | Planned       |
+| 31    | The Evidence Pack                          | Planned       |
+| 32    | The SRE Path, Actually Wired               | Planned       |
 
 
 ---
@@ -2169,6 +2177,375 @@ plausibility of its own wording.
 
 ---
 
+## Phase 27 — Observations Carry Provenance (Planned)
+
+**Goal:** The loop can tell what it read from infrastructure an operator
+configured apart from what a stranger wrote, and a plan justified by the latter
+escalates whatever autonomy it has earned.
+
+Everything from here to Phase 26 has been about what Karakuri may do. This is
+the first phase about what it may be *told*.
+
+`stepObserve` fans out across every environment and merges the results into one
+flat `WorldState` with a composite SHA. Nothing on `environment.Observation`
+says where a payload came from, so the planner reads a commit list and a scraped
+web page as the same kind of fact. The environments carrying third-party prose
+are already built and already wired: `gitEnv` returns pull request and issue
+bodies, `commsEnv` returns Slack messages, `research_env` returns pages a search
+engine chose (Phase 25), and the email slot returns whatever arrived. Karakuri
+then acts on what it concluded — it opens pull requests and sends mail on
+somebody's behalf.
+
+OWASP's 2026 list for agentic applications puts this first, as goal hijack, and
+its distinction from the model-level list is the one that applies here: the risk
+is not what a model says, it is what an actor with credentials does next. The
+mitigation the field converges on is not better prompting. It is approval for
+consequential actions, which is the mechanism this system has had since Phase 1
+and has never pointed at this.
+
+**A second defect, in the same function.** An environment whose `Observe`
+returns an error is skipped with a bare `continue`, so an environment that went
+blind is indistinguishable from one that saw nothing and reported so. Phase 20
+refused exactly that conflation on the outer loop — a blind environment is named
+in the outcome and its objective is driven by its schedule instead, because a
+calendar saying "I don't know" read as "unchanged" goes quiet precisely when it
+should not. The inner loop never learned it.
+
+**Steps:**
+
+1. **`environment.Observation` gains a declared trust level**, declared by the
+   environment, the way `NeedsWorkspace` (ADR 019) and `Serves` (Phase 26) are
+   declared. An environment knows whether its payload is infrastructure an
+   operator configured or prose a third party wrote; the loop does not, and
+   inferring it from an `EnvID` is the name-suffix mistake ADR 019 exists to
+   record.
+2. **`stepObserve` records blind environments** in the iteration rather than
+   dropping them, matching what `internal/feature/reconcile` already does.
+3. **`stepReason` marks untrusted observations** in the agent input instead of
+   flattening them into the same list, so a model that is asked to plan can see
+   which of its evidence is somebody else's writing.
+4. **`agent.AuthorityBounds.Decide` escalates a plan whose actions trace to
+   untrusted observations**, above the earned rung. Not a second gate — the
+   struct Phase 24 extracted, one more condition — because ADR 015 is explicit
+   that authority is expressed by writing bounds into the request and never by
+   adding a gate beside the one that already exists.
+5. **A conformance check that runs it**, per ADR 020: a pack declaring an
+   environment trusted must survive a plan built from it, and one declaring
+   untrusted must escalate. A trust level nothing enforces is the defect class
+   Phase 24 exists for, arriving in a new field.
+
+**Acceptance:** A plan derived from a scraped page escalates at `act` autonomy
+and names the observation that caused it. Declaring `research_env` trusted fails
+conformance. A blind environment appears in the loop iteration record rather
+than vanishing, and the two failure modes — saw nothing, could not see — are
+distinguishable from outside.
+
+**What this does not do.** It does not detect injected instructions; it declines
+to rank prose by how suspicious it reads. It marks where text came from and
+makes a human look before Karakuri acts on it, which is a property that holds
+against attacks nobody has thought of yet.
+
+---
+
+## Phase 28 — MCP: The Tools Nobody Has To Write (Planned)
+
+**Goal:** Karakuri reaches any MCP server as a tool source, and is reachable as
+one.
+
+Phase 6 shipped ten adapters across seven slots and set the pattern for the
+eleventh: a Go file, a constructor, and a case in a type-string switch.
+`tools.SlotInstances.Set` exists because that switch could not be extended from
+outside the package — and it was added in Phase 26 to make a *test* possible,
+not an integration. Every tool Karakuri will ever use is a tool somebody in this
+repository writes.
+
+The field settled this while the adapters were being written. MCP went to the
+Linux Foundation's Agentic AI Foundation in December 2025, and the two-layer
+shape — MCP for tool access, A2A for agent-to-agent delegation — is the default
+enterprise architecture in every 2026 survey. `grep -ri "mcp"` over this tree
+returns nothing.
+
+**ADR 006 is already the right shape**, which is the argument for doing this
+here rather than inventing something: a slot with a `default` and named
+`instances`, resolved per twin through `AdapterBindings`, is what an MCP client
+configuration looks like. What does not fit is the capability model, and that is
+the whole of the design work. Pack capabilities are declared statically and
+conformance-checked at boot; MCP tools are discovered at runtime from a server
+this repository did not write. Registering them as ordinary capabilities would
+mean a pack could be graded by a verifier that appeared this morning.
+
+**Steps:**
+
+1. **Inbound** — `internal/platform/tools/mcp/` and a `tools.mcp` slot: named
+   instances per ADR 006, stdio and streamable-HTTP transports, a per-instance
+   tool allowlist, twin-bound like every other slot. `/health` reports the
+   topology per instance, as it has since Phase 6.
+2. **Dynamic capabilities, bounded four ways.** Discovered tools register under
+   a reserved `mcp.<instance>.<tool>` namespace: never valid as a
+   `Criterion.Verifier`, never `NeedsWorkspace`, in `RequiresApprovalFor` by
+   default, and outside pack conformance entirely. This is the phase's only real
+   decision and wants ADR 021 written with the code rather than ahead of it.
+3. **Untrusted by construction.** A tool *description* from a third-party server
+   lands in the planner's context, which is Phase 27's surface arriving from a
+   new direction — one that ships an allowlist and an escalation default because
+   its content is authored elsewhere.
+4. **Routing through the index, not the fallback.** A `software.env.mcp` factory
+   declares `Serves` over the namespace so `stepAct` resolves it the way Phase
+   26 established; the `EnvID` fallback stays for what the registry cannot
+   answer.
+5. **Outbound** — Karakuri as an MCP server over streamable HTTP: objectives,
+   checkpoints, reconcile status and telemetry exposed as tools behind the
+   existing bearer auth and the `auth` module's scope sets, so another runtime
+   can drive a Karakuri objective without a second permission model. Read and
+   propose only in this phase; a foreign runtime resolving a checkpoint is a
+   decision about who may approve, and that belongs with a person.
+
+**Acceptance:** A filesystem MCP server configured as an instance appears in
+`/health` with its tools, is planned and executed through `stepAct`, and every
+one of its actions escalates on a fresh deployment. `krk domain test software`
+passes unmodified — a discovered tool never enters pack conformance. An MCP
+client outside this process can list objectives and read a digest under a scope
+that already exists, and cannot resolve a checkpoint.
+
+---
+
+## Phase 29 — Telemetry Other Tools Already Understand (Planned)
+
+**Goal:** A Karakuri span looks like every other agent span in the dashboard the
+operator already has.
+
+Phase 12 shipped exporters to AWS, Datadog, New Relic, Elasticsearch, Loki,
+OTLP and Prometheus, with per-exporter isolation so one outage never blocks the
+others, and retry with permanent-error short-circuiting. It was thorough about
+delivery and silent about vocabulary. `internal/platform/observability/otel.go`
+records metrics and logs under names this project chose — `loop_iteration`,
+`agent_invocation`, `tokens`, `memory_recall` — and emits no spans at all.
+
+Since then the CNCF GenAI semantic conventions settled what an agent looks like
+in telemetry: `invoke_agent` at the top, `chat` per model call, `execute_tool`
+per tool invocation, with `gen_ai.*` attributes for provider, model and token
+usage. Datadog, New Relic and Honeycomb consume them natively. Karakuri already
+exports to those exact backends, and populates none of their agent views — for
+naming reasons alone.
+
+The six-step loop is already this span tree in prose. It has simply never said
+so in a format anything else can read.
+
+**Steps:**
+
+1. **`gen_ai.*` attributes on what is already recorded** —
+   `gen_ai.operation.name`, `gen_ai.provider.name`, `gen_ai.request.model`,
+   `gen_ai.usage.input_tokens` / `output_tokens`, `gen_ai.agent.name`,
+   `gen_ai.tool.name`. The values exist; Phase 18's cost ledger prices the same
+   calls and already carries provider and model.
+2. **Spans** — one `invoke_agent` per loop iteration, `chat` per provider call
+   in `internal/platform/llm/`, `execute_tool` per `Environment.Act` in
+   `act.go`. `actionOutcome{CapabilityID, EnvID, Result}` (Phase 25) is already
+   the pairing a tool span needs.
+3. **Traces through the exporter chain** — the `Exporter` interface carries
+   them, `otlp.go` exports them natively, and an exporter that cannot take a
+   span says so rather than dropping it quietly. Phase 12's isolation and
+   `RetryExporter` semantics are unchanged.
+4. **Existing metric names are kept and aliased, never renamed.** An operator's
+   dashboard is not a thing to break for tidiness, and a phase whose benefit is
+   "your existing tools work" cannot start by breaking existing tools.
+
+**Acceptance:** A loop run against a collector produces one `invoke_agent` span
+per iteration, with `chat` and `execute_tool` children carrying model and token
+attributes. A query written against the published conventions — not against
+Karakuri's names, and not by anyone who has read this repository — returns the
+run. Every metric name that existed before the phase still resolves.
+
+---
+
+## Phase 30 — The Evaluation Set Karakuri Already Has (Planned)
+
+**Goal:** A change to an agent definition, a strategy, a provider or a prompt is
+measured against decisions real people made, before it merges.
+
+Across 2026's surveys the blocker named ahead of model capability is evaluation:
+pilots launched with no agreed threshold for accuracy, exception rate or cost
+per task. The received practice is a versioned golden set built from real
+failures rather than synthetic cases, trajectory scoring alongside final-answer
+scoring — an agent reaching the right answer through a dangerous sequence of
+tool calls is a production failure — and a judge calibrated against human labels
+before it is trusted to gate anything.
+
+**Karakuri has been accumulating that set since Phase 13.5 and reads none of
+it.** Every escalation writes a checkpoint carrying the planner's proposed
+`Actions`. Every resolution writes a human verdict: `kind=approval`,
+`rejection` or `modification` in `tool_events`, with the approver and, for a
+modification, what they changed. Those are human-labelled trajectories, produced
+by people doing their jobs rather than by an annotation budget, in every
+deployment that has ever escalated anything.
+
+What exists instead is `cmd/krk-bench`, which says in its own header that it
+drives a seeded stochastic mock because a real-provider benchmark would be
+irreproducible and would tie CI cost to upstream pricing. Both true, and it
+answers a different question than "did this change make the system worse".
+
+**And nothing has ever calibrated the judge.** `evaluateWithAgent` settles every
+verified criterion in every pack. Phase 25 found it was scoring criteria without
+being shown what the actions produced, and that a negated verdict counted as a
+positive one; it fixed both. How often it agrees with a person remains
+unmeasured — which means the number the whole system reports completion by rests
+on a component nobody has checked against the humans it stands in for.
+
+**Steps:**
+
+1. **`internal/feature/eval/`** — replay a stored escalation's world state and
+   objective under a candidate configuration and score the resulting plan
+   against what the human decided. Read-only over existing rows, like the
+   digest; a deployment's own history is the corpus.
+2. **Judge calibration as a published number.** Agreement between
+   `evaluateWithAgent` and human verdicts over the same checkpoints, tracked
+   over time. An uncalibrated judge grading every criterion in every pack is the
+   largest unmeasured component in the system, and naming its agreement rate is
+   worth more than improving it blind.
+3. **`krk eval` and a CI gate**, with `docs/benchmarks.md` growing a
+   real-trajectory section beside the synthetic one. The synthetic harness
+   stays: it is free, deterministic and answers a question about strategies that
+   real trajectories cannot, because nobody ran the same escalation twice.
+4. **Say what the set is not.** A resolved checkpoint labels *one* world state.
+   Replay is not a re-run, agreement is not correctness, and a corpus drawn from
+   escalations over-represents hard cases by construction — an agent's routine
+   competence never generates a label. A phase that presented this as ground
+   truth would be making the claim Phase 25 caught the verdict parser making.
+
+**Acceptance:** Reintroducing Phase 25's verdict-parser defect — where "this
+does not pass" scored as satisfied — turns the eval gate red, the way
+reintroducing the `> 0` guard turns conformance red in three packs. The judge's
+agreement rate is a number in `docs/benchmarks.md` rather than an assumption.
+
+---
+
+## Phase 31 — The Evidence Pack (Planned)
+
+**Goal:** An operator can produce, for any past window, the record a high-risk
+deployment is asked for — without Karakuri having accumulated anything in order
+to produce it.
+
+The EU AI Act's high-risk obligations became enforceable on 2 August 2026:
+automatic event logging over the system's lifetime with a six-month retention
+minimum (Article 12), human oversight a person can actually exercise and
+interrupt (Article 14), post-market monitoring, transparency. Analyses that
+address agent systems specifically read the action layer as in scope — API
+calls, third-party platforms, MCP servers — which is what Phase 6 built and
+Phase 28 widens.
+
+**Karakuri is unusually close, and short in four specific places.** Already
+here: `tool_events` records every escalation, approval, rejection, modification,
+promotion and demotion with an approver; checkpoints are designed-in human
+interruption rather than a review step bolted on afterwards; digests are
+post-market monitoring under another name, and are reproducible for any past
+window because Phase 21 refused to accumulate anything between deliveries;
+HALA already commits this project to human oversight of consequential decisions.
+
+Missing: no declared retention floor on audit rows — memory has a retention
+scheduler since Phase 13, the audit log has no stated minimum and nothing stops
+a future one pruning it; no model, provider or prompt version recorded against
+the decision it produced, though the cost ledger carries provider and model for
+the very same call; no risk classification on an objective template; and no
+export.
+
+**Steps:**
+
+1. **A retention floor on `tool_events`**, declared and refused rather than
+   silently exceeded — a pruning path configured below it fails and names the
+   floor. Six months as the default minimum, configurable upward only.
+2. **Record what produced each decision** — provider, model, agent definition,
+   template, autonomy rung and the bounds applied. The join that answers "which
+   model approved its way past which ceiling" currently does not exist, and it
+   is the question both an auditor and an incident review start with.
+3. **`objective.Template` declares a risk classification**, logged at boot
+   beside `CheckDanglingVerifiers` (Phase 24) so a deployment says out loud
+   which of its templates it considers consequential.
+4. **`krk audit export --from --to`** — built the way `internal/feature/report`
+   builds a digest: read-only, accumulating nothing, so the same window produces
+   the same bytes tomorrow and a failed export is simply retried.
+
+**Acceptance:** The same window exported twice is byte-identical. A pruning job
+configured below the floor is refused with the floor named. An export covers
+every logging category the Article asks for and every human intervention in the
+window, and a window in which a person was never consulted says so plainly
+rather than rendering an empty section.
+
+**What this is not.** It is not a compliance certification, and the phase must
+not read like one. It produces the record; whether a given deployment is
+high-risk, and whether the record satisfies its assessor, are somebody else's
+determinations. Claiming otherwise would be the same dishonesty as reporting a
+file ratio under the name "coverage" (Phase 25).
+
+---
+
+## Phase 32 — The SRE Path, Actually Wired (Planned)
+
+**Goal:** `software.objective.incident_response` can reach its criteria.
+
+Autonomous incident response is where agentic systems actually went into
+production in 2026 — Tier-1 handling at around 90%, MTTR down by more than 40%
+in Kubernetes-native deployments, AWS and Microsoft both shipping GA reliability
+agents in March — with the consistent caveat that production change stays
+human-approved and the binding limits are trust and governance rather than
+reasoning.
+
+The fit is exact, and not because of the subject matter. A standing objective is
+a desired state held rather than a task finished; sensing is cheap and
+reconciliation is rare; autonomy is earned under an operator's ceiling and one
+rejection demotes immediately. That is a self-healing control loop with a human
+gate, and Phase 20 built all of it. This phase needs no new engine.
+
+**It needs everything else.** The use case is declared throughout this tree and
+served nowhere:
+
+- `ObservabilityAdapter` is an interface and a no-op. Phase 6 shipped ten
+  adapter implementations and none of them was this one.
+- `software.env.observability` is a `noopFactory`: it declares no `Serves` and
+  builds a `noopEnv`.
+- The `sre` agent lists `software.observe.fetch_logs` and
+  `software.observe.fetch_metrics`. Both are declared capabilities, and both are
+  served by that no-op.
+- `software.objective.incident_response` has existed since Phase 2.
+
+That is the defect class Phases 24, 25 and 26 each closed an instance of —
+declared, planned by models, served by nothing — sitting in the part of the
+namespace where no check looks. Phase 26's routing tests cover `software.act.*`;
+Phase 25 recorded `reason.*` as uncovered and called it the ninth instance;
+`observe.*` is uncovered on the same grounds and is where the two capabilities
+above have been hiding. This is the largest remaining instance and the only one
+that costs a use case rather than a step.
+
+**Steps:**
+
+1. **Real `ObservabilityAdapter` implementations** behind the existing
+   multi-instance slot: Prometheus query API, Datadog monitors and events,
+   Grafana/Loki, and PagerDuty or Opsgenie for alert state. `GetAlerts` is
+   already the right shape; this is adapter work of the kind Phase 6 did ten
+   times.
+2. **`software.env.observability` becomes a real environment** with `Serves`
+   declared so `stepAct` and the observe fan-out both reach it, and with the two
+   `observe.*` capabilities above finally answered by something.
+3. **A deliberately lossy `Snapshot` SHA** — the firing alert set hashed
+   exactly, counts bucketed by order of magnitude, per ADR 017's rule. An
+   environment hashing raw alert counts would wake an incident objective
+   continuously to discover that alerts had fired, which is the mistake the
+   telemetry environment was designed around.
+4. **Remediation as capabilities that declare what they need** (ADR 019), gated
+   by authority bounds like everything else. Human approval for production
+   change is both the field's practice and what Phase 20 already enforces; this
+   phase adds no new way to say yes.
+5. **Extend the served-capability check to `observe.*`**, so the eleventh
+   instance of this class is the last one that needs a person to find it.
+
+**Acceptance:** An incident objective observes real alerts, proposes a
+remediation, escalates it, and — once approved — records the action in the audit
+log and in the next digest. The template reaches its criteria on a deployment
+with a bound observability instance. On one without, it reports *blind* rather
+than healthy: an environment that cannot see must not return a still snapshot,
+because Phase 20 will read that as a quiet world and stop looking.
+
+---
+
 ## Phase Ordering Rationale
 
 Phases 7–13 are **independent except where noted** and can be reordered to match priority. The dependencies that DO exist:
@@ -2179,6 +2556,14 @@ Phases 7–13 are **independent except where noted** and can be reordered to mat
 - **Phase 21** (digests) depends on **Phase 20** for the outcomes it reports and on **Phase 6**'s adapters for delivery. It reads only: nothing is accumulated between deliveries, so a digest can be regenerated for any past window.
 - **Phase 20** (standing objectives) depends on **Phase 11**'s durable loop state, which is what the supervisor watches to know a loop has finished, and on **Phase 13.5**'s actionable checkpoints, which are what an escalating reconcile hands a human. It also had to fix the disconnect between resolving a checkpoint and resuming a loop before either could be relied on. Its lease discharges Phase 11's deferred "active-active multi-node coordination" for the outer loop only; loop execution itself is still single-node-resume.
 - **Phase 9** (frontend) can run in parallel with any other phase; the API contract is already stable.
+
+Phases 27–32 are ordered by dependency rather than by appeal, and three of the four orderings are load-bearing:
+
+- **Phase 27 before Phase 28.** Provenance is the precondition for widening the tool surface, not a follow-up to it. MCP brings tool descriptions and tool output written by servers nobody in this repository wrote, straight into the planner's context; doing that first and marking trust afterwards means shipping the exposure and then chasing it.
+- **Phase 29 before Phase 30.** Spans are the trajectory record an evaluation harness reads. Building the harness first means inventing a second trajectory format and then discarding it.
+- **Phase 31 after 29 and 30.** The evidence pack exports what those phases record — the model behind a decision, the human agreement behind a score. Exporting first would produce a record with the interesting columns empty.
+- **Phase 32 is independent** and parallelisable with all of them. It is placed last because it is the vertical rather than the engine, not because anything blocks it. It does depend on Phase 6's multi-instance slot model and on Phase 20's standing objectives, both of which shipped.
+- **Phase 28's outbound half depends on Phase 14–17's auth**, which is why it exposes Karakuri's own API as MCP tools rather than growing a second permission model. Agent identity for the *outbound* direction — a delegation chain on adapter calls — is deliberately not in this slate; see the deferred section of [docs/research/ai-use-cases-2026.md](research/ai-use-cases-2026.md) for why it waits until there is one credential model to design rather than two.
 - **Phase 12** is a pure adapter implementation — can ship independently (Phases 6 and 7 already followed this pattern).
 
 Phases 14–19 introduce a new architectural pattern: **the auth and quota engines ship as standalone Go modules** in this same monorepo (`auth/`, `auth/sql/`, `auth/oidc/`, `auth/saml/`, `quota/`, `quota/redis/`, `quota/sql/`, `quota/cost/`), each with its own `go.mod` and independent semver tag namespace (`auth/v0.1.0`, `quota/v0.1.0`, etc.). External Go repos consume them without pulling in Karakuri. Karakuri itself is the first reference consumer, wired in via thin integration shims under `internal/auth/` and `internal/quota/`.
@@ -2644,6 +3029,10 @@ Checks (run via `krk domain test <id>`):
 | Cost runaway from unbounded LLM use                          | High     | Phase 15 introduces per-twin LLM token budgets; exhaustion produces a checkpoint event (human approval) rather than a 500 or silent overrun. Phase 18 shipped the attribution: every model and tool call is recorded with its provider, model and the containers it belonged to, priced from a configured table, and published as `cost_recorded` — so spend per twin / team / provider is visible before the bill arrives. Phase 18 also wired the per-capability daily quota, which had been configured and enforced nowhere since Phase 15                                                                                                                                                              |
 | IdP outage locks operators out of Karakuri                    | High     | **Resolved differently than planned.** Local password login stays mounted alongside any configured provider, so the bootstrap administrator is the break-glass path. No static token was added: Phase 14 deleted the static bearer token, and re-adding a long-lived credential to survive a temporary outage trades a permanent risk for a temporary one. `ChainResolver` puts the local resolver first, so password login does not depend on the IdP being reachable |
 | Cross-tenant access through a container scope                 | Medium   | Phase 17 keys every scope on an issued ID, never a display name, so two organisations with a team called "eng" cannot collide — the case is pinned end to end from the tree through `InScope` to a 403. A resource with no containers carries no labels and matches exactly what it matched under the flat model, so no existing grant widens. Listing is filtered from the same bindings the per-resource check reads, and an empty grant set matches no rows rather than every row |
+| An agent redirected by the content it observes                | High     | **Open until Phase 27.** `stepObserve` merges every observation into one flat `WorldState` with no mark on any of them, so a pull request body, a Slack message and a scraped page reach the planner as the same kind of fact — and Karakuri acts on what it concludes. Phase 27's mitigation is not detection: environments declare whether their payload is operator-configured infrastructure or third-party prose, and a plan tracing to the latter escalates above its earned rung, through `AuthorityBounds.Decide` rather than a second gate. That property holds against attacks nobody has enumerated, which a filter on suspicious-looking text does not. Until it ships, a deployment reading untrusted sources should not run above `propose` |
+| A third-party MCP tool acts without review                    | High     | Phase 28 registers discovered tools in a reserved `mcp.<instance>.<tool>` namespace that is in `RequiresApprovalFor` by default, never valid as a `Criterion.Verifier`, never `NeedsWorkspace`, and outside pack conformance entirely. A pack that could be graded by a verifier that appeared this morning is a pack whose criteria mean nothing; a tool that could write files without declaring it would bypass ADR 019. Instances carry an allowlist, so a server adding a tool does not widen what a twin may do |
+| An uncalibrated judge grades every criterion in every pack    | High     | **Open until Phase 30.** `evaluateWithAgent` settles every verified criterion in every domain, and how often it agrees with a person has never been measured. Phase 25 fixed what it was shown (nothing the actions produced) and how it parsed a verdict (a negation counted as a pass); neither of those is calibration. The completion score the whole system reports rests on it. Phase 30's corpus is the one this deployment already has — resolved checkpoints carry a plan and a human's verdict on it — and the number it produces is published rather than assumed |
+| Audit rows pruned below what an assessor asks for             | Medium   | **Open until Phase 31.** Memory has had a retention scheduler since Phase 13; `tool_events` has no declared floor, so nothing stops a future retention job from deleting the record of who approved what. Phase 31 declares a floor (six months minimum, configurable upward only) and refuses a pruning path configured below it, naming the floor rather than trimming quietly. The export it adds is reproducible for the same reason a digest is — it reads and accumulates nothing — so a failed export is retried rather than reconstructed |
 | A quota approval used to raise another tenant's limit         | Medium   | Phase 18 checks `quota:approve` against the subject the request names, rendered as a resource carrying its containers — the same containment rule ADR 010 set for handing out bindings. A route gate cannot do this: the subject arrives inside a stored request rather than in the URL. Pinned by `TestQuotaApprovalIsConfinedToTheApproversTenant`. Rejecting is deliberately ungated, so requests from tenants nobody administers cannot get stuck pending |
 
 
