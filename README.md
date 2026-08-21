@@ -731,7 +731,7 @@ Additional security stack:
 - **Dependabot** alerts + security updates + version updates across `gomod`, `npm`, and `github-actions`; major-version bumps excluded — those land via maintainer-opened PRs after compat testing
 - **Private vulnerability reporting** open at [`/security/advisories/new`](https://github.com/bsenel/karakuri/security/advisories/new)
 
-See [SECURITY.md](./SECURITY.md) for vulnerability reporting, [CONTRIBUTING.md](./CONTRIBUTING.md) for the Dependabot review policy and merge workflow, and [`.github/CODEOWNERS`](./.github/CODEOWNERS) for ownership.
+See [SECURITY.md](./.github/SECURITY.md) for vulnerability reporting, [CONTRIBUTING.md](./CONTRIBUTING.md) for the Dependabot review policy and merge workflow, and [`.github/CODEOWNERS`](./.github/CODEOWNERS) for ownership.
 
 ## Philosophy
 
@@ -768,5 +768,5 @@ See:
 
 - [LICENSE](./LICENSE)
 - [HALA.md](./HALA.md)
-- [SECURITY.md](./SECURITY.md)
+- [SECURITY.md](./.github/SECURITY.md)
 - [CONTRIBUTING.md](./CONTRIBUTING.md)

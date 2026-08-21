@@ -14,11 +14,14 @@ and route findings to the code-scanning dashboard as SARIF.
 
 Two principles govern the rollout:
 
-1. **Baseline existing findings so day one does not block all work.** Report-only gates
-   (gosec, semgrep, licenses) upload SARIF without failing PRs until their findings are
-   triaged; blocking gates (govulncheck, gitleaks, trivy HIGH/CRITICAL, golangci-lint) are
-   ones the codebase already passes clean after this branch's fixes. Allowlists
-   (`.trivyignore`) carry a reason per entry.
+1. **Baseline existing findings so day one does not block all work.** The baseline is
+   report-only; new findings are not. gosec's job never fails, but the SARIF it uploads
+   becomes a `gosec` code-scanning check that **does** fail a pull request introducing new
+   alerts in the code it changed — so the 30-odd pre-existing findings stay out of
+   everyone's way while freshly written code is still gated. The license check is
+   report-only outright (no SARIF, so no second check). Blocking gates (govulncheck,
+   gitleaks, trivy HIGH/CRITICAL, golangci-lint) are ones the codebase already passes
+   clean after this branch's fixes. Allowlists (`.trivyignore`) carry a reason per entry.
 2. **Least privilege + speed.** Default `permissions: contents: read`; only SARIF-upload
    jobs widen to `security-events: write`. Jobs run in parallel with caching, keeping the
    added critical-path time small (the new jobs run alongside the existing `ci.yml` jobs,
@@ -41,7 +44,8 @@ Two principles govern the rollout:
 quick; heavy scans are left to CI.
 
 **PR (`security-scan.yml` on pull_request):** golangci-lint (root + auth + quota),
-gosec (report-only SARIF), govulncheck (blocking), npm audit (prod deps, blocking),
+gosec (baseline report-only; new findings block via code scanning), govulncheck
+(blocking), npm audit (prod deps, blocking),
 gitleaks (blocking), Trivy fs+config+secret (SARIF, blocks HIGH/CRITICAL), license check
 (report-only) — alongside the existing `ci.yml` build/test/coverage and `codeql.yml` SAST.
 
@@ -62,7 +66,7 @@ attestation + `cosign` signing are the recommended next increment.
 | Secret (local) | pre-commit | gitleaks | every commit | any secret | commit blocked | `--no-verify` (discouraged) | <5 s | dev |
 | Format/vet/boundary | pre-commit | gofmt, go vet, script | every commit | any diff/violation | commit blocked | `--no-verify` | <10 s | dev |
 | Lint | PR + push | golangci-lint v2 | PR/push | any of 4 linters | **PR blocked** | fix, or config change w/ review | ~2 min | maintainers |
-| Go SAST | PR + push | gosec | PR/push | report-only (SARIF) | dashboard only | n/a (report-only) | ~2 min | security |
+| Go SAST | PR + push | gosec | PR/push | new alerts in changed code | **PR blocked** (baseline exempt) | fix, or `#nosec Gxxx -- reason` | ~2 min | security |
 | Deep SAST | PR + weekly | CodeQL | PR/push/cron | security-and-quality | **PR blocked** (existing) | dismiss w/ justification | ~6 min | security |
 | Go SCA | PR + push | govulncheck | PR/push/cron | any reachable vuln | **PR blocked** | update dep, or documented exception | ~3 min | maintainers |
 | npm SCA | PR + push | npm audit (prod) | PR/push | high/critical (prod) | **PR blocked** | bump, or roadmap-tracked exception | ~1 min | frontend |
@@ -79,9 +83,20 @@ the existing e2e job's ~10 min, so **the PR wall-clock stays within the ≤15 mi
 
 ## Baseline / allowlist handling
 
-- **gosec, semgrep, licenses** — report-only (SARIF/warnings) until existing findings are
-  triaged; the verified false positives are documented in `SECURITY_AUDIT.md` Appendix C and
-  should be annotated with `#nosec <rule>: <reason>` before flipping these to blocking.
+- **gosec** — the baseline is exempt, new findings are not. The `SAST (gosec)` job is
+  `continue-on-error` and always green; the `gosec` code-scanning check built from its
+  SARIF fails on alerts new to the diff. Verified false positives are documented in
+  `SECURITY_AUDIT.md` Appendix C. Being *in* a class Appendix C pre-clears does not exempt
+  a new finding — the criterion is new-in-this-diff, not member-of-a-triaged-class. Fix it,
+  or annotate it: `#nosec <rule> -- <reason>` and `#nosec <rule>: <reason>` both work.
+  What does **not** work is golangci-lint's `//nolint:gosec`, which suppresses nothing
+  here; the two tools share a name and not a syntax. (Checked against gosec directly.)
+- **licenses** — report-only in full: the step is `continue-on-error` and uploads no SARIF,
+  so nothing blocks on it.
+- **semgrep** — planned, never implemented. No workflow defines a semgrep job, so the rules
+  it was to enforce are enforced by nothing, and Appendix C's 13 semgrep findings did not
+  come from this pipeline. Either wire it up or stop listing it as a gate; a gate named in
+  the docs and absent from CI is worse than no gate, because it is budgeted for.
 - **Trivy** — `.trivyignore` baselines the generic-chart IaC policy noise (registry-domain
   and `:latest` rules) with a reason per entry; the securityContext HIGH findings are already
   fixed (F-07), so those are **not** allowlisted.
