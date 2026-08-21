@@ -31,6 +31,20 @@ type Digest struct {
 
 	Spend Spend `json:"spend"`
 
+	// Exhausted names the objectives that stopped for want of money rather
+	// than for want of work.
+	//
+	// Separate from Objectives because it is a different kind of news: an
+	// objective with no reconciles because nothing drifted is healthy, and one
+	// with no reconciles because it hit its ceiling is an operator decision
+	// waiting to be made — raise the budget, or accept the cadence it is
+	// actually getting. Folded into the summary those two look identical.
+	//
+	// It is deliberately not in Decisions: a budget clears itself at the
+	// window boundary and needs nobody, and putting it under "decisions I need
+	// from you" would make a nightly ceiling a nightly chore.
+	Exhausted []BudgetExhaustion `json:"exhausted,omitempty"`
+
 	// AutonomyChanges records objectives that earned or lost a rung in the
 	// window. Surfaced separately from their objective's summary because a
 	// change in what Karakuri may do without asking is the one line in a
@@ -51,6 +65,7 @@ type Digest struct {
 func (d Digest) Empty() bool {
 	return len(d.Decisions) == 0 &&
 		len(d.AutonomyChanges) == 0 &&
+		len(d.Exhausted) == 0 &&
 		d.Spend.Cost == 0 &&
 		!d.anyActivity()
 }
@@ -114,6 +129,30 @@ type Decision struct {
 // message from one raised an hour ago, and the reader should not have to
 // subtract dates to notice.
 func (d Decision) Age(now time.Time) time.Duration { return now.Sub(d.WaitingAt) }
+
+// BudgetExhaustion is one objective that ran out of money in the window.
+type BudgetExhaustion struct {
+	ObjectiveID    objective.ObjectiveID `json:"objective_id"`
+	ObjectiveTitle string                `json:"objective_title,omitempty"`
+
+	// Times is how often it was deferred in the window. Once at the end of a
+	// busy day is a budget doing its job; a dozen times is a ceiling set below
+	// what the cadence asks for, and the number is what separates them.
+	Times int `json:"times"`
+
+	// Ceiling is what it was allowed and Spent what it had spent when it
+	// stopped, so a reader can size a raise rather than guess at one.
+	Ceiling float64 `json:"ceiling,omitempty"`
+
+	// ResumesAt is when the ceiling next clears. Nobody has to do anything
+	// before then, and saying so is what keeps this out of the decisions list.
+	ResumesAt time.Time `json:"resumes_at,omitempty"`
+
+	// InterruptedBy names what it was mid-way through, from the last outcome
+	// before it stopped. An objective that ran out of money halfway to
+	// converging is a different message from one that had nothing left to do.
+	InterruptedBy string `json:"interrupted_by,omitempty"`
+}
 
 // AutonomyChange is one movement up or down the ladder.
 type AutonomyChange struct {

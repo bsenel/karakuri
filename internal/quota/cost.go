@@ -63,6 +63,18 @@ type Spend struct {
 	UnitKind string
 }
 
+// Price returns what a spend costs, without recording it.
+//
+// Exposed because a per-run ceiling has to be enforced while the run is still
+// going, and the ledger only answers after the fact. Zero when no pricer is
+// configured, which is the same answer Record would write.
+func (r *Recorder) Price(s Spend) float64 {
+	if r == nil || r.Pricer == nil || s.Units <= 0 {
+		return 0
+	}
+	return r.Pricer.Price(s.Provider, s.Model, s.UnitKind, s.Units)
+}
+
 // Record prices a spend, attaches the resource's containers, and writes it.
 //
 // Failures are logged rather than returned. The work is already done and paid

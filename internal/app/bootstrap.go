@@ -228,6 +228,22 @@ func BootstrapServer(cfgPath string) (*Bootstrap, error) {
 		}
 	}
 
+	// Dangling-verifier audit (Phase 24). The per-pack check cannot resolve a
+	// foreign domain — a pack is valid on its own (ADR 017) — so nothing
+	// checked that a criterion's verifier is exported by a pack this
+	// deployment actually enabled. A dangling one scores zero at verify with
+	// no explanation; saying so at boot is cheaper than discovering it there.
+	// WARN rather than fatal: an operator may be mid-rollout, and refusing to
+	// start over a template naming a pack that is not enabled yet is worse.
+	if len(activePacks) > 0 {
+		for _, res := range conformance.CheckDanglingVerifiers(activePacks...) {
+			if !res.Passed {
+				slog.Warn("objective template references a verifier nothing exports",
+					"check", res.Check, "msg", res.Message)
+			}
+		}
+	}
+
 	// Pick semantic backend per config. Only pgvector requires a non-default
 	// constructor; the SQLite keyword fallback is the default path (nil here).
 	var semanticBackend corememory.Memory

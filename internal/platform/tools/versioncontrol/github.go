@@ -67,6 +67,9 @@ func (g *GitHub) ListPRs(ctx context.Context, repo string, since time.Time) ([]P
 		Title     string    `json:"title"`
 		HTMLURL   string    `json:"html_url"`
 		UpdatedAt time.Time `json:"updated_at"`
+		Head      struct {
+			SHA string `json:"sha"`
+		} `json:"head"`
 	}
 	if err := g.do(ctx, "GET", fmt.Sprintf("/repos/%s/pulls?state=open&per_page=50", repo), nil, &raw); err != nil {
 		return nil, err
@@ -76,9 +79,63 @@ func (g *GitHub) ListPRs(ctx context.Context, repo string, since time.Time) ([]P
 		if !since.IsZero() && r.UpdatedAt.Before(since) {
 			continue
 		}
-		out = append(out, PRSummary{ID: fmt.Sprintf("%d", r.Number), Title: r.Title, URL: r.HTMLURL})
+		s := PRSummary{ID: fmt.Sprintf("%d", r.Number), Title: r.Title, URL: r.HTMLURL}
+		s.CheckState, s.FailingChecks = g.checkState(ctx, repo, r.Head.SHA)
+		out = append(out, s)
 	}
 	return out, nil
+}
+
+// checkState reads the combined CI verdict for one commit.
+//
+// Deferred from Phase 22 and picked up in Phase 25, so that "what is currently
+// broken" is evidence the pack can read rather than something an operator has
+// to relay. Failures here are silent by design: a missing verdict is reported
+// as an empty state, and degrading a list of open pull requests into an error
+// because the checks endpoint was slow would lose the part that always works.
+func (g *GitHub) checkState(ctx context.Context, repo, sha string) (string, []string) {
+	if sha == "" {
+		return "", nil
+	}
+	var raw struct {
+		CheckRuns []struct {
+			Name       string `json:"name"`
+			Status     string `json:"status"`
+			Conclusion string `json:"conclusion"`
+		} `json:"check_runs"`
+	}
+	if err := g.do(ctx, "GET", fmt.Sprintf("/repos/%s/commits/%s/check-runs?per_page=100", repo, sha), nil, &raw); err != nil {
+		return "", nil
+	}
+	if len(raw.CheckRuns) == 0 {
+		return "", nil
+	}
+
+	var failing []string
+	pending := false
+	for _, c := range raw.CheckRuns {
+		if c.Status != "completed" {
+			pending = true
+			continue
+		}
+		switch c.Conclusion {
+		case "success", "neutral", "skipped":
+			// Not a failure. "skipped" in particular is how a conditional job
+			// reports not running, and counting it red would make every PR red.
+		default:
+			failing = append(failing, c.Name)
+		}
+	}
+	switch {
+	case len(failing) > 0:
+		// Red wins over pending: a run still going cannot un-fail what already
+		// failed, and waiting to say so delays the only actionable verdict.
+		return "failure", failing
+	case pending:
+		return "pending", nil
+	default:
+		return "success", nil
+	}
 }
 
 func (g *GitHub) GetCommits(ctx context.Context, repo string, since time.Time) ([]Commit, error) {

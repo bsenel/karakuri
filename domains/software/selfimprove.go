@@ -50,6 +50,16 @@ const (
 	// rather than platform ones.
 	CapProposeRoadmap = "software.act.propose_roadmap_phase"
 	CapDraftADR       = "software.act.draft_adr"
+
+	// CapAnalyseRepo reads the repository as evidence, so evidence-first can
+	// be satisfied on a deployment with no history — which is every deployment
+	// on the day somebody enables self-improvement.
+	//
+	// Beside analyse_usage rather than folded into it, so a proposal has to
+	// say which source it stood on. A phase proposed from repository evidence
+	// and a phase proposed from observed pain are different claims and should
+	// not be presented identically.
+	CapAnalyseRepo = "software.reason.analyse_repo"
 )
 
 // telemetryWindow is how far back the telemetry environment looks.
@@ -59,18 +69,26 @@ const (
 // single day's noise and well by a week's shape.
 const telemetryWindow = 7 * 24 * time.Hour
 
-// servedBy names the environment expected to execute each self-improvement
-// capability.
+// servedBy answers which environment executes a capability, by reading the
+// Serves declarations the loop itself routes on.
 //
-// It does not drive routing — the environments' own Act methods do that. It
-// is the declaration a test checks by *executing* each capability where this
-// map says it lives, so a capability added here without a route, or routed
-// without an entry, fails rather than shipping unroutable. That is how these
-// capabilities once shipped inert: refused at runtime with every test passing.
-var servedBy = map[capability.CapabilityID]environment.EnvironmentID{
-	CapAnalyseUsage:   EnvPlatformTelemetry,
-	CapProposeRoadmap: EnvGit,
-	CapDraftADR:       EnvGit,
+// It used to be a hand-written map beside them — a second copy of the routing,
+// kept honest only by a test remembering to check it. Now the declaration and
+// the route are the same fact: Phase 26 promoted Serves onto
+// environment.Factory and stepAct resolves through it, so a capability listed
+// here wrong is a capability that misroutes in production, not one that fails
+// a mirror test. The executing test above still runs each capability where
+// this says it lives, which is what catches a route pointing at an environment
+// whose Act refuses it.
+func servedBy(capID capability.CapabilityID) (environment.EnvironmentID, bool) {
+	for _, f := range New().EnvironmentFactories() {
+		for _, served := range f.Serves {
+			if served == capID {
+				return f.EnvID, true
+			}
+		}
+	}
+	return "", false
 }
 
 type telemetryEnv struct {
@@ -121,23 +139,83 @@ func snapshotState(snap coretelemetry.Snapshot) map[string]any {
 		"spend":         snap.Spend,
 		"bottlenecks":   snap.Bottlenecks,
 		"sufficient":    sufficient(snap),
+		// The grade beside the boolean, because "thin" is the answer the
+		// boolean cannot give and the one a proposal most needs to disclose.
+		"evidence": evidenceLevel(snap),
 	}
 }
 
-// sufficient reports whether the window holds enough to reason from.
+// Evidence grades.
+//
+// Three rather than two, because "I have none", "I have a little" and "I have
+// enough" are three different claims and a proposal drawn from each deserves a
+// different amount of belief. A boolean forced the middle one into whichever
+// neighbour the author picked, and the author picked "enough".
+const (
+	EvidenceNone     = "none"
+	EvidenceThin     = "thin"
+	EvidenceAdequate = "adequate"
+)
+
+// minPattern is how many observations of one kind make a pattern rather than
+// noise.
+//
+// Not chosen here: it is the threshold the telemetry reader already applies
+// before it will call a capability failing (`if n < 3 { continue }` in
+// readExecutes). Using a different number would mean the pack calls evidence
+// adequate that the reader itself declines to draw a conclusion from, or the
+// reverse. One justified number, used twice.
+const minPattern = 3
+
+// evidenceLevel grades what the window holds.
+//
+// The previous version was a boolean whose test was "the window contains
+// anything at all", so one sense pass in a week counted the same as a
+// thousand. That is the shape of judgement this pack exists to avoid making:
+// a deployment three hours old would report sufficient evidence and propose
+// roadmap phases from a single data point.
 //
 // Only window-scoped terms count. An earlier version ORed in
 // Objectives.Total, which the reader computes with no time bound at all — so
 // it was true in any deployment that had ever created an objective, including
-// the self-improvement objective doing the asking. A flag that cannot be
-// false in production is worse than no flag: it answers the question it was
-// added to answer, wrongly, every time.
+// the self-improvement objective doing the asking. A flag that cannot be false
+// in production is worse than no flag: it answers the question it was added to
+// answer, wrongly, every time.
+func evidenceLevel(snap coretelemetry.Snapshot) string {
+	// A bottleneck is already a conclusion the reader was willing to draw, and
+	// it only draws one from a repeated failure, a blocked objective or a
+	// decision left waiting. Its presence is adequate evidence by
+	// construction.
+	if len(snap.Bottlenecks) > 0 {
+		return EvidenceAdequate
+	}
+
+	counts := []int{
+		snap.Work.Senses,
+		snap.Work.Reconciles,
+		snap.Work.Actions,
+		snap.Work.Failures,
+		snap.Escalation.Escalations,
+	}
+	total := 0
+	for _, n := range counts {
+		total += n
+		if n >= minPattern {
+			return EvidenceAdequate
+		}
+	}
+	if total > 0 {
+		return EvidenceThin
+	}
+	return EvidenceNone
+}
+
+// sufficient is the boolean the rest of the pack still asks for: adequate
+// evidence, not merely some. Thin evidence is reported as thin and does not
+// pass for sufficient — a proposal may still be drafted from it, and must say
+// what it is standing on.
 func sufficient(snap coretelemetry.Snapshot) bool {
-	return snap.Work.Senses > 0 ||
-		snap.Work.Reconciles > 0 ||
-		snap.Work.Actions > 0 ||
-		snap.Escalation.Escalations > 0 ||
-		len(snap.Bottlenecks) > 0
+	return evidenceLevel(snap) == EvidenceAdequate
 }
 
 func (e *telemetryEnv) Act(ctx context.Context, a environment.Action) (environment.ActionResult, error) {
@@ -158,6 +236,7 @@ func (e *telemetryEnv) Act(ctx context.Context, a environment.Action) (environme
 					"capability": string(CapAnalyseUsage),
 					"available":  false,
 					"sufficient": false,
+					"evidence":   EvidenceNone,
 					"reason":     "no telemetry reader is wired into this deployment",
 				},
 			}, nil
@@ -312,7 +391,7 @@ func recordDraft(a environment.Action, required string) (environment.ActionResul
 	}, nil
 }
 
-// selfImproveCapabilities are the three this file adds to the software pack.
+// selfImproveCapabilities are the four this file adds to the software pack.
 func selfImproveCapabilities() []capability.Capability {
 	prop := func(t, d string) capability.SchemaProperty {
 		return capability.SchemaProperty{Type: t, Description: d}
@@ -335,7 +414,28 @@ func selfImproveCapabilities() []capability.Capability {
 				Properties: map[string]capability.SchemaProperty{
 					"bottlenecks":   prop("array", "What is going wrong, ranked by how often"),
 					"approval_rate": prop("number", "Share of resolved escalations approved; -1 when nothing was decided"),
-					"sufficient":    prop("boolean", "Whether the window held enough to reason from"),
+					"sufficient":    prop("boolean", "Whether the window held enough to reason from: true only at evidence=adequate"),
+					"evidence":      prop("string", "How much the window held: none, thin, or adequate. A proposal must say which it stood on."),
+				},
+			},
+			Verifiable: true,
+		},
+		{
+			ID:          CapAnalyseRepo,
+			Name:        "Analyse Repository",
+			Domain:      "software",
+			Description: "Read the repository as evidence: the roadmap's own deferred work, TODO density by package, packages with no tests, and where AGENTS.md rules live. Available on day one, unlike telemetry.",
+			InputSchema: capability.Schema{
+				Type:       "object",
+				Properties: map[string]capability.SchemaProperty{},
+			},
+			OutputSchema: capability.Schema{
+				Type: "object",
+				Properties: map[string]capability.SchemaProperty{
+					"deferred_work":     prop("array", "Work the roadmap itself marks still open or deferred — already justified in prose"),
+					"todo_density":      prop("array", "Packages with the most TODO and FIXME comments, ranked"),
+					"untested_packages": prop("array", "Packages with Go source and no test file at all. Counts files, not lines: this is not coverage"),
+					"evidence":          prop("string", "How much the repository held: none, thin, or adequate"),
 				},
 			},
 			Verifiable: true,
@@ -416,7 +516,10 @@ func selfImproveAgents() []agent.Definition {
 			Name:   "Platform Maintainer",
 			Domain: "software",
 			Capabilities: []capability.CapabilityID{
-				CapAnalyseUsage, CapProposeRoadmap, CapDraftADR,
+				// Both sources of evidence. On a deployment with no history
+				// the telemetry window is empty and the repository is not,
+				// which is the whole of Phase 25.
+				CapAnalyseUsage, CapAnalyseRepo, CapProposeRoadmap, CapDraftADR,
 			},
 			// Reflexion, because this agent's output is a proposal somebody
 			// will read as evidence-backed, and a critique-and-revise pass is
@@ -449,7 +552,7 @@ func selfImproveAgents() []agent.Definition {
 			// run "tell me what is limiting this deployment" at sense
 			// autonomy without ever putting an agent that drafts changes into
 			// the rotation.
-			Capabilities:      []capability.CapabilityID{CapAnalyseUsage},
+			Capabilities:      []capability.CapabilityID{CapAnalyseUsage, CapAnalyseRepo},
 			ReasoningStrategy: agent.ReasoningChainOfThought,
 			Authority: agent.AuthorityBounds{
 				MaxAutonomousActions: 1,
@@ -470,11 +573,33 @@ func selfImproveAgents() []agent.Definition {
 // suite deliberately does not resolve foreign domains. Same-pack verifiers
 // are checked.
 func selfImproveTemplates() []objective.Template {
+	// crit declares a criterion settled deterministically by a capability's
+	// result. Use it only where the capability succeeding *is* the criterion
+	// being met — create_pr succeeding means a pull request is open.
 	crit := func(id, desc, verifier string, weight float64) objective.Criterion {
 		return objective.Criterion{
 			ID: id, Description: desc,
 			Verifier: capability.CapabilityID(verifier), Weight: weight,
 		}
+	}
+
+	// judged declares a criterion decided by reading what the actions
+	// produced, because no capability's success answers it.
+	//
+	// The distinction was invisible until the verify step started reading
+	// action results (Phase 25 step 6). Before that every criterion was
+	// effectively judged by a model shown nothing, so naming a verifier that
+	// could not decide the question cost nothing and four of them did it: the
+	// two below and "the proposal names the telemetry" all named
+	// analyse_usage, which produces the evidence rather than deciding the
+	// question. Once a verifier settles a criterion deterministically, that
+	// spelling means "this criterion is met whenever the analysis ran" — which
+	// is every time, including on a deployment with no telemetry at all.
+	//
+	// The rule: a verifier answers the criterion, it does not supply the
+	// material for answering it.
+	judged := func(id, desc string, weight float64) objective.Criterion {
+		return objective.Criterion{ID: id, Description: desc, Weight: weight}
 	}
 	hard := func(id, desc, expr string) objective.Constraint {
 		return objective.Constraint{ID: id, Description: desc, Hard: true, Expression: expr}
@@ -490,8 +615,8 @@ func selfImproveTemplates() []objective.Template {
 			Description: "Read the deployment's own telemetry and report what is limiting it. " +
 				"Reads only — declare it standing at sense autonomy and it will never spend a model call on a quiet week.",
 			SuccessCriteria: []objective.Criterion{
-				crit("no-blocked", "No standing objective is blocked by the breaker or the stall detector", CapAnalyseUsage, 0.5),
-				crit("no-stale-decisions", "No checkpoint has been waiting more than a day", CapAnalyseUsage, 0.5),
+				judged("no-blocked", "The telemetry shows no standing objective blocked by the breaker or the stall detector", 0.5),
+				judged("no-stale-decisions", "The telemetry shows no checkpoint waiting more than a day", 0.5),
 			},
 			Constraints: []objective.Constraint{
 				hard("read-only", "This objective observes and reports; it must not act on the deployment", "no_write_capabilities"),
@@ -505,12 +630,13 @@ func selfImproveTemplates() []objective.Template {
 			// safety story rests on. Before SuggestedAgents was read, this
 			// ran under the strategist and the guarantee held by luck.
 			SuggestedAgents: []agent.Definition{{ID: "software.agent.maintainer"}},
-			Description: "Analyse telemetry, decide what is worth changing, and open a pull request that changes it. " +
-				"The maintainer analyses and drafts; the writing capabilities belong to other agents in this pack, " +
+			Description: "Analyse this deployment's telemetry and its repository, decide what is worth changing, and open a pull request that changes it. " +
+				"On a deployment with no history the telemetry is empty and the repository is not: the roadmap's own deferred work is a backlog " +
+				"somebody already justified in prose. The maintainer analyses and drafts; the writing capabilities belong to other agents in this pack, " +
 				"so the change still arrives as a pull request somebody reviews.",
 			SuccessCriteria: []objective.Criterion{
-				crit("evidence", "The proposal names the telemetry that says the problem is real", CapAnalyseUsage, 0.3),
-				crit("proposal", "A roadmap phase exists in the repository's established style", CapProposeRoadmap, 0.3),
+				judged("evidence", "The proposal names the specific telemetry that says the problem is real, and the analysis reported evidence adequate to support it", 0.3),
+				judged("proposal", "A roadmap phase was drafted in the repository's established style", 0.3),
 				// Same pack now, so the conformance suite resolves it. It
 				// previously named software.act.open_pull_request, which
 				// nothing exports, and being cross-domain is what stopped
@@ -518,7 +644,14 @@ func selfImproveTemplates() []objective.Template {
 				crit("pull-request", "A pull request is open with the change and its tests", "software.act.create_pr", 0.4),
 			},
 			Constraints: []objective.Constraint{
-				hard("evidence-first", "No proposal may be drafted before analyse_usage has run", "analysis_complete"),
+				// Either source, and the proposal has to say which. Phase 22
+				// spelled this as analyse_usage alone, which made the
+				// constraint unsatisfiable on a deployment with no history —
+				// the deployment that most needs a roadmap was the one that
+				// could not produce one.
+				hard("evidence-first",
+					"No proposal may be drafted before analyse_usage or analyse_repo has run, and the proposal must name which source it stood on",
+					"analysis_complete"),
 				hard("human-approves", "Every change to the repository requires explicit approval", "change_approved"),
 				hard("respect-repo-rules", "Changes must follow AGENTS.md: clean-architecture boundaries, tests for non-trivial logic, docs updated", "repo_rules_followed"),
 			},
@@ -542,6 +675,7 @@ func platformTelemetryFactory() environment.Factory {
 		EnvID:       EnvPlatformTelemetry,
 		Domain:      "software",
 		Description: "This deployment's own behaviour: escalation rates, spend, failing objectives, unanswered decisions",
+		Serves:      []capability.CapabilityID{CapAnalyseUsage},
 		Build: func(bc environment.BuildContext) (environment.Environment, error) {
 			// A nil reader is the ordinary case for a deployment that has not
 			// wired telemetry. The environment says so rather than reporting

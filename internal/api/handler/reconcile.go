@@ -34,6 +34,7 @@ func (h *ReconcileHandler) Declare(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Cadence  *objective.Cadence  `json:"cadence"`
 		Autonomy *objective.Autonomy `json:"autonomy"`
+		Budget   *objective.Budget   `json:"budget"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -67,9 +68,23 @@ func (h *ReconcileHandler) Declare(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// A negative ceiling is not a smaller budget, it is a typo. Accepting it
+	// would read as "no ceiling" everywhere downstream, because every check is
+	// `> 0` — an operator meaning to tighten a limit would remove it.
+	if req.Budget != nil {
+		if req.Budget.Daily < 0 || req.Budget.PerReconcile < 0 {
+			http.Error(w, "budget ceilings must not be negative", http.StatusBadRequest)
+			return
+		}
+	}
+
 	obj.Mode = objective.ModeStanding
 	obj.Cadence = req.Cadence
 	obj.Autonomy = req.Autonomy
+	// Total like the rest of the declaration: sending no budget removes the
+	// one that was there, because the body is the whole declaration and an
+	// operator clearing a ceiling should not need a separate call.
+	obj.Budget = req.Budget
 	if err := h.Store.SaveObjective(r.Context(), obj); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

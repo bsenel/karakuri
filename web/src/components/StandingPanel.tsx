@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api, APIError } from '@/api/client';
 import { useAuth } from '@/auth/AuthProvider';
-import type { AutonomyLevel, ReconcileOutcome, ReconcileView } from '@/api/types';
+import type { AutonomyLevel, Budget, ReconcileOutcome, ReconcileView } from '@/api/types';
 
 /**
  * The control loop over one standing objective: what it is doing, when it is
@@ -12,7 +12,13 @@ import type { AutonomyLevel, ReconcileOutcome, ReconcileView } from '@/api/types
  * two-tier split is working — a list holding only the reconciles would make
  * the system look like it was barely watching.
  */
-export function StandingPanel({ objectiveID }: { objectiveID: string }) {
+/**
+ * The budget comes from the objective rather than the reconcile state, because
+ * a ceiling is a declaration an operator made and the state is what the
+ * supervisor did with it. The panel shows both so a deferred pass in the
+ * history has its reason on the same screen.
+ */
+export function StandingPanel({ objectiveID, budget }: { objectiveID: string; budget?: Budget }) {
   const { can } = useAuth();
   const [view, setView] = useState<ReconcileView | null>(null);
   const [standing, setStanding] = useState(true);
@@ -87,6 +93,8 @@ export function StandingPanel({ objectiveID }: { objectiveID: string }) {
           <Fact label="Consecutive failures" value={String(state.consecutive_failures)} />
         )}
         {state.clean_runs > 0 && <Fact label="Clean runs" value={String(state.clean_runs)} />}
+        {budget?.daily ? <Fact label="Daily ceiling" value={budget.daily.toFixed(2)} /> : null}
+        {budget?.per_reconcile ? <Fact label="Per-pass ceiling" value={budget.per_reconcile.toFixed(2)} /> : null}
       </dl>
 
       <div className="row">
@@ -139,6 +147,16 @@ function OutcomeRow({ outcome }: { outcome: ReconcileOutcome }) {
  */
 export function describe(o: ReconcileOutcome): string {
   if (o.error) return `failed: ${o.error}`;
+  // Before the sense case, because a deferred pass carries no loop and would
+  // otherwise read as "nothing moved, nothing spent" — which for a budget is
+  // the opposite of what happened.
+  if (o.deferred) {
+    const until = o.deferred_until ? `, resumes ${new Date(o.deferred_until).toLocaleString()}` : '';
+    if (o.deferred === 'budget_exhausted') {
+      return `deferred — spent its ceiling${until}. Nothing to do; a budget clears itself`;
+    }
+    return `deferred — ${o.deferred}${until}`;
+  }
   if (o.escalated) return 'escalated — waiting on a decision';
   if (!o.loop_id) {
     if (o.drift.blind) return 'sensed; nothing could be hashed, so the schedule decides';

@@ -109,7 +109,7 @@ func TestSelfImproveCapabilitiesAreRouted(t *testing.T) {
 	}
 
 	for _, c := range selfImproveCapabilities() {
-		envID, routed := servedBy[c.ID]
+		envID, routed := servedBy(c.ID)
 		if !routed {
 			t.Errorf("capability %q is declared but no environment serves it", c.ID)
 			continue
@@ -209,15 +209,67 @@ func TestPlatformTelemetryGatesOnItsReader(t *testing.T) {
 	}
 }
 
-// "Sufficient" has to be able to be both.
-func TestSufficientDistinguishesAnEmptyWindow(t *testing.T) {
-	quiet := coretelemetry.Snapshot{Objectives: coretelemetry.ObjectiveStats{Total: 7, Standing: 3}}
-	if sufficient(quiet) {
-		t.Error("a window with no work, no escalations and no bottlenecks reported sufficient evidence")
-	}
-	busy := coretelemetry.Snapshot{Work: coretelemetry.WorkStats{Reconciles: 1}}
-	if !sufficient(busy) {
-		t.Error("a window containing a reconcile reported no evidence")
+// Evidence is graded, and each grade has to be reachable — a scale whose
+// middle value nothing produces is a boolean with extra words.
+//
+// The middle one is the point. The old test was "the window contains anything
+// at all", so a single reconcile in a week counted the same as a thousand and
+// a deployment three hours old would propose roadmap phases from one data
+// point.
+func TestEvidenceIsGradedAndEachGradeIsReachable(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		snap coretelemetry.Snapshot
+		want string
+	}{
+		{
+			// Objectives.Total is not window-scoped: the reader computes it
+			// with no time bound, so it is true in any deployment that ever
+			// created an objective — including the self-improvement objective
+			// doing the asking.
+			name: "an empty window, however many objectives exist",
+			snap: coretelemetry.Snapshot{Objectives: coretelemetry.ObjectiveStats{Total: 7, Standing: 3}},
+			want: EvidenceNone,
+		},
+		{
+			name: "one reconcile is a data point, not a pattern",
+			snap: coretelemetry.Snapshot{Work: coretelemetry.WorkStats{Reconciles: 1}},
+			want: EvidenceThin,
+		},
+		{
+			name: "a few of several kinds, none of them a pattern",
+			snap: coretelemetry.Snapshot{
+				Work:       coretelemetry.WorkStats{Reconciles: 2, Actions: 2},
+				Escalation: coretelemetry.EscalationStats{Escalations: 2},
+			},
+			want: EvidenceThin,
+		},
+		{
+			name: "enough of one kind to be a pattern",
+			snap: coretelemetry.Snapshot{Work: coretelemetry.WorkStats{Senses: minPattern}},
+			want: EvidenceAdequate,
+		},
+		{
+			// The reader only raises one from a repeated failure, a blocked
+			// objective or a decision left waiting, so it is a conclusion it
+			// was already willing to draw.
+			name: "a bottleneck is a conclusion the reader already drew",
+			snap: coretelemetry.Snapshot{Bottlenecks: []coretelemetry.Bottleneck{{
+				Kind: coretelemetry.BottleneckStaleDecision, Count: 1,
+			}}},
+			want: EvidenceAdequate,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := evidenceLevel(tc.snap); got != tc.want {
+				t.Errorf("evidenceLevel = %q, want %q", got, tc.want)
+			}
+			// sufficient is adequate-only. Thin evidence must not pass for it:
+			// a proposal may still be drafted, and must say what it stood on.
+			if want := tc.want == EvidenceAdequate; sufficient(tc.snap) != want {
+				t.Errorf("sufficient = %v at evidence %q", !want, tc.want)
+			}
+		})
 	}
 }
 
@@ -274,7 +326,10 @@ func TestSelfImproveVerifiersResolve(t *testing.T) {
 			if crit.Domain != "" {
 				t.Errorf("criterion %q is cross-domain again; that is what hid the dangling verifier", crit.ID)
 			}
-			if !declared[crit.Verifier] {
+			// An empty verifier means "judged from the action results", which
+			// is correct for a criterion no capability's success answers. A
+			// non-empty one has to name something this pack exports.
+			if crit.Verifier != "" && !declared[crit.Verifier] {
 				t.Errorf("criterion %q is verified by %q, which this pack does not export", crit.ID, crit.Verifier)
 			}
 		}

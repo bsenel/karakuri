@@ -34,6 +34,7 @@ func objectiveStandingCmd() *cobra.Command {
 		autonomy, ceiling                         string
 		promoteAfter                              int
 		demoteOnFailure                           bool
+		budgetDaily, budgetPerReconcile           float64
 	)
 	cmd := &cobra.Command{
 		Use:   "standing <id>",
@@ -51,7 +52,13 @@ only; sensing runs through the night, which is how the morning reconcile knows
 what happened.
 
 Autonomy is a ladder — sense, propose, act_with_notice, act — and --ceiling is
-the rung it may never pass however well it behaves.`,
+the rung it may never pass however well it behaves.
+
+A budget is separate from its twin's allowance and answers a different worry:
+an objective reconciling hourly is the one whose appetite nobody has calibrated
+yet. Running out of money is not a failure and needs no operator — sensing
+continues, the circuit breaker never sees it, earned autonomy survives, and the
+daily ceiling clears itself at UTC midnight.`,
 		Example: `  # Watch a repository and propose fixes, never acting on its own
   krk objective standing obj_123 --sense 15m --autonomy propose
 
@@ -60,7 +67,11 @@ the rung it may never pass however well it behaves.`,
       --cron "0 8 * * 1-5" --timezone Europe/Istanbul \
       --sense 1h --resync 24h \
       --autonomy propose --ceiling act_with_notice --promote-after 5 \
-      --quiet 22:00-07:00`,
+      --quiet 22:00-07:00
+
+  # Capped: at most 5.00 a day, and no single pass may spend more than 1.00
+  krk objective standing obj_123 --every 1h \
+      --budget-daily 5.00 --budget-per-reconcile 1.00`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
 			cadence := map[string]any{}
@@ -102,6 +113,17 @@ the rung it may never pass however well it behaves.`,
 				body["autonomy"] = a
 			}
 
+			if budgetDaily > 0 || budgetPerReconcile > 0 {
+				b := map[string]any{}
+				if budgetDaily > 0 {
+					b["daily"] = budgetDaily
+				}
+				if budgetPerReconcile > 0 {
+					b["per_reconcile"] = budgetPerReconcile
+				}
+				body["budget"] = b
+			}
+
 			data, _, err := api.Put("/objectives/"+args[0]+"/standing", body)
 			if err != nil {
 				return err
@@ -122,6 +144,8 @@ the rung it may never pass however well it behaves.`,
 	cmd.Flags().StringVar(&ceiling, "ceiling", "", "Highest level it may ever earn (default: its starting level)")
 	cmd.Flags().IntVar(&promoteAfter, "promote-after", 0, "Consecutive clean reconciles that earn one rung (0 = never promote)")
 	cmd.Flags().BoolVar(&demoteOnFailure, "demote-on-failure", false, "Also demote on a failed reconcile, not only on a rejected checkpoint")
+	cmd.Flags().Float64Var(&budgetDaily, "budget-daily", 0, "Most this objective may spend per UTC day, separately from its twin's allowance (0 = no ceiling of its own)")
+	cmd.Flags().Float64Var(&budgetPerReconcile, "budget-per-reconcile", 0, "Most one reconcile pass may spend (0 = uncapped). Bounds one bad pass; --budget-daily bounds the month")
 	return cmd
 }
 

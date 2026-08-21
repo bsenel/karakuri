@@ -31,10 +31,10 @@ Karakuri replaced the original role-based workflow simulator with an autonomous 
 | 20    | Standing Objectives + Reconciliation       | **Completed** |
 | 21    | Digests                                    | **Completed** |
 | 22    | The Karakuri Domain Pack                   | **Superseded**|
-| 23    | Per-Objective Spend Ceilings               | **Partial**   |
-| 24    | Conformance That Tests Behaviour           | Planned       |
-| 25    | Self-Improvement Without a History         | Planned       |
-| 26    | The Write Path                             | **Partial**   |
+| 23    | Per-Objective Spend Ceilings               | **Completed** |
+| 24    | Conformance That Tests Behaviour           | **Completed** |
+| 25    | Self-Improvement Without a History         | **Completed** |
+| 26    | The Write Path                             | **Completed** |
 
 
 ---
@@ -1724,7 +1724,7 @@ krk objective standing <id> --cron "0 9 * * 1" --sense 6h --autonomy propose
 
 ---
 
-## Phase 23 — Per-Objective Spend Ceilings (Partial)
+## Phase 23 — Per-Objective Spend Ceilings (Completed)
 
 **Goal:** An operator can cap what one objective may spend, separately from its
 twin's allowance, so a standing objective reconciling hourly cannot quietly
@@ -1780,15 +1780,46 @@ objective at all.** `stepAct` attributed adapter calls, but the budgeted agent �
 which charges the expensive half — recorded with no resource, so it landed under
 the twin. A per-objective ceiling had nothing to measure until that was closed.
 
-**Still open:** `PerReconcile` is declared and read but not yet enforced (the
-daily ceiling is), and the surfaces from step 6 — the `krk` flag, the console
-panel and the digest section naming which objectives hit their ceiling — are
-not built. The mechanism works and is untestable from the outside until they
-are.
+**Shipped (step 6, and the field steps 1-5 left unread).**
+
+`PerReconcile` was declared and enforced by nothing. It cannot share the daily
+ceiling's mechanism: `Daily` is a pre-check the supervisor makes from the ledger
+before dispatching, and `PerReconcile` bounds one pass that goes wrong — which
+the ledger cannot answer in time, because the run is what is being measured.
+`budgetedAgent` accumulates what the run has cost, priced by the same recorder
+that writes the ledger so the running total and the eventual bill agree, and a
+`budgetedAgent` is built once per `runLoop`, which makes its lifetime exactly
+the window the ceiling is about.
+
+The check sits at the iteration boundary beside the twin's token budget, for
+the same reason: stopping mid-iteration would leave a half-applied plan,
+actions taken and none verified. Unlike the twin's budget it raises no
+checkpoint and is not a failure — a per-pass ceiling needs no human, the next
+pass starts with a fresh one, so the loop stops where it is and the circuit
+breaker never sees it.
+
+*The surfaces.* `krk objective standing --budget-daily --budget-per-reconcile`
+and the `PUT` handler behind them, which rejects a negative ceiling rather than
+accepting one: every check downstream is `> 0`, so an operator meaning to
+tighten a limit would remove it.
+
+The digest gains a **"Stopped for want of budget"** section, assembled from the
+deferral outcomes the supervisor already writes — a pure read like the rest of
+the digest. It sits below the decisions and deliberately not among them: a
+budget clears itself at the window boundary, and filing it under "decisions I
+need from you" would make a nightly ceiling a nightly chore. It reports how
+often, against what ceiling, what the run was mid-way through, and when it
+resumes, because once at the end of a busy day is a budget working and a dozen
+times is a ceiling set below what the cadence asks for.
+
+The console panel rendered a deferred pass as *"sensed; nothing moved, nothing
+spent"* — the opposite of what happened, on the row where an operator most
+needs the truth. A deferral now renders as itself, and the declared ceilings
+appear beside the other facts.
 
 ---
 
-## Phase 24 — Conformance That Tests Behaviour, Not Shape (Planned)
+## Phase 24 — Conformance That Tests Behaviour, Not Shape (Completed)
 
 **Goal:** A pack's declared bounds are verified by *running* them, so a bound
 that does nothing fails the suite in the pack that declares it.
@@ -1820,16 +1851,20 @@ that reads claims back to itself verifies nothing.
    reads.
 4. **Run it per pack in CI**, so a pack added later cannot declare a bound
    that silently does nothing.
-5. **`Template.SuggestedAgents` is declared and read by nothing.** It is the
-   same shape as the bounds this phase exists for: a field a pack fills in
-   that changes no behaviour. `SelectAgent` takes the first agent the domain
-   declares when an objective does not name one, so an objective created from
-   `software.objective.self_improve` gets the software pack's *strategist*,
-   not its maintainer — the agent whose bounds the template's whole design
-   depends on. It mattered less when self-improvement was a pack with two
-   agents and the maintainer was first; in a nine-agent pack it decides the
-   outcome. Honouring it needs the objective to remember its template, which
-   is a core field, a column and a round trip.
+5. ~~**`Template.SuggestedAgents` is declared and read by nothing.**~~
+   **Shipped early, in Phase 26.** It was the same shape as the bounds this
+   phase exists for — a field a pack fills in that changes no behaviour — and
+   it had to be fixed there because a write path is worth nothing under the
+   wrong agent: `self_improve` ran under the software pack's *strategist*, and
+   `TestMaintainerHoldsNoMutatingCapability` guarded an agent that never ran.
+   `Objective.AgentID` carries it now (migration `000010`) and `SelectAgent`
+   honours it. See [ADR 019](adr/019-capabilities-declare-what-they-need.md).
+
+   Phase 26 also closed the same defect at the routing level and found a fifth
+   instance while doing it — `software.act.write_design_doc`, declared since
+   Phase 2 and served by no environment. **Both were found by reading code**,
+   which is exactly the argument for this phase: five instances over four
+   phases, none caught by a suite that read declarations back to itself.
 6. **A registry-level verifier check at boot.** The per-pack check
    deliberately does not resolve foreign domains (a pack is valid on its own,
    ADR 017), which leaves nothing at all checking that a declared
@@ -1845,9 +1880,49 @@ test. Every existing pack passes unmodified. A pack declaring an approval
 requirement for a capability it then plans autonomously fails with a message
 naming both.
 
+**Shipped.** See
+[ADR 020](adr/020-a-declaration-is-verified-by-running-it.md).
+
+The enabling move was extracting the decision policy out of `stepDecide` and
+onto `agent.AuthorityBounds.Decide`. A conformance check cannot run
+`stepDecide` — it would need a store, an event hub, a checkpoint service and a
+loop state to answer a question involving none of them — and it can run
+`Decide` with nothing at all. `stepDecide` now carries out the verdict and
+holds no policy of its own, so there is one implementation rather than a
+mechanism and a check that could drift.
+
+`checkAgentBoundsBehave` runs it per agent definition and asserts the whole
+ladder, deliberately: a check that only tested the zero case could be satisfied
+by escalating everything, which is a different bug with the same green suite.
+A cap of zero must escalate a three-action plan *and leave it intact* — an
+approval falls straight through to `act`, so trimming would discard what was
+approved. A cap of N must trim N+2 to exactly N and leave N alone.
+`UnlimitedActions` must not trim fifty. Every `RequiresApprovalFor` entry must
+escalate when planned and must name a capability the pack declares. A declared
+threshold must escalate below itself and not above.
+
+**The acceptance criterion was checked by doing it.** Reintroducing the `> 0`
+guard fails conformance in three packs — software, agriculture and healthcare —
+each naming its own agent. Every shipped pack passes unmodified.
+
+**Step 6 shipped as `CheckDanglingVerifiers`**, run at boot beside the
+cross-pack collision audit. It distinguishes *the pack that owns it is
+switched off* from *nothing anywhere exports it*, because those have different
+owners and different fixes, and it warns rather than refusing to start: an
+operator may be mid-rollout, and a deployment that will not boot over a
+template naming a not-yet-enabled pack is worse than one that says so loudly.
+
+**Not covered, and worth naming.** No check asserts that a served capability's
+environment actually *accepts* it. The environments answer an unknown
+capability with the same "no active adapter" result they give a known one whose
+adapter is unbound, so from outside the two are indistinguishable. Making them
+distinguishable is what this argument asks for next; until then the executing
+test in `domains/software` covers the capabilities that can run without an
+adapter, and nothing covers the rest.
+
 ---
 
-## Phase 25 — Self-Improvement Without a History (Planned)
+## Phase 25 — Self-Improvement Without a History (Completed)
 
 **Goal:** The karakuri pack can propose useful work on a deployment that has
 not been running for months — because that is every deployment on the day
@@ -1909,9 +1984,78 @@ no evidence of either kind — the constraint still bites, it simply has two way
 to be met. The maintainer still escalates every proposal, unchanged: this phase
 widens what it can see, never what it may do.
 
+**Shipped (all six steps).**
+
+*Steps 1–2, the goal.* `software.reason.analyse_repo` reads the repository: the
+roadmap's own deferred and still-open items, TODO and FIXME density by package,
+packages with Go source and no test file, and where `AGENTS.md` rules live. The
+deferred lists are the valuable part and the cheapest to read — each line is
+work somebody already justified in prose. Against this repository the scan finds
+Phase 23's unenforced `PerReconcile` and Phase 24's uncovered conformance check,
+which is the test that matters: a scan finding nothing in a roadmap full of
+deferred work is one nobody should propose from. `evidence-first` now names both
+sources and requires the proposal to say which it stood on, because a phase
+proposed from repository evidence and one proposed from observed pain are
+different claims.
+
+It is deliberately **not** called coverage: untested packages are counted by
+file, not by line, and reporting a file ratio under a name meaning "proportion
+of lines executed" would be the same dishonesty this pack keeps finding.
+
+*Step 3.* `PRSummary` carries `CheckState` and `FailingChecks`; `gitEnv` pulls
+the red ones into `failing_prs`. A skipped check is not a failing one, and a red
+check outranks a pending one — a run still going cannot un-fail what already
+failed.
+
+*Step 4.* The research environment needed no new capability:
+`software.reason.research` has been declared since Phase 2 and the
+`ResearchAdapter` built since Phase 6, and nothing had introduced them. Findings
+come back ranked by confidence then title, and research contributes no drift SHA
+— a standing objective must not reconcile because a search engine's results
+moved.
+
+*Step 5.* Evidence is graded `none` / `thin` / `adequate` rather than a boolean
+whose test was "the window contains anything at all", under which one sense pass
+in a week counted the same as a thousand. The threshold is not invented here: it
+is the one the telemetry reader already applies before it will call a capability
+failing, because fewer is noise. One justified number, used twice.
+
+*Step 6, and the one that mattered most.* `evaluateWithAgent` now receives what
+the actions produced. Two further defects surfaced in the same function:
+
+- **A negated verdict counted as a positive one.** The parser searched the whole
+  reply for "pass", "met", "approved" or "yes" and returned true on any hit, so
+  *"this does not pass"* and *"the criterion is not met"* both scored as
+  satisfied — a model's rejection turned into a completed objective.
+- **An unrelated success satisfied a criterion.** A criterion whose verifier ID
+  merely *contained* `run_tests` or `lint` was met if any action succeeded, so a
+  `send_message` could satisfy a criterion about the test suite.
+
+Fixing them needed the pairing that was missing: `stepAct` returns
+`actionOutcome{CapabilityID, EnvID, Result}` instead of bare results. verify had
+no way to tell which action produced which result, and learn paired them by
+slice index.
+
+**Found while doing it, and worth its own line.** Four criteria named
+`analyse_usage` as their verifier — a capability that *produces* evidence rather
+than deciding anything, and one that succeeds even with no reader wired. That
+was harmless while every criterion was judged by a model shown nothing; once a
+verifier settles a criterion deterministically it means "met whenever the
+analysis ran", which is every time, on any deployment, including one with no
+telemetry at all. "The proposal names the telemetry that says the problem is
+real" would have scored 0.3 for running an analysis that found nothing. The
+templates now spell the distinction with two constructors, `crit` and `judged`.
+
+**Still open.** There is no declarative marker separating an adapter-backed
+`reason.*` capability from a model-only one, so the "every capability is served"
+check in `domains/software` covers `software.act.*` only. Both capabilities
+found unserved in this phase — `analyse_repo`'s home and `research` — were
+`reason.*`, which is exactly where the check does not look. That is the ninth
+instance of the class and the next one to close.
+
 ---
 
-## Phase 26 — The Write Path (Partial)
+## Phase 26 — The Write Path (Completed)
 
 **Goal:** Karakuri can produce a change, not only a proposal about one.
 
@@ -1958,7 +2102,7 @@ human until this closes.
    pull request, exercised in CI against a scratch repository with a stub
    version-control adapter.
 
-**Shipped (steps 1-3).** See
+**Shipped (steps 1–3).** See
 [ADR 019](adr/019-capabilities-declare-what-they-need.md).
 `Capability.NeedsWorkspace` replaces the name-suffix test, so a worktree goes
 to the capabilities that declare they write — including `delegate_to_cli`,
@@ -1973,19 +2117,55 @@ agent: `Template.SuggestedAgents` was read by nothing, so `self_improve` ran
 under the strategist. Objectives now carry `AgentID`, template instantiation
 fills it, and `SelectAgent` honours it.
 
-**Still open (step 4, and the part that matters most).** Routing is by
-`EnvID`, which the *model* chooses: a plan that writes code without naming
-`software.env.cli_agent` still reaches `noopEnv`. A priority-10 planner hint
-states the pairing, which is guidance rather than a guarantee. Making the
-registry route a capability to the environment that serves it — the same
-`servedBy` idea, enforced rather than mirrored — is the remaining work, along
-with the end-to-end acceptance objective in CI.
+**Shipped (step 4).** `environment.Factory.Serves` declares which capabilities
+an environment executes; the registry indexes it and `stepAct` resolves through
+the index, so the pack decides the route and the planner is no longer asked a
+question it cannot answer. `EnvID` remains the fallback for the cases the
+registry has no answer to — nothing claims the capability, or two environments
+both do — and ambiguity is never resolved by picking, because map iteration
+order deciding which environment writes files is the misrouting this replaced.
+A route to an environment this loop did not build now fails instead of falling
+through to "only one environment, so use it".
+
+The planner hint that stated the routing pairing is no longer the thing holding
+it together, and says so: what remains of it is the part a model does have to
+get right — which parameters to fill in, and where not to write.
+
+The end-to-end acceptance test drives `write_design_doc` → `write_test` →
+`write_code` → `create_pr` against a scratch git repository with stub CLI and
+version-control adapters, asserting the CLI ran *in a real worktree* and the
+pull request was handed a path and a branch. Disabling the routing turns it red
+with "the CLI was called 0 times". `tools.SlotInstances` gained `Set` to make it
+possible at all: the slot could previously only be filled by a type-string
+switch over the shipped adapters, which is why this chain had no test until now.
+
+**Found while wiring it.** `software.act.write_design_doc` has been declared
+since Phase 2, sits on the strategist's and the architect's capability lists,
+and is required by a priority-9 planner hint before any `write_code` action —
+and no environment has ever served it. Every plan that obeyed the hint failed
+the step the hint made mandatory. It is a draft like `propose_roadmap_phase`
+and `draft_adr` and is now recorded the same way, with `params.design`
+documented in its schema and empty input refused.
+
+That is the fifth instance of the defect class Phase 24 exists for, and the
+last one findable by inspection: three new tests now assert the property
+generally — every `software.act.*` capability is served, every agent's act
+capabilities are runnable, and nothing is served that is not declared.
 
 **Acceptance:** `software.objective.self_improve` can reach all three of its
 criteria rather than two. The pull-request criterion — 0.4 of the score, and
 the entire point of the cross-domain shape — becomes satisfiable for the first
 time. The maintainer's bounds are unchanged: it still escalates every plan,
 and the change still arrives as a pull request somebody reviews.
+
+**What "satisfiable" is and is not.** The chain is now reachable, proved by
+running it: every step routes, the CLI receives a real worktree, and the pull
+request is handed a path and a branch. Whether a given run *scores* the
+criterion still depends on the deployment — a bound coding-agent CLI, a bound
+version-control adapter, and a plan that uses them. The scoring half — where
+`evaluateWithAgent` read nothing the actions produced — was Phase 25 step 6 and
+has since shipped, so the criterion is now judged on evidence rather than on the
+plausibility of its own wording.
 
 ---
 
@@ -2012,7 +2192,7 @@ Phases 23–25 are the follow-on from the standing-objectives line, and are orde
 
 - **Phase 23** (per-objective spend ceilings) depends on **Phase 15**'s quota subjects and **Phase 18**'s override path, and on **Phase 20** for the thing being capped. It is independent of 24 and 25 and could ship first or last; it is placed first because it is the only one of the three that a running deployment is currently exposed without.
 - **Phase 24** (behavioural conformance) depends on nothing new. It is placed before 25 because 25 adds capabilities and an environment to the karakuri pack, and the point of 24 is that new declarations should meet a suite that runs them rather than reads them. Shipping 25 first would add the exact kind of claim 24 exists to check.
-- **Phase 26** (the write path) is the one that unblocks everything else in this group: until it lands, `self_improve` can reach two of its three criteria and every roadmap phase is written by a human. It was found by trying to have Karakuri develop Phase 23 and discovering that the capability with a worktree cannot write and the capability that can write has no worktree.
+- **Phase 26** (the write path) was the one blocking everything else in this group: until it landed, `self_improve` could reach two of its three criteria and every roadmap phase was written by a human. It was found by trying to have Karakuri develop Phase 23 and discovering that the capability with a worktree could not write and the capability that could write had no worktree. Both halves of the fix — the workspace and the route — turned out to be the same mistake, recorded in [ADR 019](adr/019-capabilities-declare-what-they-need.md): a property the system needed was inferred from an identifier instead of declared by the thing that knows it.
 - **Phase 25** (self-improvement without a history) depends on **Phase 22** for the pack it extends and on **Phase 6**'s version-control adapter for CI status. It is the phase that makes Phase 22 usable on the day it is enabled rather than months later, and it is deliberately scoped to widen what the maintainer can *see* — never what it may *do*, which stays bounded by ADR 017 and by Phase 20's ceiling.
 
 ---
