@@ -78,7 +78,7 @@ jobs:
   #                   code it changed. Not always green.
   #
   # So the report-only stance covers the baseline, not new code. That is the
-  # intended behaviour and worth keeping: the ~35 pre-existing findings are
+  # intended behaviour and worth keeping: the 30-odd pre-existing findings are
   # verified false positives (argv-form exec, const table names, masked uint32
   # → byte, intentional detached goroutines) triaged in
   # docs/audit/SECURITY_AUDIT.md Appendix C, and re-triaging them on every pull
@@ -89,9 +89,13 @@ jobs:
   # Appendix C lists as a false positive" does not exempt it. The criterion is
   # new-in-this-diff, not member-of-a-triaged-class — a fresh G304 blocks even
   # though Appendix C pre-clears G304 for operator-configured paths. Fix it, or
-  # annotate it with `#nosec Gxxx -- <reason>`. Note that gosec reads `#nosec`
-  # and does NOT read golangci-lint's `//nolint:gosec`, which suppresses nothing
-  # here; the two tools share a name and not a syntax.
+  # annotate it: gosec accepts `#nosec Gxxx -- <reason>` and `#nosec Gxxx:
+  # <reason>` alike, with or without a space after the slashes.
+  #
+  # What it does NOT accept is golangci-lint's `//nolint:gosec`, which suppresses
+  # nothing here — the two tools share a name and not a syntax, and nothing warns
+  # you. All four forms were checked against gosec directly rather than taken
+  # from its README.
   gosec:
     name: SAST (gosec)
     runs-on: ubuntu-latest

@@ -17,11 +17,11 @@ Two principles govern the rollout:
 1. **Baseline existing findings so day one does not block all work.** The baseline is
    report-only; new findings are not. gosec's job never fails, but the SARIF it uploads
    becomes a `gosec` code-scanning check that **does** fail a pull request introducing new
-   alerts in the code it changed — so the pre-existing ~35 findings stay off everyone's
-   way while freshly written code is still gated. The license check is report-only outright
-   (no SARIF, so no second check). Blocking gates (govulncheck, gitleaks, trivy
-   HIGH/CRITICAL, golangci-lint) are ones the codebase already passes clean after this
-   branch's fixes. Allowlists (`.trivyignore`) carry a reason per entry.
+   alerts in the code it changed — so the 30-odd pre-existing findings stay out of
+   everyone's way while freshly written code is still gated. The license check is
+   report-only outright (no SARIF, so no second check). Blocking gates (govulncheck,
+   gitleaks, trivy HIGH/CRITICAL, golangci-lint) are ones the codebase already passes
+   clean after this branch's fixes. Allowlists (`.trivyignore`) carry a reason per entry.
 2. **Least privilege + speed.** Default `permissions: contents: read`; only SARIF-upload
    jobs widen to `security-events: write`. Jobs run in parallel with caching, keeping the
    added critical-path time small (the new jobs run alongside the existing `ci.yml` jobs,
@@ -88,8 +88,9 @@ the existing e2e job's ~10 min, so **the PR wall-clock stays within the ≤15 mi
   SARIF fails on alerts new to the diff. Verified false positives are documented in
   `SECURITY_AUDIT.md` Appendix C. Being *in* a class Appendix C pre-clears does not exempt
   a new finding — the criterion is new-in-this-diff, not member-of-a-triaged-class. Fix it,
-  or annotate with `#nosec <rule> -- <reason>`; gosec reads `#nosec` and does **not** read
-  golangci-lint's `//nolint:gosec`.
+  or annotate it: `#nosec <rule> -- <reason>` and `#nosec <rule>: <reason>` both work.
+  What does **not** work is golangci-lint's `//nolint:gosec`, which suppresses nothing
+  here; the two tools share a name and not a syntax. (Checked against gosec directly.)
 - **licenses** — report-only in full: the step is `continue-on-error` and uploads no SARIF,
   so nothing blocks on it.
 - **semgrep** — planned, never implemented. No workflow defines a semgrep job, so the rules
