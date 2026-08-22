@@ -28,6 +28,39 @@ const (
 	TypeArtifactWritten    = "artifact_written"
 	TypeAdapterSkipped     = "adapter_skipped"
 	TypeTwinStateUpdated   = "twin_state_updated"
+
+	// The outer control loop over standing objectives (Phase 20). Every one
+	// of these carries ObjectiveID and TwinID, which is what lets the global
+	// stream decide who may see it — an event that named neither would be
+	// unclassifiable and withheld from everybody.
+
+	// TypeReconcileSensed is the cheap tier reporting. It fires far more
+	// often than anything else here, and its whole job is to say that
+	// nothing happened and nothing was spent.
+	TypeReconcileSensed = "reconcile_sensed"
+	// TypeReconcileDeferred is a pass that was due and deliberately did not
+	// spend — a budget reached, a window closed. Distinct from a failure so
+	// an operator reading the stream can tell "it did not run" from "it tried
+	// and broke".
+	TypeReconcileDeferred = "reconcile_deferred"
+	// TypeDriftDetected is the world no longer matching the fingerprint
+	// taken when the objective last converged.
+	TypeDriftDetected = "drift_detected"
+	// TypeReconcileStarted is an expensive pass beginning, carrying the
+	// trigger that justified it.
+	TypeReconcileStarted = "reconcile_started"
+	// TypeConverged is desired state and actual state agreeing again.
+	TypeConverged = "converged"
+	// TypeReconcileFailed is a pass that errored. Escalation is not failure
+	// and does not fire this.
+	TypeReconcileFailed = "reconcile_failed"
+	// TypeObjectiveSuspended is the circuit breaker or the stall detector
+	// taking an objective out of rotation until somebody looks at it.
+	TypeObjectiveSuspended = "objective_suspended"
+	// TypeAutonomyChanged is a standing objective earning or losing a rung.
+	// It is published separately from the reconcile that caused it because a
+	// change in what Karakuri may do to the world is worth its own line.
+	TypeAutonomyChanged = "autonomy_changed"
 )
 
 type Event struct {

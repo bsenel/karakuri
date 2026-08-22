@@ -16,7 +16,19 @@ const (
 	StatusBlocked   ObjectiveStatus = "blocked"
 	StatusCompleted ObjectiveStatus = "completed"
 	StatusFailed    ObjectiveStatus = "failed"
+
+	// StatusConverged is where a standing objective rests: the criteria are
+	// met and the supervisor is watching for them to stop being met. It is
+	// deliberately not StatusCompleted, which says the work is over and the
+	// row can be forgotten.
+	StatusConverged ObjectiveStatus = "converged"
 )
+
+// Terminal reports whether a status means no further work will happen without
+// somebody asking for it. Standing objectives never reach one.
+func (s ObjectiveStatus) Terminal() bool {
+	return s == StatusCompleted || s == StatusFailed
+}
 
 type Objective struct {
 	ID                ObjectiveID     `json:"id"`
@@ -32,8 +44,68 @@ type Objective struct {
 	Constraints       []Constraint    `json:"constraints,omitempty"`
 	ParentID          *ObjectiveID    `json:"parent_id,omitempty"`
 	Status            ObjectiveStatus `json:"status"`
-	CreatedAt         time.Time       `json:"created_at"`
-	UpdatedAt         time.Time       `json:"updated_at"`
+
+	// Mode says whether this objective finishes or is held. Empty is
+	// oneshot, so every objective that predates standing mode keeps its
+	// behaviour exactly.
+	Mode Mode `json:"mode,omitempty"`
+	// Cadence declares when a standing objective is sensed and reconciled.
+	// Nil on a oneshot objective, and on a standing one that only ever
+	// reconciles when asked.
+	Cadence *Cadence `json:"cadence,omitempty"`
+	// Autonomy declares how much a standing objective may do without
+	// asking, and how much it may earn. Nil means propose-only.
+	Autonomy *Autonomy `json:"autonomy,omitempty"`
+	// Budget caps what this objective may spend on its own, separately from
+	// its twin's allowance. Nil means no ceiling of its own, which is what
+	// every objective written before Phase 23 has.
+	Budget *Budget `json:"budget,omitempty"`
+
+	// AgentID names the agent this objective runs under. Empty falls back to
+	// the first agent its domain declares, which is what every objective did
+	// before templates could say otherwise.
+	//
+	// It exists because Template.SuggestedAgents was declared and read by
+	// nothing: an objective created from a template kept no reference to it,
+	// so a template naming the right agent could not make that agent run. In
+	// a two-agent pack the default happened to be correct; in a nine-agent
+	// pack it silently was not.
+	AgentID string `json:"agent_id,omitempty"`
+
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// AutonomyDeclaration returns the objective's autonomy declaration, or the
+// safe default for one that declared none. Callers deciding what an objective
+// may do should go through here rather than dereferencing the pointer, so an
+// absent declaration and a zero-valued one mean the same thing.
+func (o Objective) AutonomyDeclaration() Autonomy {
+	if o.Autonomy == nil {
+		return Autonomy{}
+	}
+	return *o.Autonomy
+}
+
+// BudgetDeclaration returns the objective's spend ceiling, or the zero value
+// when none was declared. Nil-safe for the same reason as the others: an
+// absent declaration and a zero-valued one mean the same thing, and no caller
+// should have to know which it got.
+func (o Objective) BudgetDeclaration() Budget {
+	if o.Budget == nil {
+		return Budget{}
+	}
+	return *o.Budget
+}
+
+// CadenceDeclaration returns the objective's cadence, or an empty one. An
+// empty cadence never becomes due on its own, which is the correct reading of
+// a standing objective that declared no schedule: it reconciles when asked.
+func (o Objective) CadenceDeclaration() Cadence {
+	if o.Cadence == nil {
+		return Cadence{}
+	}
+	return *o.Cadence
 }
 
 // AllDomains returns the deduplicated union of Domain and AdditionalDomains.

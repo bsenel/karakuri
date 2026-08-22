@@ -20,6 +20,8 @@ import (
 	featureloop "github.com/bsenel/karakuri/internal/feature/loop"
 	"github.com/bsenel/karakuri/internal/feature/memory"
 	"github.com/bsenel/karakuri/internal/feature/objective"
+	featurereconcile "github.com/bsenel/karakuri/internal/feature/reconcile"
+	featurereport "github.com/bsenel/karakuri/internal/feature/report"
 	"github.com/bsenel/karakuri/internal/feature/research"
 	"github.com/bsenel/karakuri/internal/feature/twin"
 	platformagent "github.com/bsenel/karakuri/internal/platform/agent"
@@ -38,6 +40,12 @@ type App struct {
 	Router *chi.Mux
 	Loop   featureloop.Service // exposed so bootstrap can call ResumeStoredLoops post-construction
 	Memory *memory.Service     // exposed so bootstrap can drive the retention scheduler
+	// Reconcile is exposed so bootstrap can start the supervisor, for the
+	// same reason Loop and Memory are: it owns a goroutine whose lifetime is
+	// the process's, not a request's.
+	Reconcile *featurereconcile.Service
+	// Reports is the digest sender, exposed for the same reason.
+	Reports *featurereport.Service
 }
 
 // AuthDeps carries the authentication and authorization wiring built by
@@ -115,6 +123,26 @@ func NewApp(
 	resSvc := research.NewService(toolReg, artSvc)
 	agentFactory := platformagent.NewFactory(providers, hub, otel)
 	loopSvc := featureloop.NewService(store, agentFactory, capReg, envReg, memSvc, cpSvc, artSvc, wt, hub, otel, domReg, quotaDeps)
+	// Closes the cycle: the loop raises checkpoints, and resolving one has to
+	// reach back into the loop that is blocked on it. Constructor injection
+	// cannot express that in either direction, so the second edge is wired
+	// here, immediately after both services exist.
+	cpSvc.SetResumer(loopSvc)
+	reconcileSvc := featurereconcile.NewService(store, loopSvc, envReg, domReg, cpSvc, hub, quotaDeps, featurereconcile.Config{
+		Tick:               cfg.Reconcile.TickDuration(),
+		MaxConcurrent:      cfg.Reconcile.MaxConcurrent,
+		LeaseTTL:           cfg.Reconcile.LeaseTTLDuration(),
+		BreakerFailures:    cfg.Reconcile.BreakerFailures,
+		StallReconciles:    cfg.Reconcile.StallReconciles,
+		DefaultMinInterval: cfg.Reconcile.DefaultMinIntervalDuration(),
+		MaxBackoff:         cfg.Reconcile.MaxBackoffDuration(),
+	})
+
+	reportSvc := featurereport.NewService(store, toolReg, agentFactory, quotaDeps, featurereport.Config{
+		Enabled:  cfg.Reports.Enabled,
+		Tick:     cfg.Reports.TickDuration(),
+		LeaseTTL: cfg.Reports.LeaseTTLDuration(),
+	})
 
 	r := chi.NewRouter()
 	r.Use(chimw.Recoverer)
@@ -186,7 +214,9 @@ func NewApp(
 	healthH := &handler.HealthHandler{Providers: providers, Tools: toolReg, Exporters: exporters, Worktrees: wt, RepoPath: cfg.Git.RepoPath}
 	twinH := &handler.TwinHandler{Twins: twinSvc, Scopes: authDeps.Authorizer}
 	objH := &handler.ObjectiveHandler{Objectives: objSvc, Scopes: authDeps.Authorizer}
-	loopH := &handler.LoopHandler{Loop: loopSvc}
+	loopH := &handler.LoopHandler{Loop: loopSvc, Store: store, Reconcile: reconcileSvc}
+	recH := &handler.ReconcileHandler{Reconcile: reconcileSvc, Store: store}
+	repH := &handler.ReportHandler{Reports: reportSvc}
 	cpH := &handler.CheckpointHandler{Checkpoints: cpSvc}
 	artH := &handler.ArtifactHandler{Artifacts: artSvc}
 	memH := &handler.MemoryHandler{Memory: memSvc}
@@ -296,6 +326,19 @@ func NewApp(
 				r.With(require(karakuriauth.ActionObjectiveRead, objectiveRes)).Get("/{id}", objH.Get)
 				r.With(require(karakuriauth.ActionObjectiveUpdate, objectiveRes)).Post("/{id}/status", objH.UpdateStatus)
 				r.With(require(karakuriauth.ActionObjectiveRead, objectiveRes)).Get("/{id}/events", evtH.StreamObjective)
+
+				// Standing objectives (Phase 20). Declaring is its own
+				// permission: a one-shot objective spends what one run costs
+				// and stops, while a standing one spends on a cadence
+				// indefinitely. Pausing is a third, deliberately easier to
+				// hold than declaring — the person who can see something is
+				// wrong at 3am is not always the one who started it.
+				r.With(require(karakuriauth.ActionObjectiveRead, objectiveRes)).Get("/{id}/reconcile", recH.Get)
+				r.With(require(karakuriauth.ActionObjectiveDeclare, objectiveRes)).Put("/{id}/standing", recH.Declare)
+				r.With(require(karakuriauth.ActionObjectiveDeclare, objectiveRes)).Delete("/{id}/standing", recH.Undeclare)
+				r.With(require(karakuriauth.ActionObjectiveReconcile, objectiveRes)).Post("/{id}/reconcile", recH.Trigger)
+				r.With(require(karakuriauth.ActionObjectivePause, objectiveRes)).Post("/{id}/pause", recH.Pause)
+				r.With(require(karakuriauth.ActionObjectivePause, objectiveRes)).Post("/{id}/resume", recH.Resume)
 			})
 
 			r.Route("/loops", func(r chi.Router) {
@@ -372,6 +415,18 @@ func NewApp(
 				r.With(require(karakuriauth.ActionDomainRead, karakuriauth.DomainResource)).Get("/{id}/conformance", domH.Conformance)
 			})
 
+			// Digest schedules (Phase 21). Reading is a viewer permission —
+			// somebody receiving a daily brief should be able to find out why
+			// — while writing one is an operator's, because a schedule makes
+			// Karakuri message a named address on a recurring basis.
+			r.Route("/reports", func(r chi.Router) {
+				r.With(require(karakuriauth.ActionReportRead, nil)).Get("/", repH.List)
+				r.With(require(karakuriauth.ActionReportRead, nil)).Get("/preview", repH.Preview)
+				r.With(require(karakuriauth.ActionReportWrite, nil)).Post("/", repH.Create)
+				r.With(require(karakuriauth.ActionReportWrite, nil)).Delete("/{id}", repH.Delete)
+				r.With(require(karakuriauth.ActionReportWrite, nil)).Post("/{id}/send", repH.Send)
+			})
+
 			r.With(require(karakuriauth.ActionResearchRun, nil)).Post("/research", resH.Run)
 
 			// Authority-bounds audit log (Phase 13). Supports objective_id,
@@ -397,7 +452,7 @@ func NewApp(
 	// registered so REST + SSE win over the catch-all SPA fallback.
 	r.Handle("/*", karakuriweb.Handler())
 
-	return &App{Router: r, Loop: loopSvc, Memory: memSvc}
+	return &App{Router: r, Loop: loopSvc, Memory: memSvc, Reconcile: reconcileSvc, Reports: reportSvc}
 }
 
 func (a *App) Handler() http.Handler { return a.Router }

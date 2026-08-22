@@ -22,6 +22,32 @@ const (
 	ActionObjectiveRead   auth.Action = "objective:read"
 	ActionObjectiveUpdate auth.Action = "objective:update"
 
+	// Standing objectives (Phase 20). Declaring one is a separate permission
+	// from creating an ordinary objective, because it is a different kind of
+	// grant: a one-shot objective spends what one run costs and stops, while a
+	// standing one spends on a cadence indefinitely and can be given authority
+	// to act unsupervised. Somebody trusted to file work is not automatically
+	// trusted to start something that runs every hour until told otherwise.
+	ActionObjectiveDeclare auth.Action = "objective:declare"
+
+	// ActionObjectiveReconcile is asking for a reconcile now, outside the
+	// cadence. It sits with the operator permissions rather than the viewer
+	// ones: it starts a loop, and a loop costs money.
+	ActionObjectiveReconcile auth.Action = "objective:reconcile"
+
+	// ActionObjectivePause stops and restarts a standing objective. Separate
+	// from declare because the people who should be able to stop a runaway are
+	// not only the people who may start one — on call at 3am, the ability to
+	// halt should be the easier permission to hold, not the harder.
+	ActionObjectivePause auth.Action = "objective:pause"
+
+	// Digests (Phase 21). Reading a schedule is one permission and writing
+	// one is another, because a schedule is an instruction to send mail to a
+	// named address on a recurring basis — which is a way to make Karakuri
+	// message somebody who never asked to hear from it.
+	ActionReportRead  auth.Action = "report:read"
+	ActionReportWrite auth.Action = "report:write"
+
 	ActionLoopStart  auth.Action = "loop:start"
 	ActionLoopRead   auth.Action = "loop:read"
 	ActionLoopResume auth.Action = "loop:resume"
@@ -85,6 +111,13 @@ func NewCatalog() *auth.Catalog {
 		ActionObjectiveCreate: "create an objective",
 		ActionObjectiveRead:   "read objectives, templates and their event stream",
 		ActionObjectiveUpdate: "change an objective's status",
+
+		ActionObjectiveDeclare:   "declare an objective standing, with a cadence and an autonomy ceiling",
+		ActionObjectiveReconcile: "reconcile a standing objective now, outside its cadence",
+		ActionObjectivePause:     "pause and resume a standing objective",
+
+		ActionReportRead:  "read digest schedules and preview a digest",
+		ActionReportWrite: "declare, delete and send a digest schedule",
 
 		ActionLoopStart:  "start a reasoning loop",
 		ActionLoopRead:   "read loop status",
