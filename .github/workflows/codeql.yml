@@ -32,7 +32,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          # The merge commit and both its parents — all HEAD^1..HEAD needs.
+          fetch-depth: 2
       - id: classify
         uses: ./.github/actions/changed-paths
 
@@ -43,7 +44,7 @@ jobs:
     # Prose contains no Go and no TypeScript. The weekly schedule and every
     # push to main still analyse the whole tree, so code that reached main is
     # never left unscanned by this.
-    if: needs.changes.outputs.code == 'true'
+    if: ${{ !cancelled() && needs.changes.outputs.code != 'false' }}
     strategy:
       fail-fast: false
       matrix:

@@ -18,9 +18,16 @@ description: >-
 # every changed path is recognisably documentation; anything unrecognised runs
 # the full matrix. A new top-level directory, a renamed config file or a tool
 # nobody has thought of yet therefore fails safe — it runs too much, never too
-# little. `.github/**` is tested first and always runs everything, so a pull
-# request can never switch CI off for itself, and so `.github/PULL_REQUEST_TEMPLATE.md`
-# is not mistaken for prose.
+# little. `.github/**` is tested first, so a change to CI or to this file runs
+# the whole matrix, and `.github/PULL_REQUEST_TEMPLATE.md` is not mistaken for
+# prose.
+#
+# That rule is a guard against mistakes, NOT a security boundary. A
+# `pull_request` workflow runs the pull request's own copy of both the workflow
+# and this action, so a branch that edits the classifier is classified by its
+# edited version. Nothing here changes that — it is equally true of a branch
+# that deletes the test job from ci.yml — and it is why review of a diff
+# touching .github/ is the actual control.
 #
 # Deliberately not documentation, each because it weakens a gate: .golangci.yml,
 # .gitleaks.toml, .trivyignore, .pre-commit-config.yaml, LICENSE, NOTICE. None
@@ -57,8 +64,19 @@ runs:
         # actions/checkout builds the pull request's merge ref, whose first
         # parent is the base and whose second is the head — so HEAD^1..HEAD is
         # exactly what this pull request changes, with no second fetch of the
-        # base branch. If that ref is not what we expect, say so and run
-        # everything rather than guessing.
+        # base branch.
+        #
+        # Confirm that shape before relying on it. On a linear HEAD, HEAD^1 is
+        # simply the previous commit and `git diff` succeeds while answering a
+        # different question entirely — so testing only for a git error would
+        # let a wrong answer through silently. A second parent is what makes
+        # HEAD^1 the base.
+        if ! git rev-parse --verify -q HEAD^2 >/dev/null; then
+          echo "HEAD is not a merge commit — not the expected pull request merge ref, running everything"
+          echo "code=true" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+
         if ! files=$(git diff --name-only HEAD^1 HEAD 2>/dev/null); then
           echo "could not diff HEAD^1..HEAD — running everything"
           echo "code=true" >> "$GITHUB_OUTPUT"

@@ -23,7 +23,7 @@ permissions:
 jobs:
   # Which of the jobs below are worth running for this diff.
   #
-  # Every job here carries `if: needs.changes.outputs.code == 'true'` rather
+  # Every job here carries `if: ${{ !cancelled() && needs.changes.outputs.code != 'false' }}` rather
   # than this workflow carrying a top-level `paths:` key, and the difference is
   # load-bearing: a workflow skipped by a path filter never creates its checks,
   # and branch protection waits for them forever. A job skipped by an `if:`
@@ -37,7 +37,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          # The merge commit and both its parents — all HEAD^1..HEAD needs.
+          fetch-depth: 2
       - id: classify
         uses: ./.github/actions/changed-paths
 
@@ -49,7 +50,7 @@ jobs:
     name: Frontend
     runs-on: ubuntu-latest
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    if: ${{ !cancelled() && needs.changes.outputs.code != 'false' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -79,7 +80,7 @@ jobs:
     name: Build
     runs-on: ubuntu-latest
     needs: [changes, frontend]
-    if: needs.changes.outputs.code == 'true'
+    if: ${{ !cancelled() && needs.changes.outputs.code != 'false' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
@@ -96,7 +97,7 @@ jobs:
     name: Vet
     runs-on: ubuntu-latest
     needs: [changes, frontend]
-    if: needs.changes.outputs.code == 'true'
+    if: ${{ !cancelled() && needs.changes.outputs.code != 'false' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
@@ -119,7 +120,7 @@ jobs:
     name: Modules
     runs-on: ubuntu-latest
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    if: ${{ !cancelled() && needs.changes.outputs.code != 'false' }}
     # quota/valkey's tests need a real server: the algorithms live in Lua, so
     # the only way to know they behave like the Go ones is to run them. The
     # container is cheap and shared across the matrix rather than split into a
@@ -235,7 +236,7 @@ jobs:
     name: Test
     runs-on: ubuntu-latest
     needs: [changes, frontend]
-    if: needs.changes.outputs.code == 'true'
+    if: ${{ !cancelled() && needs.changes.outputs.code != 'false' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
@@ -260,7 +261,7 @@ jobs:
     name: Identity provider
     runs-on: ubuntu-latest
     needs: [changes, frontend]
-    if: needs.changes.outputs.code == 'true'
+    if: ${{ !cancelled() && needs.changes.outputs.code != 'false' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
@@ -313,7 +314,7 @@ jobs:
     name: Browser end to end
     runs-on: ubuntu-latest
     needs: [changes, frontend]
-    if: needs.changes.outputs.code == 'true'
+    if: ${{ !cancelled() && needs.changes.outputs.code != 'false' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
