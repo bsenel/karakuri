@@ -8,6 +8,28 @@ your contribution will be distributed under:
 
 Please review HALA.md before contributing.
 
+## CI on documentation-only pull requests
+
+A pull request whose every changed path is documentation — anything under
+`docs/`, or a `*.md` file outside `.github/` — skips the build, test and scan
+matrix. The required checks report **skipped**, not green, and skipped satisfies
+branch protection. A pull request touching anything else runs exactly what it
+always ran, and so does every push to `main` and both weekly scans.
+
+The classification is an allowlist and lives in
+[.github/actions/changed-paths](.github/actions/changed-paths/action.yml): an
+unrecognised path runs the full matrix, and `.github/**` always does, so a
+change to CI or to the classifier is never treated as prose. That is a guard
+against mistakes rather than a security boundary — a `pull_request` workflow
+runs the branch's own copy of the workflow and the action, so reviewing a diff
+that touches `.github/` remains the real control, exactly as it was before this
+existed. Secret scanning is never skipped: a credential can be committed in
+Markdown as easily as in Go.
+
+**This does not touch the Dependabot review below.** Those pull requests change
+`go.mod`, `go.sum` or `package-lock.json`, so they are never documentation-only
+and their checks run in full.
+
 ## Reviewing Dependabot pull requests
 
 Every Dependabot PR gets a human eyes-on review before merge — no exceptions, no "trivial" bypass, no auto-approval. Patch bumps, group bumps, lockfile-only updates: all reviewed the same way.
