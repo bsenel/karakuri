@@ -21,9 +21,29 @@ permissions:
   actions: read
 
 jobs:
+  # A job-level `if:` rather than a top-level `paths:` key — see
+  # .github/actions/changed-paths for why the difference decides whether a
+  # documentation pull request can be merged at all.
+  changes:
+    name: Changed paths
+    runs-on: ubuntu-latest
+    outputs:
+      code: ${{ steps.classify.outputs.code }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: classify
+        uses: ./.github/actions/changed-paths
+
   analyze:
     name: Analyze (${{ matrix.language }})
     runs-on: ubuntu-latest
+    needs: changes
+    # Prose contains no Go and no TypeScript. The weekly schedule and every
+    # push to main still analyse the whole tree, so code that reached main is
+    # never left unscanned by this.
+    if: needs.changes.outputs.code == 'true'
     strategy:
       fail-fast: false
       matrix:
