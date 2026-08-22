@@ -11,10 +11,23 @@ Please review HALA.md before contributing.
 ## CI on documentation-only pull requests
 
 A pull request whose every changed path is documentation — anything under
-`docs/`, or a `*.md` file outside `.github/` — skips the build, test and scan
-matrix. The required checks report **skipped**, not green, and skipped satisfies
-branch protection. A pull request touching anything else runs exactly what it
-always ran, and so does every push to `main` and both weekly scans.
+`docs/`, or a `*.md` file outside `.github/` — skips most of the matrix:
+Frontend, Build, Vet, Test, Modules, Identity provider, Browser end to end,
+Lint, both SCA jobs and the licence check. Those report **skipped**, not green,
+and skipped satisfies branch protection. A pull request touching anything else
+runs exactly what it always ran, and so does every push to `main` and both
+weekly scans.
+
+**Three jobs are deliberately never skipped**, and the reason is worth knowing
+before anyone tries to "finish the job" by gating them:
+
+- **CodeQL, gosec and Trivy.** Their checks are created by the *SARIF upload*,
+  not by the job, so a skipped job produces no check run at all — and a required
+  check that never reports leaves a pull request at "Expected — waiting for
+  status" permanently. This was not theoretical: gating them was tried, and
+  #108 sat unmergeable with every job reporting.
+- **Secret scan (gitleaks)**, because a credential can be committed in Markdown
+  as easily as in Go.
 
 The classification is an allowlist and lives in
 [.github/actions/changed-paths](.github/actions/changed-paths/action.yml): an
