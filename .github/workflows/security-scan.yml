@@ -229,7 +229,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: anchore/sbom-action@v0.17.7
+      - uses: anchore/sbom-action@v0.24.0
         with:
           path: .
           format: cyclonedx-json
