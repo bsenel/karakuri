@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -581,10 +582,36 @@ func noopAct(a environment.Action) environment.ActionResult {
 	}
 }
 
+// stateVersion hashes an observation's state into the SHA the loop records and
+// the reconcile supervisor compares.
+//
+// Keys are sorted before hashing. Ranging a Go map is randomised per iteration,
+// so the same state hashed twice in a row produced two different SHAs — and
+// every consumer of this value asks "is this the same as last time".
+//
+// The cost landed on the outer loop. reconcile.fingerprint feeds each
+// environment's Snapshot().SHA into a composite, compares it against the SHA at
+// the last convergence, and runs the expensive tier when they differ. With an
+// unstable SHA they always differ, so every standing objective over gitEnv,
+// ticketEnv, commsEnv, cliEnv, shellEnv or codebaseEnv ran the full loop on
+// every sense tick — which is the entire economic argument of Phase 20
+// inverted: the cheap tier exists so an objective can be checked every fifteen
+// minutes all year and only spend money on the days something moved.
+//
+// sense.go sorts environment IDs before building the composite and says why in
+// a comment — "an unsorted hash would report drift every time a pack's
+// registration order changed". The per-environment SHA underneath it was
+// unsorted the whole time.
 func stateVersion(state map[string]any) string {
+	keys := make([]string, 0, len(state))
+	for k := range state {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
 	var sb strings.Builder
-	for k, v := range state {
-		fmt.Fprintf(&sb, "%s=%v;", k, v)
+	for _, k := range keys {
+		fmt.Fprintf(&sb, "%s=%v;", k, state[k])
 	}
 	sum := sha256.Sum256([]byte(sb.String()))
 	return hex.EncodeToString(sum[:])[:16]
