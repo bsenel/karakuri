@@ -102,7 +102,7 @@ func TestTheDecisionPolicyHonoursEachBound(t *testing.T) {
 	t.Run("zero means none, not unlimited", func(t *testing.T) {
 		// The bug: `MaxAutonomousActions > 0` meant a zero cap was no cap.
 		// Four packs wrote zero to mean "plans but never acts".
-		v := agent.AuthorityBounds{MaxAutonomousActions: 0}.Decide(1.0, 0, plan(3))
+		v := agent.AuthorityBounds{MaxAutonomousActions: 0}.Decide(1.0, 0, plan(3), agent.Evidence{})
 		if !v.Escalate {
 			t.Error("a zero cap ran three actions without asking")
 		}
@@ -117,7 +117,7 @@ func TestTheDecisionPolicyHonoursEachBound(t *testing.T) {
 		v := agent.AuthorityBounds{
 			MaxAutonomousActions: agent.UnlimitedActions,
 			ConfidenceThreshold:  0.9,
-		}.Decide(0.5, 0.9, plan(4))
+		}.Decide(0.5, 0.9, plan(4), agent.Evidence{})
 		if !v.Escalate {
 			t.Fatal("a plan below the threshold did not escalate")
 		}
@@ -127,7 +127,7 @@ func TestTheDecisionPolicyHonoursEachBound(t *testing.T) {
 	})
 
 	t.Run("a cap trims to exactly the cap", func(t *testing.T) {
-		v := agent.AuthorityBounds{MaxAutonomousActions: 2}.Decide(1.0, 0, plan(5))
+		v := agent.AuthorityBounds{MaxAutonomousActions: 2}.Decide(1.0, 0, plan(5), agent.Evidence{})
 		if v.Allowed != 2 {
 			t.Errorf("Allowed = %d, want 2", v.Allowed)
 		}
@@ -137,14 +137,14 @@ func TestTheDecisionPolicyHonoursEachBound(t *testing.T) {
 	})
 
 	t.Run("unlimited is not trimmed", func(t *testing.T) {
-		v := agent.AuthorityBounds{MaxAutonomousActions: agent.UnlimitedActions}.Decide(1.0, 0, plan(50))
+		v := agent.AuthorityBounds{MaxAutonomousActions: agent.UnlimitedActions}.Decide(1.0, 0, plan(50), agent.Evidence{})
 		if v.Allowed != 50 {
 			t.Errorf("Allowed = %d, want 50", v.Allowed)
 		}
 	})
 
 	t.Run("a zero threshold opts out rather than escalating everything", func(t *testing.T) {
-		v := agent.AuthorityBounds{MaxAutonomousActions: agent.UnlimitedActions}.Decide(0.0, 0, plan(1))
+		v := agent.AuthorityBounds{MaxAutonomousActions: agent.UnlimitedActions}.Decide(0.0, 0, plan(1), agent.Evidence{})
 		if v.Escalate {
 			t.Errorf("an agent that declared no threshold escalated: %s", v.Reason)
 		}
@@ -157,7 +157,7 @@ func TestTheDecisionPolicyHonoursEachBound(t *testing.T) {
 		v := agent.AuthorityBounds{
 			MaxAutonomousActions: 0,
 			ConfidenceThreshold:  0.9,
-		}.Decide(0.4, 0.9, plan(2))
+		}.Decide(0.4, 0.9, plan(2), agent.Evidence{})
 		if !v.Escalate {
 			t.Fatal("did not escalate")
 		}
@@ -169,7 +169,7 @@ func TestTheDecisionPolicyHonoursEachBound(t *testing.T) {
 	t.Run("an empty plan is not escalated by a zero cap", func(t *testing.T) {
 		// Nothing to ask about. Escalating here would raise a checkpoint on a
 		// plan with no actions in it.
-		v := agent.AuthorityBounds{MaxAutonomousActions: 0}.Decide(1.0, 0, nil)
+		v := agent.AuthorityBounds{MaxAutonomousActions: 0}.Decide(1.0, 0, nil, agent.Evidence{})
 		if v.Escalate {
 			t.Errorf("an empty plan escalated: %s", v.Reason)
 		}

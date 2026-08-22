@@ -122,7 +122,22 @@ func (e *researchEnv) Act(ctx context.Context, a environment.Action) (environmen
 		level = EvidenceThin
 	}
 
-	return environment.ActionResult{Success: true, StateDelta: map[string]any{
+	// Titles and summaries lifted off whatever the adapter reached. This is the
+	// single widest untrusted surface in the tree and it arrives on the act
+	// path, not the observe path — Observe above says only whether the adapter
+	// is wired. A findings list is somebody else's writing however respectable
+	// the source, so a plan drafted after a search goes to a human.
+	//
+	// A search that returned nothing carries nobody's prose and is left
+	// trusted: escalating on the *act* of searching rather than on what the
+	// search brought back would make the label about the capability rather than
+	// about the payload.
+	trust := environment.TrustOperator
+	if len(ranked) > 0 {
+		trust = environment.TrustThirdParty
+	}
+
+	return environment.ActionResult{Success: true, Trust: trust, StateDelta: map[string]any{
 		"capability": CapResearch,
 		"topic":      topic,
 		"findings":   ranked,

@@ -213,6 +213,13 @@ func (e *gitEnv) Observe(ctx context.Context, q environment.ObservationQuery) (e
 	}
 	repo, _ := q.Filter["repo"].(string)
 	state := map[string]any{"adapter": adapter.Name()}
+	// Third party only when a pull request is actually carried. Commits and an
+	// adapter name are the operator's own infrastructure; a PR title is typed
+	// by whoever opened it, which on a public repository is anybody. Computed
+	// from what the payload ends up holding rather than fixed on the
+	// environment, because a repository with no open PRs should not escalate
+	// every plan in the deployment for the rest of the run.
+	trust := environment.TrustOperator
 	commits, err := adapter.GetCommits(ctx, repo, time.Time{})
 	if err != nil {
 		state["commits_error"] = err.Error()
@@ -224,6 +231,9 @@ func (e *gitEnv) Observe(ctx context.Context, q environment.ObservationQuery) (e
 		state["prs_error"] = err.Error()
 	} else {
 		state["prs"] = prs
+		if len(prs) > 0 {
+			trust = environment.TrustThirdParty
+		}
 		// What is currently broken, pulled out of the list rather than left
 		// for a reader to derive. Deferred from Phase 22, where "an operator
 		// relays it" was the plan; a pack proposing work from evidence should
@@ -240,7 +250,8 @@ func (e *gitEnv) Observe(ctx context.Context, q environment.ObservationQuery) (e
 		state["failing_prs"] = broken
 	}
 	return environment.Observation{
-		EnvID: e.id, State: state, Version: stateVersion(state), Timestamp: time.Now().UTC(),
+		EnvID: e.id, State: state, Version: stateVersion(state),
+		Timestamp: time.Now().UTC(), Trust: trust,
 	}, nil
 }
 
@@ -319,16 +330,21 @@ func (e *ticketEnv) Observe(ctx context.Context, q environment.ObservationQuery)
 		return noopObservation(e.id), nil
 	}
 	state := map[string]any{"adapter": adapter.Name()}
+	// A ticket's title and body are written by whoever filed it. The adapter
+	// name on its own is not.
+	trust := environment.TrustOperator
 	if id, ok := q.Filter["ticket_id"].(string); ok && id != "" {
 		ticket, err := adapter.GetTicket(ctx, id)
 		if err != nil {
 			state["error"] = err.Error()
 		} else {
 			state["ticket"] = ticket
+			trust = environment.TrustThirdParty
 		}
 	}
 	return environment.Observation{
-		EnvID: e.id, State: state, Version: stateVersion(state), Timestamp: time.Now().UTC(),
+		EnvID: e.id, State: state, Version: stateVersion(state),
+		Timestamp: time.Now().UTC(), Trust: trust,
 	}, nil
 }
 
@@ -382,16 +398,25 @@ func (e *commsEnv) Observe(ctx context.Context, q environment.ObservationQuery) 
 	}
 	channel, _ := q.Filter["channel"].(string)
 	state := map[string]any{"adapter": adapter.Name()}
+	// Message bodies are the widest untrusted surface this environment has, and
+	// today stepObserve never asks for them: it calls Observe with no filter, so
+	// channel is always empty and GetMessages is never reached. The label is on
+	// the branch that would carry them rather than on the environment, so that
+	// wiring a channel filter later is a one-line change that is already
+	// governed rather than a hole that opens quietly.
+	trust := environment.TrustOperator
 	if channel != "" {
 		messages, err := adapter.GetMessages(ctx, channel, time.Time{})
 		if err != nil {
 			state["error"] = err.Error()
 		} else {
 			state["messages"] = messages
+			trust = environment.TrustThirdParty
 		}
 	}
 	return environment.Observation{
-		EnvID: e.id, State: state, Version: stateVersion(state), Timestamp: time.Now().UTC(),
+		EnvID: e.id, State: state, Version: stateVersion(state),
+		Timestamp: time.Now().UTC(), Trust: trust,
 	}, nil
 }
 

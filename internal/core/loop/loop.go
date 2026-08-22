@@ -52,6 +52,16 @@ type WorldState struct {
 	Observations []environment.Observation
 	Version      string // composite SHA of all observation SHAs
 	Timestamp    time.Time
+
+	// Blind names the environments whose Observe returned an error, so that
+	// "saw nothing" and "could not see" are distinguishable from outside.
+	//
+	// They used to be dropped with a bare `continue`, which made an
+	// environment that went blind look exactly like one that looked and found
+	// the world unchanged. The outer loop refused that conflation in Phase 20
+	// — reconcile.Fingerprint.Blind, same name for the same reason — and the
+	// inner loop never learned it.
+	Blind []string
 }
 
 type Context struct {

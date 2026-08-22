@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/bsenel/karakuri/internal/core/agent"
 	"github.com/bsenel/karakuri/internal/core/capability"
 	"github.com/bsenel/karakuri/internal/core/domain"
 	"github.com/bsenel/karakuri/internal/core/environment"
@@ -33,6 +34,7 @@ func (s *Suite) Run(ctx context.Context, p domain.Pack) []Result {
 		checkCapabilityRouting,
 		checkAgentCapabilityRefs,
 		checkAgentBoundsBehave,
+		checkProvenanceEscalates,
 		checkCriterionVerifierRefs,
 		checkNoCapabilityIDCollision,
 		checkTeardownNoPanic,
@@ -230,7 +232,7 @@ func checkAgentBoundsBehave(_ context.Context, p domain.Pack) Result {
 			// "Draft and ask". Three actions must escalate, and must survive
 			// intact — an approval falls straight through to act, so trimming
 			// here would discard the work the operator approved.
-			v := b.Decide(confident, 0, plan(3))
+			v := b.Decide(confident, 0, plan(3), agent.Evidence{})
 			if !v.Escalate {
 				return fail("agent %q declares MaxAutonomousActions: 0 but a 3-action plan runs without asking", def.ID)
 			}
@@ -241,13 +243,13 @@ func checkAgentBoundsBehave(_ context.Context, p domain.Pack) Result {
 		case b.MaxAutonomousActions > 0:
 			// A cap trims to exactly the cap, and does not escalate for it.
 			over := b.MaxAutonomousActions + 2
-			v := b.Decide(confident, 0, plan(over))
+			v := b.Decide(confident, 0, plan(over), agent.Evidence{})
 			if v.Allowed != b.MaxAutonomousActions {
 				return fail("agent %q declares a cap of %d but a %d-action plan left %d actions",
 					def.ID, b.MaxAutonomousActions, over, v.Allowed)
 			}
 			// And a plan within the cap is untouched.
-			under := b.Decide(confident, 0, plan(b.MaxAutonomousActions))
+			under := b.Decide(confident, 0, plan(b.MaxAutonomousActions), agent.Evidence{})
 			if under.Allowed != b.MaxAutonomousActions {
 				return fail("agent %q trimmed a plan already within its cap of %d to %d",
 					def.ID, b.MaxAutonomousActions, under.Allowed)
@@ -259,7 +261,7 @@ func checkAgentBoundsBehave(_ context.Context, p domain.Pack) Result {
 
 		default:
 			// agent.UnlimitedActions. Nothing is trimmed, however long.
-			v := b.Decide(confident, 0, plan(50))
+			v := b.Decide(confident, 0, plan(50), agent.Evidence{})
 			if v.Allowed != 50 {
 				return fail("agent %q declares UnlimitedActions and a 50-action plan was trimmed to %d", def.ID, v.Allowed)
 			}
@@ -275,7 +277,7 @@ func checkAgentBoundsBehave(_ context.Context, p domain.Pack) Result {
 			if !declared[c] {
 				return fail("agent %q requires approval for %q, which this pack does not declare", def.ID, c)
 			}
-			v := b.Decide(confident, 0, []capability.CapabilityID{c})
+			v := b.Decide(confident, 0, []capability.CapabilityID{c}, agent.Evidence{})
 			if !v.Escalate {
 				return fail("agent %q lists %q under RequiresApprovalFor and plans it without asking", def.ID, c)
 			}
@@ -284,13 +286,13 @@ func checkAgentBoundsBehave(_ context.Context, p domain.Pack) Result {
 		// A declared threshold must bite. Below it, escalate; at or above it,
 		// do not — a threshold that escalates everything is not a threshold.
 		if b.ConfidenceThreshold > 0 {
-			low := b.Decide(b.ConfidenceThreshold-0.01, b.ConfidenceThreshold, plan(1))
+			low := b.Decide(b.ConfidenceThreshold-0.01, b.ConfidenceThreshold, plan(1), agent.Evidence{})
 			if !low.Escalate {
 				return fail("agent %q declares a confidence threshold of %.2f and ran a plan below it",
 					def.ID, b.ConfidenceThreshold)
 			}
 			if b.MaxAutonomousActions != 0 {
-				high := b.Decide(1.0, b.ConfidenceThreshold, plan(1))
+				high := b.Decide(1.0, b.ConfidenceThreshold, plan(1), agent.Evidence{})
 				if high.Escalate && strings.Contains(high.Reason, "threshold") {
 					return fail("agent %q escalates a fully confident plan on its %.2f threshold: %s",
 						def.ID, b.ConfidenceThreshold, high.Reason)
@@ -303,6 +305,84 @@ func checkAgentBoundsBehave(_ context.Context, p domain.Pack) Result {
 		Check:   name,
 		Passed:  true,
 		Message: fmt.Sprintf("all %d agent definitions behave as their bounds declare", len(p.AgentDefinitions())),
+	}
+}
+
+// checkProvenanceEscalates runs each agent's declared bounds through the real
+// decision policy twice — once with a third party's writing in evidence, once
+// without, at the same confidence and with the same plan — and asserts the two
+// answers differ in exactly that dimension.
+//
+// It is the same argument as checkAgentBoundsBehave one field over (ADR 020): a
+// provenance input the policy accepts and ignores would leave every inspection
+// of the system agreeing it was safe. Reverting the branch in Decide fails this
+// in every pack that declares an agent, which is where the fix has to happen.
+//
+// What it deliberately does not check is whether a pack has labelled its own
+// environments honestly. That is not decidable from outside the pack — an
+// environment returning TrustOperator over a chat transcript is indistinguishable
+// from one returning it over a metric, and no amount of running the pack reveals
+// which. A suite can check that the label it is given changes the outcome; it
+// cannot check that the label is true.
+func checkProvenanceEscalates(_ context.Context, p domain.Pack) Result {
+	const name = "provenance_escalates"
+
+	fail := func(format string, args ...any) Result {
+		return Result{Check: name, Passed: false, Message: fmt.Sprintf(format, args...)}
+	}
+
+	// A source name no pack could plausibly declare, so finding it in a reason
+	// string means the provenance branch produced that reason and not some
+	// other rule that happens to mention an environment.
+	const stranger = "conformance.env.stranger"
+	untrusted := agent.Evidence{}.WithSource(stranger)
+
+	// One neutral action, full confidence, no threshold: the only rules that
+	// can fire are the zero-cap bound and provenance, and the two are told apart
+	// by their reasons.
+	plan := []capability.CapabilityID{"conformance.probe.neutral"}
+
+	for _, def := range p.AgentDefinitions() {
+		b := def.Authority
+
+		got := b.Decide(1.0, 0, plan, untrusted)
+		if !got.Escalate {
+			return fail("agent %q ran a plan drafted from %s without asking; untrusted evidence must escalate whatever autonomy an agent has earned",
+				def.ID, stranger)
+		}
+		if !strings.Contains(got.Reason, stranger) {
+			return fail("agent %q escalated a plan drafted from %s but its reason does not name the source: %q",
+				def.ID, stranger, got.Reason)
+		}
+		if got.Allowed != len(plan) {
+			return fail("agent %q escalated on provenance and its plan was trimmed to %d of %d; an approval falls through to act and would lose the work",
+				def.ID, got.Allowed, len(plan))
+		}
+
+		// The other half of the ladder, and the half that stops "escalate
+		// everything" from passing: the same plan, at the same confidence, from
+		// the operator's own infrastructure must not escalate *for this reason*.
+		// It may still escalate for another — an agent bounded to no autonomous
+		// actions escalates everything, and that is a different bound doing its
+		// job.
+		trusted := b.Decide(1.0, 0, plan, agent.Evidence{})
+		if strings.Contains(trusted.Reason, stranger) {
+			return fail("agent %q blames %s for a plan drafted from nothing but the operator's own infrastructure: %q",
+				def.ID, stranger, trusted.Reason)
+		}
+		// checkAgentBoundsBehave already refuses an approval list naming a
+		// capability the pack does not declare, so the probe cannot be in one:
+		// the zero cap is the only other bound that can fire here.
+		if trusted.Escalate && b.MaxAutonomousActions != 0 {
+			return fail("agent %q escalates a fully confident, in-bounds plan with no untrusted evidence: %q",
+				def.ID, trusted.Reason)
+		}
+	}
+
+	return Result{
+		Check:   name,
+		Passed:  true,
+		Message: fmt.Sprintf("all %d agent definitions escalate on untrusted evidence and not otherwise", len(p.AgentDefinitions())),
 	}
 }
 

@@ -258,6 +258,21 @@ func stepAct(ctx context.Context, sc *stepContext, p plan) []actionOutcome {
 			UnitKind:     cost.UnitCalls,
 		})
 
+		// A result carrying somebody else's writing — a scraped page, a fetched
+		// issue body — puts its environment into evidence for every plan
+		// drafted from here on. This is the wider of the two surfaces:
+		// researchEnv's observation says only whether its adapter is wired and
+		// returns the pages themselves here, one step after the decision that
+		// would have gated them.
+		// envAdapter is empty only when nothing ran the action, and an unrouted
+		// result is built by the loop with no trust on it — so WithSource's own
+		// empty guard is the whole handling this needs. Substituting a
+		// capability ID would put the wrong kind of identifier in a reason
+		// string that tells a reviewer which environment to go and read.
+		if result.Trust.IsThirdParty() {
+			sc.evidence = sc.evidence.WithSource(envAdapter)
+		}
+
 		outcomes = append(outcomes, actionOutcome{
 			CapabilityID: action.CapabilityID,
 			EnvID:        envAdapter,
