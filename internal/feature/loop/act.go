@@ -264,12 +264,13 @@ func stepAct(ctx context.Context, sc *stepContext, p plan) []actionOutcome {
 		// researchEnv's observation says only whether its adapter is wired and
 		// returns the pages themselves here, one step after the decision that
 		// would have gated them.
+		// envAdapter is empty only when nothing ran the action, and an unrouted
+		// result is built by the loop with no trust on it — so WithSource's own
+		// empty guard is the whole handling this needs. Substituting a
+		// capability ID would put the wrong kind of identifier in a reason
+		// string that tells a reviewer which environment to go and read.
 		if result.Trust.IsThirdParty() {
-			source := envAdapter
-			if source == "" {
-				source = action.CapabilityID
-			}
-			sc.evidence = sc.evidence.WithSource(source)
+			sc.evidence = sc.evidence.WithSource(envAdapter)
 		}
 
 		outcomes = append(outcomes, actionOutcome{

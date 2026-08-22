@@ -61,7 +61,7 @@ type WorldState struct {
 	// the world unchanged. The outer loop refused that conflation in Phase 20
 	// — reconcile.Fingerprint.Blind, same name for the same reason — and the
 	// inner loop never learned it.
-	Blind []string `json:"blind,omitempty"`
+	Blind []string
 }
 
 type Context struct {
