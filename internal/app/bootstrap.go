@@ -34,6 +34,7 @@ import (
 	platmem "github.com/bsenel/karakuri/internal/platform/memory"
 	"github.com/bsenel/karakuri/internal/platform/observability"
 	"github.com/bsenel/karakuri/internal/platform/storage"
+	plattelemetry "github.com/bsenel/karakuri/internal/platform/telemetry"
 	"github.com/bsenel/karakuri/internal/platform/tools"
 	karakuriquota "github.com/bsenel/karakuri/internal/quota"
 	"gorm.io/gorm"
@@ -227,6 +228,22 @@ func BootstrapServer(cfgPath string) (*Bootstrap, error) {
 		}
 	}
 
+	// Dangling-verifier audit (Phase 24). The per-pack check cannot resolve a
+	// foreign domain — a pack is valid on its own (ADR 017) — so nothing
+	// checked that a criterion's verifier is exported by a pack this
+	// deployment actually enabled. A dangling one scores zero at verify with
+	// no explanation; saying so at boot is cheaper than discovering it there.
+	// WARN rather than fatal: an operator may be mid-rollout, and refusing to
+	// start over a template naming a pack that is not enabled yet is worse.
+	if len(activePacks) > 0 {
+		for _, res := range conformance.CheckDanglingVerifiers(activePacks...) {
+			if !res.Passed {
+				slog.Warn("objective template references a verifier nothing exports",
+					"check", res.Check, "msg", res.Message)
+			}
+		}
+	}
+
 	// Pick semantic backend per config. Only pgvector requires a non-default
 	// constructor; the SQLite keyword fallback is the default path (nil here).
 	var semanticBackend corememory.Memory
@@ -259,6 +276,11 @@ func BootstrapServer(cfgPath string) (*Bootstrap, error) {
 		return nil, err
 	}
 
+	// The read-only port through which Karakuri observes itself (Phase 22).
+	// Wired on the registry so every environment factory receives it on its
+	// BuildContext; every pack but karakuri's ignores it.
+	envReg.SetTelemetry(plattelemetry.New(store, quotaDeps))
+
 	apiApp := api.NewApp(cfg, store, providers, toolReg, exporters, wt, hub, otel, capReg, envReg, domReg, allTemplates, semanticBackend, promHandler, authDeps, quotaDeps)
 
 	// Resume any non-completed loops left behind by a previous server process
@@ -278,6 +300,24 @@ func BootstrapServer(cfgPath string) (*Bootstrap, error) {
 	// adds up, so raw rows age out while the daily rollup does not — a shorter
 	// horizon costs the drill-down and not the totals.
 	startCostRetention(ctx, quotaDeps, cfg.Quota.CostRetentionDays)
+
+	// The supervisor that holds standing objectives at their declared state
+	// (Phase 20). It does nothing on a deployment that has declared none, so
+	// it starts by default; the config flag is the kill switch for a
+	// deployment that wants the feature off outright.
+	if cfg.Reconcile.IsEnabled() {
+		apiApp.Reconcile.Start(ctx)
+	} else {
+		slog.Info("reconcile supervisor disabled by configuration",
+			"note", "standing objectives keep their state and stop becoming due")
+	}
+
+	// The digest sender, which reports on what the supervisor did. Started
+	// independently of it: the two have separate config blocks and separate
+	// Enabled flags, and an operator who turns the supervisor off still wants
+	// the morning brief covering the decisions waiting on them. It logs its
+	// own refusal when disabled, which it is by default.
+	apiApp.Reports.Start(ctx)
 
 	return &Bootstrap{Config: cfg, App: apiApp, Store: store, Worktrees: wt}, nil
 }

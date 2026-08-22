@@ -20,5 +20,8 @@ func RunMigrations(db *gorm.DB, _ string) error {
 		&schema.LoopStateModel{},
 		&schema.ContainerModel{},
 		&schema.ResourceScopeModel{},
+		&schema.ReconcileStateModel{},
+		&schema.ReconcileOutcomeModel{},
+		&schema.ReportScheduleModel{},
 	)
 }

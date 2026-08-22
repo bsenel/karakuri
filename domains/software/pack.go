@@ -24,29 +24,31 @@ func New() *Pack { return &Pack{} }
 // supplied tool registry (real GitHub / Linear / Slack adapters when configured).
 func NewWithTools(reg *tools.Registry) *Pack { return &Pack{tools: reg} }
 
-func (p *Pack) ID() string          { return "software" }
-func (p *Pack) Name() string        { return "Software Development" }
-func (p *Pack) Version() string     { return "1.0.0" }
-func (p *Pack) Description() string { return "Capabilities, environments, and agents for autonomous software development" }
+func (p *Pack) ID() string      { return "software" }
+func (p *Pack) Name() string    { return "Software Development" }
+func (p *Pack) Version() string { return "1.0.0" }
+func (p *Pack) Description() string {
+	return "Capabilities, environments, and agents for autonomous software development"
+}
 
 func (p *Pack) Init(_ context.Context, _ domain.Config) error { return nil }
 
 func (p *Pack) Teardown(_ context.Context) error { return nil }
 
 func (p *Pack) Capabilities() []capability.Capability {
-	return softwareCapabilities()
+	return append(softwareCapabilities(), selfImproveCapabilities()...)
 }
 
 func (p *Pack) EnvironmentFactories() []environment.Factory {
-	return softwareEnvironmentFactories(p.tools)
+	return append(softwareEnvironmentFactories(p.tools), platformTelemetryFactory())
 }
 
 func (p *Pack) AgentDefinitions() []agent.Definition {
-	return softwareAgentDefinitions()
+	return append(softwareAgentDefinitions(), selfImproveAgents()...)
 }
 
 func (p *Pack) ObjectiveTemplates() []objective.Template {
-	return softwareObjectiveTemplates()
+	return append(softwareObjectiveTemplates(), selfImproveTemplates()...)
 }
 
 func (p *Pack) PlannerHints() []domain.PlannerHint {

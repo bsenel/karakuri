@@ -6,7 +6,7 @@ func softwareCapabilities() []capability.Capability {
 	obs := func(id, name, desc string) capability.Capability {
 		return capability.Capability{
 			ID: capability.CapabilityID(id), Name: name, Domain: "software",
-			Description: desc,
+			Description:  desc,
 			InputSchema:  capability.Schema{Type: "object", Properties: map[string]capability.SchemaProperty{}},
 			OutputSchema: capability.Schema{Type: "object"},
 		}
@@ -18,6 +18,13 @@ func softwareCapabilities() []capability.Capability {
 			InputSchema:  capability.Schema{Type: "object", Properties: map[string]capability.SchemaProperty{}},
 			OutputSchema: capability.Schema{Type: "object"},
 		}
+	}
+	// writes marks a capability that produces files and therefore needs an
+	// isolated worktree. Declared here so the loop provisions one by what the
+	// capability says it does rather than by what it is called.
+	writes := func(c capability.Capability) capability.Capability {
+		c.NeedsWorkspace = true
+		return c
 	}
 	return []capability.Capability{
 		obs("software.observe.fetch_commits", "Fetch Commits", "Fetch recent commits from GitEnvironment"),
@@ -31,13 +38,29 @@ func softwareCapabilities() []capability.Capability {
 
 		act("software.decide.prioritize_tasks", "Prioritize Tasks", "Order a task list by impact and risk", false),
 
-		act("software.act.write_code", "Write Code", "Produce implementation artifact in worktree", false),
-		act("software.act.write_test", "Write Test", "Produce test artifact in worktree (TDD)", false),
-		act("software.act.write_design_doc", "Write Design Doc", "Produce mandatory design document before implementation", false),
-		act("software.act.create_pr", "Create PR", "Submit worktree branch as pull request", false),
+		writes(act("software.act.write_code", "Write Code", "Write implementation into an isolated worktree, via the configured coding-agent CLI", false)),
+		writes(act("software.act.write_test", "Write Test", "Write tests into an isolated worktree, via the configured coding-agent CLI", false)),
+		// Takes params.design: the document text. Declared here because a
+		// capability whose only required input is undocumented is one models
+		// call with an empty payload — and this one is planned by two agents
+		// and required by a priority-9 hint before any write_code action, so
+		// it is called often.
+		{
+			ID: "software.act.write_design_doc", Name: "Write Design Doc", Domain: "software",
+			Description: "Produce mandatory design document before implementation. Requires params.design (the document text).",
+			InputSchema: capability.Schema{
+				Type: "object",
+				Properties: map[string]capability.SchemaProperty{
+					"design": {Type: "string", Description: "The design document: the problem, the approach, and what was rejected"},
+				},
+				Required: []string{"design"},
+			},
+			OutputSchema: capability.Schema{Type: "object"},
+		},
+		writes(act("software.act.create_pr", "Create PR", "Submit a worktree branch as a pull request", false)),
 		act("software.act.create_ticket", "Create Ticket", "Create ticket in project management tool", false),
 		act("software.act.send_message", "Send Message", "Send a message via MessagingAdapter", false),
-		act("software.act.delegate_to_cli", "Delegate to CLI Agent", "Hand a task to a coding-agent CLI (Claude Code, Cursor, Gemini, Copilot) in the active worktree", false),
+		writes(act("software.act.delegate_to_cli", "Delegate to CLI Agent", "Hand a task to a coding-agent CLI (Claude Code, Cursor, Gemini, Copilot) in an isolated worktree", false)),
 		act("software.act.shell_exec", "Shell Exec", "Run a /bin/sh command with params.cmd (required), optional params.workdir and params.timeout_sec (max 600). Result includes exit_code, stdout, stderr. Dangerous patterns (rm -rf /, mkfs, sudo, curl|sh) are blocked.", true),
 
 		act("software.verify.run_tests", "Run Tests", "Execute test suite in worktree", true),

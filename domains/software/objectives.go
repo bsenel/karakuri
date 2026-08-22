@@ -10,7 +10,7 @@ func softwareObjectiveTemplates() []objective.Template {
 		return objective.Criterion{
 			ID: id, Description: desc,
 			Verifier: capability.CapabilityID(verifier),
-			Weight: weight,
+			Weight:   weight,
 		}
 	}
 	hard := func(id, desc, expr string) objective.Constraint {

@@ -163,12 +163,28 @@ func (s *GORMStorage) SaveObjective(ctx context.Context, o objective.Objective) 
 		pid := string(*o.ParentID)
 		parentID = &pid
 	}
+	// Nil cadence and nil autonomy store as the empty string rather than as
+	// "null", so the round trip below can tell "never declared" from
+	// "declared and empty" without a nullable column.
+	var cadenceJ, autonomyJ []byte
+	if o.Cadence != nil {
+		cadenceJ, _ = json.Marshal(o.Cadence)
+	}
+	if o.Autonomy != nil {
+		autonomyJ, _ = json.Marshal(o.Autonomy)
+	}
+	var budgetJ []byte
+	if o.Budget != nil {
+		budgetJ, _ = json.Marshal(o.Budget)
+	}
 	return s.db.WithContext(ctx).Save(&schema.ObjectiveModel{
 		ID: string(o.ID), Title: o.Title, Description: o.Description, Domain: o.Domain,
 		AdditionalDomainsJSON: string(addJ),
 		TwinID:                o.TwinID, Priority: o.Priority, MaxIterations: o.MaxIterations, Deadline: o.Deadline,
 		CriteriaJSON: string(critJ), ConstraintsJSON: string(constrJ), ParentID: parentID,
 		Status: string(o.Status),
+		Mode:   string(o.Mode), CadenceJSON: string(cadenceJ), AutonomyJSON: string(autonomyJ),
+		BudgetJSON: string(budgetJ), AgentID: o.AgentID,
 	}).Error
 }
 
@@ -188,6 +204,9 @@ func (s *GORMStorage) ListObjectives(ctx context.Context, f ObjectiveFilter) ([]
 	}
 	if f.Status != "" {
 		q = q.Where("status = ?", f.Status)
+	}
+	if f.Mode != "" {
+		q = q.Where("mode = ?", f.Mode)
 	}
 	q = applyScopeSelectors(q, "objective", "id", f.Visible, f.Hidden)
 	if err := q.Find(&models).Error; err != nil {
@@ -219,12 +238,38 @@ func objectiveFromModel(m schema.ObjectiveModel) objective.Objective {
 		pid := objective.ObjectiveID(*m.ParentID)
 		parentID = &pid
 	}
+	var cadence *objective.Cadence
+	if m.CadenceJSON != "" {
+		var c objective.Cadence
+		if err := json.Unmarshal([]byte(m.CadenceJSON), &c); err == nil {
+			cadence = &c
+		}
+	}
+	var autonomy *objective.Autonomy
+	if m.AutonomyJSON != "" {
+		var a objective.Autonomy
+		if err := json.Unmarshal([]byte(m.AutonomyJSON), &a); err == nil {
+			autonomy = &a
+		}
+	}
+	var budget *objective.Budget
+	if m.BudgetJSON != "" {
+		var b objective.Budget
+		if err := json.Unmarshal([]byte(m.BudgetJSON), &b); err == nil {
+			budget = &b
+		}
+	}
 	return objective.Objective{
 		ID: objective.ObjectiveID(m.ID), Title: m.Title, Description: m.Description,
 		Domain: m.Domain, AdditionalDomains: additionalDomains,
 		TwinID: m.TwinID, Priority: m.Priority, MaxIterations: m.MaxIterations, Deadline: m.Deadline,
 		SuccessCriteria: criteria, Constraints: constraints, ParentID: parentID,
 		Status:    objective.ObjectiveStatus(m.Status),
+		Mode:      objective.Mode(m.Mode),
+		Cadence:   cadence,
+		Autonomy:  autonomy,
+		Budget:    budget,
+		AgentID:   m.AgentID,
 		CreatedAt: m.CreatedAt, UpdatedAt: m.UpdatedAt,
 	}
 }
@@ -394,6 +439,12 @@ func (s *GORMStorage) SaveCheckpoint(ctx context.Context, c checkpoint.Checkpoin
 		ActionsJSON:  string(actsJ),
 		AuditEventID: c.AuditEventID,
 		Status:       string(c.Status), DecisionJSON: decJ, ResolvedAt: c.ResolvedAt,
+		// Passed through rather than always stamped. GORM's autoCreateTime
+		// fills a zero value, so a caller that does not care still gets now —
+		// but one that does (a backfill, a test fabricating history, a digest
+		// asking how long a decision has been waiting) is no longer silently
+		// overruled by the storage layer.
+		CreatedAt: c.CreatedAt,
 	}).Error
 }
 
@@ -507,6 +558,14 @@ func (s *GORMStorage) ListToolEvents(ctx context.Context, f ToolEventFilter) ([]
 	q := s.db.WithContext(ctx).Order("created_at DESC")
 	if f.ObjectiveID != "" {
 		q = q.Where("objective_id = ?", f.ObjectiveID)
+	}
+	if f.ObjectiveIDs != nil {
+		if len(f.ObjectiveIDs) == 0 {
+			// The caller's scope covers no objectives. Returning everything
+			// here is the leak this filter exists to prevent.
+			return []ToolEvent{}, nil
+		}
+		q = q.Where("objective_id IN ?", f.ObjectiveIDs)
 	}
 	if f.AgentID != "" {
 		q = q.Where("agent_id = ?", f.AgentID)

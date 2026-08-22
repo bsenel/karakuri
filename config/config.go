@@ -22,6 +22,108 @@ type Config struct {
 	Memory        MemoryConfig        `yaml:"memory"`
 	Tools         ToolsConfig         `yaml:"tools"`
 	Quota         QuotaConfig         `yaml:"quota"`
+	Reconcile     ReconcileConfig     `yaml:"reconcile"`
+	Reports       ReportsConfig       `yaml:"reports"`
+}
+
+// ReportsConfig bounds the digest sender (Phase 21).
+//
+// Off by default, unlike the reconcile supervisor. A supervisor that runs with
+// no standing objectives does nothing; a sender that runs will mail somebody,
+// and turning that on is a decision an operator makes rather than one they
+// discover.
+type ReportsConfig struct {
+	Enabled bool `yaml:"enabled"`
+	// Tick is how often the sender asks what is due. A minute is ample for
+	// schedules measured in hours.
+	Tick string `yaml:"tick"`
+	// LeaseTTL is how long a claim on a schedule survives. Short, because a
+	// digest takes seconds and a stuck lease delays a report somebody is
+	// waiting for.
+	LeaseTTL string `yaml:"lease_ttl"`
+}
+
+func (r ReportsConfig) TickDuration() time.Duration {
+	return parseDurationOr(r.Tick, time.Minute)
+}
+
+func (r ReportsConfig) LeaseTTLDuration() time.Duration {
+	return parseDurationOr(r.LeaseTTL, 2*time.Minute)
+}
+
+// ReconcileConfig bounds the supervisor that holds standing objectives at their
+// declared state (Phase 20).
+//
+// Everything here is a ceiling rather than a target. A deployment with no
+// standing objectives is unaffected by every value in it, and a deployment with
+// a thousand is protected by all of them.
+type ReconcileConfig struct {
+	// Enabled is the kill switch. Off stops the supervisor from starting at
+	// all; standing objectives keep their state and simply stop being due.
+	// Default on, because the feature does nothing until somebody declares a
+	// standing objective, and an operator who declared one meant it.
+	Enabled *bool `yaml:"enabled"`
+
+	// Tick is how often the supervisor asks which objectives are due. It
+	// bounds scheduling precision, not cadence: a 30s tick with an hourly
+	// cadence is accurate to half a minute, which is what a schedule
+	// measured in hours deserves.
+	Tick string `yaml:"tick"`
+
+	// MaxConcurrent bounds reconciles running at once across this replica.
+	// Without it, a hundred objectives coming due together would launch a
+	// hundred concurrent model-calling loops — the failure mode is a bill
+	// and a rate-limit wall, and it arrives all at once.
+	MaxConcurrent int `yaml:"max_concurrent"`
+
+	// LeaseTTL is how long a claim survives without renewal. It is the
+	// window in which a crashed replica's work sits untouched, so it trades
+	// recovery latency against the risk of two replicas both believing they
+	// hold an objective whose renewals were merely slow.
+	LeaseTTL string `yaml:"lease_ttl"`
+
+	// BreakerFailures is how many consecutive failures pause an objective.
+	// An escalation is not a failure — a loop that stopped to ask a question
+	// did the right thing, and a breaker counting questions would trip on
+	// the objectives being most careful.
+	BreakerFailures int `yaml:"breaker_failures"`
+
+	// StallReconciles is how many expensive runs may leave the criteria
+	// score unmoved before the objective escalates instead of running again.
+	// This is the brake the roadmap promised in Phase 1 and never built: the
+	// only real limit until now was the iteration cap and the token budget.
+	StallReconciles int `yaml:"stall_reconciles"`
+
+	// DefaultMinInterval is the floor between reconciles for an objective
+	// whose cadence did not name one. It is what stops a busy repository
+	// from driving a paid loop every time somebody pushes.
+	DefaultMinInterval string `yaml:"default_min_interval"`
+
+	// MaxBackoff caps the exponential backoff after repeated failures, so a
+	// long-broken objective still retries occasionally rather than
+	// effectively never.
+	MaxBackoff string `yaml:"max_backoff"`
+}
+
+// IsEnabled reports whether the supervisor should run. Nil means yes: the
+// field is a pointer precisely so that "absent" and "explicitly false" are
+// different, and only the latter turns the feature off.
+func (r ReconcileConfig) IsEnabled() bool { return r.Enabled == nil || *r.Enabled }
+
+func (r ReconcileConfig) TickDuration() time.Duration {
+	return parseDurationOr(r.Tick, 30*time.Second)
+}
+
+func (r ReconcileConfig) LeaseTTLDuration() time.Duration {
+	return parseDurationOr(r.LeaseTTL, 5*time.Minute)
+}
+
+func (r ReconcileConfig) DefaultMinIntervalDuration() time.Duration {
+	return parseDurationOr(r.DefaultMinInterval, 10*time.Minute)
+}
+
+func (r ReconcileConfig) MaxBackoffDuration() time.Duration {
+	return parseDurationOr(r.MaxBackoff, time.Hour)
 }
 
 // QuotaConfig configures rate limiting and quotas (ADR 008). Zero values mean
@@ -752,6 +854,19 @@ func setDefaults(cfg *Config) {
 	}
 	if cfg.Quota.LiteLLMKeyEnv == "" {
 		cfg.Quota.LiteLLMKeyEnv = "LITELLM_MASTER_KEY"
+	}
+	if cfg.Reconcile.MaxConcurrent <= 0 {
+		// Four rather than one: a deployment holding several standing
+		// objectives should not have them queue behind each other, and a
+		// number this small is still a ceiling somebody notices before the
+		// bill does.
+		cfg.Reconcile.MaxConcurrent = 4
+	}
+	if cfg.Reconcile.BreakerFailures <= 0 {
+		cfg.Reconcile.BreakerFailures = 3
+	}
+	if cfg.Reconcile.StallReconciles <= 0 {
+		cfg.Reconcile.StallReconciles = 3
 	}
 	if cfg.Quota.Backend == "" {
 		// Per-replica, and documented as such. Anything else needs a

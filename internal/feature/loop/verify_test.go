@@ -24,8 +24,9 @@ func TestStepVerify_NoCriteriaFailsHonestly(t *testing.T) {
 			SuccessCriteria: nil, // no criteria — used to trivially pass
 		},
 	}
-	score, allMet := stepVerify(context.Background(), sc, []environment.ActionResult{
-		{Success: true}, // even with successful results, no criteria = no truth
+	score, allMet := stepVerify(context.Background(), sc, []actionOutcome{
+		// Even with a successful action, no criteria = no truth.
+		{CapabilityID: "test.act.thing", Result: environment.ActionResult{Success: true}},
 	})
 	if score != 0.0 {
 		t.Errorf("expected score=0.0 when no criteria defined, got %v", score)
@@ -47,17 +48,20 @@ func TestStepVerify_NoCriteriaIgnoresActionSuccess(t *testing.T) {
 			SuccessCriteria: nil,
 		},
 	}
+	ok := func(success bool) actionOutcome {
+		return actionOutcome{CapabilityID: "test.act.thing", Result: environment.ActionResult{Success: success}}
+	}
 	cases := []struct {
-		name    string
-		results []environment.ActionResult
+		name     string
+		outcomes []actionOutcome
 	}{
-		{"all success", []environment.ActionResult{{Success: true}, {Success: true}}},
-		{"all failure", []environment.ActionResult{{Success: false}, {Success: false}}},
-		{"empty results", []environment.ActionResult{}},
+		{"all success", []actionOutcome{ok(true), ok(true)}},
+		{"all failure", []actionOutcome{ok(false), ok(false)}},
+		{"empty results", []actionOutcome{}},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			score, allMet := stepVerify(context.Background(), sc, c.results)
+			score, allMet := stepVerify(context.Background(), sc, c.outcomes)
 			if score != 0.0 || allMet {
 				t.Errorf("expected (0.0, false) regardless of results, got (%v, %v)", score, allMet)
 			}

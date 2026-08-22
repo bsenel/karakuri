@@ -102,31 +102,20 @@ func stepDecide(ctx context.Context, sc *stepContext, p plan, mods *corecheckpoi
 		capHistory = ch
 	}
 
-	// 2. Check confidence threshold (lowered if operator override is set).
-	if threshold > 0 && p.Confidence < threshold {
-		escalate = true
-		escalateReason = fmt.Sprintf("confidence %.2f below threshold %.2f",
-			p.Confidence, threshold)
+	// 2. Apply the bounds. The policy lives on AuthorityBounds so a pack's
+	// declared bounds can be verified by running them — conformance calls this
+	// same function, which is the only way a check on a declaration is a check
+	// rather than a restatement (Phase 24). What is left here is carrying out
+	// the verdict: the audit row, the checkpoint, the trim.
+	planned := make([]capability.CapabilityID, 0, len(p.Actions))
+	for _, action := range p.Actions {
+		planned = append(planned, capability.CapabilityID(action.CapabilityID))
 	}
-
-	// Check if any action requires approval
-	if !escalate {
-		approvalSet := make(map[capability.CapabilityID]struct{}, len(authority.RequiresApprovalFor))
-		for _, cap := range authority.RequiresApprovalFor {
-			approvalSet[cap] = struct{}{}
-		}
-		for _, action := range p.Actions {
-			if _, requires := approvalSet[capability.CapabilityID(action.CapabilityID)]; requires {
-				escalate = true
-				escalateReason = fmt.Sprintf("action %q requires approval", action.CapabilityID)
-				break
-			}
-		}
-	}
-
-	// Trim actions if exceeds max autonomous
-	if authority.MaxAutonomousActions > 0 && len(p.Actions) > authority.MaxAutonomousActions {
-		p.Actions = p.Actions[:authority.MaxAutonomousActions]
+	verdict := authority.Decide(p.Confidence, threshold, planned)
+	escalate = verdict.Escalate
+	escalateReason = verdict.Reason
+	if verdict.Allowed < len(p.Actions) {
+		p.Actions = p.Actions[:verdict.Allowed]
 	}
 
 	paused := false

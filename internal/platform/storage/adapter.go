@@ -6,9 +6,11 @@ import (
 
 	"github.com/bsenel/karakuri/internal/core/checkpoint"
 	"github.com/bsenel/karakuri/internal/core/container"
+	"github.com/bsenel/karakuri/internal/core/digest"
 	coreloop "github.com/bsenel/karakuri/internal/core/loop"
 	"github.com/bsenel/karakuri/internal/core/memory"
 	"github.com/bsenel/karakuri/internal/core/objective"
+	"github.com/bsenel/karakuri/internal/core/reconcile"
 	"github.com/bsenel/karakuri/internal/core/twin"
 	"github.com/bsenel/karakuri/internal/core/vfs"
 )
@@ -66,6 +68,9 @@ type TwinFilter struct {
 type ObjectiveFilter struct {
 	TwinID string
 	Status string
+	// Mode narrows to oneshot or standing objectives. Empty matches both,
+	// which is what every caller predating standing objectives wants.
+	Mode string
 
 	Visible *ScopeSelector
 	Hidden  ScopeSelector
@@ -135,12 +140,33 @@ const (
 	// Attempts belong beside approvals: reviewing who approved what should also
 	// show who was turned away. The payload carries the full decision trace.
 	ToolEventAuthzDenied = "authz_denied"
+	// ToolEventPromotion and ToolEventDemotion (Phase 20) record a standing
+	// objective moving up or down the autonomy ladder.
+	//
+	// They are their own kinds rather than a field on a reconcile outcome
+	// because a change in what Karakuri may do to the world without asking is
+	// a security-relevant event in its own right. Somebody reviewing why an
+	// agent acted unsupervised should be able to find the moment it was
+	// allowed to, in the same log as the approvals and the refusals.
+	ToolEventPromotion = "promotion"
+	ToolEventDemotion  = "demotion"
 )
 
 // ToolEventFilter narrows the audit log query. All fields are optional;
 // CreatedAtSince applies an inclusive lower bound on event timestamps.
 type ToolEventFilter struct {
-	ObjectiveID     string
+	ObjectiveID string
+
+	// ObjectiveIDs narrows to a set, which is how a caller scopes the audit
+	// log to one tenant: tool_events carries no twin, so the only honest
+	// route from a twin to its events is through the objectives it owns.
+	//
+	// Nil means unfiltered. Non-nil and empty means match nothing — a
+	// caller whose scope resolved to no objectives must see no events, and
+	// a filter that widens to everything when its input is empty is exactly
+	// how a listing leaks across tenants.
+	ObjectiveIDs []string
+
 	AgentID         string
 	Kind            string
 	BoundsViolation *bool      // tri-state: nil = ignore, &true = only violations, &false = only clean
@@ -230,6 +256,57 @@ type StorageAdapter interface {
 	GetResourceScopes(ctx context.Context, resourceType, resourceID string) (container.ResourceScopes, error)
 	ListScopedResources(ctx context.Context, f container.ScopeFilter) ([]container.ResourceScopes, error)
 	DeleteResourceScopes(ctx context.Context, resourceType, resourceID string) error
+
+	// Reconcile state (Phase 20 — the outer control loop over standing
+	// objectives).
+	SaveReconcileState(ctx context.Context, s reconcile.State) error
+	GetReconcileState(ctx context.Context, objectiveID objective.ObjectiveID) (reconcile.State, error)
+	DeleteReconcileState(ctx context.Context, objectiveID objective.ObjectiveID) error
+
+	// ListReconcileStateIDs names every objective holding a control-loop
+	// state row. Adoption needs it to find rows whose objective has stopped
+	// being standing: the due query only ever returns rows that are due, so
+	// an orphan that is never due would otherwise live forever.
+	ListReconcileStateIDs(ctx context.Context) ([]objective.ObjectiveID, error)
+
+	// ListDueReconcileStates returns unpaused states whose next due time has
+	// arrived and whose lease is free or held by holder. It is the
+	// supervisor's hot path, run on every tick.
+	ListDueReconcileStates(ctx context.Context, holder string, now time.Time, limit int) ([]reconcile.State, error)
+
+	// ClaimReconcileState takes the lease on one objective, returning false
+	// when somebody else holds a live one.
+	//
+	// This is a conditional UPDATE rather than a read followed by a write:
+	// the database arbitrates, which is what makes two replicas racing for
+	// the same objective safe without a coordination service Karakuri does
+	// not have. A crashed holder releases nothing — its lease simply runs
+	// out, and the next replica to ask wins.
+	ClaimReconcileState(ctx context.Context, objectiveID objective.ObjectiveID, holder string, now, until time.Time) (bool, error)
+
+	// RenewReconcileLease extends a claim the caller already holds. It fails
+	// rather than steals: a holder whose lease expired mid-run has to accept
+	// that somebody else may have taken over.
+	RenewReconcileLease(ctx context.Context, objectiveID objective.ObjectiveID, holder string, now, until time.Time) (bool, error)
+
+	// ReleaseReconcileLease drops a claim on the ordinary path, so the next
+	// due objective does not wait out a lease nobody is using.
+	ReleaseReconcileLease(ctx context.Context, objectiveID objective.ObjectiveID, holder string) error
+
+	SaveReconcileOutcome(ctx context.Context, o reconcile.Outcome) error
+	ListReconcileOutcomes(ctx context.Context, objectiveID objective.ObjectiveID, limit int) ([]reconcile.Outcome, error)
+
+	// Report schedules (Phase 21 — periodic digests). They carry a lease for
+	// the same reason reconcile states do, and with more at stake: two
+	// replicas reconciling one objective wastes money, while two replicas
+	// sending one morning report send it to a person twice.
+	SaveReportSchedule(ctx context.Context, s digest.Schedule) error
+	GetReportSchedule(ctx context.Context, id string) (digest.Schedule, error)
+	ListReportSchedules(ctx context.Context, twinID string) ([]digest.Schedule, error)
+	DeleteReportSchedule(ctx context.Context, id string) error
+	ListDueReportSchedules(ctx context.Context, holder string, now time.Time, limit int) ([]digest.Schedule, error)
+	ClaimReportSchedule(ctx context.Context, id, holder string, now, until time.Time) (bool, error)
+	ReleaseReportSchedule(ctx context.Context, id, holder string) error
 }
 
 func Now() time.Time { return time.Now().UTC() }
