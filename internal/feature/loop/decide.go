@@ -102,44 +102,20 @@ func stepDecide(ctx context.Context, sc *stepContext, p plan, mods *corecheckpoi
 		capHistory = ch
 	}
 
-	// 2. Check confidence threshold (lowered if operator override is set).
-	if threshold > 0 && p.Confidence < threshold {
-		escalate = true
-		escalateReason = fmt.Sprintf("confidence %.2f below threshold %.2f",
-			p.Confidence, threshold)
+	// 2. Apply the bounds. The policy lives on AuthorityBounds so a pack's
+	// declared bounds can be verified by running them — conformance calls this
+	// same function, which is the only way a check on a declaration is a check
+	// rather than a restatement (Phase 24). What is left here is carrying out
+	// the verdict: the audit row, the checkpoint, the trim.
+	planned := make([]capability.CapabilityID, 0, len(p.Actions))
+	for _, action := range p.Actions {
+		planned = append(planned, capability.CapabilityID(action.CapabilityID))
 	}
-
-	// Check if any action requires approval
-	if !escalate {
-		approvalSet := make(map[capability.CapabilityID]struct{}, len(authority.RequiresApprovalFor))
-		for _, cap := range authority.RequiresApprovalFor {
-			approvalSet[cap] = struct{}{}
-		}
-		for _, action := range p.Actions {
-			if _, requires := approvalSet[capability.CapabilityID(action.CapabilityID)]; requires {
-				escalate = true
-				escalateReason = fmt.Sprintf("action %q requires approval", action.CapabilityID)
-				break
-			}
-		}
-	}
-
-	// A cap of zero means no autonomous actions at all, which is the
-	// "draft and ask" bound. It escalates rather than trimming: the plan
-	// has to survive intact so the checkpoint shows a reviewer what they
-	// are approving, and because an approval falls straight through to
-	// act — an emptied plan would silently discard the approved work.
-	//
-	// This is checked after the threshold and approval-set tests so an
-	// escalation that already has a more specific reason keeps it.
-	if authority.MaxAutonomousActions == 0 && len(p.Actions) > 0 && !escalate {
-		escalate = true
-		escalateReason = "agent is bounded to no autonomous actions"
-	}
-
-	// Trim actions if exceeds max autonomous. UnlimitedActions opts out.
-	if authority.MaxAutonomousActions > 0 && len(p.Actions) > authority.MaxAutonomousActions {
-		p.Actions = p.Actions[:authority.MaxAutonomousActions]
+	verdict := authority.Decide(p.Confidence, threshold, planned)
+	escalate = verdict.Escalate
+	escalateReason = verdict.Reason
+	if verdict.Allowed < len(p.Actions) {
+		p.Actions = p.Actions[:verdict.Allowed]
 	}
 
 	paused := false

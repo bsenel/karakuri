@@ -35,6 +35,7 @@ import (
 	featureloop "github.com/bsenel/karakuri/internal/feature/loop"
 	"github.com/bsenel/karakuri/internal/platform/schedule"
 	"github.com/bsenel/karakuri/internal/platform/storage"
+	karakuriquota "github.com/bsenel/karakuri/internal/quota"
 )
 
 // LoopRunner is the slice of the loop service this package needs.
@@ -116,6 +117,11 @@ type Service struct {
 	hub    *event.Hub
 	cfg    Config
 
+	// quota answers what an objective has spent today. Zero value is a
+	// deployment with no ledger, in which case a declared budget cannot be
+	// enforced and says so rather than silently permitting everything.
+	quota karakuriquota.Deps
+
 	// holder identifies this replica in the lease. Hostname and PID rather
 	// than a random value alone, so an operator looking at a stuck lease can
 	// tell which process is holding it.
@@ -145,6 +151,7 @@ func NewService(
 	domReg *domain.Registry,
 	cpSvc *featurecp.Service,
 	hub *event.Hub,
+	quotaDeps karakuriquota.Deps,
 	cfg Config,
 ) *Service {
 	cfg = cfg.withDefaults()
@@ -155,6 +162,7 @@ func NewService(
 		domReg:   domReg,
 		cpSvc:    cpSvc,
 		hub:      hub,
+		quota:    quotaDeps,
 		cfg:      cfg,
 		holder:   newHolderID(),
 		inflight: make(chan struct{}, cfg.MaxConcurrent),

@@ -102,7 +102,7 @@ export function ObjectiveDetailPage() {
         )}
       </div>
 
-      <StandingPanel objectiveID={id} />
+      <StandingPanel objectiveID={id} budget={obj?.budget} />
 
       {obj.success_criteria && obj.success_criteria.length > 0 && (
         <div className="card" style={{ marginTop: 16 }}>

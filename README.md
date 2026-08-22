@@ -180,17 +180,20 @@ decided — and drafts a roadmap phase or an ADR from it. It owns no capability
 that writes anything: the writing is the `software` pack's, in a git worktree,
 through a pull request somebody reviews.
 
-That split is the point rather than tidiness. One pack that could both conclude
-"Karakuri should be allowed to do more" and carry it out would be one bug away
-from a system that widens its own bounds. `karakuri-maintainer` escalates every
-action however much autonomy its objective has earned, and both of the pack's
-environments refuse to act rather than succeeding quietly. See
-[ADR 017](docs/adr/017-karakuri-as-a-domain-pack.md).
+The separation is real but it is not a pack boundary: `software.agent.maintainer`
+carries `MaxAutonomousActions: 0` and a confidence threshold no plan clears, so
+every action it plans escalates however much autonomy its objective has earned,
+and it holds none of the capabilities that change a repository. This lived in a
+separate `karakuri` pack until [ADR 018](docs/adr/018-self-improvement-belongs-to-the-software-pack.md),
+which records why a namespace was the wrong instrument for the job.
+
+The telemetry environment exists only where a telemetry reader is wired, which
+is how the feature stays off by default.
 
 ```bash
 # Watch the deployment and spend nothing on a quiet week.
-krk objective create --title "Watch Karakuri" --domain karakuri --twin twin_1 \
-    --template karakuri.objective.watch_health
+krk objective create --title "Watch the platform" --domain software --twin twin_1 \
+    --template software.objective.watch_platform_health
 krk objective standing <id> --sense 1h --autonomy sense --ceiling sense
 ```
 
@@ -728,7 +731,7 @@ Additional security stack:
 - **Dependabot** alerts + security updates + version updates across `gomod`, `npm`, and `github-actions`; major-version bumps excluded — those land via maintainer-opened PRs after compat testing
 - **Private vulnerability reporting** open at [`/security/advisories/new`](https://github.com/bsenel/karakuri/security/advisories/new)
 
-See [SECURITY.md](./SECURITY.md) for vulnerability reporting, [CONTRIBUTING.md](./CONTRIBUTING.md) for the Dependabot review policy and merge workflow, and [`.github/CODEOWNERS`](./.github/CODEOWNERS) for ownership.
+See [SECURITY.md](./.github/SECURITY.md) for vulnerability reporting, [CONTRIBUTING.md](./CONTRIBUTING.md) for the Dependabot review policy and merge workflow, and [`.github/CODEOWNERS`](./.github/CODEOWNERS) for ownership.
 
 ## Philosophy
 
@@ -765,5 +768,5 @@ See:
 
 - [LICENSE](./LICENSE)
 - [HALA.md](./HALA.md)
-- [SECURITY.md](./SECURITY.md)
+- [SECURITY.md](./.github/SECURITY.md)
 - [CONTRIBUTING.md](./CONTRIBUTING.md)

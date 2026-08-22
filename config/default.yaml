@@ -312,8 +312,6 @@ domains:
   # an objective in it, but turning it on is a decision worth making rather
   # than one to discover. The pack reads and drafts; the writing is the
   # software pack's, in a worktree, through a pull request somebody reviews.
-  - id: karakuri
-    enabled: false
 
 memory:
   consolidation_threshold: 20

@@ -66,7 +66,36 @@ jobs:
           working-directory: quota
           args: --timeout=5m --config=${{ github.workspace }}/.golangci.yml
 
-  # ── Go SAST (gosec) — report-only until the baseline FPs are triaged ─────────
+  # ── Go SAST (gosec) — baseline is report-only, new findings block ────────────
+  #
+  # This job produces TWO checks, and they behave differently. Read both before
+  # concluding gosec cannot fail a pull request, because it can and does.
+  #
+  #   SAST (gosec)  — this job. continue-on-error plus `|| true` below, so it
+  #                   reports success whatever gosec finds. Always green.
+  #   gosec         — the code-scanning check created by the SARIF upload. It
+  #                   fails a pull request that introduces NEW alerts in the
+  #                   code it changed. Not always green.
+  #
+  # So the report-only stance covers the baseline, not new code. That is the
+  # intended behaviour and worth keeping: the 30-odd pre-existing findings are
+  # verified false positives (argv-form exec, const table names, masked uint32
+  # → byte, intentional detached goroutines) triaged in
+  # docs/audit/SECURITY_AUDIT.md Appendix C, and re-triaging them on every pull
+  # request would teach everyone to ignore the scanner. Something newly written
+  # is a different question and gets asked.
+  #
+  # One consequence that has already caught someone: "my finding is in a class
+  # Appendix C lists as a false positive" does not exempt it. The criterion is
+  # new-in-this-diff, not member-of-a-triaged-class — a fresh G304 blocks even
+  # though Appendix C pre-clears G304 for operator-configured paths. Fix it, or
+  # annotate it: gosec accepts `#nosec Gxxx -- <reason>` and `#nosec Gxxx:
+  # <reason>` alike, with or without a space after the slashes.
+  #
+  # What it does NOT accept is golangci-lint's `//nolint:gosec`, which suppresses
+  # nothing here — the two tools share a name and not a syntax, and nothing warns
+  # you. All four forms were checked against gosec directly rather than taken
+  # from its README.
   gosec:
     name: SAST (gosec)
     runs-on: ubuntu-latest
@@ -80,10 +109,8 @@ jobs:
           go-version: "1.25.x"
           cache: true
       - name: Run gosec
-        # Most current gosec findings are verified false positives (argv-form
-        # exec, const table names); see SECURITY_AUDIT.md Appendix C. Emit SARIF
-        # to the dashboard but do not block PRs yet — this gate is report-only
-        # until the FPs are annotated with #nosec justifications.
+        # Never fails the job — see the block above. The gate lives on the
+        # `gosec` code-scanning check, not here.
         continue-on-error: true
         run: |
           go install github.com/securego/gosec/v2/cmd/gosec@latest

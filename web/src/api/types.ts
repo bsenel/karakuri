@@ -68,6 +68,19 @@ export interface Autonomy {
   demote_on_failure?: boolean;
 }
 
+/**
+ * What one objective may spend, separately from its twin's allowance.
+ *
+ * `daily` bounds the month's bill; `per_reconcile` bounds the blast radius of
+ * one pass that goes wrong — a run that spends a day's allowance in a single
+ * pass has stayed inside its daily ceiling and still wants stopping. Zero
+ * means no ceiling of that kind.
+ */
+export interface Budget {
+  daily?: number;
+  per_reconcile?: number;
+}
+
 export interface Objective {
   id: string;
   title: string;
@@ -81,6 +94,7 @@ export interface Objective {
   mode?: ObjectiveMode;
   cadence?: Cadence;
   autonomy?: Autonomy;
+  budget?: Budget;
   created_at: string;
   updated_at: string;
 }
@@ -110,6 +124,15 @@ export interface ReconcileOutcome {
   escalated: boolean;
   checkpoint_id?: string;
   error?: string;
+  /**
+   * Why an expensive pass that was due did not happen — `budget_exhausted`
+   * or a quiet window. Deliberately not an error: an objective that ran out
+   * of money has not misbehaved, so the circuit breaker never sees it and
+   * earned autonomy survives.
+   */
+  deferred?: string;
+  /** When the deferral clears on its own. Nobody has to do anything first. */
+  deferred_until?: string;
   started_at: string;
   ended_at: string;
 }

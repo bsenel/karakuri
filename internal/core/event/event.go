@@ -38,6 +38,11 @@ const (
 	// often than anything else here, and its whole job is to say that
 	// nothing happened and nothing was spent.
 	TypeReconcileSensed = "reconcile_sensed"
+	// TypeReconcileDeferred is a pass that was due and deliberately did not
+	// spend — a budget reached, a window closed. Distinct from a failure so
+	// an operator reading the stream can tell "it did not run" from "it tried
+	// and broke".
+	TypeReconcileDeferred = "reconcile_deferred"
 	// TypeDriftDetected is the world no longer matching the fingerprint
 	// taken when the objective last converged.
 	TypeDriftDetected = "drift_detected"

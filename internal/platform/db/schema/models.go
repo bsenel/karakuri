@@ -41,6 +41,8 @@ type ObjectiveModel struct {
 	Mode         string    `gorm:"column:mode;not null;default:'';index"`
 	CadenceJSON  string    `gorm:"column:cadence_json;not null;default:''"`
 	AutonomyJSON string    `gorm:"column:autonomy_json;not null;default:''"`
+	BudgetJSON   string    `gorm:"column:budget_json;not null;default:''"`
+	AgentID      string    `gorm:"column:agent_id;not null;default:''"`
 	CreatedAt    time.Time `gorm:"column:created_at;autoCreateTime"`
 	UpdatedAt    time.Time `gorm:"column:updated_at;autoUpdateTime"`
 }
@@ -280,8 +282,10 @@ type ReconcileOutcomeModel struct {
 	CheckpointID string `gorm:"column:checkpoint_id;not null;default:''"`
 	Error        string `gorm:"column:error;not null;default:''"`
 
-	StartedAt time.Time `gorm:"column:started_at;index:idx_reconcile_outcomes_objective_time,priority:2,sort:desc"`
-	EndedAt   time.Time `gorm:"column:ended_at"`
+	StartedAt     time.Time  `gorm:"column:started_at;index:idx_reconcile_outcomes_objective_time,priority:2,sort:desc"`
+	EndedAt       time.Time  `gorm:"column:ended_at"`
+	Deferred      string     `gorm:"column:deferred;not null;default:''"`
+	DeferredUntil *time.Time `gorm:"column:deferred_until"`
 }
 
 func (ReconcileOutcomeModel) TableName() string { return "reconcile_outcomes" }

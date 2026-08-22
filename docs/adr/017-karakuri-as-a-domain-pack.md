@@ -1,6 +1,15 @@
 # ADR 017 — Karakuri watches itself through a read-only port, and cannot change itself from the pack that decides what to change
 
-**Status:** Accepted
+**Status:** Partially superseded by [ADR 018](018-self-improvement-belongs-to-the-software-pack.md)
+
+> Decision 2 ("the pack that decides what to change cannot change anything")
+> was justified by a pack boundary that does not enforce anything: `stepAct`
+> resolves environments across every domain an objective names. The property
+> is real and now lives where it always actually lived — the maintainer
+> agent's own bounds. Decisions 1 (a read-only telemetry port on
+> BuildContext) and 3 (the fingerprint hashes the shape, not the counters)
+> stand unchanged; the environment moved to the software pack and gates on
+> whether the port is wired.
 **Date:** 2026-08-14
 **Relates to:** [ADR 005](005-domain-pack-isolation.md) (domain pack isolation), [ADR 006](006-multi-instance-tool-adapters.md) (twin-bound adapters), [ADR 015](015-standing-objectives-and-reconciliation.md) (standing objectives), [ADR 016](016-earned-autonomy-and-digests.md) (digests)
 

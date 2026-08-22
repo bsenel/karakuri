@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/bsenel/karakuri/internal/core/capability"
 	"github.com/bsenel/karakuri/internal/core/domain"
 	"github.com/bsenel/karakuri/internal/core/environment"
 )
@@ -29,7 +30,9 @@ func (s *Suite) Run(ctx context.Context, p domain.Pack) []Result {
 		checkIDFormat,
 		checkCapabilitySchemas,
 		checkEnvironmentFactories,
+		checkCapabilityRouting,
 		checkAgentCapabilityRefs,
+		checkAgentBoundsBehave,
 		checkCriterionVerifierRefs,
 		checkNoCapabilityIDCollision,
 		checkTeardownNoPanic,
@@ -100,6 +103,207 @@ func checkEnvironmentFactories(_ context.Context, p domain.Pack) Result {
 		}
 	}
 	return Result{Check: name, Passed: true, Message: fmt.Sprintf("all %d environment factories build successfully", len(p.EnvironmentFactories()))}
+}
+
+// checkCapabilityRouting verifies the pack's Serves declarations can actually
+// route, which is now what the loop resolves actions through.
+//
+// Three ways a declaration fails to be one:
+//
+//   - It names a capability the pack does not declare. A route to nothing is a
+//     typo that surfaces as an action reaching noopEnv.
+//   - Two of the pack's environments claim the same capability. The registry
+//     refuses to pick between them and falls back to the plan's env_id, so an
+//     ambiguous declaration silently returns routing to the model it was built
+//     to take it away from.
+//   - A capability declares NeedsWorkspace and nothing serves it. That is the
+//     exact shape of the bug this phase exists for: write_code was given a git
+//     worktree and had no environment behind it, so every plan that used it
+//     created a branch and returned "unimplemented". A capability that writes
+//     and routes nowhere is inert in the most expensive way available.
+//
+// A capability with no route is otherwise fine and common: most are reasoned
+// about or verified rather than executed, and packs with no environments at all
+// pass this trivially.
+func checkCapabilityRouting(_ context.Context, p domain.Pack) Result {
+	const name = "capability_routing"
+
+	declared := make(map[capability.CapabilityID]capability.Capability, len(p.Capabilities()))
+	for _, c := range p.Capabilities() {
+		declared[c.ID] = c
+	}
+
+	servedBy := make(map[capability.CapabilityID]environment.EnvironmentID)
+	for _, f := range p.EnvironmentFactories() {
+		for _, capID := range f.Serves {
+			if _, ok := declared[capID]; !ok {
+				return Result{
+					Check:  name,
+					Passed: false,
+					Message: fmt.Sprintf("environment %q serves %q, which this pack does not declare",
+						f.EnvID, capID),
+				}
+			}
+			if other, dup := servedBy[capID]; dup {
+				return Result{
+					Check:  name,
+					Passed: false,
+					Message: fmt.Sprintf("capability %q is served by both %q and %q; routing cannot choose between them",
+						capID, other, f.EnvID),
+				}
+			}
+			servedBy[capID] = f.EnvID
+		}
+	}
+
+	for _, c := range p.Capabilities() {
+		if c.NeedsWorkspace && servedBy[c.ID] == "" {
+			return Result{
+				Check:  name,
+				Passed: false,
+				Message: fmt.Sprintf("capability %q declares NeedsWorkspace but no environment serves it: it would be given a worktree and then fail", c.ID),
+			}
+		}
+	}
+
+	return Result{
+		Check:   name,
+		Passed:  true,
+		Message: fmt.Sprintf("%d capabilities route to an environment that serves them", len(servedBy)),
+	}
+}
+
+// checkAgentBoundsBehave runs each agent's declared bounds through the real
+// decision policy and asserts the mechanism does what the declaration says.
+//
+// This phase exists because of a specific bug. `MaxAutonomousActions: 0` —
+// written by four packs to mean "plans but never acts", with healthcare saying
+// so in a comment on the line — was read by the decide step as "no cap at all".
+// None of those agents were bounded. It survived three phases and this suite
+// because **every test asserted the field *was* zero and none asserted what
+// zero *did***.
+//
+// So the checks below never read a field back to itself. They call
+// agent.AuthorityBounds.Decide — the same function stepDecide calls — and
+// assert the outcome. A `> 0` guard reintroduced in the policy fails this in
+// every pack that declares a zero cap, rather than in one hand-written test
+// somebody remembered to write.
+//
+// The ladder is asserted whole, so the fix cannot be "escalate everything":
+// a cap must trim to exactly the cap and proceed, and UnlimitedActions must
+// not be trimmed at all.
+func checkAgentBoundsBehave(_ context.Context, p domain.Pack) Result {
+	const name = "agent_bounds_behave"
+
+	declared := make(map[capability.CapabilityID]bool, len(p.Capabilities()))
+	for _, c := range p.Capabilities() {
+		declared[c.ID] = true
+	}
+
+	fail := func(format string, args ...any) Result {
+		return Result{Check: name, Passed: false, Message: fmt.Sprintf(format, args...)}
+	}
+
+	// A capability every agent is guaranteed not to have listed in
+	// RequiresApprovalFor, so a plan built from it isolates the cap rules from
+	// the approval rules.
+	const neutral = capability.CapabilityID("conformance.probe.neutral")
+
+	for _, def := range p.AgentDefinitions() {
+		b := def.Authority
+
+		// Confidence is pinned above any declared threshold so the cap rules
+		// are what decide, not the threshold. A threshold of 1.0 is the
+		// "escalate always" bound and is checked on its own below.
+		confident := 1.0
+
+		plan := func(n int) []capability.CapabilityID {
+			out := make([]capability.CapabilityID, n)
+			for i := range out {
+				out[i] = neutral
+			}
+			return out
+		}
+
+		switch {
+		case b.MaxAutonomousActions == 0:
+			// "Draft and ask". Three actions must escalate, and must survive
+			// intact — an approval falls straight through to act, so trimming
+			// here would discard the work the operator approved.
+			v := b.Decide(confident, 0, plan(3))
+			if !v.Escalate {
+				return fail("agent %q declares MaxAutonomousActions: 0 but a 3-action plan runs without asking", def.ID)
+			}
+			if v.Allowed != 3 {
+				return fail("agent %q escalated but its plan was trimmed to %d of 3; an approved plan would lose actions", def.ID, v.Allowed)
+			}
+
+		case b.MaxAutonomousActions > 0:
+			// A cap trims to exactly the cap, and does not escalate for it.
+			over := b.MaxAutonomousActions + 2
+			v := b.Decide(confident, 0, plan(over))
+			if v.Allowed != b.MaxAutonomousActions {
+				return fail("agent %q declares a cap of %d but a %d-action plan left %d actions",
+					def.ID, b.MaxAutonomousActions, over, v.Allowed)
+			}
+			// And a plan within the cap is untouched.
+			under := b.Decide(confident, 0, plan(b.MaxAutonomousActions))
+			if under.Allowed != b.MaxAutonomousActions {
+				return fail("agent %q trimmed a plan already within its cap of %d to %d",
+					def.ID, b.MaxAutonomousActions, under.Allowed)
+			}
+			if under.Escalate {
+				return fail("agent %q declares a cap of %d and escalates a plan inside it: %s",
+					def.ID, b.MaxAutonomousActions, under.Reason)
+			}
+
+		default:
+			// agent.UnlimitedActions. Nothing is trimmed, however long.
+			v := b.Decide(confident, 0, plan(50))
+			if v.Allowed != 50 {
+				return fail("agent %q declares UnlimitedActions and a 50-action plan was trimmed to %d", def.ID, v.Allowed)
+			}
+			if v.Escalate {
+				return fail("agent %q declares UnlimitedActions and escalated anyway: %s", def.ID, v.Reason)
+			}
+		}
+
+		// A capability listed for approval must escalate when planned, and
+		// must name something the pack declares — a list nobody reads is the
+		// same defect one field over.
+		for _, c := range b.RequiresApprovalFor {
+			if !declared[c] {
+				return fail("agent %q requires approval for %q, which this pack does not declare", def.ID, c)
+			}
+			v := b.Decide(confident, 0, []capability.CapabilityID{c})
+			if !v.Escalate {
+				return fail("agent %q lists %q under RequiresApprovalFor and plans it without asking", def.ID, c)
+			}
+		}
+
+		// A declared threshold must bite. Below it, escalate; at or above it,
+		// do not — a threshold that escalates everything is not a threshold.
+		if b.ConfidenceThreshold > 0 {
+			low := b.Decide(b.ConfidenceThreshold-0.01, b.ConfidenceThreshold, plan(1))
+			if !low.Escalate {
+				return fail("agent %q declares a confidence threshold of %.2f and ran a plan below it",
+					def.ID, b.ConfidenceThreshold)
+			}
+			if b.MaxAutonomousActions != 0 {
+				high := b.Decide(1.0, b.ConfidenceThreshold, plan(1))
+				if high.Escalate && strings.Contains(high.Reason, "threshold") {
+					return fail("agent %q escalates a fully confident plan on its %.2f threshold: %s",
+						def.ID, b.ConfidenceThreshold, high.Reason)
+				}
+			}
+		}
+	}
+
+	return Result{
+		Check:   name,
+		Passed:  true,
+		Message: fmt.Sprintf("all %d agent definitions behave as their bounds declare", len(p.AgentDefinitions())),
+	}
 }
 
 // checkAgentCapabilityRefs verifies that all capability IDs referenced by each agent definition
@@ -205,6 +409,67 @@ func checkTeardownNoPanic(ctx context.Context, p domain.Pack) (res Result) {
 	}()
 	_ = p.Teardown(ctx)
 	return res
+}
+
+// CheckDanglingVerifiers finds criteria whose verifier no enabled pack
+// exports. Run it at boot against the packs that are actually active.
+//
+// The per-pack check deliberately does not resolve foreign domains: a pack is
+// valid on its own (ADR 017), and making one pack's validity depend on which
+// others happen to be enabled would be wrong. But that leaves nobody at all
+// checking a criterion that declares `Domain: "healthcare"` on a deployment
+// where healthcare is switched off. The registry is where that question has an
+// answer, and the answer is worth a loud line in the log rather than a
+// surprise when an objective reaches verify and scores zero for a criterion
+// nothing could ever satisfy.
+//
+// It reports rather than refuses. An operator may be mid-rollout, and a
+// deployment that will not start because one template names a pack that is not
+// enabled yet is worse than one that says so.
+func CheckDanglingVerifiers(packs ...domain.Pack) []Result {
+	const name = "dangling_verifier"
+
+	exported := make(map[capability.CapabilityID]bool)
+	enabled := make(map[string]bool, len(packs))
+	for _, p := range packs {
+		enabled[p.ID()] = true
+		for _, c := range p.Capabilities() {
+			exported[c.ID] = true
+		}
+	}
+
+	var results []Result
+	for _, p := range packs {
+		for _, tmpl := range p.ObjectiveTemplates() {
+			for _, crit := range tmpl.SuccessCriteria {
+				if crit.Verifier == "" || exported[crit.Verifier] {
+					continue
+				}
+				// Distinguish "the pack that owns it is switched off" from
+				// "nothing anywhere exports it": the first is a deployment
+				// decision, the second is a bug in the pack.
+				detail := "no enabled pack exports it"
+				if crit.Domain != "" && !enabled[crit.Domain] {
+					detail = fmt.Sprintf("pack %q is not enabled on this deployment", crit.Domain)
+				}
+				results = append(results, Result{
+					Check:  name,
+					Passed: false,
+					Message: fmt.Sprintf("template %q criterion %q verifies with %q: %s",
+						tmpl.ID, crit.ID, crit.Verifier, detail),
+				})
+			}
+		}
+	}
+
+	if len(results) == 0 {
+		return []Result{{
+			Check:   name,
+			Passed:  true,
+			Message: fmt.Sprintf("every criterion verifier across %d enabled packs resolves", len(packs)),
+		}}
+	}
+	return results
 }
 
 // CheckCrossPackCollisions verifies no two packs share the same capability ID,

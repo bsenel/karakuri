@@ -17,6 +17,18 @@ type PRSummary struct {
 	ID    string
 	Title string
 	URL   string
+
+	// CheckState is the combined CI verdict on the pull request's head:
+	// "success", "failure", "pending", or "" when the adapter could not tell.
+	//
+	// It travels on the summary rather than behind a second call because
+	// "what is currently broken" is the question a list of open pull requests
+	// is usually being asked, and an adapter that has the answer should not
+	// make the caller fan out N requests to reassemble it.
+	CheckState string
+	// FailingChecks names the checks that are red, so a proposal can say what
+	// is broken rather than that something is.
+	FailingChecks []string
 }
 
 type Commit struct {

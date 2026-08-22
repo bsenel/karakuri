@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"time"
 
 	coreagent "github.com/bsenel/karakuri/internal/core/agent"
@@ -57,7 +58,11 @@ func (s *serviceImpl) runLoop(ctx context.Context, loopID string, req loop.Reque
 	// Every model call the loop makes goes through the agent, so charging the
 	// twin's token budget here covers all four of the reflexion call sites
 	// rather than only the one in stepReason.
-	agent = withBudget(agent, s.budget, s.costs, obj.TwinID)
+	agent = withBudget(agent, s.budget, s.costs, obj.TwinID, obj.ID)
+	// Kept separately from the coreagent.Agent it satisfies, because the
+	// per-pass ceiling needs to ask what this run has spent and the interface
+	// deliberately does not carry that. Nil when nothing wrapped the agent.
+	metered, _ := agent.(*budgetedAgent)
 
 	// 4. Build all environments for the domain. Fetch twin bindings so envs
 	// can resolve the correct adapter instance per tenant (ADR 006).
@@ -101,6 +106,35 @@ func (s *serviceImpl) runLoop(ctx context.Context, loopID string, req loop.Reque
 		// whether to keep going.
 		if s.pauseIfBudgetExhausted(ctx, sc) {
 			return
+		}
+
+		// The objective's own per-pass ceiling, checked in the same place and
+		// for the same reason: pausing mid-iteration would leave a half-applied
+		// plan — actions taken, none verified — and one iteration may overshoot
+		// by whatever it spends. The alternative costs correctness.
+		//
+		// Unlike the twin's budget above, this raises no checkpoint and is not
+		// a failure. A per-pass ceiling needs no human: the next pass starts
+		// with a fresh one. The loop stops where it is and reports the score it
+		// reached, so the supervisor reschedules normally and the circuit
+		// breaker never sees it — an objective that ran out of money has not
+		// misbehaved.
+		if spent, ceiling, over := perPassCeilingReached(metered, obj); over {
+			s.hub.Publish(ctx, event.Event{
+				Type:        event.TypeLoopStepCompleted,
+				ObjectiveID: string(obj.ID),
+				Payload: map[string]any{
+					"step":      "budget",
+					"iteration": iter,
+					"reason":    "per_reconcile_ceiling_reached",
+					"spent":     spent,
+					"ceiling":   ceiling,
+				},
+				Timestamp: time.Now().UTC(),
+			})
+			slog.Info("objective reached its per-pass spend ceiling; ending this pass",
+				"objective", string(obj.ID), "spent", spent, "ceiling", ceiling, "iteration", iter)
+			break
 		}
 
 		state.mu.Lock()

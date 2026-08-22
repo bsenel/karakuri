@@ -51,6 +51,25 @@ describe('describe(outcome)', () => {
     expect(describeOutcome(acted)).toContain('reconciled after drift');
   });
 
+  it('does not report a deferred pass as having spent nothing', () => {
+    // A budget deferral carries no loop, so before Phase 23's close-out it
+    // fell through to the sense case and rendered as "nothing moved, nothing
+    // spent" — the opposite of what happened, on the one row where the
+    // operator most needs the truth.
+    const d = describeOutcome(outcome({
+      deferred: 'budget_exhausted',
+      deferred_until: '2026-03-05T00:00:00Z',
+    }));
+    expect(d).toContain('spent its ceiling');
+    expect(d).not.toContain('nothing spent');
+    // And it says nobody has to act, because a budget clears itself.
+    expect(d).toContain('clears itself');
+  });
+
+  it('names a deferral it does not have special wording for', () => {
+    expect(describeOutcome(outcome({ deferred: 'quiet_hours' }))).toContain('quiet_hours');
+  });
+
   it('reports an escalation as waiting, not as a failure', () => {
     const e = describeOutcome(outcome({ loop_id: 'l1', escalated: true }));
     expect(e).toContain('waiting on a decision');

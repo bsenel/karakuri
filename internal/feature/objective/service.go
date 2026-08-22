@@ -64,6 +64,13 @@ func (s *Service) Create(ctx context.Context, req CreateRequest) (objective.Obje
 		if tmpl, ok := s.templates[req.TemplateID]; ok {
 			o.SuccessCriteria = tmpl.SuccessCriteria
 			o.Constraints = tmpl.Constraints
+			// The template's first suggested agent, carried onto the
+			// objective so selection can honour it. Without this the field
+			// was decoration: the objective kept no link back to the
+			// template, so nothing could ever read it.
+			if len(tmpl.SuggestedAgents) > 0 {
+				o.AgentID = string(tmpl.SuggestedAgents[0].ID)
+			}
 		}
 	}
 	if err := s.store.SaveObjective(ctx, o); err != nil {

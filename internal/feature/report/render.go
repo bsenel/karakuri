@@ -112,6 +112,28 @@ func Plain(d digest.Digest) string {
 		}
 	}
 
+	// Below the decisions and above the roll-call: an exhausted budget is not
+	// a decision — it clears itself at the window boundary and needs nobody —
+	// but it is the reason an objective's numbers look quiet, and a reader
+	// should meet it before the numbers rather than after.
+	if len(d.Exhausted) > 0 {
+		b.WriteString("\nStopped for want of budget\n")
+		for _, x := range d.Exhausted {
+			fmt.Fprintf(&b, "  · %s — deferred %s", x.ObjectiveTitle, times(x.Times))
+			if x.Ceiling > 0 {
+				fmt.Fprintf(&b, " against a ceiling of %.2f", x.Ceiling)
+			}
+			if x.InterruptedBy != "" {
+				fmt.Fprintf(&b, ", last one %s", x.InterruptedBy)
+			}
+			if !x.ResumesAt.IsZero() {
+				fmt.Fprintf(&b, "; resumes %s", x.ResumesAt.UTC().Format("15:04 MST"))
+			}
+			b.WriteString("\n")
+		}
+		b.WriteString("  Nothing to do: a budget clears itself. Raise it only if this cadence is worth more.\n")
+	}
+
 	if len(d.Objectives) > 0 {
 		b.WriteString("\nStanding objectives\n")
 		for _, o := range d.Objectives {
@@ -177,4 +199,12 @@ func plural(n int, unit string) string {
 		return fmt.Sprintf("1 %s", unit)
 	}
 	return fmt.Sprintf("%d %ss", n, unit)
+}
+
+// times renders a count the way a sentence wants it.
+func times(n int) string {
+	if n == 1 {
+		return "once"
+	}
+	return fmt.Sprintf("%d times", n)
 }

@@ -8,11 +8,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/bsenel/karakuri/internal/core/capability"
 	"github.com/bsenel/karakuri/internal/core/environment"
 	"github.com/bsenel/karakuri/internal/platform/tools"
 	"github.com/bsenel/karakuri/internal/platform/tools/cliagent"
 	"github.com/bsenel/karakuri/internal/platform/tools/messaging"
 	"github.com/bsenel/karakuri/internal/platform/tools/projectmgmt"
+	"github.com/bsenel/karakuri/internal/platform/tools/research"
 	"github.com/bsenel/karakuri/internal/platform/tools/versioncontrol"
 )
 
@@ -33,9 +35,19 @@ func softwareEnvironmentFactories(reg *tools.Registry) []environment.Factory {
 	}
 	return []environment.Factory{
 		{
-			EnvID:       "software.env.git",
+			EnvID:       EnvGit,
 			Domain:      "software",
 			Description: "Git repository: commits, branches, PRs, worktrees, diffs",
+			Serves: []capability.CapabilityID{
+				"software.act.create_pr",
+				// Drafting lives here because a roadmap phase and an ADR are
+				// files in this repository, and because gitEnv answers both
+				// before its adapter check — a deployment with no version
+				// control wired can still draft.
+				CapProposeRoadmap,
+				CapDraftADR,
+				"software.act.write_design_doc",
+			},
 			Build: func(ctx environment.BuildContext) (environment.Environment, error) {
 				var vc versioncontrol.VersionControlAdapter = versioncontrol.NewNoOp()
 				if reg != nil {
@@ -43,13 +55,14 @@ func softwareEnvironmentFactories(reg *tools.Registry) []environment.Factory {
 						vc = a
 					}
 				}
-				return &gitEnv{id: "software.env.git", vc: vc}, nil
+				return &gitEnv{id: EnvGit, vc: vc}, nil
 			},
 		},
 		{
 			EnvID:       "software.env.ticket",
 			Domain:      "software",
 			Description: "Project management: issues, epics, sprints",
+			Serves:      []capability.CapabilityID{"software.act.create_ticket"},
 			Build: func(ctx environment.BuildContext) (environment.Environment, error) {
 				var pm projectmgmt.ProjectManagementAdapter = projectmgmt.NewNoOp()
 				if reg != nil {
@@ -64,6 +77,7 @@ func softwareEnvironmentFactories(reg *tools.Registry) []environment.Factory {
 			EnvID:       "software.env.communication",
 			Domain:      "software",
 			Description: "Team signals: messages, threads, mentions",
+			Serves:      []capability.CapabilityID{"software.act.send_message"},
 			Build: func(ctx environment.BuildContext) (environment.Environment, error) {
 				var msg messaging.MessagingAdapter = messaging.NewNoOp()
 				if reg != nil {
@@ -78,6 +92,13 @@ func softwareEnvironmentFactories(reg *tools.Registry) []environment.Factory {
 			EnvID:       "software.env.cli_agent",
 			Domain:      "software",
 			Description: "Coding-agent CLI delegate (Claude Code, Cursor, Gemini, Copilot)",
+			// The three capabilities that write source. This is the routing
+			// the planner hint used to describe and could not enforce.
+			Serves: []capability.CapabilityID{
+				"software.act.delegate_to_cli",
+				"software.act.write_code",
+				"software.act.write_test",
+			},
 			Build: func(ctx environment.BuildContext) (environment.Environment, error) {
 				var cli cliagent.CLIAgentAdapter = cliagent.NewNoOp()
 				if reg != nil {
@@ -90,11 +111,38 @@ func softwareEnvironmentFactories(reg *tools.Registry) []environment.Factory {
 		},
 		noopFactory("software.env.ci", "CI pipeline: build status, test results, coverage"),
 		noopFactory("software.env.observability", "Runtime: logs, metrics, alerts"),
-		noopFactory("software.env.codebase", "Static analysis: file tree, symbols, dependency graph"),
+		{
+			EnvID:       "software.env.research",
+			Domain:      "software",
+			Description: "External sources: what the field has published on a topic, ranked by confidence",
+			Serves:      []capability.CapabilityID{CapResearch},
+			Build: func(_ environment.BuildContext) (environment.Environment, error) {
+				// Single-instance slot, so no adapter binding to resolve. The
+				// capability has been declared since Phase 2 and the adapter
+				// built since Phase 6; nothing had introduced them.
+				var rs research.ResearchAdapter
+				if reg != nil {
+					rs = reg.Research
+				}
+				return newResearchEnv("software.env.research", rs), nil
+			},
+		},
+		{
+			EnvID:       "software.env.codebase",
+			Domain:      "software",
+			Description: "The repository as evidence: the roadmap's own deferred work, TODO density by package, packages with no tests, and where AGENTS.md rules live",
+			Serves:      []capability.CapabilityID{CapAnalyseRepo},
+			Build: func(_ environment.BuildContext) (environment.Environment, error) {
+				// Root defaults to the server's working directory, like
+				// shellEnv. Declared since Phase 2 and a noop until Phase 25.
+				return newCodebaseEnv("software.env.codebase", ""), nil
+			},
+		},
 		{
 			EnvID:       "software.env.shell",
 			Domain:      "software",
 			Description: "Local shell executor (/bin/sh) — runs software.act.shell_exec actions with timeout, output capture, and safety guardrails. Defaults to the server's CWD; configurable per-deployment.",
+			Serves:      []capability.CapabilityID{"software.act.shell_exec"},
 			Build: func(_ environment.BuildContext) (environment.Environment, error) {
 				return newShellEnv("software.env.shell", "", 60*time.Second), nil
 			},
@@ -176,6 +224,20 @@ func (e *gitEnv) Observe(ctx context.Context, q environment.ObservationQuery) (e
 		state["prs_error"] = err.Error()
 	} else {
 		state["prs"] = prs
+		// What is currently broken, pulled out of the list rather than left
+		// for a reader to derive. Deferred from Phase 22, where "an operator
+		// relays it" was the plan; a pack proposing work from evidence should
+		// be able to see a red build without being told.
+		var broken []map[string]any
+		for _, pr := range prs {
+			if pr.CheckState != "failure" {
+				continue
+			}
+			broken = append(broken, map[string]any{
+				"pr": pr.ID, "title": pr.Title, "url": pr.URL, "failing": pr.FailingChecks,
+			})
+		}
+		state["failing_prs"] = broken
 	}
 	return environment.Observation{
 		EnvID: e.id, State: state, Version: stateVersion(state), Timestamp: time.Now().UTC(),
@@ -183,6 +245,25 @@ func (e *gitEnv) Observe(ctx context.Context, q environment.ObservationQuery) (e
 }
 
 func (e *gitEnv) Act(ctx context.Context, a environment.Action) (environment.ActionResult, error) {
+	// Drafting needs no adapter and touches no repository, so it is answered
+	// before the adapter check: a deployment with no version control wired can
+	// still draft a roadmap phase for a human to read. Checking the adapter
+	// first would route these to noopAct and report a draft that never
+	// happened.
+	switch a.CapabilityID {
+	case CapProposeRoadmap:
+		return recordDraft(a, "problem")
+	case CapDraftADR:
+		return recordDraft(a, "decision")
+	case "software.act.write_design_doc":
+		// Declared in Phase 2, on two agents' capability lists, and required
+		// by a priority-9 hint before any write_code action — and served by
+		// nothing until Phase 26, so every plan that obeyed the hint got "no
+		// active adapter" for the step the hint made mandatory. It is a draft
+		// like the two above and is recorded the same way.
+		return recordDraft(a, "design")
+	}
+
 	adapter := e.vc
 	if adapter == nil || !adapter.Active() {
 		return noopAct(a), nil
@@ -370,14 +451,32 @@ func (e *cliEnv) Act(ctx context.Context, a environment.Action) (environment.Act
 	if e.cli == nil || !e.cli.Active() {
 		return noopAct(a), nil
 	}
-	if string(a.CapabilityID) != "software.act.delegate_to_cli" {
-		// Other capabilities aren't this env's concern — fall through to noop success.
+	prompt, ok := cliPrompt(a)
+	if !ok {
+		// Not this environment's concern.
 		return noopAct(a), nil
+	}
+	if strings.TrimSpace(prompt) == "" {
+		return environment.ActionResult{
+			Success: false,
+			Error:   fmt.Sprintf("%s needs a task to delegate: pass params.prompt (or task/instruction)", a.CapabilityID),
+		}, nil
+	}
+	// A capability that declares NeedsWorkspace is given one by stepAct before
+	// it runs. Arriving without it means the provisioning failed, and writing
+	// into the checked-out tree instead is the one outcome a planner hint
+	// explicitly forbids — so it refuses rather than guessing a path.
+	worktree := asString(a.Params, "worktree_path")
+	if worktree == "" {
+		return environment.ActionResult{
+			Success: false,
+			Error:   fmt.Sprintf("%s has no worktree to write in; refusing to write to the checked-out tree", a.CapabilityID),
+		}, nil
 	}
 
 	in := cliagent.DelegateInput{
-		Prompt:         asString(a.Params, "prompt"),
-		WorktreePath:   asString(a.Params, "worktree_path"),
+		Prompt:         prompt,
+		WorktreePath:   worktree,
 		TimeoutSeconds: 600,
 	}
 	if files, ok := a.Params["files"].([]any); ok {
@@ -464,4 +563,41 @@ func stateVersion(state map[string]any) string {
 	}
 	sum := sha256.Sum256([]byte(sb.String()))
 	return hex.EncodeToString(sum[:])[:16]
+}
+
+// cliPrompt returns the task to hand the coding-agent CLI, and whether this
+// capability is one the CLI environment serves.
+//
+// write_code and write_test are delegated rather than reimplemented. They were
+// declared for three phases with no implementation at all: stepAct provisioned
+// a worktree for them by name and then routed them to noopEnv, which returned
+// "unimplemented" — so the capability with a workspace could not write, and
+// delegate_to_cli, which can, was never given one. They are the same act with
+// different emphasis, and saying so beats a second code path.
+func cliPrompt(a environment.Action) (string, bool) {
+	// Callers spell the task differently depending on the capability; accept
+	// any of them rather than failing on vocabulary.
+	task := asString(a.Params, "prompt")
+	if task == "" {
+		task = asString(a.Params, "task")
+	}
+	if task == "" {
+		task = asString(a.Params, "instruction")
+	}
+
+	switch string(a.CapabilityID) {
+	case "software.act.delegate_to_cli":
+		return task, true
+	case "software.act.write_code":
+		return task, true
+	case "software.act.write_test":
+		if task == "" {
+			return "", true
+		}
+		// Stated in the prompt rather than left to the capability's name: the
+		// CLI receives text, and "write a test" is not implied by an ID it
+		// never sees.
+		return "Write tests only, no implementation changes. " + task, true
+	}
+	return "", false
 }

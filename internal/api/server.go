@@ -128,7 +128,7 @@ func NewApp(
 	// cannot express that in either direction, so the second edge is wired
 	// here, immediately after both services exist.
 	cpSvc.SetResumer(loopSvc)
-	reconcileSvc := featurereconcile.NewService(store, loopSvc, envReg, domReg, cpSvc, hub, featurereconcile.Config{
+	reconcileSvc := featurereconcile.NewService(store, loopSvc, envReg, domReg, cpSvc, hub, quotaDeps, featurereconcile.Config{
 		Tick:               cfg.Reconcile.TickDuration(),
 		MaxConcurrent:      cfg.Reconcile.MaxConcurrent,
 		LeaseTTL:           cfg.Reconcile.LeaseTTLDuration(),

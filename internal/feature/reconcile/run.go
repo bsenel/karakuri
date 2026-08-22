@@ -16,6 +16,9 @@ import (
 	featureloop "github.com/bsenel/karakuri/internal/feature/loop"
 	"github.com/bsenel/karakuri/internal/platform/schedule"
 	"github.com/bsenel/karakuri/internal/platform/storage"
+	karakuriquota "github.com/bsenel/karakuri/internal/quota"
+	"github.com/bsenel/karakuri/quota"
+	"github.com/bsenel/karakuri/quota/cost"
 )
 
 // pass is one turn of the outer loop over a single objective.
@@ -194,6 +197,38 @@ func (s *Service) pass(ctx context.Context, id objective.ObjectiveID, forced rec
 		st.NextReconcileAt = nilOrTime(deferUntil)
 		st.Phase = reconcile.PhaseIdle
 		return s.store.SaveReconcileState(ctx, st)
+	}
+
+	// And the ceiling, checked in the same place and for the same reason as
+	// the quiet hours: it bounds the expensive tier only. The sense above has
+	// already run and its drift is already recorded, so an objective out of
+	// money still reports what it saw.
+	if over, resetsAt := s.budgetDeferral(ctx, obj, started); over {
+		s.publish(ctx, event.TypeReconcileDeferred, obj, map[string]any{
+			"reason":    "budget_exhausted",
+			"resets_at": resetsAt,
+			"daily":     obj.BudgetDeclaration().Daily,
+		})
+		st.NextDueAt = nilOrTime(resetsAt)
+		st.NextReconcileAt = nilOrTime(resetsAt)
+		st.Phase = reconcile.PhaseIdle
+		// Recorded as an outcome so the history and the digest can say why a
+		// reconcile that was due did not happen. Deliberately not a failure:
+		// finish() would count it against the breaker, and an objective that
+		// ran out of money has not misbehaved.
+		return s.finish(ctx, &st, obj, cadence, reconcile.Outcome{
+			ID:            newOutcomeID(),
+			ObjectiveID:   obj.ID,
+			TwinID:        obj.TwinID,
+			Trigger:       trigger,
+			Drift:         drift,
+			Autonomy:      level,
+			CriteriaMet:   st.CriteriaMet,
+			Deferred:      "budget_exhausted",
+			DeferredUntil: resetsAt,
+			StartedAt:     started,
+			EndedAt:       s.now(),
+		}, nil)
 	}
 
 	return s.reconcileNow(ctx, &st, obj, decl, level, cadence, trigger, drift, fp, started)
@@ -493,6 +528,13 @@ func (s *Service) finish(
 	if st.ConsecutiveFailures > 0 {
 		retryAt = now.Add(backoff(st.ConsecutiveFailures, s.cfg.MaxBackoff))
 	}
+	// A deferral sets a floor the cadence must not schedule over: without it,
+	// reschedule would recompute the next due time from the cadence alone and
+	// an objective deferred until midnight would be due again in an hour,
+	// re-reading the ledger every hour to rediscover it is still out of money.
+	if !outcome.DeferredUntil.IsZero() && outcome.DeferredUntil.After(retryAt) {
+		retryAt = outcome.DeferredUntil
+	}
 	s.reschedule(st, cadence, retryAt)
 	return s.store.SaveReconcileState(ctx, *st)
 }
@@ -707,4 +749,79 @@ func (s *Service) saveAudit(ctx context.Context, obj objective.Objective, kind, 
 		PayloadJSON:      string(pj),
 		Success:          true,
 	})
+}
+
+// budgetDeferral reports whether this objective has spent its daily ceiling,
+// and when the ceiling next resets.
+//
+// Exhaustion is a deferral rather than a pause, and the distinction is the
+// whole design. A pause is the breaker's word for "this needs a human"; a
+// budget needs nobody — it clears at the window boundary on its own. Routing
+// both through Paused would turn a nightly ceiling into a nightly chore and
+// would make `krk objective resume` the way to buy more tokens.
+//
+// It is also deliberately not a failure: ConsecutiveFailures stays where it
+// is, so an objective that ran out of money does not walk into the circuit
+// breaker on its way, and does not lose autonomy it earned.
+//
+// Sensing is unaffected. The check sits at the expensive gate only, so an
+// objective that cannot afford to act can still afford to notice — and the
+// drift it observes is still recorded and reported.
+func (s *Service) budgetDeferral(ctx context.Context, obj objective.Objective, now time.Time) (bool, time.Time) {
+	budget := obj.BudgetDeclaration()
+	if !budget.Declared() || budget.Daily <= 0 {
+		return false, time.Time{}
+	}
+	if !s.quota.Costs.Enabled() {
+		// A declared ceiling with no ledger behind it cannot be enforced.
+		// Saying so once per pass is better than either silently permitting
+		// everything or silently stopping an objective the operator expects
+		// to be running.
+		slog.Warn("objective declares a budget but no cost ledger is configured; the ceiling is not enforced",
+			"objective", string(obj.ID))
+		return false, time.Time{}
+	}
+
+	spent := s.spentToday(ctx, obj, now)
+	if !budget.ExceedsDaily(spent) {
+		return false, time.Time{}
+	}
+	// The next UTC midnight, matching the window the ledger buckets on.
+	reset := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC).Add(24 * time.Hour)
+	return true, reset
+}
+
+// spentToday totals what this objective cost since the start of the UTC day.
+//
+// Grouped by resource and matched on the objective's own bucket rather than
+// filtered server-side, because cost.Query narrows by subject and label and
+// has no resource filter. The subject stays the twin — the twin is who pays —
+// and the resource is what says which piece of work spent it.
+func (s *Service) spentToday(ctx context.Context, obj objective.Objective, now time.Time) float64 {
+	// The whole UTC day, not [midnight, now). Query.Until is exclusive, so a
+	// window ending at the moment of the check drops spend recorded in that
+	// same instant — and "what has this objective spent today" means the day,
+	// which nothing can outrun because no event is dated in the future.
+	since := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
+	buckets, err := s.quota.CostReport(ctx, cost.Query{
+		Since:    since,
+		Until:    since.Add(24 * time.Hour),
+		Subjects: []quota.Key{karakuriquota.CostSubject(obj.TwinID)},
+		GroupBy:  []cost.GroupBy{cost.ByResource},
+	})
+	if err != nil {
+		// Unreadable is not unspent. Refusing to reconcile because the ledger
+		// blinked would stop an objective for a reason unrelated to its
+		// budget; the ceiling is a spend control, not an availability one.
+		slog.Warn("could not read spend for a budgeted objective; not enforcing this pass",
+			"objective", string(obj.ID), "err", err)
+		return 0
+	}
+	want := "objective:" + string(obj.ID)
+	for _, b := range buckets {
+		if len(b.Key) > 0 && b.Key[0] == want {
+			return b.Cost
+		}
+	}
+	return 0
 }
