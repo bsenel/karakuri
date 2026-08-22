@@ -21,12 +21,6 @@ permissions:
   actions: read
 
 jobs:
-  # NOT gated on `changes`, and it cannot be. The `CodeQL` check is created by
-  # the SARIF upload rather than by this job, so a skipped job produces no
-  # check run at all — and a required check that never reports leaves a pull
-  # request "Expected — waiting for status" forever. Verified on #108: with
-  # this gated, a documentation-only pull request had every job reporting and
-  # was still unmergeable.
   analyze:
     name: Analyze (${{ matrix.language }})
     runs-on: ubuntu-latest
