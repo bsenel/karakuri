@@ -2,7 +2,7 @@
 
 ## Context
 
-Karakuri replaced the original role-based workflow simulator with an autonomous platform built on four primitives: **Capabilities, Environments, Objectives, and Agents**. No backward compatibility is maintained. The CLI binary is `krk`. This document records what shipped (Phases 1–26) and what is planned next (Phases 27–32). Starting with Phase 14, the auth and quota engines ship as standalone Go modules under `github.com/bsenel/karakuri/{auth,quota}` and their submodules — fully reusable by other repos without pulling Karakuri itself.
+Karakuri replaced the original role-based workflow simulator with an autonomous platform built on four primitives: **Capabilities, Environments, Objectives, and Agents**. No backward compatibility is maintained. The CLI binary is `krk`. This document records what shipped (Phases 1–27) and what is planned next (Phases 28–32). Starting with Phase 14, the auth and quota engines ship as standalone Go modules under `github.com/bsenel/karakuri/{auth,quota}` and their submodules — fully reusable by other repos without pulling Karakuri itself.
 
 Phases 27–32 were proposed from two kinds of evidence: what this repository declares and does not serve, and what the field published in 2026. The second is recorded once, with sources and with its own limits stated, in [docs/research/ai-use-cases-2026.md](research/ai-use-cases-2026.md) — so a phase can cite it rather than re-deriving the landscape, and so a claim about the field stays distinguishable from a claim about this tree.
 
@@ -37,7 +37,7 @@ Phases 27–32 were proposed from two kinds of evidence: what this repository de
 | 24    | Conformance That Tests Behaviour           | **Completed** |
 | 25    | Self-Improvement Without a History         | **Completed** |
 | 26    | The Write Path                             | **Completed** |
-| 27    | Observations Carry Provenance              | Planned       |
+| 27    | Observations Carry Provenance              | **Completed** |
 | 28    | MCP — The Tools Nobody Has To Write        | Planned       |
 | 29    | Telemetry Other Tools Already Understand   | Planned       |
 | 30    | The Evaluation Set Karakuri Already Has    | Planned       |
@@ -2177,7 +2177,7 @@ plausibility of its own wording.
 
 ---
 
-## Phase 27 — Observations Carry Provenance (Planned)
+## Phase 27 — Observations Carry Provenance (Completed)
 
 **Goal:** The loop can tell what it read from infrastructure an operator
 configured apart from what a stranger wrote, and a plan justified by the latter
@@ -2277,6 +2277,64 @@ to rank prose by how suspicious it reads. It marks where text came from and
 makes a human look before Karakuri acts on it, which is a property that holds
 against attacks nobody has thought of yet.
 
+**Shipped (steps 1–5).** See
+[ADR 021](adr/021-observations-carry-provenance.md).
+
+`environment.Trust` is a field on both `Observation` and `ActionResult`, set by
+the environment that built the payload. It is on the payload rather than on the
+`Factory`, unlike `Serves`, and that is the one design decision here worth
+arguing with: a factory-level label makes trust a property of the environment
+when the property that matters belongs to what came back. `gitEnv` observing a
+repository with no open pull requests has carried nobody's writing, and a
+deployment that escalates every plan because the repository might one day have
+one is a deployment whose operator switches the mechanism off. Four
+environments declare: `gitEnv` when a pull request is present, `ticketEnv` when
+a ticket is, `researchEnv` on the act path when a search returned findings, and
+`commsEnv` on the branch that would carry message bodies — labelled even though
+`stepObserve` cannot currently reach it, so that wiring a channel filter later
+is a one-line change that is already governed rather than a hole that opens
+quietly.
+
+`AuthorityBounds.Decide` takes an `agent.Evidence` naming the sources, and
+escalates ahead of the confidence check — a reviewer can go and read a named
+source; confidence is the model's report on itself. It escalates whatever
+autonomy the agent has earned, which is the whole point: earned autonomy
+(ADR 016) is earned against the operator's own infrastructure. Evidence
+accumulates across the run rather than resetting per iteration, because material
+a planner has read cannot be un-read and the act path delivers its payload one
+step *after* the decision that would have gated it.
+
+`WorldState.Blind` names the environments whose `Observe` returned an error,
+using the same field name `reconcile.Fingerprint.Blind` uses for the same
+reason, and it reaches the planner in the prompt.
+
+**The prompt is where the notice had to go**, and that is a finding rather than
+a preference: `buildUserPrompt` does not serialise `WorldState` at all — it
+renders the objective, the task, and a *count* of memory entries. A `Trust`
+field on an observation the model never sees would have been a declaration
+nobody reads, which is the defect class Phase 24 exists for, shipped inside the
+phase meant to close it.
+
+**The zero value is trusted, and that is a real cost.** ADR 019 argues the
+opposite default for `AuthorityBounds` — forgetting fails toward asking — and
+this trades the other way, because untrusted-by-default escalates every plan in
+every deployment until each shipped environment is labelled, and a gate that
+fires on everything is a gate nobody reads. A payload that carries somebody's
+prose and forgets to say so is a pack bug, and no check outside the pack can
+find it. No dial was added: the first thing a per-source exemption would be used
+for is switching off the case it was built for.
+
+**Acceptance, met.** `checkProvenanceEscalates` runs each pack's bounds through
+the real `Decide` twice — the same plan, the same confidence, once with a
+synthetic third-party source and once without — and asserts the answers differ
+in exactly that dimension, with the trusted half asserted too so "escalate
+everything" cannot pass. Disabling the branch in `Decide` fails it in all three
+shipped packs that declare agents, each naming its own, plus nine tests across
+the policy, the loop and the software pack. That is broader than the acceptance
+asked for ("every pack that declares an untrusted environment"): the check runs
+against the policy rather than against a pack's environments, because whether a
+pack labelled itself honestly is not decidable from outside it.
+
 ---
 
 ## Phase 28 — MCP: The Tools Nobody Has To Write (Planned)
@@ -2316,11 +2374,15 @@ mean a pack could be graded by a verifier that appeared this morning.
    a reserved `mcp.<instance>.<tool>` namespace: never valid as a
    `Criterion.Verifier`, never `NeedsWorkspace`, in `RequiresApprovalFor` by
    default, and outside pack conformance entirely. This is the phase's only real
-   decision and wants ADR 021 written with the code rather than ahead of it.
+   decision and wants ADR 022 written with the code rather than ahead of it
+   (ADR 021 went to Phase 27's provenance work).
 3. **Untrusted by construction.** A tool *description* from a third-party server
    lands in the planner's context, which is Phase 27's surface arriving from a
    new direction — one that ships an allowlist and an escalation default because
-   its content is authored elsewhere.
+   its content is authored elsewhere. The marking now exists:
+   `environment.ActionResult.Trust` is what an MCP environment sets on every
+   tool result, and `environment.Observation.Trust` on anything a server
+   advertises, so this step is a declaration rather than a mechanism.
 4. **Routing through the index, not the fallback — and the index has to grow
    first.** `Factory.Serves` is an exact list of capability IDs, reverse-indexed
    once at `Register` (`internal/core/environment/registry.go`). It has no
@@ -2862,7 +2924,7 @@ OBSERVE → REASON → DECIDE → ACT → VERIFY → LEARN → (next iteration o
 - Merge `Observation` list into `WorldState{Observations, Version: sha256(all obs SHAs), Timestamp}`
 - Load working memory into `AgentInput.Memory` from prior iterations' `LoopContext`
 - Recall episodic and semantic memories for this objective via `Memory.Recall()`
-- Emit `loop_step_started` then `loop_step_completed{step: observe, world_state_version, obs_count}`
+- Emit `loop_step_started` then `loop_step_completed{step: observe, world_state_version, obs_count, blind, third_party_sources}`
 
 **Reason (`reason.go`):**
 
@@ -3089,7 +3151,7 @@ Checks (run via `krk domain test <id>`):
 | Cost runaway from unbounded LLM use                          | High     | Phase 15 introduces per-twin LLM token budgets; exhaustion produces a checkpoint event (human approval) rather than a 500 or silent overrun. Phase 18 shipped the attribution: every model and tool call is recorded with its provider, model and the containers it belonged to, priced from a configured table, and published as `cost_recorded` — so spend per twin / team / provider is visible before the bill arrives. Phase 18 also wired the per-capability daily quota, which had been configured and enforced nowhere since Phase 15                                                                                                                                                              |
 | IdP outage locks operators out of Karakuri                    | High     | **Resolved differently than planned.** Local password login stays mounted alongside any configured provider, so the bootstrap administrator is the break-glass path. No static token was added: Phase 14 deleted the static bearer token, and re-adding a long-lived credential to survive a temporary outage trades a permanent risk for a temporary one. `ChainResolver` puts the local resolver first, so password login does not depend on the IdP being reachable |
 | Cross-tenant access through a container scope                 | Medium   | Phase 17 keys every scope on an issued ID, never a display name, so two organisations with a team called "eng" cannot collide — the case is pinned end to end from the tree through `InScope` to a 403. A resource with no containers carries no labels and matches exactly what it matched under the flat model, so no existing grant widens. Listing is filtered from the same bindings the per-resource check reads, and an empty grant set matches no rows rather than every row |
-| An agent redirected by the content it observes                | High     | **Open until Phase 27.** `stepObserve` merges every observation into one flat `WorldState` with no mark on any of them, so a pull request body, a Slack message and a scraped page reach the planner as the same kind of fact — and Karakuri acts on what it concludes. Phase 27's mitigation is not detection: environments declare whether their payload is operator-configured infrastructure or third-party prose, and a plan tracing to the latter escalates above its earned rung, through `AuthorityBounds.Decide` rather than a second gate. That property holds against attacks nobody has enumerated, which a filter on suspicious-looking text does not. Note where the content actually enters today: `researchEnv.Observe` reports only whether an adapter is wired, and scraped pages arrive as `ActionResult.StateDelta` on the act path instead — so the wider surface is action results, not observations, and Phase 27 marks both. Until it ships, the interim brake is the autonomy rung for a standing objective (`--ceiling propose`) and the agent definition's own `AuthorityBounds` for a directly-run one — a oneshot objective has no rung, so capping autonomy is not available to it |
+| An agent redirected by the content it observes                | High     | **Mitigated in Phase 27**, not closed — nothing here detects an injected instruction. `environment.Observation` and `environment.ActionResult` each carry a `Trust` the environment declares, and a plan drafted while a third party's writing is in evidence escalates through `AuthorityBounds.Decide` — whatever autonomy the agent has earned, and through the one gate ADR 015 permits rather than a second one beside it. The escalation names the source, in the checkpoint reason and in the audit row. That property holds against attacks nobody has enumerated, which a filter on suspicious-looking text does not. Where the content actually enters was the finding: `researchEnv.Observe` reports only whether an adapter is wired and scraped pages arrive as `ActionResult.StateDelta` on the act path, so the wider surface is action results and both paths are marked. **What remains open** is the honesty of the labels: an environment returning `TrustOperator` over a chat transcript is indistinguishable from one returning it over a metric, and the zero value is the trusted one — a pack that forgets is trusted, and no check outside the pack can find it |
 | A third-party MCP tool acts without review                    | High     | Phase 28 registers discovered tools in a reserved `mcp.<instance>.<tool>` namespace that is in `RequiresApprovalFor` by default, never valid as a `Criterion.Verifier`, never `NeedsWorkspace`, and outside pack conformance entirely. A pack that could be graded by a verifier that appeared this morning is a pack whose criteria mean nothing; a tool that could write files without declaring it would bypass ADR 019. Instances carry an allowlist, so a server adding a tool does not widen what a twin may do |
 | An uncalibrated judge grades every criterion in every pack    | High     | **Open until Phase 30.** `evaluateWithAgent` settles every verified criterion in every domain, and how often it agrees with a person has never been measured. Phase 25 fixed what it was shown (nothing the actions produced) and how it parsed a verdict (a negation counted as a pass); neither of those is calibration. The completion score the whole system reports rests on it. Phase 30's corpus is the one this deployment already has — resolved checkpoints carry a plan and a human's verdict on it — and the number it produces is published rather than assumed |
 | Audit rows pruned below what an assessor asks for             | Medium   | **Open until Phase 31.** Memory has had a retention scheduler since Phase 13; `tool_events` has no declared floor, so nothing stops a future retention job from deleting the record of who approved what. Phase 31 declares a floor (six months minimum, configurable upward only) and refuses a pruning path configured below it, naming the floor rather than trimming quietly. The export it adds is reproducible for the same reason a digest is — it reads and accumulates nothing — so a failed export is retried rather than reconstructed |

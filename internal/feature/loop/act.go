@@ -258,6 +258,20 @@ func stepAct(ctx context.Context, sc *stepContext, p plan) []actionOutcome {
 			UnitKind:     cost.UnitCalls,
 		})
 
+		// A result carrying somebody else's writing — a scraped page, a fetched
+		// issue body — puts its environment into evidence for every plan
+		// drafted from here on. This is the wider of the two surfaces:
+		// researchEnv's observation says only whether its adapter is wired and
+		// returns the pages themselves here, one step after the decision that
+		// would have gated them.
+		if result.Trust.IsThirdParty() {
+			source := envAdapter
+			if source == "" {
+				source = action.CapabilityID
+			}
+			sc.evidence = sc.evidence.WithSource(source)
+		}
+
 		outcomes = append(outcomes, actionOutcome{
 			CapabilityID: action.CapabilityID,
 			EnvID:        envAdapter,

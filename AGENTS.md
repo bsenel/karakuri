@@ -54,6 +54,7 @@ Add a new `AGENTS.md` in a subdirectory when that area has **distinct** conventi
 6. **API contract** — REST shapes in [docs/openapi.yaml](docs/openapi.yaml); do not break paths or JSON fields without updating the spec.
 7. **Config** — Defaults in `config/default.yaml`; secrets via environment (e.g. `ANTHROPIC_API_KEY`), never committed.
 8. **Standing objectives** — The reasoning loop converges once and stops. Anything that must keep running belongs in `internal/feature/reconcile`, which *calls* the loop; do not teach the loop to not terminate. Authority for a run is expressed by writing `agent.AuthorityBounds` into the request, never by a second gate ([ADR 015](docs/adr/015-standing-objectives-and-reconciliation.md)).
+9. **Provenance** — An `environment.Observation` or `ActionResult` carrying text somebody outside the deployment wrote — a PR or issue title, a chat message, a scraped page, an MCP tool result — sets `Trust: environment.TrustThirdParty`. Set it from what the payload actually holds, not from the environment's identity, and never infer it in the loop ([ADR 021](docs/adr/021-observations-carry-provenance.md)).
 
 ## Before finishing a change
 

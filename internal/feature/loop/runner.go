@@ -29,6 +29,14 @@ type stepContext struct {
 	iteration  int
 	svc        *serviceImpl
 	memEntries []memory.Entry
+
+	// evidence names the environments that have put a third party's writing in
+	// front of the planner during this run — observations in stepObserve,
+	// action results in stepAct. It accumulates rather than resetting per
+	// iteration: material a planner has already read cannot be un-read, and the
+	// act path in particular delivers its payload one step *after* the decision
+	// that would have gated it, so the plan it justifies is the next one.
+	evidence coreagent.Evidence
 }
 
 func (s *serviceImpl) runLoop(ctx context.Context, loopID string, req loop.Request) {

@@ -111,7 +111,7 @@ func stepDecide(ctx context.Context, sc *stepContext, p plan, mods *corecheckpoi
 	for _, action := range p.Actions {
 		planned = append(planned, capability.CapabilityID(action.CapabilityID))
 	}
-	verdict := authority.Decide(p.Confidence, threshold, planned)
+	verdict := authority.Decide(p.Confidence, threshold, planned, sc.evidence)
 	escalate = verdict.Escalate
 	escalateReason = verdict.Reason
 	if verdict.Allowed < len(p.Actions) {
@@ -130,6 +130,10 @@ func stepDecide(ctx context.Context, sc *stepContext, p plan, mods *corecheckpoi
 			"confidence_threshold": authority.ConfidenceThreshold,
 			"effective_threshold":  threshold,
 			"max_autonomous":       authority.MaxAutonomousActions,
+			// Named in the audit row as well as in the reason string, so a
+			// reviewer deep-linking from /checkpoints into /audit can see which
+			// sources to go and read without parsing prose.
+			"third_party_sources": sc.evidence.ThirdParty,
 		})
 		auditID := fmt.Sprintf("audit-%d", time.Now().UnixNano())
 		_ = sc.svc.store.SaveToolEvent(ctx, storage.ToolEvent{
