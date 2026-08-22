@@ -32,3 +32,5 @@ tradeoff is worthwhile when each call is cheap relative to the cost of
 an unmet objective (manual escalation, repeated retries). Set 
 `agent.reasoning_strategy: reflexion` on agents that handle high-stakes 
 tasks; leave the default `chain_of_thought` on routine ones.
+
+<!-- CI path-filter verification (#107). This branch is a throwaway. -->
