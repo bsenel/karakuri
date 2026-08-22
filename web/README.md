@@ -5,7 +5,8 @@ endpoints; no backend changes required.
 
 ## Requirements
 
-- Node 18 or later
+- Node `^20.19.0 || ^22.12.0 || >=24.0.0` — the range vite 8 and vitest 4
+  require between them (see `engines` in `package.json`)
 
 ## Develop
 
