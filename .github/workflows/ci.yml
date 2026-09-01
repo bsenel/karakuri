@@ -219,7 +219,16 @@ jobs:
         with:
           go-version: "1.25.x"
           cache: true
-      - run: go test ./... -race -count=1 -timeout 5m
+      # The timeout is per test binary, and test/integration is the one that
+      # matters: it stands a real server up per test and hashes real passwords,
+      # so under -race it lands between 245s and 296s depending on what the
+      # runner is doing. Against a 5m budget that is 82% to 99% — and on
+      # 08eb492 it went over, timing out with the test then running only 10s
+      # in. Nothing had slowed down; the budget simply had no headroom left.
+      # 15m leaves room for the suite to keep growing before this is a
+      # question again, and a genuine hang still fails the job rather than
+      # hanging the runner.
+      - run: go test ./... -race -count=1 -timeout 15m
 
   # A real identity provider, because the in-process one in the integration
   # suite can only prove Karakuri drives the flow correctly — not that it agrees
