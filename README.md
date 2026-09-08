@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/assets/logo.jpg" alt="" width="200">
+</p>
+
 # Karakuri
 
 An autonomous decision-making platform built on four primitives: **Capabilities**, **Environments**, **Objectives**, and **Agents**. The engine runs a continuous observe→reason→decide→act→verify→learn loop, accumulates cross-run memory, and escalates to humans only when confidence or authority bounds require it.
