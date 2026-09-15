@@ -13,7 +13,7 @@
 
 ## 1. Executive summary
 
-Karakuri is a self-hosted AI-agent orchestrator (Go 1.25, 10 modules, ~37k LOC of
+Karakuri is a self-hosted AI-agent orchestrator (Go 1.26, 10 modules, ~37k LOC of
 non-test Go plus a ~4.5k-LOC embedded React SPA). Its **security core is unusually
 strong**: password hashing, JWT handling, the RBAC decision engine, OIDC/SAML
 federation, and the tenancy filter in the twin/objective query layer are all sound,
@@ -389,7 +389,18 @@ process-level defect (including F-01's filesystem write) executes as root.
 
 **Remediation *(remediated, P0)*:** pin the builder to the latest patched 1.25.x
 (`golang:1.25.<patched>-bookworm`), add a non-root `USER`, and pin the runtime base by
-digest. **Effort:** S. **Refs:**
+digest.
+
+**Strengthened (Go 1.26 migration):** the builder pin closed this for the shipped
+image only — every other build path (a contributor's machine, a downstream consumer,
+any CI that is not ours) still resolved `GOTOOLCHAIN=auto` to exactly the `go` line and
+inherited the same unpatched toolchain. `go.mod` now carries `toolchain go1.26.8`
+alongside `go 1.26.0`, which holds the floor for *all* of them; the builder is pinned by
+digest to `golang:1.26-bookworm` (go1.26.8) to match. Verified: `govulncheck ./...`
+under go1.26.8 reports **0 reachable vulnerabilities**, against 25 for a bare
+`go 1.26.0` line. Both pins are bumped together whenever a patch carries a stdlib fix.
+
+**Effort:** S. **Refs:**
 [Go vuln DB](https://pkg.go.dev/vuln/) ·
 [Docker: run as non-root](https://docs.docker.com/develop/security-best-practices/) ·
 [CWE-250](https://cwe.mitre.org/data/definitions/250.html).

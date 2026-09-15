@@ -1,9 +1,14 @@
 # Stage 1: Build
-# Pinned by digest to golang:1.25-bookworm (go1.25.12), which matches the
-# `go 1.25.0` toolchain in go.mod. The previous golang:1.23 base made
-# GOTOOLCHAIN=auto download and pin exactly go1.25.0 — the patch govulncheck
-# flags for 28 stdlib advisories. See SECURITY_AUDIT.md F-06.
-FROM golang:1.25-bookworm@sha256:6359592445455f2dbe2412bed411336035bc019a50017720d77454ffdd6d0f82 AS builder
+# Pinned by digest to golang:1.26-bookworm (go1.26.8), at or above the
+# `toolchain go1.26.8` line in go.mod so this stage builds with the image's own
+# Go and never downloads one.
+#
+# The pin still matters, but it is no longer the only thing standing between us
+# and F-06: a bare `go 1.26.0` line makes GOTOOLCHAIN=auto fetch exactly
+# go1.26.0, whose stdlib advisories are fixed in 1.26.1 through 1.26.3. The
+# toolchain line in go.mod holds that floor for every build; this digest holds
+# it for the shipped image. Bump both together.
+FROM golang:1.26-bookworm@sha256:9fdc884aacc3bec89b20ffc69f4bb369c78210e3e4f600387b5128b12c199f81 AS builder
 
 WORKDIR /src
 COPY go.mod go.sum ./

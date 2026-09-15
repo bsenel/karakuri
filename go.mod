@@ -1,6 +1,16 @@
 module github.com/bsenel/karakuri
 
-go 1.25.0
+go 1.26.0
+
+// The `go` line above is a floor, not a choice of toolchain: GOTOOLCHAIN=auto
+// downloads *exactly* that version when the local Go is older, which is how
+// F-06 happened — a `go 1.25.0` line pinned builds to go1.25.0 and govulncheck
+// flagged 28 stdlib advisories fixed in later patches. Pinning the base image
+// fixed the shipped image but not anyone else's build. This line does: every
+// build that has to fetch a toolchain now gets a patched one.
+//
+// Raise it whenever a newer patch carries a stdlib advisory fix.
+toolchain go1.26.8
 
 // The auth and quota engines and their backends are separate modules in this
 // repo (ADR 007, ADR 008). Until auth/v0.1.0 and quota/v0.1.0 are tagged they
