@@ -35,7 +35,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.25.x"
+          go-version: "1.26.x"
           cache: true
       # The root module's web/embed.go embeds web/dist via //go:embed, so the
       # frontend must be built before golangci-lint typechecks the root module
@@ -50,19 +50,19 @@ jobs:
       - name: Root module
         uses: golangci/golangci-lint-action@v7
         with:
-          version: v2.5.0
+          version: v2.13.2
           args: --timeout=5m
       # The standalone modules have no frontend dependency and their own go.mod.
       - name: auth module
         uses: golangci/golangci-lint-action@v7
         with:
-          version: v2.5.0
+          version: v2.13.2
           working-directory: auth
           args: --timeout=5m --config=${{ github.workspace }}/.golangci.yml
       - name: quota module
         uses: golangci/golangci-lint-action@v7
         with:
-          version: v2.5.0
+          version: v2.13.2
           working-directory: quota
           args: --timeout=5m --config=${{ github.workspace }}/.golangci.yml
 
@@ -106,7 +106,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.25.x"
+          go-version: "1.26.x"
           cache: true
       - name: Run gosec
         # Never fails the job — see the block above. The gate lives on the
@@ -128,7 +128,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.25.x"
+          go-version: "1.26.x"
           # Always take the newest 1.25.x patch. govulncheck's stdlib analysis is
           # relative to the running toolchain, so a stale patch would report
           # stdlib advisories already fixed upstream — close that window here.
@@ -212,7 +212,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.25.x"
+          go-version: "1.26.x"
           cache: true
       - name: go-licenses
         continue-on-error: true

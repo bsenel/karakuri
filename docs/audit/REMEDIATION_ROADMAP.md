@@ -30,7 +30,7 @@ P1 done opportunistically alongside the P0 tranche.)*
 | F-01 | Path traversal via `objective_id` | High | `03502df` | `internal/platform/git/traversal_test.go`; Trivy fs | PT-01 ✅ dir not created |
 | F-03 | No rate limit on unauth routes | High | `117a580` | `ratelimit_test.go`; (login-flood is manual) | PT-03 ✅ 26/30→429 |
 | F-16 | Refresh token in CLI callback URL | High | `befab80` | `auth/sealed_test.go` (confidentiality) | PT-04 ✅ code is ciphertext |
-| F-06 | 28-CVE Go toolchain + root container | High | `4af2ca1` | govulncheck; Trivy image (next); `--check` clean | ✅ go1.25.12, non-root |
+| F-06 | 28-CVE Go toolchain + root container | High | `4af2ca1` | govulncheck; Trivy image (next); `--check` clean | ✅ go1.26.8 + toolchain pin, non-root |
 | F-13 | react-router crit/high | High | `ad5cbac` | npm audit (prod) gate | ✅ v7, audit clean |
 | F-04 | No server timeouts | Medium | `fef55e2` | (config review) | ✅ http.Server set |
 | F-05 | No request body limit | Medium | `fef55e2` | `security_test.go` MaxBytes | ✅ 413 on oversize |
