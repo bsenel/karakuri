@@ -28,7 +28,7 @@ func runStreaming(ctx context.Context, in DelegateInput, name string, args []str
 
 	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.Dir = in.WorktreePath
-	cmd.Env = mergedEnv(in.Env)
+	cmd.Env = scrubNestedSession(mergedEnv(in.Env))
 
 	stdoutPipe, err := cmd.StdoutPipe()
 	if err != nil {
@@ -91,6 +91,27 @@ func mergedEnv(extra map[string]string) []string {
 		} else {
 			out = append(out, entry)
 		}
+	}
+	return out
+}
+
+// scrubNestedSession strips the markers a Claude Code session exports into its
+// child processes. Without this, a `claude` spawned from a server that was
+// itself launched inside a session inherits CLAUDECODE and the session ids, and
+// the child treats itself as a continuation of the parent's session rather than
+// a fresh run. Credentials are deliberately untouched: ANTHROPIC_API_KEY is
+// auth, not a session marker.
+func scrubNestedSession(env []string) []string {
+	out := env[:0:0]
+	for _, e := range env {
+		name := e
+		if eq := strings.IndexByte(e, '='); eq > 0 {
+			name = e[:eq]
+		}
+		if name == "CLAUDECODE" || strings.HasPrefix(name, "CLAUDE_CODE_") {
+			continue
+		}
+		out = append(out, e)
 	}
 	return out
 }
