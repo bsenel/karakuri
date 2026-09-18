@@ -1,4 +1,4 @@
-package cliagent
+package procenv
 
 import (
 	"strings"
@@ -14,7 +14,7 @@ func TestScrubNestedSession(t *testing.T) {
 		"HOME=/home/x",
 		"ANTHROPIC_API_KEY=sk-xxx", // must survive — it's not a session marker
 	}
-	out := scrubNestedSession(in)
+	out := ScrubNestedSession(in)
 	joined := strings.Join(out, "\n")
 
 	for _, banned := range []string{"CLAUDECODE=", "CLAUDE_CODE_SESSION_ID=", "CLAUDE_CODE_CHILD_SESSION="} {

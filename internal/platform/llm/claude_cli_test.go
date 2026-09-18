@@ -145,3 +145,24 @@ func TestClaudeProvider_APIKeySetSkipsCLIFallback(t *testing.T) {
 		t.Errorf("expected langchaingo model to be constructed when API key is set")
 	}
 }
+
+// The CLI fallback spawns `claude` from whatever process runs the server. When
+// that process was itself started inside a Claude Code session, the session
+// markers are in its environment, and a child that inherits them behaves as a
+// continuation of the parent's session rather than a fresh run.
+func TestClaudeCLIEnvDropsNestedSessionMarkers(t *testing.T) {
+	t.Setenv("CLAUDECODE", "1")
+	t.Setenv("CLAUDE_CODE_SESSION_ID", "abc")
+	t.Setenv("ANTHROPIC_API_KEY", "sk-ant-fake-key")
+
+	env := strings.Join(newClaudeCLI("claude").env(context.Background()), "\n")
+
+	for _, banned := range []string{"CLAUDECODE=", "CLAUDE_CODE_SESSION_ID="} {
+		if strings.Contains(env, banned) {
+			t.Errorf("nested-session var %q must not reach the spawned CLI", banned)
+		}
+	}
+	if !strings.Contains(env, "ANTHROPIC_API_KEY=sk-ant-fake-key") {
+		t.Error("ANTHROPIC_API_KEY is auth, not a session marker, and must be preserved")
+	}
+}
