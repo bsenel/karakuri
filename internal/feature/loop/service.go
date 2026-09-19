@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"sync"
 
 	"github.com/bsenel/karakuri/internal/core/capability"
@@ -288,21 +289,47 @@ func (s *serviceImpl) persistState(ctx context.Context, state *loopState, comple
 	_ = s.store.SaveLoopState(ctx, persisted)
 }
 
+// maxResumeConcurrency bounds how many stored loops may be replayed at once on
+// start-up.
+//
+// Without it every non-completed row got its own goroutine immediately, and
+// each one opens with observe → reason: a deployment holding thirteen paused
+// loops spent thirteen reason steps in the first second of every boot. The
+// budget gate cannot catch that — it is checked once per iteration, so all
+// thirteen read the allowance before any of them had recorded a token against
+// it.
+const maxResumeConcurrency = 4
+
 // ResumeStoredLoops re-launches background goroutines for every non-completed
 // loop state in storage. Invoked by bootstrap on server start; idempotent on a
-// freshly-started server because no goroutines exist yet. Both paused and
-// active loops get fresh goroutines — the runner replays observe → reason →
-// decide from iteration 0 of the current step, which for a paused loop means
-// it will re-escalate to a new checkpoint and then sit on <-decisionCh ready
-// to receive the operator's resume. Without this, a server restart leaves
-// every paused loop permanently dead: Resume() pushes into the channel
-// buffer but no goroutine reads it (pre-Phase-11 bug surfaced during the
-// Phase 13.5 dogfood).
+// freshly-started server because no goroutines exist yet.
+//
+// An ACTIVE loop is replayed straight away, bounded by maxResumeConcurrency:
+// it was mid-flight when the process died and nobody is waiting on it.
+//
+// A PAUSED loop is not replayed. It is registered and given a waiter that
+// blocks on its decision channel, and the replay happens when — and only when —
+// an operator actually resolves the checkpoint. This is the change that stops
+// a restart from costing money: a loop paused on a question nobody has
+// answered has no work to do, and re-planning it produces a second checkpoint
+// asking the same question. The thirteen abandoned loops in a long-lived
+// deployment now cost nothing at boot instead of a reason step each.
+//
+// The operator's decision is put back on the channel before the runner starts,
+// so the replayed loop consumes it at its own first escalation. That keeps the
+// approval count at one: resolve the checkpoint, and the loop proceeds through
+// the plan it re-derives rather than stopping to ask again.
+//
+// Without any of this a server restart leaves every paused loop permanently
+// dead: Resume() pushes into the channel buffer but no goroutine reads it
+// (pre-Phase-11 bug surfaced during the Phase 13.5 dogfood).
 func (s *serviceImpl) ResumeStoredLoops(ctx context.Context) error {
 	states, err := s.store.ListActiveLoopStates(ctx)
 	if err != nil {
 		return err
 	}
+
+	sem := make(chan struct{}, maxResumeConcurrency)
 	for _, st := range states {
 		var req loop.Request
 		if err := json.Unmarshal([]byte(st.RequestJSON), &req); err != nil {
@@ -326,11 +353,38 @@ func (s *serviceImpl) ResumeStoredLoops(ctx context.Context) error {
 				Paused:      st.Paused,
 			},
 		}
+		if st.CheckpointID != "" {
+			cpID := st.CheckpointID
+			ls.result.CheckpointID = &cpID
+		}
 		s.mu.Lock()
 		s.states[st.LoopID] = ls
 		s.mu.Unlock()
 
-		go s.runLoop(context.Background(), st.LoopID, req)
+		loopID, request := st.LoopID, req
+		if st.Paused {
+			slog.Info("stored loop is paused; waiting for a decision rather than replaying it",
+				"loop", loopID, "objective", st.ObjectiveID)
+			go func(ls *loopState) {
+				decision, ok := <-ls.decisionCh
+				if !ok {
+					return
+				}
+				// Hand it back so the replayed runner consumes it at its
+				// first escalation instead of asking a second time.
+				ls.decisionCh <- decision
+				sem <- struct{}{}
+				defer func() { <-sem }()
+				s.runLoop(context.Background(), loopID, request)
+			}(ls)
+			continue
+		}
+
+		go func() {
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			s.runLoop(context.Background(), loopID, request)
+		}()
 	}
 	return nil
 }
