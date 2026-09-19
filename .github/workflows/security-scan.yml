@@ -164,8 +164,36 @@ jobs:
       # Fail on prod-dependency high/critical only. The dev toolchain
       # (vite/vitest/esbuild) is never shipped; its majors are tracked in
       # REMEDIATION_ROADMAP.md rather than blocking every PR.
-      - run: npm audit --omit=dev --audit-level=high
+      - name: npm audit (production dependencies)
         working-directory: web
+        run: |
+          # `npm audit --omit=dev` sends the registry a pruned tree, which it
+          # intermittently rejects with HTTP 400 "Invalid package tree, run npm
+          # install to rebuild your package-lock.json". The lockfile is fine —
+          # the same commit passes on a re-run, and passed on its own pull
+          # request minutes earlier. It is a transport failure, not a finding.
+          #
+          # Failing the build on it teaches people that a red security job
+          # means nothing, which is the one thing a security job cannot afford.
+          # So retry those, and fail immediately on a real advisory. Three
+          # unreachable attempts still fail: a gate that cannot check must not
+          # report success.
+          for attempt in 1 2 3; do
+            if out=$(npm audit --omit=dev --audit-level=high 2>&1); then
+              echo "$out"
+              exit 0
+            fi
+            if printf '%s' "$out" | grep -qE 'audit endpoint returned an error|Invalid package tree|ETIMEDOUT|ENETUNREACH|EAI_AGAIN|ECONNRESET'; then
+              echo "::warning::npm audit could not reach the registry (attempt $attempt/3); retrying"
+              printf '%s\n' "$out" | tail -5
+              sleep $((attempt * 10))
+              continue
+            fi
+            printf '%s\n' "$out"
+            exit 1
+          done
+          echo "::error::npm audit could not reach the registry after 3 attempts"
+          exit 1
 
   # ── Secret scan (gitleaks) — blocks on any finding ──────────────────────────
   gitleaks:
