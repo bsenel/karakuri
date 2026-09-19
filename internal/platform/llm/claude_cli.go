@@ -7,6 +7,8 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+
+	"github.com/bsenel/karakuri/internal/platform/procenv"
 )
 
 // claudeCLI shells out to the `claude` CLI as a transparent fallback when
@@ -39,6 +41,15 @@ type claudeCLIResponse struct {
 	Error   string `json:"error,omitempty"`
 }
 
+// env is the environment the spawned CLI receives: the gateway attribution
+// this deployment adds, minus the session markers it must not inherit.
+//
+// A method rather than an inline expression so the composition is testable
+// without spawning the binary.
+func (c *claudeCLI) env(ctx context.Context) []string {
+	return procenv.ScrubNestedSession(gatewayEnv(ctx, os.Environ()))
+}
+
 func (c *claudeCLI) complete(ctx context.Context, req CompletionRequest) (CompletionResponse, error) {
 	prompt := req.SystemPrompt
 	if prompt != "" {
@@ -51,7 +62,7 @@ func (c *claudeCLI) complete(ctx context.Context, req CompletionRequest) (Comple
 	// Per invocation, not per process: the CLI is spawned for each call, so
 	// the customer header can vary by twin. Without this the CLI path would be
 	// the one place a gateway could not attribute spend.
-	cmd.Env = gatewayEnv(ctx, os.Environ())
+	cmd.Env = c.env(ctx)
 	out, err := cmd.Output()
 	if err != nil {
 		// `cmd.Output()` populates *exec.ExitError.Stderr on non-zero exit;

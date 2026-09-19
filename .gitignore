@@ -50,3 +50,10 @@ web/node_modules/
 # thing to review in a diff.
 web/playwright-report/
 web/test-results/
+
+# Worktrees the loop provisions for delivery objectives, and the local config
+# that points a deployment at its own adapter instances and credentials env
+# vars. Both live inside the tree the agent works in, so an objective running
+# `git add -A` would otherwise commit them.
+worktrees/
+config/local.yaml
