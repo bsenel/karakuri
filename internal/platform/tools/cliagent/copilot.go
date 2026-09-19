@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os/exec"
 	"strings"
+
+	"github.com/bsenel/karakuri/internal/platform/procenv"
 )
 
 // CopilotCLI is a CLIAgentAdapter for the GitHub Copilot CLI extension
@@ -52,7 +54,7 @@ func (c *CopilotCLI) Delegate(ctx context.Context, in DelegateInput) (DelegateOu
 
 	cmd := exec.CommandContext(ctx, c.bin, args...)
 	cmd.Dir = in.WorktreePath
-	cmd.Env = mergedEnv(in.Env)
+	cmd.Env = procenv.Merge(in.Env)
 
 	combined, err := cmd.CombinedOutput()
 	exitCode := 0

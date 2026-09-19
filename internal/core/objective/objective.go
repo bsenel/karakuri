@@ -162,6 +162,20 @@ type Criterion struct {
 	Domain string `json:"domain,omitempty"`
 }
 
+// VerifierIsReserved reports whether this criterion names a verifier from the
+// reserved MCP namespace, which is never valid however the criterion was
+// written — by a pack, by a template, or by whoever posted the objective.
+//
+// It is the second of ADR 022's four bounds, and the one with the sharpest
+// argument: a criterion is how this deployment decides its own work is done. A
+// verifier discovered from a server somebody else runs would let that server
+// declare an objective satisfied, and the tool it named could have appeared this
+// morning. Verification is the one thing a third party must not be able to
+// settle, so the prefix is refused rather than resolved.
+func (c Criterion) VerifierIsReserved() bool {
+	return capability.IsMCPCapability(c.Verifier)
+}
+
 type Constraint struct {
 	ID          string `json:"id"`
 	Description string `json:"description"`

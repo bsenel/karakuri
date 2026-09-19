@@ -5,9 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"os"
 	"os/exec"
-	"strings"
 	"time"
 
 	"github.com/bsenel/karakuri/internal/platform/procenv"
@@ -30,7 +28,7 @@ func runStreaming(ctx context.Context, in DelegateInput, name string, args []str
 
 	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.Dir = in.WorktreePath
-	cmd.Env = procenv.ScrubNestedSession(mergedEnv(in.Env))
+	cmd.Env = procenv.ScrubNestedSession(procenv.Merge(in.Env))
 
 	stdoutPipe, err := cmd.StdoutPipe()
 	if err != nil {
@@ -72,29 +70,6 @@ func runStreaming(ctx context.Context, in DelegateInput, name string, args []str
 		err = waitErr
 	}
 	return exitCode, stderr, err
-}
-
-// mergedEnv overlays the per-call env vars onto the process env.
-func mergedEnv(extra map[string]string) []string {
-	if len(extra) == 0 {
-		return os.Environ()
-	}
-	have := map[string]int{}
-	out := append([]string{}, os.Environ()...)
-	for i, e := range out {
-		if eq := strings.IndexByte(e, '='); eq > 0 {
-			have[e[:eq]] = i
-		}
-	}
-	for k, v := range extra {
-		entry := k + "=" + v
-		if i, ok := have[k]; ok {
-			out[i] = entry
-		} else {
-			out = append(out, entry)
-		}
-	}
-	return out
 }
 
 // binaryAvailable returns true if a binary is found on PATH.

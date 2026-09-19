@@ -36,6 +36,7 @@ func (s *Suite) Run(ctx context.Context, p domain.Pack) []Result {
 		checkAgentBoundsBehave,
 		checkProvenanceEscalates,
 		checkCriterionVerifierRefs,
+		checkReservedNamespace,
 		checkNoCapabilityIDCollision,
 		checkTeardownNoPanic,
 	}
@@ -438,6 +439,21 @@ func checkCriterionVerifierRefs(_ context.Context, p domain.Pack) Result {
 			if crit.Verifier == "" {
 				continue
 			}
+			// The reserved namespace is refused before anything else, and
+			// before the cross-pack escape below in particular: a criterion
+			// naming `mcp.files.read_file` with `Domain: "mcp"` would otherwise
+			// read as a deliberate reference to another pack and pass. There is
+			// no such pack, and a tool a third party controls must never settle
+			// whether this deployment's work is done (ADR 022).
+			if crit.VerifierIsReserved() {
+				return Result{
+					Check:  name,
+					Passed: false,
+					Message: fmt.Sprintf(
+						"template %q criterion %q verifies with %q: the %q namespace is reserved for tools discovered from MCP servers and is never a valid verifier",
+						tmpl.ID, crit.ID, crit.Verifier, capability.MCPDomain),
+				}
+			}
 			if _, ok := capSet[string(crit.Verifier)]; ok {
 				continue
 			}
@@ -454,6 +470,63 @@ func checkCriterionVerifierRefs(_ context.Context, p domain.Pack) Result {
 		}
 	}
 	return Result{Check: name, Passed: true, Message: fmt.Sprintf("all criterion verifier references are valid across %d templates", len(p.ObjectiveTemplates()))}
+}
+
+// checkReservedNamespace refuses a pack that declares anything in the namespace
+// MCP discovery owns.
+//
+// The namespace is what tells a discovered tool from a declared one everywhere
+// downstream — routing, quota, the audit log and the three other bounds in
+// ADR 022 all key on the capability ID. A pack that declared `mcp.files.write`
+// would be handed every exemption those bounds grant, and a pack whose
+// environment claimed `Serves: ["mcp.files.read_file"]` would take over routing
+// for a tool it did not discover and cannot call.
+//
+// This is the one direction conformance can check. The other — that discovered
+// tools stay out of a pack's grading — needs no check because it is structural:
+// the suite reads p.Capabilities() and p.EnvironmentFactories(), and a
+// discovered tool is in neither. `krk domain test software` passes on a
+// deployment with MCP instances configured exactly as it does without them.
+func checkReservedNamespace(_ context.Context, p domain.Pack) Result {
+	const name = "reserved_namespace"
+
+	for _, c := range p.Capabilities() {
+		if capability.IsMCPCapability(c.ID) {
+			return Result{
+				Check:  name,
+				Passed: false,
+				Message: fmt.Sprintf("capability %q is in the %q namespace, which is reserved for tools discovered from MCP servers at boot; a pack declares its own capabilities",
+					c.ID, capability.MCPDomain),
+			}
+		}
+	}
+
+	for _, f := range p.EnvironmentFactories() {
+		if f.Domain == capability.MCPDomain {
+			return Result{
+				Check:  name,
+				Passed: false,
+				Message: fmt.Sprintf("environment %q declares domain %q, which is reserved: environments in it are built for every twin bound to an MCP instance, not for an objective's domains",
+					f.EnvID, capability.MCPDomain),
+			}
+		}
+		for _, capID := range f.Serves {
+			if capability.IsMCPCapability(capID) {
+				return Result{
+					Check:  name,
+					Passed: false,
+					Message: fmt.Sprintf("environment %q serves %q, which is in the reserved %q namespace: only the instance that discovered a tool may execute it",
+						f.EnvID, capID, capability.MCPDomain),
+				}
+			}
+		}
+	}
+
+	return Result{
+		Check:   name,
+		Passed:  true,
+		Message: fmt.Sprintf("no capability, environment or verifier claims the reserved %q namespace", capability.MCPDomain),
+	}
 }
 
 // checkNoCapabilityIDCollision verifies no two capabilities share the same ID.

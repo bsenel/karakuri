@@ -117,13 +117,27 @@ func (b AuthorityBounds) Decide(confidence, threshold float64, plannedCapabiliti
 		v.Reason = fmt.Sprintf("confidence %.2f below threshold %.2f", confidence, threshold)
 	}
 
-	// 3. Capabilities the bounds name as needing approval.
-	if !v.Escalate && len(b.RequiresApprovalFor) > 0 {
+	// 3. Capabilities that need approval: the ones the bounds name, plus every
+	// tool discovered from an MCP server.
+	//
+	// The MCP namespace is in the approval set by default because no pack can
+	// put it there. RequiresApprovalFor is written when an agent is written, and
+	// these IDs are read off a server at boot — an operator who wanted them
+	// gated had no name to list, and one who did not want them gated would have
+	// got autonomy over a tool nobody in this repository wrote. So the default is
+	// here, in the policy, and it is the third of ADR 022's four bounds: every
+	// MCP action escalates on a fresh deployment.
+	if !v.Escalate && (len(b.RequiresApprovalFor) > 0 || len(plannedCapabilities) > 0) {
 		approvalSet := make(map[capability.CapabilityID]struct{}, len(b.RequiresApprovalFor))
 		for _, c := range b.RequiresApprovalFor {
 			approvalSet[c] = struct{}{}
 		}
 		for _, c := range plannedCapabilities {
+			if capability.IsMCPCapability(c) {
+				v.Escalate = true
+				v.Reason = fmt.Sprintf("action %q is a tool discovered from an MCP server and requires approval", c)
+				break
+			}
 			if _, requires := approvalSet[c]; requires {
 				v.Escalate = true
 				v.Reason = fmt.Sprintf("action %q requires approval", c)
