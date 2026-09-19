@@ -140,6 +140,24 @@ func softwareEnvironmentFactories(reg *tools.Registry) []environment.Factory {
 			},
 		},
 		{
+			EnvID:  "software.env.verify",
+			Domain: "software",
+			Description: "Verification commands: runs a test suite or a linter and reports the verdict by exit code. " +
+				"Takes params.cmd (required) and optional params.workdir, params.timeout_sec (max 600).",
+			// Declared since Phase 2 on four criteria of the delivery
+			// template and served by nothing until now. A criterion naming a
+			// verifier that never runs does not fail — verify.go falls back to
+			// asking a model, so the criterion silently cost a judgement call
+			// on every iteration while claiming to be settled by a test run.
+			Serves: []capability.CapabilityID{
+				"software.verify.run_tests",
+				"software.verify.lint",
+			},
+			Build: func(_ environment.BuildContext) (environment.Environment, error) {
+				return newVerifyEnv("software.env.verify", newShellEnv("software.env.verify", "", 600*time.Second)), nil
+			},
+		},
+		{
 			EnvID:       "software.env.shell",
 			Domain:      "software",
 			Description: "Local shell executor (/bin/sh) — runs software.act.shell_exec actions with timeout, output capture, and safety guardrails. Defaults to the server's CWD; configurable per-deployment.",
@@ -204,6 +222,14 @@ type gitEnv struct {
 	vc versioncontrol.VersionControlAdapter
 }
 
+// gitObservationWindow is how far back the repository observation reaches.
+//
+// A week, matching telemetryWindow: the questions an observation answers —
+// what has been landing, what is open, what is red — are answered badly by a
+// single day and well by a week, and anything older is history rather than
+// state.
+const gitObservationWindow = 7 * 24 * time.Hour
+
 func (e *gitEnv) ID() environment.EnvironmentID { return e.id }
 func (e *gitEnv) Domain() string                { return "software" }
 
@@ -213,7 +239,13 @@ func (e *gitEnv) Observe(ctx context.Context, q environment.ObservationQuery) (e
 		return noopObservation(e.id), nil
 	}
 	repo, _ := q.Filter["repo"].(string)
-	state := map[string]any{"adapter": adapter.Name()}
+	// Bounded, because every byte of this lands in the reason prompt of every
+	// iteration of every loop watching this repository. An unfiltered read
+	// returned the adapter's whole first page — fifty commits of JSON — and
+	// re-serialised it each time, which is a per-iteration token cost that
+	// grows with nothing the operator can see.
+	since := time.Now().UTC().Add(-gitObservationWindow)
+	state := map[string]any{"adapter": adapter.Name(), "window": gitObservationWindow.String()}
 	// Third party only when a pull request is actually carried. Commits and an
 	// adapter name are the operator's own infrastructure; a PR title is typed
 	// by whoever opened it, which on a public repository is anybody. Computed
@@ -221,13 +253,13 @@ func (e *gitEnv) Observe(ctx context.Context, q environment.ObservationQuery) (e
 	// environment, because a repository with no open PRs should not escalate
 	// every plan in the deployment for the rest of the run.
 	trust := environment.TrustOperator
-	commits, err := adapter.GetCommits(ctx, repo, time.Time{})
+	commits, err := adapter.GetCommits(ctx, repo, since)
 	if err != nil {
 		state["commits_error"] = err.Error()
 	} else {
 		state["commits"] = commits
 	}
-	prs, err := adapter.ListPRs(ctx, repo, time.Time{})
+	prs, err := adapter.ListPRs(ctx, repo, since)
 	if err != nil {
 		state["prs_error"] = err.Error()
 	} else {
@@ -580,6 +612,78 @@ func noopAct(a environment.Action) environment.ActionResult {
 			"status": "no_active_adapter",
 		},
 	}
+}
+
+// verifyEnv answers the two verification capabilities a command can settle.
+//
+// It runs the command the plan supplies and reports success by exit code,
+// which is what "the tests pass" means. It deliberately ships no default
+// command: a pack that guessed `go test ./...` would report a green suite on
+// a repository that is not Go, and a verifier that can be wrong in that
+// direction is worse than one that asks to be told.
+//
+// review and tech_lead_review are not here. They are judgements, not commands,
+// and the delivery template now says so rather than naming a verifier that
+// cannot answer them.
+type verifyEnv struct {
+	id    environment.EnvironmentID
+	shell *shellEnv
+}
+
+func newVerifyEnv(id environment.EnvironmentID, sh *shellEnv) *verifyEnv {
+	return &verifyEnv{id: id, shell: sh}
+}
+
+func (e *verifyEnv) ID() environment.EnvironmentID { return e.id }
+func (e *verifyEnv) Domain() string                { return "software" }
+
+func (e *verifyEnv) Observe(_ context.Context, _ environment.ObservationQuery) (environment.Observation, error) {
+	state := map[string]any{
+		"adapter":      "verify.exec",
+		"capabilities": []string{"software.verify.run_tests", "software.verify.lint"},
+	}
+	return environment.Observation{
+		EnvID: e.id, State: state, Version: stateVersion(state), Timestamp: time.Now().UTC(),
+	}, nil
+}
+
+func (e *verifyEnv) Act(ctx context.Context, a environment.Action) (environment.ActionResult, error) {
+	switch string(a.CapabilityID) {
+	case "software.verify.run_tests", "software.verify.lint":
+	default:
+		return failureResult(e.id, a.CapabilityID,
+			fmt.Sprintf("verifyEnv does not handle capability %q", a.CapabilityID), nil), nil
+	}
+	if asString(a.Params, "cmd") == "" {
+		return failureResult(e.id, a.CapabilityID,
+			fmt.Sprintf("%s needs params.cmd: the command that decides it, e.g. 'go test ./... -count=1'", a.CapabilityID),
+			nil), nil
+	}
+	// Reuse the shell executor wholesale: the denylist, the workdir
+	// confinement and the timeout are the same guarantees a verification
+	// command needs, and a second copy of them would be a second set of bugs.
+	res, err := e.shell.Act(ctx, environment.Action{
+		CapabilityID: "software.act.shell_exec",
+		Params:       a.Params,
+	})
+	if err != nil {
+		return res, err
+	}
+	if res.StateDelta == nil {
+		res.StateDelta = map[string]any{}
+	}
+	res.StateDelta["verifier"] = string(a.CapabilityID)
+	return res, nil
+}
+
+func (e *verifyEnv) Subscribe(_ context.Context, _ environment.EventFilter) (<-chan environment.EnvironmentEvent, error) {
+	ch := make(chan environment.EnvironmentEvent)
+	return ch, nil
+}
+
+func (e *verifyEnv) Snapshot(ctx context.Context) (environment.EnvironmentSnapshot, error) {
+	obs, _ := e.Observe(ctx, environment.ObservationQuery{})
+	return environment.EnvironmentSnapshot{SHA: obs.Version, EnvID: e.id, State: obs.State, Timestamp: obs.Timestamp}, nil
 }
 
 // stateVersion hashes an observation's state into the SHA the loop records and
