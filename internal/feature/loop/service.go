@@ -329,6 +329,14 @@ func (s *serviceImpl) ResumeStoredLoops(ctx context.Context) error {
 		return err
 	}
 
+	// A replayed loop outlives the call that started it — bootstrap's context
+	// is done long before the work is — but detaching it with
+	// context.Background() would also drop the values on the caller's, which
+	// is where tracing and request identity live. WithoutCancel keeps the
+	// values and sheds only the deadline, which is exactly the relationship a
+	// background loop has to the start-up that launched it.
+	runCtx := context.WithoutCancel(ctx)
+
 	sem := make(chan struct{}, maxResumeConcurrency)
 	for _, st := range states {
 		var req loop.Request
@@ -375,7 +383,7 @@ func (s *serviceImpl) ResumeStoredLoops(ctx context.Context) error {
 				ls.decisionCh <- decision
 				sem <- struct{}{}
 				defer func() { <-sem }()
-				s.runLoop(context.Background(), loopID, request)
+				s.runLoop(runCtx, loopID, request)
 			}(ls)
 			continue
 		}
@@ -383,7 +391,7 @@ func (s *serviceImpl) ResumeStoredLoops(ctx context.Context) error {
 		go func() {
 			sem <- struct{}{}
 			defer func() { <-sem }()
-			s.runLoop(context.Background(), loopID, request)
+			s.runLoop(runCtx, loopID, request)
 		}()
 	}
 	return nil
