@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"sort"
 	"strings"
 	"time"
@@ -81,8 +82,39 @@ func stepReason(ctx context.Context, sc *stepContext, ws loop.WorldState) plan {
 		// 4. Try to parse output as JSON plan. Tolerates Markdown code
 		// fences and leading/trailing prose — most chat models default to
 		// wrapping JSON in ```json … ``` even when asked not to.
-		cleaned := extractJSON(output.Content)
-		if jsonErr := json.Unmarshal([]byte(cleaned), &p); jsonErr != nil {
+		parsed, parseErr := parsePlan(output.Content)
+
+		// 4a. One retry, because the fallback below is not a plan. It is a
+		// placeholder carrying the model's prose under a capability nothing
+		// serves, and the loop then spends an iteration acting on it,
+		// verifying it and asking a human about it. Measured on this
+		// deployment, roughly half of reason steps failed to parse, so half
+		// of every objective's iterations bought nothing.
+		//
+		// The retry shows the model its own unusable output. Re-asking the
+		// original question would repeat whatever produced prose the first
+		// time; naming the failure is what makes the second attempt
+		// different.
+		if parseErr != nil {
+			slog.Warn("plan did not parse; retrying once",
+				"loop", sc.loopID, "objective", string(sc.obj.ID), "err", parseErr)
+			retry := input
+			retry.Task = "Your previous reply could not be parsed as JSON and was discarded.\n\n" +
+				"--- your previous reply ---\n" + truncateForRetry(output.Content) + "\n--- end ---\n\n" +
+				input.Task
+			if retryOut, retryErr := sc.agent.Run(ctx, retry); retryErr == nil {
+				if retryParsed, retryParseErr := parsePlan(retryOut.Content); retryParseErr == nil {
+					parsed, parseErr, output = retryParsed, nil, retryOut
+				} else {
+					slog.Warn("plan did not parse on retry either; falling back to the prose wrapper",
+						"loop", sc.loopID, "objective", string(sc.obj.ID), "err", retryParseErr)
+				}
+			}
+		}
+
+		if parseErr == nil {
+			p = parsed
+		} else {
 			// Fallback: create default plan
 			p = plan{
 				Actions: []plannedAction{
@@ -432,6 +464,30 @@ func buildReasonCatalog(sc *stepContext) string {
 // Returns the original (trimmed) input when neither pattern matches, so
 // downstream json.Unmarshal can still produce a meaningful parse error
 // that surfaces to the fallback path.
+// parsePlan reads a plan out of whatever the model returned.
+//
+// Separate from stepReason so the retry path and the first attempt cannot
+// drift into parsing the same output two different ways.
+func parsePlan(content string) (plan, error) {
+	var p plan
+	if err := json.Unmarshal([]byte(extractJSON(content)), &p); err != nil {
+		return plan{}, err
+	}
+	return p, nil
+}
+
+// retryExcerptLimit bounds how much of an unusable reply is quoted back to the
+// model. Enough to identify what it produced, not so much that a runaway reply
+// is paid for twice.
+const retryExcerptLimit = 2000
+
+func truncateForRetry(s string) string {
+	if len(s) <= retryExcerptLimit {
+		return s
+	}
+	return s[:retryExcerptLimit] + "\n… (truncated)"
+}
+
 func extractJSON(s string) string {
 	s = strings.TrimSpace(s)
 	if strings.HasPrefix(s, "```") {
@@ -450,17 +506,58 @@ func extractJSON(s string) string {
 		}
 		s = strings.TrimSpace(rest)
 	}
-	// Fallback: scan for the first { or [ and its matching closing brace
-	// in case the model wrapped JSON in prose without a fence.
-	if i := strings.IndexAny(s, "{["); i > 0 {
-		open := s[i]
-		close := byte('}')
-		if open == '[' {
-			close = ']'
-		}
-		if j := strings.LastIndexByte(s, close); j > i {
-			return s[i : j+1]
-		}
+	// Fallback: the model wrapped JSON in prose without a fence. Scan for a
+	// balanced value rather than first-open-to-last-close, which swallowed
+	// any trailing sentence that happened to contain a brace — "…{plan}. Let
+	// me know if that works!}" is not a parse failure the model made.
+	if span, ok := jsonSpan(s); ok {
+		return span
 	}
 	return s
+}
+
+// jsonSpan returns the first balanced JSON object or array in s.
+//
+// Depth counting is aware of string literals and their escapes, because a
+// brace inside a JSON string is data and closing on it truncates the value
+// mid-parse. That is the difference between reading the model's output and
+// guessing at it.
+func jsonSpan(s string) (string, bool) {
+	start := strings.IndexAny(s, "{[")
+	if start < 0 {
+		return "", false
+	}
+	open := s[start]
+	closer := byte('}')
+	if open == '[' {
+		closer = ']'
+	}
+
+	depth, inString, escaped := 0, false, false
+	for i := start; i < len(s); i++ {
+		c := s[i]
+		if inString {
+			switch {
+			case escaped:
+				escaped = false
+			case c == '\\':
+				escaped = true
+			case c == '"':
+				inString = false
+			}
+			continue
+		}
+		switch c {
+		case '"':
+			inString = true
+		case open:
+			depth++
+		case closer:
+			depth--
+			if depth == 0 {
+				return s[start : i+1], true
+			}
+		}
+	}
+	return "", false
 }
