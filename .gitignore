@@ -39,7 +39,16 @@ karakuri-obs/
 # Frontend build output + deps. web/dist is embedded by web/embed.go at compile
 # time (`make web-build` populates it; CI builds it before any Go job), so it is
 # a build artifact rather than source.
-web/dist/
+#
+# The placeholder inside it is the exception, and is tracked. `//go:embed
+# all:dist` is a COMPILE-time pattern: with the directory absent the whole
+# module fails to build, which is what every fresh clone and every git worktree
+# got. CI never noticed because its Build job downloads the real dist as an
+# artifact from the frontend job. A worktree has neither that artifact nor a
+# Node toolchain, so an agent working in one could not build the tree it was
+# asked to change.
+web/dist/*
+!web/dist/index.html
 web/node_modules/
 
 # Editor/IDE
