@@ -62,6 +62,24 @@ func TestExtractJSON(t *testing.T) {
 			want: `[{"capability":"x"}]`,
 		},
 		{
+			// First-open-to-last-close swallowed the trailing sentence and
+			// produced something that could not parse, which then became a
+			// prose placeholder and a wasted iteration.
+			name: "prose after the object is not swallowed",
+			in:   "Here is the plan:\n{\"actions\":[],\"confidence\":0.8}\nLet me know if that works!}",
+			want: `{"actions":[],"confidence":0.8}`,
+		},
+		{
+			name: "a brace inside a string is data, not a terminator",
+			in:   `{"actions":[],"reasoning":"use the {placeholder} syntax"}`,
+			want: `{"actions":[],"reasoning":"use the {placeholder} syntax"}`,
+		},
+		{
+			name: "an escaped quote does not end the string",
+			in:   `prefix {"reasoning":"he said \"go\" }","actions":[]} suffix`,
+			want: `{"reasoning":"he said \"go\" }","actions":[]}`,
+		},
+		{
 			name: "malformed input returns trimmed input for downstream error reporting",
 			in:   "  not json at all  ",
 			want: "not json at all",
