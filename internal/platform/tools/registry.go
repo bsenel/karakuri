@@ -1,14 +1,20 @@
 package tools
 
 import (
+	"context"
 	"log/slog"
+	"sort"
 	"sync"
+	"time"
 
 	"github.com/bsenel/karakuri/config"
+	"github.com/bsenel/karakuri/internal/core/capability"
+	"github.com/bsenel/karakuri/internal/core/environment"
 	"github.com/bsenel/karakuri/internal/platform/tools/calendar"
 	"github.com/bsenel/karakuri/internal/platform/tools/cliagent"
 	"github.com/bsenel/karakuri/internal/platform/tools/design"
 	"github.com/bsenel/karakuri/internal/platform/tools/email"
+	"github.com/bsenel/karakuri/internal/platform/tools/mcp"
 	"github.com/bsenel/karakuri/internal/platform/tools/messaging"
 	"github.com/bsenel/karakuri/internal/platform/tools/observability"
 	"github.com/bsenel/karakuri/internal/platform/tools/projectmgmt"
@@ -101,6 +107,11 @@ type Registry struct {
 	Email       SlotInstances[email.EmailAdapter]
 	CLIAgents   SlotInstances[cliagent.CLIAgentAdapter]
 
+	// MCP is the eleventh slot and the only one whose adapters were not written
+	// here: each instance is one MCP server, and what it offers is read off it
+	// at boot rather than declared in this package (ADR 022).
+	MCP SlotInstances[*mcp.Instance]
+
 	// Single-instance slots — kept simple until use cases demand multi-instance.
 	Observability observability.ObservabilityAdapter
 	Research      research.ResearchAdapter
@@ -140,7 +151,92 @@ func NewRegistryFromConfig(cfg config.ToolsConfig) *Registry {
 	r.Calendar = buildCalendarSlot(cfg.Calendar)
 	r.Email = buildEmailSlot(cfg.Email)
 	r.CLIAgents = buildCLIAgentSlot(cfg.CLIAgents)
+	// Last, because it is the only slot builder that talks to anything: each
+	// instance runs its handshake and its one tools/list here, so the registry
+	// this returns already knows what every server offers.
+	r.MCP = buildMCPSlot(context.Background(), cfg.MCP)
 	return r
+}
+
+// MCPHealth is the per-instance topology /health reports, ordered by name so
+// two boots of the same config read the same.
+//
+// Richer than the AdapterStatus row every slot gets, and deliberately so: an MCP
+// instance has two things no other adapter has — a server that names itself, and
+// an allowlist with a visible other side. "The server offers delete_repo and this
+// deployment does not allow it" is the sentence an operator wants, and it does
+// not fit in a boolean.
+func (r *Registry) MCPHealth() []mcp.InstanceHealth {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	out := make([]mcp.InstanceHealth, 0, len(r.MCP.List()))
+	for _, info := range r.MCP.List() {
+		inst, ok := r.MCP.Resolve(info.Name)
+		if !ok {
+			continue
+		}
+		out = append(out, inst.Health(info.IsDefault))
+	}
+	sort.Slice(out, func(a, b int) bool { return out[a].Name < out[b].Name })
+	return out
+}
+
+// MCPCapabilities is every discovered and allowed tool, as registry entries.
+//
+// Registered beside a pack's capabilities because the loop looks capabilities up
+// by ID — for the workspace question, for quota, for the catalog — and a lookup
+// that missed would fall back to defaults nobody chose. They are told apart by
+// the reserved namespace rather than by which registry they live in, which is
+// what makes the four bounds hold wherever the ID travels.
+func (r *Registry) MCPCapabilities() []capability.Capability {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	var out []capability.Capability
+	for _, info := range r.MCP.List() {
+		if inst, ok := r.MCP.Resolve(info.Name); ok {
+			out = append(out, inst.Capabilities()...)
+		}
+	}
+	sort.Slice(out, func(a, b int) bool { return out[a].ID < out[b].ID })
+	return out
+}
+
+// MCPEnvironmentFactories is one factory per configured instance, ordered by
+// instance name so registration order does not depend on map iteration.
+//
+// Every instance gets one, including an unreachable server: it serves nothing,
+// so it routes nothing, and it stays in /health where an operator can see why.
+func (r *Registry) MCPEnvironmentFactories() []environment.Factory {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	instances := r.MCP.List()
+	sort.Slice(instances, func(a, b int) bool { return instances[a].Name < instances[b].Name })
+
+	out := make([]environment.Factory, 0, len(instances))
+	for _, info := range instances {
+		inst, ok := r.MCP.Resolve(info.Name)
+		if !ok {
+			continue
+		}
+		out = append(out, mcp.NewFactory(inst, info.IsDefault))
+	}
+	return out
+}
+
+// CloseMCP releases every MCP server this registry started — the subprocesses,
+// in practice. Called at shutdown; an instance that never connected is closed
+// too, because "never connected" and "no process" are not the same thing.
+func (r *Registry) CloseMCP() {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	for _, info := range r.MCP.List() {
+		if inst, ok := r.MCP.Resolve(info.Name); ok {
+			_ = inst.Close()
+		}
+	}
 }
 
 // Status returns one row per configured (slot, instance) plus one row per slot
@@ -191,6 +287,15 @@ func (r *Registry) Status() []AdapterStatus {
 	})
 	collect("cli_agents", r.CLIAgents.List(), func(n string) bool {
 		a, ok := r.CLIAgents.Resolve(n)
+		return ok && a.Active()
+	})
+	// One row per MCP instance, the same shape as every other slot since
+	// Phase 6. Active means the same thing it means everywhere else — this
+	// instance can execute something — which for a server is: the handshake
+	// succeeded and at least one tool survived the allowlist. MCPHealth carries
+	// the rest.
+	collect("mcp", r.MCP.List(), func(n string) bool {
+		a, ok := r.MCP.Resolve(n)
 		return ok && a.Active()
 	})
 	// Single-instance slots — show as one row each.
@@ -351,6 +456,88 @@ func buildCLIAgentSlot(cfg config.SlotConfig) SlotInstances[cliagent.CLIAgentAda
 		}
 	}
 	return s
+}
+
+// buildMCPSlot dials every configured server and asks it what it offers.
+//
+// The one slot builder that does I/O, and the one that cannot avoid it: an MCP
+// server's tools are not knowable from config, and Factory.Serves — the exact
+// list the environment registry reverse-indexes once at Register — has to be
+// known before registration. Discovery therefore completes here, at boot, per
+// ADR 022.
+//
+// A server that is down does not fail the boot: mcp.NewInstance never returns an
+// error, and the instance it returns serves nothing and reports why in /health.
+// A whole deployment refusing to start because somebody else's filesystem server
+// is not installed would be the wrong trade for every other slot too.
+func buildMCPSlot(ctx context.Context, cfg config.SlotConfig) SlotInstances[*mcp.Instance] {
+	s := SlotInstances[*mcp.Instance]{
+		defaultName: cfg.Default,
+		instances:   map[string]instanceEntry[*mcp.Instance]{},
+	}
+	// Sorted so instances are dialled in a fixed order — the logs of two boots
+	// of one config are then comparable, which they are not under map iteration.
+	names := make([]string, 0, len(cfg.Instances))
+	for name := range cfg.Instances {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	for _, name := range names {
+		inst := cfg.Instances[name]
+		mcpCfg := mcp.Config{
+			AllowedTools: inst.OptStrings("allowed_tools"),
+			Timeout:      time.Duration(inst.OptInt("timeout_sec")) * time.Second,
+		}
+		switch inst.Type {
+		case "stdio":
+			mcpCfg.Transport = mcp.TransportStdio
+			mcpCfg.Command = inst.OptString("command")
+			mcpCfg.Args = inst.OptStrings("args")
+			mcpCfg.WorkDir = inst.OptString("workdir")
+			mcpCfg.Env = inst.OptStringMap("env")
+		case "streamable_http":
+			mcpCfg.Transport = mcp.TransportHTTP
+			mcpCfg.URL = inst.OptString("url")
+			mcpCfg.Headers = bearerHeaders(inst.OptStringMap("headers"), inst.OptString("bearer_token"))
+		default:
+			slog.Warn("unknown mcp adapter type", "instance", name, "type", inst.Type)
+			continue
+		}
+
+		// Warned rather than refused, and the instance is still built: an
+		// allowlist somebody forgot to write is a server with no tools, which
+		// /health shows as connected and offering nothing. Dropping the instance
+		// instead would make the mistake look like a typo in its name.
+		if len(mcpCfg.AllowedTools) == 0 {
+			slog.Warn("mcp instance allows no tools; none of its tools will be registered",
+				"instance", name, "hint", "set allowed_tools")
+		}
+
+		s.instances[name] = instanceEntry[*mcp.Instance]{
+			typeName: inst.Type,
+			adapter:  mcp.NewInstance(ctx, name, mcpCfg),
+		}
+	}
+	return s
+}
+
+// bearerHeaders puts the instance's credential where the transport expects it.
+//
+// Read as a top-level `bearer_token` option rather than out of `headers:`
+// because config's `*_env` resolution only walks an instance's own keys — a
+// secret referenced from inside a nested map would never be substituted, and
+// would reach the server as the literal name of an environment variable.
+func bearerHeaders(headers map[string]string, token string) map[string]string {
+	if token == "" {
+		return headers
+	}
+	out := make(map[string]string, len(headers)+1)
+	for k, v := range headers {
+		out[k] = v
+	}
+	out["Authorization"] = "Bearer " + token
+	return out
 }
 
 func buildEmailSlot(cfg config.SlotConfig) SlotInstances[email.EmailAdapter] {

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	coreagent "github.com/bsenel/karakuri/internal/core/agent"
+	"github.com/bsenel/karakuri/internal/core/capability"
 	"github.com/bsenel/karakuri/internal/core/domain"
 	"github.com/bsenel/karakuri/internal/core/environment"
 	"github.com/bsenel/karakuri/internal/core/event"
@@ -119,28 +120,44 @@ func BuildEnvironments(
 
 	var envs []environment.Environment
 	seen := make(map[string]bool)
+	build := func(fac environment.Factory) {
+		key := string(fac.EnvID)
+		if seen[key] {
+			return
+		}
+		seen[key] = true
+		env, err := fac.Build(buildCtx)
+		if err != nil {
+			if hub != nil {
+				hub.Publish(ctx, event.Event{
+					Type:        event.TypeAdapterSkipped,
+					ObjectiveID: string(obj.ID),
+					TwinID:      obj.TwinID,
+					Payload:     map[string]any{"env_id": string(fac.EnvID), "error": err.Error()},
+					Timestamp:   time.Now().UTC(),
+				})
+			}
+			return
+		}
+		envs = append(envs, env)
+	}
+
 	for _, d := range obj.AllDomains() {
 		for _, fac := range envReg.ListByDomain(d) {
-			key := string(fac.EnvID)
-			if seen[key] {
-				continue
-			}
-			seen[key] = true
-			env, err := fac.Build(buildCtx)
-			if err != nil {
-				if hub != nil {
-					hub.Publish(ctx, event.Event{
-						Type:        event.TypeAdapterSkipped,
-						ObjectiveID: string(obj.ID),
-						TwinID:      obj.TwinID,
-						Payload:     map[string]any{"env_id": string(fac.EnvID), "error": err.Error()},
-						Timestamp:   time.Now().UTC(),
-					})
-				}
-				continue
-			}
-			envs = append(envs, env)
+			build(fac)
 		}
+	}
+
+	// Tool sources, whatever the objective's domains are (Phase 28).
+	//
+	// An MCP server is not a pack and its tools belong to no subject matter, so
+	// walking the objective's domains would never reach one — an operator who
+	// bound a twin to a filesystem server would find its tools unreachable from
+	// every objective they own. What confines these instead is the binding: the
+	// factory refuses to build for a twin bound to another instance, so a twin
+	// sees its own server and nobody else's (ADR 006, ADR 022).
+	for _, fac := range envReg.ListByDomain(capability.MCPDomain) {
+		build(fac)
 	}
 	return envs
 }

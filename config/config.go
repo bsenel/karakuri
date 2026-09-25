@@ -230,6 +230,18 @@ type ToolsConfig struct {
 	Calendar       SlotConfig `yaml:"calendar"`
 	Email          SlotConfig `yaml:"email"`
 	CLIAgents      SlotConfig `yaml:"cli_agents"`
+
+	// MCP is the eleventh slot, and the only one whose instances are servers
+	// somebody else wrote: each named instance is one MCP server, reached over
+	// stdio or streamable HTTP, and the tools it offers are read off it at boot
+	// rather than declared here. The shape is the same as every other slot
+	// because an MCP client configuration is already what ADR 006 describes —
+	// a default, named instances, resolved per twin through AdapterBindings.
+	//
+	// What is not the same is `allowed_tools`: an instance declares which of the
+	// server's tools this deployment will let it offer, and an empty list allows
+	// nothing. See ADR 022.
+	MCP SlotConfig `yaml:"mcp"`
 }
 
 // SlotConfig is the uniform per-slot shape (Pattern B).
@@ -253,6 +265,45 @@ func (i InstanceConfig) OptString(key string) string {
 		return v
 	}
 	return ""
+}
+
+// OptStrings reads a list-of-strings option by key, returning nil if missing.
+// YAML decodes an inline list into []any, so both shapes are accepted; entries
+// that are not strings are dropped rather than stringified, because a number
+// where a tool name belongs is a config mistake and not a tool called "3".
+func (i InstanceConfig) OptStrings(key string) []string {
+	switch v := i.Options[key].(type) {
+	case []string:
+		return v
+	case []any:
+		out := make([]string, 0, len(v))
+		for _, e := range v {
+			if s, ok := e.(string); ok {
+				out = append(out, s)
+			}
+		}
+		return out
+	}
+	return nil
+}
+
+// OptStringMap reads a map-of-strings option by key, returning nil if missing.
+// Used for the two string maps an MCP instance carries — a subprocess's extra
+// environment variables and an HTTP endpoint's headers.
+func (i InstanceConfig) OptStringMap(key string) map[string]string {
+	switch v := i.Options[key].(type) {
+	case map[string]string:
+		return v
+	case map[string]any:
+		out := make(map[string]string, len(v))
+		for k, e := range v {
+			if s, ok := e.(string); ok {
+				out[k] = s
+			}
+		}
+		return out
+	}
+	return nil
 }
 
 // OptInt reads an int option by key, returning 0 if missing.
@@ -762,6 +813,11 @@ func resolveEnvRefs(cfg *Config) {
 		&cfg.Tools.Calendar,
 		&cfg.Tools.Email,
 		&cfg.Tools.CLIAgents,
+		// An MCP instance's credential is `bearer_token`, which is why the
+		// builder reads it as a top-level option and turns it into a header
+		// itself: this walk only sees the options map's own keys, so a
+		// `*_env` reference nested inside `headers:` would never be resolved.
+		&cfg.Tools.MCP,
 	}
 	for _, slot := range slots {
 		for name, inst := range slot.Instances {
