@@ -122,7 +122,7 @@ func NewApp(
 	artSvc := artifact.NewService(store)
 	resSvc := research.NewService(toolReg, artSvc)
 	agentFactory := platformagent.NewFactory(providers, hub, otel)
-	loopSvc := featureloop.NewService(store, agentFactory, capReg, envReg, memSvc, cpSvc, artSvc, wt, hub, otel, domReg, quotaDeps)
+	loopSvc := featureloop.NewService(store, agentFactory, capReg, envReg, memSvc, cpSvc, artSvc, wt, hub, otel, domReg, quotaDeps, nil)
 	// Closes the cycle: the loop raises checkpoints, and resolving one has to
 	// reach back into the loop that is blocked on it. Constructor injection
 	// cannot express that in either direction, so the second edge is wired
