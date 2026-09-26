@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
+	"strconv"
 	"time"
 
 	"github.com/bsenel/karakuri/internal/core/capability"
@@ -63,7 +65,10 @@ func stepAct(ctx context.Context, sc *stepContext, p plan) []actionOutcome {
 		// a. Find the environment that runs this action.
 		targetEnv, routedBy := sc.svc.resolveEnv(sc.envs, action)
 
-		params := action.Params
+		// A copy, because the worktree fields below are per attempt: written
+		// into the plan's own map, a replay of the plan would carry the last
+		// attempt's worktree_path into this one.
+		params := maps.Clone(action.Params)
 		if params == nil {
 			params = make(map[string]any)
 		}
@@ -95,12 +100,20 @@ func stepAct(ctx context.Context, sc *stepContext, p plan) []actionOutcome {
 		// the suffix test gave a worktree to two capabilities that had no
 		// implementation and withheld one from delegate_to_cli, which is the
 		// only one that can actually write. See ADR 019.
+		//
+		// The task ID names the branch and the directory, so it has to be
+		// unique per attempt, not per action index: a retried iteration, or a
+		// loop resumed after a restart, runs the same actions again, and
+		// `git worktree add` refuses a path or branch that already exists.
+		var provisionErr error
 		if sc.svc.needsWorkspace(action.CapabilityID) {
-			taskID := fmt.Sprintf("%s-%d", sc.loopID[:8], i)
+			taskID := fmt.Sprintf("%s-%d-%d-%s", sc.loopID[:8], sc.iteration, i,
+				strconv.FormatInt(time.Now().UnixNano(), 36))
 			wt, err := sc.svc.wt.Create(ctx, git.WorktreeOptions{
 				ObjectiveID: sc.obj.ID,
 				TaskID:      taskID,
 			})
+			provisionErr = err
 			if err == nil {
 				params["worktree_path"] = wt.Path
 				params["branch"] = wt.Branch
@@ -122,7 +135,14 @@ func stepAct(ctx context.Context, sc *stepContext, p plan) []actionOutcome {
 		}
 
 		var result environment.ActionResult
-		if targetEnv != nil {
+		if provisionErr != nil {
+			// The environment would refuse for want of a worktree anyway; say
+			// why there is none instead.
+			result = environment.ActionResult{
+				Success: false,
+				Error:   fmt.Sprintf("could not provision a worktree for %s: %v", action.CapabilityID, provisionErr),
+			}
+		} else if targetEnv != nil {
 			var err error
 			result, err = targetEnv.Act(ctx, environment.Action{
 				CapabilityID: capability.CapabilityID(action.CapabilityID),

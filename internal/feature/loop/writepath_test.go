@@ -2,6 +2,7 @@ package loop
 
 import (
 	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -216,6 +217,81 @@ func TestWritePathSurvivesAWrongEnvID(t *testing.T) {
 	}
 	if len(cli.calls) != 1 {
 		t.Fatalf("the CLI was called %d times, want 1: the wrong env_id was obeyed", len(cli.calls))
+	}
+}
+
+// A loop can run the same iteration's act step twice: a retried iteration, or
+// a loop resumed after a restart, which replays from its durable state. Task
+// IDs were loop prefix + action index, so the replay asked for the worktrees
+// the first attempt had already created, `git worktree add` refused, and every
+// write action reported "no worktree" — the live failure that stalled Phase 29.
+func TestWritePathSurvivesAReplayedIteration(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available")
+	}
+
+	repo := scratchRepo(t)
+	cli := &scriptedCLI{}
+	sc := writePathContext(t, repo, cli, &recordingVC{})
+	p := plan{
+		Confidence: 0.9,
+		Actions: []plannedAction{{
+			CapabilityID: "software.act.write_code",
+			Params:       map[string]any{"prompt": "implement the router"},
+		}},
+	}
+
+	for attempt := 1; attempt <= 2; attempt++ {
+		results := stepAct(context.Background(), sc, p)
+		if len(results) != 1 || !results[0].Result.Success {
+			t.Fatalf("attempt %d: write_code failed: %+v", attempt, results)
+		}
+	}
+	if len(cli.calls) != 2 {
+		t.Fatalf("the CLI was called %d times, want 2", len(cli.calls))
+	}
+	if cli.calls[0].WorktreePath == cli.calls[1].WorktreePath {
+		t.Error("the replay reused the first attempt's worktree; each attempt needs its own")
+	}
+}
+
+// failingWorktrees refuses to create anything, the way `git worktree add` does
+// when the path or branch is already taken.
+type failingWorktrees struct{ git.WorktreeManager }
+
+func (failingWorktrees) Create(context.Context, git.WorktreeOptions) (git.Worktree, error) {
+	return git.Worktree{}, errors.New("worktree add: path already exists")
+}
+
+// When provisioning fails, the action fails with the reason. The error used to
+// be discarded, and the environment then refused for want of a worktree — true,
+// and useless to whoever had to find out why there was none.
+func TestWritePathReportsWhyProvisioningFailed(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available")
+	}
+
+	repo := scratchRepo(t)
+	cli := &scriptedCLI{}
+	sc := writePathContext(t, repo, cli, &recordingVC{})
+	sc.svc.wt = failingWorktrees{sc.svc.wt}
+
+	results := stepAct(context.Background(), sc, plan{
+		Confidence: 0.9,
+		Actions: []plannedAction{{
+			CapabilityID: "software.act.write_code",
+			Params:       map[string]any{"prompt": "implement the router"},
+		}},
+	})
+
+	if len(results) != 1 || results[0].Result.Success {
+		t.Fatalf("write_code succeeded without a worktree: %+v", results)
+	}
+	if !strings.Contains(results[0].Result.Error, "path already exists") {
+		t.Errorf("error %q does not say why the worktree could not be provisioned", results[0].Result.Error)
+	}
+	if len(cli.calls) != 0 {
+		t.Errorf("the CLI was called %d times with no worktree provisioned", len(cli.calls))
 	}
 }
 
