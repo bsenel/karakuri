@@ -64,6 +64,10 @@ func (o *OTel) RecordTokens(role string, n int) {
 	o.RecordMetric("tokens_used", float64(n), map[string]string{"role": role})
 }
 
+// RecordChat is a compile stub for the Phase 29 test-first slice; the GenAI
+// emission lands with the implementation slice.
+func (o *OTel) RecordChat(provider, model, role string, inTok, outTok int, d time.Duration) {}
+
 func (o *OTel) RecordMemoryRecall(tier string, count int, latencyMS int64) {
 	o.RecordMetric("memory_recall_count", float64(count), map[string]string{"tier": tier})
 	o.RecordMetric("memory_recall_latency_ms", float64(latencyMS), map[string]string{"tier": tier})
