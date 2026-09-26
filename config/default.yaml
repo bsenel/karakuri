@@ -364,3 +364,35 @@ tools:
   cli_agents:
     default: ""
     instances: {}
+  # MCP servers (Phase 28). type: stdio | streamable_http
+  #
+  # Each instance is one server this deployment reaches as a tool source. Its
+  # tools are discovered at boot and registered under mcp.<instance>.<tool>;
+  # they are never a pack's capabilities, never verify a criterion, and every
+  # action using one is approved by a person (ADR 022).
+  #
+  #   mcp:
+  #     default: acme_files
+  #     instances:
+  #       acme_files:
+  #         type: stdio
+  #         command: npx
+  #         args: ["-y", "@modelcontextprotocol/server-filesystem", "/srv/acme"]
+  #         workdir: /srv/acme
+  #         env: { NODE_ENV: production }
+  #         allowed_tools: [read_file, list_directory]
+  #       acme_api:
+  #         type: streamable_http
+  #         url: https://mcp.acme.com/mcp
+  #         bearer_token_env: ACME_MCP_TOKEN
+  #         headers: { X-Acme-Tenant: acme }
+  #         allowed_tools: [search_docs]
+  #         timeout_sec: 30
+  #
+  # allowed_tools is required per instance, and an empty list allows nothing:
+  # "empty means everything" is a default an operator discovers by finding a
+  # tool in the audit log they never approved, and a server can add a tool
+  # between one boot and the next.
+  mcp:
+    default: ""
+    instances: {}

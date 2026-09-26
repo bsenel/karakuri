@@ -38,7 +38,7 @@ Phases 27–32 were proposed from two kinds of evidence: what this repository de
 | 25    | Self-Improvement Without a History         | **Completed** |
 | 26    | The Write Path                             | **Completed** |
 | 27    | Observations Carry Provenance              | **Completed** |
-| 28    | MCP — The Tools Nobody Has To Write        | Planned       |
+| 28    | MCP — The Tools Nobody Has To Write        | **Completed** |
 | 29    | Telemetry Other Tools Already Understand   | Planned       |
 | 30    | The Evaluation Set Karakuri Already Has    | Planned       |
 | 31    | The Evidence Pack                          | Planned       |
@@ -2337,7 +2337,7 @@ pack labelled itself honestly is not decidable from outside it.
 
 ---
 
-## Phase 28 — MCP: The Tools Nobody Has To Write (Planned)
+## Phase 28 — MCP: The Tools Nobody Has To Write (Completed)
 
 **Goal:** Karakuri reaches any MCP server as a tool source, and is reachable as
 one.

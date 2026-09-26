@@ -85,6 +85,13 @@ func stepVerify(ctx context.Context, sc *stepContext, outcomes []actionOutcome) 
 		// shown no results at all.
 		ran := outcomesFor(outcomes, verifier)
 		switch {
+		case criterion.VerifierIsReserved():
+			// A tool a third party controls never settles whether this
+			// deployment's work is done, however the criterion reached the
+			// objective — boot only warns about templates, so this is the
+			// place that refuses (ADR 022). Not met, and not handed to the
+			// agent either: its judgement would be read off that tool's output.
+			met = false
 		case verifier != "" && len(ran) > 0:
 			// Every run of it has to have succeeded. One failing test run is
 			// a failing test run, however many passed beside it.

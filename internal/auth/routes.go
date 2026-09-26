@@ -122,19 +122,25 @@ func Scoped(lookup ScopeLookup, inner auth.ResourceFunc) auth.ResourceFunc {
 		return inner
 	}
 	return func(r *http.Request) auth.ResourceRef {
-		ref := inner(r)
-		if ref.ID == "" {
-			// A collection route names no resource, so there is nothing to
-			// look up. Whether the principal may list is answered by the
-			// binding's own scope, and which rows come back is PR4's question.
-			return ref
-		}
-		scopes, err := lookup.ScopesOf(r.Context(), ref.Type, ref.ID)
-		if err != nil || len(scopes) == 0 {
-			return ref
-		}
-		return ref.WithScopes(scopes...)
+		return ScopedResource(r.Context(), lookup, inner(r))
 	}
+}
+
+// ScopedResource is Scoped's lookup with the request taken out of it, for a
+// caller that already holds the reference — the MCP surface, where the subject
+// of a call arrives in a JSON-RPC body rather than in a URL.
+//
+// A collection reference names no resource, so there is nothing to look up and
+// the lookup is not called: every list request would otherwise pay for it.
+func ScopedResource(ctx context.Context, lookup ScopeLookup, ref auth.ResourceRef) auth.ResourceRef {
+	if lookup == nil || ref.ID == "" {
+		return ref
+	}
+	scopes, err := lookup.ScopesOf(ctx, ref.Type, ref.ID)
+	if err != nil || len(scopes) == 0 {
+		return ref
+	}
+	return ref.WithScopes(scopes...)
 }
 
 func LoopResource(r *http.Request) auth.ResourceRef {
@@ -288,6 +294,14 @@ func Routes() []Route {
 		{http.MethodGet, "/quota/tiers", ActionQuotaRead, false},
 		{http.MethodPut, "/quota/tiers/{name}", ActionQuotaAdmin, false},
 		{http.MethodDelete, "/quota/tiers/{name}", ActionQuotaAdmin, false},
+
+		// Karakuri as an MCP server (Phase 28). Authenticated but not gated on
+		// one action: a JSON-RPC body names the tool, and each tool demands the
+		// same action as the route answering the same question — objective:read
+		// to list objectives, report:read for a digest, audit:read for
+		// telemetry. A principal holding none of them reaches an empty tool
+		// list, which is the honest answer to "what may I do here".
+		{http.MethodPost, "/mcp", "", false},
 
 		{http.MethodPost, "/research", ActionResearchRun, false},
 		{http.MethodGet, "/audit", ActionAuditRead, false},

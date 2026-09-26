@@ -38,33 +38,45 @@ func ScopedCollection(a ScopeAuthorizer, action auth.Action, inner auth.Resource
 	}
 	return func(r *http.Request) auth.ResourceRef {
 		ref := inner(r)
-		if ref.ID != "" {
-			return ref
-		}
 		principal, ok := auth.PrincipalFromContext(r.Context())
 		if !ok {
 			return ref
 		}
-		grants, err := a.GrantedScopes(r.Context(), principal.ID, action)
-		if err != nil {
-			// Fail closed: no labels means only an unscoped binding reaches the
-			// collection, which is what happened before containers existed.
-			return ref
-		}
-		var labels []string
-		for _, scope := range grants.Allow {
-			// Wildcards already match the collection ref through the ordinary
-			// grammar; adding them as labels would say nothing new.
-			if scope == "*" || strings.HasSuffix(scope, ":*") {
-				continue
-			}
-			labels = append(labels, scope)
-		}
-		if len(labels) == 0 {
-			return ref
-		}
-		return ref.WithScopes(labels...)
+		return ScopedCollectionRef(r.Context(), a, principal.ID, action, ref)
 	}
+}
+
+// ScopedCollectionRef is ScopedCollection's rule with the request taken out of
+// it, for a caller that already holds the reference and the principal.
+//
+// The MCP surface needs exactly this and has no route to derive it from: a tool
+// call names its subject in a JSON-RPC body, so there is no URL for a
+// ResourceFunc to read. Sharing the rule rather than restating it is the point —
+// two implementations of "may you list at all" would be two answers waiting to
+// disagree.
+func ScopedCollectionRef(ctx context.Context, a ScopeAuthorizer, principalID string, action auth.Action, ref auth.ResourceRef) auth.ResourceRef {
+	if a == nil || principalID == "" || ref.ID != "" {
+		return ref
+	}
+	grants, err := a.GrantedScopes(ctx, principalID, action)
+	if err != nil {
+		// Fail closed: no labels means only an unscoped binding reaches the
+		// collection, which is what happened before containers existed.
+		return ref
+	}
+	var labels []string
+	for _, scope := range grants.Allow {
+		// Wildcards already match the collection ref through the ordinary
+		// grammar; adding them as labels would say nothing new.
+		if scope == "*" || strings.HasSuffix(scope, ":*") {
+			continue
+		}
+		labels = append(labels, scope)
+	}
+	if len(labels) == 0 {
+		return ref
+	}
+	return ref.WithScopes(labels...)
 }
 
 // ListSelectors turns the scopes a principal holds into a storage filter over

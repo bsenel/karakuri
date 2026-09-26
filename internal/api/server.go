@@ -228,6 +228,18 @@ func NewApp(
 		Containers: containerSvc,
 	}
 	audH := &handler.AuditHandler{Store: store}
+	// Karakuri as an MCP server (Phase 28). Read and propose only, and no
+	// permission model of its own: each tool declares the action the REST route
+	// answering the same question declares. See ADR 022.
+	mcpH := &handler.MCPHandler{
+		Objectives: objSvc,
+		Reports:    reportSvc,
+		Reconcile:  reconcileSvc,
+		Telemetry:  envReg.Telemetry(),
+		Enforcer:   authDeps.Enforcer,
+		Scopes:     authDeps.Authorizer,
+		Containers: containerSvc,
+	}
 	contH := &handler.ContainerHandler{Containers: containerSvc, Authorizer: authDeps.Authorizer}
 	quotaH := &handler.QuotaHandler{
 		Quota:      quotaDeps,
@@ -438,6 +450,14 @@ func NewApp(
 			// subscriber is decided per event, because the key names
 			// everything and no URL-shaped check can narrow that.
 			r.With(require(karakuriauth.StreamAction, twinList)).Get("/events", evtH.StreamAll)
+
+			// The MCP endpoint (Phase 28). No route-level permission: the
+			// subject of a call arrives inside a JSON-RPC body, so the gate is
+			// per tool inside the handler, against the same actions and the
+			// same scope sets every route above uses. Any authenticated
+			// principal may speak the protocol; one holding nothing sees an
+			// empty tool list.
+			r.Post("/mcp", mcpH.ServeHTTP)
 
 			r.With(require(karakuriauth.ActionAuditRead, nil)).Get("/audit", audH.List)
 			r.With(require(karakuriauth.ActionAuditRead, nil)).Get("/audit/{id}", audH.Get)

@@ -1,6 +1,10 @@
 package objective
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/bsenel/karakuri/internal/core/capability"
+)
 
 func TestObjective_AllDomains_Dedup(t *testing.T) {
 	o := Objective{Domain: "software", AdditionalDomains: []string{"healthcare", "software", "", "legal"}}
@@ -53,5 +57,24 @@ func TestObjective_CriterionDomains(t *testing.T) {
 	}
 	if !seen["software"] || !seen["healthcare"] {
 		t.Errorf("expected software+healthcare, got %v", got)
+	}
+}
+
+// The second bound: a criterion verified by a discovered tool is refused
+// however it was written, and only the reserved namespace is.
+func TestCriterion_VerifierIsReserved(t *testing.T) {
+	for _, tc := range []struct {
+		verifier string
+		want     bool
+	}{
+		{"mcp.acme_files.read_file", true},
+		{"software.act.run_tests", false},
+		{"mcpx.files.read", false},
+		{"", false},
+	} {
+		c := Criterion{Verifier: capability.CapabilityID(tc.verifier)}
+		if got := c.VerifierIsReserved(); got != tc.want {
+			t.Errorf("VerifierIsReserved(%q) = %v, want %v", tc.verifier, got, tc.want)
+		}
 	}
 }

@@ -368,10 +368,14 @@ func (s *serviceImpl) resolveEnv(envs []environment.Environment, action plannedA
 // Unknown capabilities get no workspace: a capability the registry has never
 // heard of is one no pack declared, and provisioning a git worktree for a
 // name a model invented would create a branch per hallucination.
+//
+// Asked through GrantsWorkspace rather than reading NeedsWorkspace, so a tool
+// discovered from an MCP server never gets one however its description reads —
+// the first of ADR 022's four bounds, applied at the one place that provisions.
 func (s *serviceImpl) needsWorkspace(capID string) bool {
 	if s.capReg == nil {
 		return false
 	}
 	cap, ok := s.capReg.Get(capability.CapabilityID(capID))
-	return ok && cap.NeedsWorkspace
+	return ok && cap.GrantsWorkspace()
 }

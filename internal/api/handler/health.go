@@ -24,6 +24,12 @@ func (h *HealthHandler) ServeHTTP(w http.ResponseWriter, _ *http.Request) {
 		"status":    "ok",
 		"providers": h.Providers.All(),
 		"adapters":  h.Tools.Status(), // [{slot, name, active}, ...]
+		// The MCP slot appears in `adapters` like every other slot since
+		// Phase 6, and again here with what only a server has: what it calls
+		// itself, which revision it speaks, the tools this deployment allowed,
+		// and the ones it refused. An allowlist with no visible other side reads
+		// like the tool does not exist.
+		"mcp":       h.Tools.MCPHealth(),
 		"exporters": h.Exporters.Names(),
 		"git":       map[string]any{"repo_path": h.RepoPath, "worktree_manager": h.Worktrees != nil},
 	})

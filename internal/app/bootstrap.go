@@ -244,6 +244,33 @@ func BootstrapServer(cfgPath string) (*Bootstrap, error) {
 		}
 	}
 
+	// Tools discovered from MCP servers (Phase 28).
+	//
+	// After the packs, and outside the loop over them, because they belong to no
+	// pack: they were read off a server at boot rather than declared when a pack
+	// was written, they are graded by no conformance suite, and the reserved
+	// namespace is what tells them apart everywhere downstream (ADR 022).
+	//
+	// Registered here rather than discovered later because Factory.Serves is
+	// reverse-indexed once at Register: an environment cannot grow a capability
+	// after registration, so discovery has to have finished — which it has, in
+	// tools.NewRegistryFromConfig above.
+	for _, cap := range toolReg.MCPCapabilities() {
+		if err := capReg.Register(cap); err != nil {
+			slog.Warn("discovered MCP tool could not be registered", "capability", cap.ID, "err", err)
+		}
+	}
+	for _, factory := range toolReg.MCPEnvironmentFactories() {
+		if err := envReg.Register(factory); err != nil {
+			slog.Warn("MCP environment could not be registered", "env_id", factory.EnvID, "err", err)
+		}
+	}
+	for _, h := range toolReg.MCPHealth() {
+		slog.Info("MCP instance", "instance", h.Name, "transport", h.Transport, "state", h.State,
+			"server", h.Server, "protocol", h.ProtocolVersion,
+			"tools", h.Tools, "filtered", h.Filtered, "err", h.Error)
+	}
+
 	// Pick semantic backend per config. Only pgvector requires a non-default
 	// constructor; the SQLite keyword fallback is the default path (nil here).
 	var semanticBackend corememory.Memory
