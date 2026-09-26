@@ -36,7 +36,7 @@ type stdioTransport struct {
 }
 
 func newStdioTransport(cfg Config) (*stdioTransport, error) {
-	cmd := exec.Command(cfg.Command, cfg.Args...)
+	cmd := exec.Command(cfg.Command, cfg.Args...) // #nosec G204 -- operator-configured command, argv form with no shell; never from a request or a server
 	cmd.Dir = cfg.WorkDir
 	// Scrubbed for the same reason a delegated CLI is: a child of this process
 	// is a fresh run, not a continuation of whatever session launched the
