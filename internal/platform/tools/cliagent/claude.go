@@ -58,7 +58,7 @@ func (c *ClaudeCode) Delegate(ctx context.Context, in DelegateInput) (DelegateOu
 }
 
 func (c *ClaudeCode) Stream(ctx context.Context, in DelegateInput) (<-chan DelegateChunk, error) {
-	args := []string{"--print", "--output-format=stream-json"}
+	args := []string{"--print", "--output-format=stream-json", "--verbose"}
 	if len(in.AllowedTools) > 0 {
 		args = append(args, "--allowed-tools="+strings.Join(in.AllowedTools, ","))
 	}
