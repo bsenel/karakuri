@@ -49,3 +49,33 @@ func TestEnsureGitHubToken_PicksUpFromStubGh(t *testing.T) {
 		t.Errorf("expected token from stub gh (trimmed), got %q", got)
 	}
 }
+
+// YAML decodes an inline list into []any and a map into map[string]any, so
+// both shapes are read; a non-string entry is dropped rather than stringified.
+func TestOptStringsAndOptStringMap(t *testing.T) {
+	inst := InstanceConfig{Options: map[string]any{
+		"allowed_tools": []any{"read_file", 3, "list_directory"},
+		"typed":         []string{"a"},
+		"env":           map[string]any{"NODE_ENV": "production", "PORT": 8080},
+		"headers":       map[string]string{"X-Tenant": "acme"},
+	}}
+
+	if got := inst.OptStrings("allowed_tools"); len(got) != 2 || got[0] != "read_file" || got[1] != "list_directory" {
+		t.Errorf("OptStrings(allowed_tools) = %v", got)
+	}
+	if got := inst.OptStrings("typed"); len(got) != 1 || got[0] != "a" {
+		t.Errorf("OptStrings(typed) = %v", got)
+	}
+	if got := inst.OptStrings("missing"); got != nil {
+		t.Errorf("OptStrings(missing) = %v, want nil", got)
+	}
+	if got := inst.OptStringMap("env"); len(got) != 1 || got["NODE_ENV"] != "production" {
+		t.Errorf("OptStringMap(env) = %v", got)
+	}
+	if got := inst.OptStringMap("headers"); got["X-Tenant"] != "acme" {
+		t.Errorf("OptStringMap(headers) = %v", got)
+	}
+	if got := inst.OptStringMap("missing"); got != nil {
+		t.Errorf("OptStringMap(missing) = %v, want nil", got)
+	}
+}
