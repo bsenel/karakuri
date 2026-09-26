@@ -10,7 +10,9 @@ import (
 	"time"
 
 	coreagent "github.com/bsenel/karakuri/internal/core/agent"
+	"github.com/bsenel/karakuri/internal/core/capability"
 	corecheckpoint "github.com/bsenel/karakuri/internal/core/checkpoint"
+	"github.com/bsenel/karakuri/internal/core/environment"
 	"github.com/bsenel/karakuri/internal/core/event"
 	"github.com/bsenel/karakuri/internal/core/loop"
 )
@@ -417,17 +419,35 @@ func buildReasonCatalog(sc *stepContext) string {
 		}
 		seen := make(map[string]bool)
 		var caps []string
+		add := func(c capability.Capability) {
+			id := string(c.ID)
+			if seen[id] {
+				return
+			}
+			seen[id] = true
+			if c.Description != "" {
+				caps = append(caps, fmt.Sprintf("  - %s — %s", id, c.Description))
+			} else {
+				caps = append(caps, "  - "+id)
+			}
+		}
 		for _, d := range domains {
 			for _, c := range sc.svc.capReg.ListByDomain(d) {
-				id := string(c.ID)
-				if seen[id] {
-					continue
-				}
-				seen[id] = true
-				if c.Description != "" {
-					caps = append(caps, fmt.Sprintf("  - %s — %s", id, c.Description))
-				} else {
-					caps = append(caps, "  - "+id)
+				add(c)
+			}
+		}
+		// Tool sources belong to no domain an objective declares, so the walk
+		// above never reaches them. Ask the environments built for this twin
+		// instead: that is what confines the listing to the MCP instance the
+		// twin is bound to (see environment.ToolSource).
+		for _, env := range sc.envs {
+			src, ok := env.(environment.ToolSource)
+			if !ok {
+				continue
+			}
+			for _, id := range src.ProvidedCapabilities() {
+				if c, ok := sc.svc.capReg.Get(id); ok {
+					add(c)
 				}
 			}
 		}

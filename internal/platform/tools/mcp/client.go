@@ -67,6 +67,11 @@ type Config struct {
 type Client struct {
 	transport transport
 
+	// sendMu holds one request/response exchange at a time. The stdio
+	// transport reads replies off a single pipe and skips any ID it did not
+	// send, so two calls in flight would each discard the other's reply.
+	sendMu sync.Mutex
+
 	mu      sync.Mutex
 	nextID  int64
 	timeout time.Duration
@@ -188,6 +193,8 @@ func (c *Client) call(ctx context.Context, method string, params json.RawMessage
 	ctx, cancel := c.withTimeout(ctx)
 	defer cancel()
 
+	c.sendMu.Lock()
+	defer c.sendMu.Unlock()
 	resp, err := c.transport.Send(ctx, Request{
 		JSONRPC: "2.0",
 		ID:      id,
