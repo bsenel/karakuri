@@ -5,6 +5,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/bsenel/karakuri/internal/core/telemetry"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
@@ -53,20 +54,44 @@ func (o *OTel) Flush(ctx context.Context) error {
 func (o *OTel) IncWorktreeCreated() { o.RecordMetric("worktree_created", 1, nil) }
 func (o *OTel) IncWorktreeRemoved() { o.RecordMetric("worktree_removed", 1, nil) }
 func (o *OTel) IncAgentInvocation(role string) {
-	o.RecordMetric("agent_invocation", 1, map[string]string{"role": role})
+	o.RecordMetric("agent_invocation", 1, agentLabels(role))
 }
 
 func (o *OTel) ObserveAgentLatency(role string, d time.Duration) {
-	o.RecordMetric("agent_latency_ms", float64(d.Milliseconds()), map[string]string{"role": role})
+	o.RecordMetric("agent_latency_ms", float64(d.Milliseconds()), agentLabels(role))
 }
 
 func (o *OTel) RecordTokens(role string, n int) {
-	o.RecordMetric("tokens_used", float64(n), map[string]string{"role": role})
+	o.RecordMetric("tokens_used", float64(n), agentLabels(role))
 }
 
-// RecordChat is a compile stub for the Phase 29 test-first slice; the GenAI
-// emission lands with the implementation slice.
-func (o *OTel) RecordChat(provider, model, role string, inTok, outTok int, d time.Duration) {}
+// RecordChat records one LLM chat call under both the legacy tokens_used
+// metric and the OpenTelemetry GenAI client metrics.
+func (o *OTel) RecordChat(provider, model, role string, inTok, outTok int, d time.Duration) {
+	o.RecordTokens(role, inTok+outTok)
+	o.RecordMetric("gen_ai.client.token.usage", float64(inTok), chatLabels(provider, model, role, "input"))
+	o.RecordMetric("gen_ai.client.token.usage", float64(outTok), chatLabels(provider, model, role, "output"))
+	o.RecordMetric("gen_ai.client.operation.duration", d.Seconds(), chatLabels(provider, model, role, ""))
+}
+
+// agentLabels keeps the legacy role label and adds its GenAI equivalent.
+func agentLabels(role string) map[string]string {
+	return map[string]string{"role": role, telemetry.GenAIAgentName: role}
+}
+
+// chatLabels builds GenAI chat attributes; tokenType is omitted when empty.
+func chatLabels(provider, model, role, tokenType string) map[string]string {
+	m := map[string]string{
+		telemetry.GenAIProviderName:  provider,
+		telemetry.GenAIRequestModel:  model,
+		telemetry.GenAIOperationName: telemetry.OpChat,
+		telemetry.GenAIAgentName:     role,
+	}
+	if tokenType != "" {
+		m[telemetry.GenAITokenType] = tokenType
+	}
+	return m
+}
 
 func (o *OTel) RecordMemoryRecall(tier string, count int, latencyMS int64) {
 	o.RecordMetric("memory_recall_count", float64(count), map[string]string{"tier": tier})
