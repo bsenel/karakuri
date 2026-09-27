@@ -60,14 +60,35 @@ func (a *karakuriAgent) Run(ctx context.Context, input coreagent.Input) (coreage
 	systemPrompt := buildSystemPrompt(a.def, input)
 	userPrompt := buildUserPrompt(input)
 
-	resp, err := a.provider.Complete(ctx, llm.CompletionRequest{
+	// The one point every provider call passes through, so the chat span lives here.
+	model := modelOf(a.provider)
+	name := telemetry.OpChat
+	attrs := []telemetry.Attribute{
+		{Key: telemetry.GenAIOperationName, Value: telemetry.OpChat},
+		{Key: telemetry.GenAIProviderName, Value: a.provider.Name()},
+	}
+	if model != "" {
+		name += " " + model
+		attrs = append(attrs, telemetry.Attribute{Key: telemetry.GenAIRequestModel, Value: model})
+	}
+	spanCtx, span := a.tracer.Start(ctx, name, attrs...)
+	defer span.End()
+
+	resp, err := a.provider.Complete(spanCtx, llm.CompletionRequest{
 		SystemPrompt: systemPrompt,
 		Messages:     []llm.Message{{Role: "user", Content: userPrompt}},
 		Temperature:  a.def.LLMHints.TemperatureMax,
 		MaxTokens:    8192,
 	})
 	if err != nil {
+		span.SetError(err.Error())
 		return coreagent.Output{}, err
+	}
+	if resp.InputTokens > 0 {
+		span.SetAttributes(telemetry.Attribute{Key: telemetry.GenAIUsageInputTokens, Value: resp.InputTokens})
+	}
+	if resp.OutputTokens > 0 {
+		span.SetAttributes(telemetry.Attribute{Key: telemetry.GenAIUsageOutputTokens, Value: resp.OutputTokens})
 	}
 
 	a.hub.Publish(ctx, event.Event{
