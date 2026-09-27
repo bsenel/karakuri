@@ -14,6 +14,7 @@ import (
 	"github.com/bsenel/karakuri/internal/core/event"
 	corememory "github.com/bsenel/karakuri/internal/core/memory"
 	coreobjective "github.com/bsenel/karakuri/internal/core/objective"
+	"github.com/bsenel/karakuri/internal/core/telemetry"
 	"github.com/bsenel/karakuri/internal/feature/artifact"
 	"github.com/bsenel/karakuri/internal/feature/checkpoint"
 	"github.com/bsenel/karakuri/internal/feature/container"
@@ -121,8 +122,14 @@ func NewApp(
 	cpSvc := checkpoint.NewService(store, hub)
 	artSvc := artifact.NewService(store)
 	resSvc := research.NewService(toolReg, artSvc)
-	agentFactory := platformagent.NewFactory(providers, hub, otel, nil)
-	loopSvc := featureloop.NewService(store, agentFactory, capReg, envReg, memSvc, cpSvc, artSvc, wt, hub, otel, domReg, quotaDeps, nil)
+	// A nil *OTel stays a nil interface, so the constructors fall back to the
+	// noop tracer instead of calling Start on a nil pointer.
+	var tracer telemetry.Tracer
+	if otel != nil {
+		tracer = otel
+	}
+	agentFactory := platformagent.NewFactory(providers, hub, otel, tracer)
+	loopSvc := featureloop.NewService(store, agentFactory, capReg, envReg, memSvc, cpSvc, artSvc, wt, hub, otel, domReg, quotaDeps, tracer)
 	// Closes the cycle: the loop raises checkpoints, and resolving one has to
 	// reach back into the loop that is blocked on it. Constructor injection
 	// cannot express that in either direction, so the second edge is wired
