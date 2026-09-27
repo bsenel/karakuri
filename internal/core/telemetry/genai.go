@@ -7,11 +7,11 @@ const (
 	GenAIOperationName     = "gen_ai.operation.name"
 	GenAIProviderName      = "gen_ai.provider.name"
 	GenAIRequestModel      = "gen_ai.request.model"
-	GenAIUsageInputTokens  = "gen_ai.usage.input_tokens"
-	GenAIUsageOutputTokens = "gen_ai.usage.output_tokens"
+	GenAIUsageInputTokens  = "gen_ai.usage.input_tokens"  // #nosec G101 -- OpenTelemetry GenAI attribute name, not a credential
+	GenAIUsageOutputTokens = "gen_ai.usage.output_tokens" // #nosec G101 -- OpenTelemetry GenAI attribute name, not a credential
 	GenAIAgentName         = "gen_ai.agent.name"
 	GenAIToolName          = "gen_ai.tool.name"
-	GenAITokenType         = "gen_ai.token.type"
+	GenAITokenType         = "gen_ai.token.type" // #nosec G101 -- OpenTelemetry GenAI attribute name, not a credential
 )
 
 // Values for GenAIOperationName.

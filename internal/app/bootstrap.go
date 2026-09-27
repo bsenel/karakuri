@@ -404,8 +404,9 @@ func startCostRetention(ctx context.Context, deps karakuriquota.Deps, days int) 
 
 // startTelemetryFlush hands buffered metrics, logs and spans to the exporters
 // on every tick, and once more when ctx is cancelled so shutdown does not drop
-// the last interval. The final flush gets a fresh context: ctx is already done
-// by then, and a request made on it would fail before it left the process.
+// the last interval. The final flush detaches from ctx's cancellation (keeping
+// its values): ctx is already done by then, and a request made on it would
+// fail before it left the process.
 func startTelemetryFlush(ctx context.Context, o *observability.OTel, interval time.Duration) {
 	if o == nil {
 		return
@@ -417,7 +418,7 @@ func startTelemetryFlush(ctx context.Context, o *observability.OTel, interval ti
 		for {
 			select {
 			case <-ctx.Done():
-				fctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				fctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 				_ = o.Flush(fctx)
 				cancel()
 				return
