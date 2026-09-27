@@ -189,7 +189,21 @@ func TestSealEncryptedRoundTripAndConfidentiality(t *testing.T) {
 	}
 
 	// Tampering with the ciphertext is rejected by the GCM tag.
-	tampered := value[:len(value)-2] + "AA"
+	//
+	// The tamper flips a bit in the decoded bytes rather than rewriting the
+	// encoded tail. Overwriting the last two characters with "AA" left the
+	// value unchanged whenever it already decoded to the same bytes — its last
+	// character carries padding bits that decoding discards — and about one
+	// run in two hundred then failed by opening what was never tampered with.
+	raw, err := base64.RawURLEncoding.DecodeString(value)
+	if err != nil {
+		t.Fatalf("decode sealed value: %v", err)
+	}
+	raw[len(raw)-1] ^= 0x01
+	tampered := base64.RawURLEncoding.EncodeToString(raw)
+	if tampered == value {
+		t.Fatalf("tampering did not change the sealed value")
+	}
 	if err := s.OpenEncrypted(tampered, &got); err == nil {
 		t.Fatalf("OpenEncrypted accepted a tampered value")
 	}
