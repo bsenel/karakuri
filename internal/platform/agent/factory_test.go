@@ -326,3 +326,84 @@ func TestNewFactory_NilTracer(t *testing.T) {
 		t.Errorf("content = %q, want %q", out.Content, "ok")
 	}
 }
+
+// capturingExporter keeps every metric record a Flush hands it.
+type capturingExporter struct{ metrics []observability.MetricRecord }
+
+func (c *capturingExporter) Name() string { return "capture" }
+func (c *capturingExporter) ExportMetrics(_ context.Context, r []observability.MetricRecord) error {
+	c.metrics = append(c.metrics, r...)
+	return nil
+}
+func (c *capturingExporter) ExportLogs(context.Context, []observability.LogRecord) error { return nil }
+func (c *capturingExporter) Flush(context.Context) error                                 { return nil }
+func (c *capturingExporter) Shutdown(context.Context) error                              { return nil }
+
+// runRecordingMetrics runs one call through a Factory whose OTel flushes into a
+// capturingExporter, and returns what it captured by metric name.
+func runRecordingMetrics(t *testing.T, resp llm.CompletionResponse) map[string][]observability.MetricRecord {
+	t.Helper()
+	exp := &capturingExporter{}
+	reg := observability.NewExporterRegistry()
+	reg.Register(exp)
+	otel := observability.NewOTel(reg)
+
+	providers := llm.NewRegistry(nil)
+	p := newModeled(resp, nil)
+	providers.Register(p)
+	a, err := NewFactory(providers, event.NewHub(), otel, nil).New(context.Background(), coreagent.Definition{
+		ID: "a1", Name: "tester", LLMHints: capability.LLMHints{PreferredProvider: p.Name()},
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	if _, err := a.Run(context.Background(), coreagent.Input{Task: "t"}); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if err := otel.Flush(context.Background()); err != nil {
+		t.Fatalf("Flush: %v", err)
+	}
+	byName := map[string][]observability.MetricRecord{}
+	for _, m := range exp.metrics {
+		byName[m.Name] = append(byName[m.Name], m)
+	}
+	return byName
+}
+
+// Phase 29 Step 1 added the GenAI client metrics beside the legacy names, but
+// nothing called them: every model call now records both.
+func TestRun_RecordsLegacyAndGenAIMetrics(t *testing.T) {
+	got := runRecordingMetrics(t, llm.CompletionResponse{Content: "ok", TokensUsed: 19, InputTokens: 12, OutputTokens: 7})
+
+	for _, name := range []string{"agent_invocation", "agent_latency_ms", "tokens_used", "gen_ai.client.operation.duration"} {
+		if len(got[name]) != 1 {
+			t.Errorf("%s recorded %d times, want 1", name, len(got[name]))
+		}
+	}
+	if m := got["tokens_used"]; len(m) == 1 && (m[0].Value != 19 || m[0].Labels["role"] != "tester") {
+		t.Errorf("tokens_used = %v %v, want 19 with role=tester", m[0].Value, m[0].Labels)
+	}
+	usage := map[string]float64{}
+	for _, m := range got["gen_ai.client.token.usage"] {
+		usage[m.Labels[telemetry.GenAITokenType]] = m.Value
+		if m.Labels[telemetry.GenAIRequestModel] != testModel || m.Labels[telemetry.GenAIProviderName] != "fakeprov" {
+			t.Errorf("token usage labels = %v, want model %q and provider fakeprov", m.Labels, testModel)
+		}
+	}
+	if usage["input"] != 12 || usage["output"] != 7 || len(usage) != 2 {
+		t.Errorf("gen_ai.client.token.usage by type = %v, want input 12 and output 7", usage)
+	}
+}
+
+// A provider that reports only a total keeps it under tokens_used and claims no
+// input/output split it does not have.
+func TestRun_RecordsTotalOnlyWhenThereIsNoSplit(t *testing.T) {
+	got := runRecordingMetrics(t, llm.CompletionResponse{Content: "ok", TokensUsed: 30})
+
+	if m := got["tokens_used"]; len(m) != 1 || m[0].Value != 30 {
+		t.Errorf("tokens_used = %+v, want one record of 30", m)
+	}
+	if n := len(got["gen_ai.client.token.usage"]); n != 0 {
+		t.Errorf("gen_ai.client.token.usage recorded %d times without a split, want 0", n)
+	}
+}

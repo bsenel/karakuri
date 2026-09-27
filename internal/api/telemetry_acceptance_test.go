@@ -92,15 +92,30 @@ type otlpSpan struct {
 	Attributes   []struct {
 		Key   string `json:"key"`
 		Value struct {
-			StringValue string `json:"stringValue"`
+			StringValue *string `json:"stringValue"`
+			IntValue    *string `json:"intValue"` // int64 is a decimal string in OTLP/JSON
 		} `json:"value"`
 	} `json:"attributes"`
 }
 
+// attr returns a string-typed attribute; an attribute of any other type is
+// reported as absent, because a query against the conventions reads the type
+// they define.
 func (s otlpSpan) attr(key string) (string, bool) {
 	for _, a := range s.Attributes {
-		if a.Key == key {
-			return a.Value.StringValue, true
+		if a.Key == key && a.Value.StringValue != nil {
+			return *a.Value.StringValue, true
+		}
+	}
+	return "", false
+}
+
+// intAttr returns an integer-typed attribute, as the conventions define
+// gen_ai.usage.*_tokens: a backend sums them, and cannot sum a string.
+func (s otlpSpan) intAttr(key string) (string, bool) {
+	for _, a := range s.Attributes {
+		if a.Key == key && a.Value.IntValue != nil {
+			return *a.Value.IntValue, true
 		}
 	}
 	return "", false
@@ -257,13 +272,15 @@ func TestOneIterationExportsOneTraceOverOTLP(t *testing.T) {
 	}
 
 	for _, s := range byOp[telemetry.OpChat] {
+		if v, ok := s.attr(telemetry.GenAIRequestModel); !ok || v != accModel {
+			t.Errorf("chat span %s = %q (string present %v), want %q", telemetry.GenAIRequestModel, v, ok, accModel)
+		}
 		for key, want := range map[string]string{
-			telemetry.GenAIRequestModel:      accModel,
 			telemetry.GenAIUsageInputTokens:  strconv.Itoa(accInTokens),
 			telemetry.GenAIUsageOutputTokens: strconv.Itoa(accOutTokens),
 		} {
-			if v, ok := s.attr(key); !ok || v != want {
-				t.Errorf("chat span %s = %q (present %v), want %q", key, v, ok, want)
+			if v, ok := s.intAttr(key); !ok || v != want {
+				t.Errorf("chat span %s = %q (int present %v), want int %s", key, v, ok, want)
 			}
 		}
 	}

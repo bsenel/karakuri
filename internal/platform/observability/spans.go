@@ -194,7 +194,7 @@ func (o *OTLPExporter) ExportSpans(ctx context.Context, spans []SpanRecord) erro
 			"kind":              int(s.Kind),
 			"startTimeUnixNano": fmt.Sprintf("%d", s.Start.UnixNano()),
 			"endTimeUnixNano":   fmt.Sprintf("%d", s.End.UnixNano()),
-			"attributes":        otlpAttributes(spanAttributes(s.Attributes)),
+			"attributes":        otlpSpanAttributes(s.Attributes),
 			"status":            status,
 		}
 		if s.ParentSpanID != "" {
@@ -218,25 +218,41 @@ func (o *OTLPExporter) ExportSpans(ctx context.Context, spans []SpanRecord) erro
 	return o.post(ctx, o.endpoint+"/v1/traces", body)
 }
 
-// spanAttributes flattens span attributes into the string map otlpAttributes
-// takes. A later attribute with the same key wins.
-func spanAttributes(attrs []telemetry.Attribute) map[string]string {
-	m := make(map[string]string, len(attrs))
+// otlpSpanAttributes encodes span attributes as OTLP/JSON key/values that keep
+// their types. The GenAI conventions define gen_ai.usage.*_tokens as integers,
+// and a backend that sums or filters on them cannot do that to a string. A
+// later attribute with the same key wins.
+func otlpSpanAttributes(attrs []telemetry.Attribute) []map[string]any {
+	index := make(map[string]int, len(attrs))
+	out := make([]map[string]any, 0, len(attrs))
 	for _, a := range attrs {
-		switch v := a.Value.(type) {
-		case string:
-			m[a.Key] = v
-		case bool:
-			m[a.Key] = strconv.FormatBool(v)
-		case int:
-			m[a.Key] = strconv.Itoa(v)
-		case int64:
-			m[a.Key] = strconv.FormatInt(v, 10)
-		case float64:
-			m[a.Key] = strconv.FormatFloat(v, 'g', -1, 64)
-		default:
-			m[a.Key] = fmt.Sprint(v)
+		kv := map[string]any{"key": a.Key, "value": otlpAnyValue(a.Value)}
+		if i, ok := index[a.Key]; ok {
+			out[i] = kv
+			continue
 		}
+		index[a.Key] = len(out)
+		out = append(out, kv)
 	}
-	return m
+	return out
+}
+
+// otlpAnyValue maps a Go value onto the OTLP/JSON AnyValue its type calls for.
+// Integers are decimal strings, which is how the protobuf JSON mapping encodes
+// int64.
+func otlpAnyValue(v any) map[string]any {
+	switch v := v.(type) {
+	case string:
+		return map[string]any{"stringValue": v}
+	case bool:
+		return map[string]any{"boolValue": v}
+	case int:
+		return map[string]any{"intValue": strconv.Itoa(v)}
+	case int64:
+		return map[string]any{"intValue": strconv.FormatInt(v, 10)}
+	case float64:
+		return map[string]any{"doubleValue": v}
+	default:
+		return map[string]any{"stringValue": fmt.Sprint(v)}
+	}
 }

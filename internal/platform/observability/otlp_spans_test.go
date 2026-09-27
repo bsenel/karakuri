@@ -142,6 +142,65 @@ func TestOTLPExportSpans(t *testing.T) {
 	}
 }
 
+// Attribute values keep their types on the wire. The GenAI conventions define
+// token usage as an integer; sent as a string, a backend can filter on it but
+// not sum it, which is most of what anyone does with a token count.
+func TestOTLPExportSpansKeepsAttributeTypes(t *testing.T) {
+	var body []byte
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ = io.ReadAll(r.Body)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+	e := &OTLPExporter{endpoint: srv.URL, service: "karakuri", client: srv.Client()}
+
+	err := e.ExportSpans(context.Background(), []SpanRecord{{
+		TraceID: "0af7651916cd43dd8448eb211c80319c",
+		SpanID:  "b7ad6b7169203331",
+		Name:    telemetry.OpChat,
+		Kind:    SpanKindClient,
+		Start:   time.Now(),
+		End:     time.Now(),
+		Attributes: []telemetry.Attribute{
+			{Key: telemetry.GenAIRequestModel, Value: "claude-sonnet-5"},
+			{Key: telemetry.GenAIUsageInputTokens, Value: 1200},
+			{Key: telemetry.GenAIUsageOutputTokens, Value: int64(340)},
+			{Key: "karakuri.cached", Value: true},
+			{Key: "karakuri.ratio", Value: 0.5},
+			{Key: telemetry.GenAIRequestModel, Value: "claude-opus-5-5"}, // a later value wins
+		},
+	}})
+	if err != nil {
+		t.Fatalf("ExportSpans: %v", err)
+	}
+	var p otlpTraces
+	if err := json.Unmarshal(body, &p); err != nil {
+		t.Fatalf("decode: %v\n%s", err, body)
+	}
+	attrs := p.ResourceSpans[0].ScopeSpans[0].Spans[0].Attributes
+
+	want := map[string]map[string]any{
+		telemetry.GenAIRequestModel:      {"stringValue": "claude-opus-5-5"},
+		telemetry.GenAIUsageInputTokens:  {"intValue": "1200"},
+		telemetry.GenAIUsageOutputTokens: {"intValue": "340"},
+		"karakuri.cached":                {"boolValue": true},
+		"karakuri.ratio":                 {"doubleValue": 0.5},
+	}
+	if len(attrs) != len(want) {
+		t.Errorf("want %d attributes (one per key), got %d: %+v", len(want), len(attrs), attrs)
+	}
+	for _, a := range attrs {
+		w, ok := want[a.Key]
+		if !ok {
+			t.Errorf("unexpected attribute %q", a.Key)
+			continue
+		}
+		if fmt.Sprint(a.Value) != fmt.Sprint(w) {
+			t.Errorf("%s: want value %v, got %v", a.Key, w, a.Value)
+		}
+	}
+}
+
 func TestOTLPExportSpansStatusErrors(t *testing.T) {
 	cases := []struct {
 		status    int

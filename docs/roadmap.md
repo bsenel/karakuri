@@ -2541,6 +2541,11 @@ times.
 - Spans carry no prompt or completion content. The conventions make that
   opt-in, and nothing here opts in.
 - There is no sampling configuration. Every iteration is traced.
+- An `invoke_agent` span stays open while its iteration waits at a checkpoint,
+  so its duration includes the time a human took to decide. A backend that
+  derives agent latency from these spans will count that wait; the `chat`
+  spans beneath it are the model's own latency. Splitting the wait into its
+  own span is a follow-up.
 - The software pack's `software.objective.delivery` template weights
   peer-review and tech-lead-review criteria at 0.25 each, and no environment
   serves `software.verify.review` or `software.verify.tech_lead_review`. Both
