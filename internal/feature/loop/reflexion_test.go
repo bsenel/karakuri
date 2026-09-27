@@ -127,3 +127,24 @@ func TestReflexionPass_EmptyActionsRevertsToDraft(t *testing.T) {
 		t.Errorf("expected draft preserved when revision is empty")
 	}
 }
+
+func TestReflexionPass_RevertsWhenAnActionNamesNoCapability(t *testing.T) {
+	agent := &scriptedAgent{
+		scripted: []coreagent.Output{
+			{Content: "Missing tests."},
+			{Content: `{"actions":[{"capability_id":"lint","params":{}}],"confidence":0.9}`},
+		},
+	}
+	sc := newReflexionContext(agent)
+	draft := plan{
+		Actions:    []plannedAction{{CapabilityID: "lint"}},
+		Confidence: 0.5,
+	}
+	revised, _, ok := reflexionPass(context.Background(), sc, draft)
+	if ok {
+		t.Errorf("expected ok=false when a revised action names no capability")
+	}
+	if len(revised.Actions) != 1 || revised.Actions[0].CapabilityID != "lint" {
+		t.Errorf("expected draft to be preserved, got %+v", revised)
+	}
+}
