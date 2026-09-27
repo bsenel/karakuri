@@ -155,7 +155,7 @@ func (m *memWriter) Write(b []byte) (int, error) { return m.Buffer.Write(b) }
 func promName(s string) string {
 	b := []byte(s)
 	for i, c := range b {
-		if !(c == '_' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || i > 0 && c >= '0' && c <= '9') {
+		if c != '_' && (c < 'a' || c > 'z') && (c < 'A' || c > 'Z') && (i == 0 || c < '0' || c > '9') {
 			b[i] = '_'
 		}
 	}
