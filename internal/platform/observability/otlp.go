@@ -142,7 +142,8 @@ func (o *OTLPExporter) post(ctx context.Context, url string, body any) error {
 	defer resp.Body.Close()
 	if resp.StatusCode >= 400 {
 		respBody, _ := io.ReadAll(resp.Body)
-		if resp.StatusCode == 401 || resp.StatusCode == 403 {
+		// OTLP/HTTP: a 400 is a payload the collector will never accept.
+		if resp.StatusCode == 400 || resp.StatusCode == 401 || resp.StatusCode == 403 {
 			return fmt.Errorf("%w: otlp %d: %s", ErrPermanent, resp.StatusCode, string(respBody))
 		}
 		return fmt.Errorf("otlp: %s -> %d: %s", url, resp.StatusCode, string(respBody))

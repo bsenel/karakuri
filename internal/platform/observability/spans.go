@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"strconv"
 	"sync"
 	"time"
 
@@ -159,11 +160,83 @@ func (s *span) End() {
 	s.o.mu.Unlock()
 }
 
-// ExportSpans is not yet implemented.
-func (r *RetryExporter) ExportSpans(ctx context.Context, spans []SpanRecord) error { return nil }
+// ExportSpans retries the inner exporter's ExportSpans under the same policy
+// as metrics. An inner exporter without span support is a permanent error.
+func (r *RetryExporter) ExportSpans(ctx context.Context, spans []SpanRecord) error {
+	se, ok := spanExporterFor(r.inner)
+	if !ok {
+		return fmt.Errorf("%w: %s: spans unsupported", ErrPermanent, r.Name())
+	}
+	return r.retry(ctx, "ExportSpans", func() error { return se.ExportSpans(ctx, spans) })
+}
 
-// SupportsSpans is not yet implemented.
-func (r *RetryExporter) SupportsSpans() bool { return false }
+// SupportsSpans reports whether the inner exporter can take spans.
+func (r *RetryExporter) SupportsSpans() bool {
+	_, ok := spanExporterFor(r.inner)
+	return ok
+}
 
-// ExportSpans is not yet implemented.
-func (o *OTLPExporter) ExportSpans(ctx context.Context, spans []SpanRecord) error { return nil }
+// ExportSpans posts spans to <endpoint>/v1/traces as OTLP/JSON.
+func (o *OTLPExporter) ExportSpans(ctx context.Context, spans []SpanRecord) error {
+	if !o.Active() || len(spans) == 0 {
+		return nil
+	}
+	out := make([]map[string]any, 0, len(spans))
+	for _, s := range spans {
+		status := map[string]any{"code": int(s.Status.Code)}
+		if s.Status.Description != "" {
+			status["message"] = s.Status.Description
+		}
+		span := map[string]any{
+			"traceId":           s.TraceID,
+			"spanId":            s.SpanID,
+			"name":              s.Name,
+			"kind":              int(s.Kind),
+			"startTimeUnixNano": fmt.Sprintf("%d", s.Start.UnixNano()),
+			"endTimeUnixNano":   fmt.Sprintf("%d", s.End.UnixNano()),
+			"attributes":        otlpAttributes(spanAttributes(s.Attributes)),
+			"status":            status,
+		}
+		if s.ParentSpanID != "" {
+			span["parentSpanId"] = s.ParentSpanID
+		}
+		out = append(out, span)
+	}
+	body := map[string]any{
+		"resourceSpans": []map[string]any{
+			{
+				"resource": map[string]any{"attributes": otlpAttributes(map[string]string{"service.name": o.service})},
+				"scopeSpans": []map[string]any{
+					{
+						"scope": map[string]any{"name": "karakuri"},
+						"spans": out,
+					},
+				},
+			},
+		},
+	}
+	return o.post(ctx, o.endpoint+"/v1/traces", body)
+}
+
+// spanAttributes flattens span attributes into the string map otlpAttributes
+// takes. A later attribute with the same key wins.
+func spanAttributes(attrs []telemetry.Attribute) map[string]string {
+	m := make(map[string]string, len(attrs))
+	for _, a := range attrs {
+		switch v := a.Value.(type) {
+		case string:
+			m[a.Key] = v
+		case bool:
+			m[a.Key] = strconv.FormatBool(v)
+		case int:
+			m[a.Key] = strconv.Itoa(v)
+		case int64:
+			m[a.Key] = strconv.FormatInt(v, 10)
+		case float64:
+			m[a.Key] = strconv.FormatFloat(v, 'g', -1, 64)
+		default:
+			m[a.Key] = fmt.Sprint(v)
+		}
+	}
+	return m
+}
