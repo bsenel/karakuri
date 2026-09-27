@@ -9,6 +9,7 @@ import (
 
 	coreagent "github.com/bsenel/karakuri/internal/core/agent"
 	"github.com/bsenel/karakuri/internal/core/event"
+	"github.com/bsenel/karakuri/internal/core/telemetry"
 	"github.com/bsenel/karakuri/internal/platform/llm"
 	"github.com/bsenel/karakuri/internal/platform/observability"
 )
@@ -18,10 +19,15 @@ type Factory struct {
 	providers *llm.Registry
 	hub       *event.Hub
 	otel      *observability.OTel
+	tracer    telemetry.Tracer
 }
 
-func NewFactory(providers *llm.Registry, hub *event.Hub, otel *observability.OTel) *Factory {
-	return &Factory{providers: providers, hub: hub, otel: otel}
+// NewFactory builds a Factory. A nil tracer means telemetry.NoopTracer.
+func NewFactory(providers *llm.Registry, hub *event.Hub, otel *observability.OTel, tracer telemetry.Tracer) *Factory {
+	if tracer == nil {
+		tracer = telemetry.NoopTracer()
+	}
+	return &Factory{providers: providers, hub: hub, otel: otel, tracer: tracer}
 }
 
 func (f *Factory) New(ctx context.Context, def coreagent.Definition) (coreagent.Agent, error) {
@@ -38,6 +44,7 @@ func (f *Factory) New(ctx context.Context, def coreagent.Definition) (coreagent.
 		provider: provider,
 		hub:      f.hub,
 		otel:     f.otel,
+		tracer:   f.tracer,
 	}, nil
 }
 
@@ -46,6 +53,7 @@ type karakuriAgent struct {
 	provider llm.ProviderAdapter
 	hub      *event.Hub
 	otel     *observability.OTel
+	tracer   telemetry.Tracer
 }
 
 func (a *karakuriAgent) Run(ctx context.Context, input coreagent.Input) (coreagent.Output, error) {

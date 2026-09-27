@@ -33,6 +33,10 @@ type CompletionResponse struct {
 	Content    string
 	ToolCalls  []ToolCall
 	TokensUsed int
+	// InputTokens and OutputTokens are zero when the provider does not report
+	// the split.
+	InputTokens  int
+	OutputTokens int
 }
 
 type CompletionChunk struct {

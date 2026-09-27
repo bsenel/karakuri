@@ -260,7 +260,7 @@ func traceLoopFixture(t *testing.T) (*serviceImpl, *recordingTracer, objective.O
 
 	providers := llm.NewRegistry(nil)
 	providers.Register(&traceProvider{reply: tracePlan})
-	svc.factory = platformagent.NewFactory(providers, svc.hub, svc.otel)
+	svc.factory = platformagent.NewFactory(providers, svc.hub, svc.otel, nil)
 
 	reg := environment.NewRegistry()
 	if err := reg.Register(environment.Factory{
