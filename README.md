@@ -696,6 +696,7 @@ helm package deploy                                 # produce karakuri-0.1.0.tgz
 | OTel Exporter | Datadog (`/api/v1/series` + `/api/v2/logs`) | **Active** (Phase 12) |
 | OTel Exporter | NewRelic, Elasticsearch (ELK), Loki, OTLP Collector, Prometheus (scrape + pushgateway) | **Active** (Phase 12 extension) |
 | OTel Exporter | RetryExporter wrapper (exponential backoff, `ErrPermanent` short-circuit) | **Active** (Phase 12 extension) |
+| OTel Exporter | GenAI-convention spans (`invoke_agent` / `chat` / `execute_tool`), exported natively over OTLP | **Active** (Phase 29 — [ADR 023](docs/adr/023-telemetry-speaks-the-genai-conventions.md)) |
 | Executor | Local goroutines | **Active** |
 | Executor | Restate (durable workflows) | **Active** (Phase 11) |
 | Executor | Celery (Python workers via Redis) | **Active** (Phase 11) |
@@ -703,7 +704,7 @@ helm package deploy                                 # produce karakuri-0.1.0.tgz
 
 ## Observability
 
-Karakuri's in-process metrics + logs fan out simultaneously to any subset of eight destinations (Phase 12 + extension), with chain isolation — one downstream outage logs at WARN but never blocks the others. Remote exporters are wrapped in `RetryExporter` (3 attempts, exponential backoff capped at 30s, `ErrPermanent` short-circuits on 401/403). Configure under `observability.exporters.{local,aws,datadog,newrelic,elasticsearch,loki,otlp,prometheus}.enabled` in [`deploy/values.yaml`](deploy/values.yaml); credentials flow through the `karakuri-secrets` Kubernetes Secret. The Prometheus exporter mounts `/metrics` outside bearer auth so scrapers don't need a token. See [`docs/roadmap.md`](docs/roadmap.md#phase-12--observability-fan-out-completed) Phase 12 for env var details.
+Karakuri's in-process metrics + logs fan out simultaneously to any subset of eight destinations (Phase 12 + extension), with chain isolation — one downstream outage logs at WARN but never blocks the others. Remote exporters are wrapped in `RetryExporter` (3 attempts, exponential backoff capped at 30s, `ErrPermanent` short-circuits on 401/403, and on 400 from OTLP). Buffered telemetry is flushed to the exporters every 10s and once more on shutdown. Configure under `observability.exporters.{local,aws,datadog,newrelic,elasticsearch,loki,otlp,prometheus}.enabled` in [`deploy/values.yaml`](deploy/values.yaml); credentials flow through the `karakuri-secrets` Kubernetes Secret. The Prometheus exporter mounts `/metrics` outside bearer auth so scrapers don't need a token. See [`docs/roadmap.md`](docs/roadmap.md#phase-12--observability-fan-out-completed) Phase 12 for env var details.
 
 ## Development
 

@@ -60,6 +60,31 @@ func TestClaudeProvider_RoutesThroughCLIWhenAPIKeyEmpty(t *testing.T) {
 	}
 }
 
+func TestClaudeProvider_CLIReportsTokenSplit(t *testing.T) {
+	_, dir := writeStubBinary(t, "claude",
+		`printf '{"session_id":"sess-3","result":"split","usage":{"input_tokens":12,"output_tokens":7}}\n'`)
+
+	t.Setenv("ANTHROPIC_API_KEY", "")
+	t.Setenv("PATH", dir)
+
+	p, err := NewClaudeProvider()
+	if err != nil {
+		t.Fatalf("constructor: %v", err)
+	}
+	resp, err := p.Complete(context.Background(), CompletionRequest{
+		Messages: []Message{{Role: "user", Content: "hi"}},
+	})
+	if err != nil {
+		t.Fatalf("Complete: %v", err)
+	}
+	if resp.InputTokens != 12 || resp.OutputTokens != 7 {
+		t.Errorf("expected InputTokens=12 OutputTokens=7, got %d/%d", resp.InputTokens, resp.OutputTokens)
+	}
+	if resp.TokensUsed != resp.InputTokens+resp.OutputTokens {
+		t.Errorf("expected TokensUsed=%d (sum of split), got %d", resp.InputTokens+resp.OutputTokens, resp.TokensUsed)
+	}
+}
+
 func TestClaudeProvider_UnavailableWhenAPIKeyAndCLIBothMissing(t *testing.T) {
 	t.Setenv("ANTHROPIC_API_KEY", "")
 	t.Setenv("PATH", "/dev/null") // no `claude` resolvable

@@ -6,9 +6,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	coreagent "github.com/bsenel/karakuri/internal/core/agent"
 	"github.com/bsenel/karakuri/internal/core/event"
+	"github.com/bsenel/karakuri/internal/core/telemetry"
 	"github.com/bsenel/karakuri/internal/platform/llm"
 	"github.com/bsenel/karakuri/internal/platform/observability"
 )
@@ -18,10 +20,15 @@ type Factory struct {
 	providers *llm.Registry
 	hub       *event.Hub
 	otel      *observability.OTel
+	tracer    telemetry.Tracer
 }
 
-func NewFactory(providers *llm.Registry, hub *event.Hub, otel *observability.OTel) *Factory {
-	return &Factory{providers: providers, hub: hub, otel: otel}
+// NewFactory builds a Factory. A nil tracer means telemetry.NoopTracer.
+func NewFactory(providers *llm.Registry, hub *event.Hub, otel *observability.OTel, tracer telemetry.Tracer) *Factory {
+	if tracer == nil {
+		tracer = telemetry.NoopTracer()
+	}
+	return &Factory{providers: providers, hub: hub, otel: otel, tracer: tracer}
 }
 
 func (f *Factory) New(ctx context.Context, def coreagent.Definition) (coreagent.Agent, error) {
@@ -38,6 +45,7 @@ func (f *Factory) New(ctx context.Context, def coreagent.Definition) (coreagent.
 		provider: provider,
 		hub:      f.hub,
 		otel:     f.otel,
+		tracer:   f.tracer,
 	}, nil
 }
 
@@ -46,21 +54,45 @@ type karakuriAgent struct {
 	provider llm.ProviderAdapter
 	hub      *event.Hub
 	otel     *observability.OTel
+	tracer   telemetry.Tracer
 }
 
 func (a *karakuriAgent) Run(ctx context.Context, input coreagent.Input) (coreagent.Output, error) {
 	systemPrompt := buildSystemPrompt(a.def, input)
 	userPrompt := buildUserPrompt(input)
 
-	resp, err := a.provider.Complete(ctx, llm.CompletionRequest{
+	// The one point every provider call passes through, so the chat span lives here.
+	model := modelOf(a.provider)
+	name := telemetry.OpChat
+	attrs := []telemetry.Attribute{
+		{Key: telemetry.GenAIOperationName, Value: telemetry.OpChat},
+		{Key: telemetry.GenAIProviderName, Value: a.provider.Name()},
+	}
+	if model != "" {
+		name += " " + model
+		attrs = append(attrs, telemetry.Attribute{Key: telemetry.GenAIRequestModel, Value: model})
+	}
+	spanCtx, span := a.tracer.Start(ctx, name, attrs...)
+	defer span.End()
+
+	start := time.Now()
+	resp, err := a.provider.Complete(spanCtx, llm.CompletionRequest{
 		SystemPrompt: systemPrompt,
 		Messages:     []llm.Message{{Role: "user", Content: userPrompt}},
 		Temperature:  a.def.LLMHints.TemperatureMax,
 		MaxTokens:    8192,
 	})
 	if err != nil {
+		span.SetError(err.Error())
 		return coreagent.Output{}, err
 	}
+	if resp.InputTokens > 0 {
+		span.SetAttributes(telemetry.Attribute{Key: telemetry.GenAIUsageInputTokens, Value: resp.InputTokens})
+	}
+	if resp.OutputTokens > 0 {
+		span.SetAttributes(telemetry.Attribute{Key: telemetry.GenAIUsageOutputTokens, Value: resp.OutputTokens})
+	}
+	a.recordMetrics(model, resp, time.Since(start))
 
 	a.hub.Publish(ctx, event.Event{
 		Type:    event.TypeMemoryLearned,
@@ -78,6 +110,27 @@ func (a *karakuriAgent) Run(ctx context.Context, input coreagent.Input) (coreage
 		Provider: a.provider.Name(),
 		Model:    modelOf(a.provider),
 	}, nil
+}
+
+// recordMetrics records one model call under the legacy metric names and, beside
+// them, the GenAI client metrics (Phase 29 Step 1). A provider that does not
+// report the input/output split has only its total recorded, under tokens_used:
+// a split of zero and zero would be a claim, not an absence.
+func (a *karakuriAgent) recordMetrics(model string, resp llm.CompletionResponse, d time.Duration) {
+	if a.otel == nil {
+		return
+	}
+	role := a.def.Name
+	if role == "" {
+		role = string(a.def.ID)
+	}
+	a.otel.IncAgentInvocation(role)
+	a.otel.ObserveAgentLatency(role, d)
+	if resp.InputTokens > 0 || resp.OutputTokens > 0 {
+		a.otel.RecordChat(a.provider.Name(), model, role, resp.InputTokens, resp.OutputTokens, d)
+		return
+	}
+	a.otel.RecordTokens(role, resp.TokensUsed)
 }
 
 func (a *karakuriAgent) Stream(ctx context.Context, input coreagent.Input) (<-chan coreagent.OutputChunk, error) {

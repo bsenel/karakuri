@@ -97,7 +97,12 @@ parsed:
 	if used == 0 {
 		used = len(resp.Result) / 4
 	}
-	return CompletionResponse{Content: resp.Result, TokensUsed: used}, nil
+	return CompletionResponse{
+		Content:      resp.Result,
+		TokensUsed:   used,
+		InputTokens:  resp.Usage.InputTokens,
+		OutputTokens: resp.Usage.OutputTokens,
+	}, nil
 }
 
 // lastJSONLine returns the final non-empty line of out, trimmed. Used to

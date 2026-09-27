@@ -2408,7 +2408,7 @@ that already exists, and cannot resolve a checkpoint.
 
 ---
 
-## Phase 29 — Telemetry Other Tools Already Understand (Planned)
+## Phase 29 — Telemetry Other Tools Already Understand (Completed)
 
 **Goal:** A Karakuri span looks like every other agent span in the dashboard the
 operator already has.
@@ -2455,6 +2455,102 @@ per iteration, with `chat` and `execute_tool` children carrying model and token
 attributes. A query written against the published conventions — not against
 Karakuri's names, and not by anyone who has read this repository — returns the
 run. Every metric name that existed before the phase still resolves.
+
+**Shipped (steps 1 and 4).** See
+[ADR 023](adr/023-telemetry-speaks-the-genai-conventions.md). The `gen_ai.*`
+attribute names are constants in `internal/core/telemetry/genai.go`, so code
+outside `internal/platform` can name one without importing an SDK, and every
+emitter spells it the same way. The agent metrics in `otel.go` keep their `role`
+label and add `gen_ai.agent.name` beside it. `OTel.RecordChat` records one model
+call under the legacy `tokens_used` and under the conventions'
+`gen_ai.client.token.usage` (one record each for input and output, told apart by
+`gen_ai.token.type`) and `gen_ai.client.operation.duration`, in seconds. The
+Prometheus exporter rewrites dotted names into its own charset, so the aliases
+scrape as `gen_ai_client_token_usage`. Nothing was renamed:
+`TestOTel_LegacyMetricNamesStillEmitted` pins every metric name and label that
+existed before the phase.
+
+The aliases exist and nothing in production records them yet. `RecordChat` has
+no caller outside its test, and neither do `IncAgentInvocation`,
+`ObserveAgentLatency` or `RecordTokens` — they had none before the phase either.
+Of the metric helpers, only `RecordMemoryRecall` is called from the loop. The
+chat span below is where the phase actually puts provider, model and token
+counts on the wire.
+
+**Shipped (step 2).** `internal/core/telemetry/trace.go` is a tracer port with
+no vendor imports: `Tracer`, `Span`, `Attribute` and a `NoopTracer` that hands
+the context back unchanged. `internal/feature/loop` takes it by constructor
+injection and falls back to the noop when it is nil. `runLoop` opens one
+`invoke_agent <agent>` span per iteration, after the budget gates, so an
+iteration that does no work emits nothing, and ends it on every exit, including
+a rejected or cancelled checkpoint. `stepAct` wraps each real `Environment.Act`
+call in an `execute_tool <capability>` child carrying `gen_ai.tool.name` and
+`karakuri.environment.id`, and marks it failed when the `ActionResult` is.
+Actions refused by quota or routed nowhere ran no tool and get no span.
+
+The `chat <model>` span lives in `internal/platform/agent/factory.go`, around
+the one `provider.Complete` call every agent run goes through. It carries
+`gen_ai.provider.name`, `gen_ai.request.model` when the provider reports a
+model, and `gen_ai.usage.input_tokens` / `output_tokens` when it reports the
+split. `CompletionResponse` gained `InputTokens` and `OutputTokens`, and
+`claude_cli.go` fills them from the CLI's usage block. The provider name is the
+registry name (`claude`, `gemini`), not the conventions' well-known values
+(`anthropic`, `gcp.gemini`).
+
+**Shipped (step 3).** `*observability.OTel` implements `telemetry.Tracer` in
+`spans.go`. An ended span is buffered like a metric and handed out on `Flush`.
+`SpanExporter` is an optional interface checked with a type assertion, so the
+existing exporters compile unchanged. `Flush` gives spans to each exporter that
+takes them, logs a failure without stopping the others, and warns once per
+exporter that cannot take them. `RetryExporter` forwards spans with the same
+backoff and `ErrPermanent` short-circuit it uses for metrics, and reports
+through `SupportsSpans` whether the exporter it wraps can take them at all.
+`OTLPExporter` posts OTLP/JSON to `/v1/traces` with hex trace and span IDs;
+`chat` spans are kind `CLIENT`, the rest `INTERNAL`.
+
+**Wiring.** `internal/api/server.go` passes the `OTel` in as the tracer to the
+agent factory and the loop. `internal/app/bootstrap.go` gains
+`startTelemetryFlush`, which flushes every 10 seconds and once more on shutdown,
+on a fresh context bounded to 5 seconds. The acceptance test,
+`internal/api/telemetry_acceptance_test.go`, drives one real loop iteration
+through the agent factory, the loop and a retry-wrapped OTLP exporter into an
+`httptest` collector. It finds spans only by `gen_ai.operation.name` and
+asserts one `invoke_agent` span as the parent of every `chat` and
+`execute_tool` span in the same trace, with model and token attributes on the
+`chat` span.
+
+**Found while wiring it.** Nothing in production called `OTel.Flush`. Since
+Phase 12, metrics and logs were buffered in memory, never reached an exporter,
+and the buffer grew until the process exited. `startTelemetryFlush` fixes that,
+and it is a behaviour change: **a deployment with exporters configured will now
+send metrics and logs it has never sent before.** A flush drains the buffers
+whether or not an exporter took the batch, so a failed export loses that
+interval rather than accumulating it.
+
+The second change is smaller. An HTTP 400 from an OTLP endpoint is now an
+`ErrPermanent` for every OTLP signal: metrics, logs and spans. The OTLP/HTTP
+spec treats a 400 as a rejected payload, and retrying the same payload cannot
+succeed. Before, only 401 and 403 short-circuited, and a 400 was retried three
+times.
+
+**What's deferred:**
+
+- Only OTLP exports spans natively. The Datadog, New Relic, Elasticsearch,
+  Loki, AWS, Prometheus and local exporters each warn once that they do not
+  take spans, and drop them. Nothing is dropped silently.
+- Spans carry no prompt or completion content. The conventions make that
+  opt-in, and nothing here opts in.
+- There is no sampling configuration. Every iteration is traced.
+- An `invoke_agent` span stays open while its iteration waits at a checkpoint,
+  so its duration includes the time a human took to decide. A backend that
+  derives agent latency from these spans will count that wait; the `chat`
+  spans beneath it are the model's own latency. Splitting the wait into its
+  own span is a follow-up.
+- The software pack's `software.objective.delivery` template weights
+  peer-review and tech-lead-review criteria at 0.25 each, and no environment
+  serves `software.verify.review` or `software.verify.tech_lead_review`. Both
+  criteria are left to the agent's judgement with no review evidence to judge,
+  so in practice a delivery objective tops out at 0.5.
 
 ---
 
@@ -3098,7 +3194,7 @@ Checks (run via `krk domain test <id>`):
 | OTel: OTLP (OpenTelemetry Collector) exporter                         | **Fully implemented** (Phase 12 extension) — OTLP/JSON metrics + logs to any collector; custom headers + service name; opens path to any collector-supported backend                     |
 | OTel: Prometheus exporter (scrape + pushgateway)                      | **Fully implemented** (Phase 12 extension) — `GET /metrics` mounted outside bearer auth; in-memory series map; optional pushgateway POST via `PROMETHEUS_PUSHGATEWAY_URL`                |
 | Exporter chain isolation                                              | **Fully implemented** (Phase 12) — `OTel.Flush` logs per-exporter failures at WARN; one downstream outage never blocks the others                                                         |
-| Exporter retry semantics (exponential backoff)                        | **Fully implemented** (Phase 12 extension) — `RetryExporter` wraps remote exporters; 3 attempts, exponential backoff (capped 30s); `ErrPermanent` short-circuits on 401/403              |
+| Exporter retry semantics (exponential backoff)                        | **Fully implemented** (Phase 12 extension) — `RetryExporter` wraps remote exporters; 3 attempts, exponential backoff (capped 30s); `ErrPermanent` short-circuits on 401/403, and on 400 from OTLP since Phase 29 |
 | Tool adapters                                                         | **Fully implemented** (Phase 6, ADR 006) — multi-instance per slot, twin-bound dispatch: GitHub, Linear, Slack, Figma, Playwright, Google Calendar, Email (Gmail/Outlook/SMTP/Apple Mail) |
 | ResearchAdapter: HTTP scraper + source registry                       | **Fully implemented**                                                                                                                                                                     |
 | API: all defined endpoints                                            | **Fully implemented**                                                                                                                                                                     |
@@ -3126,6 +3222,9 @@ Checks (run via `krk domain test <id>`):
 | Digests / periodic reports                                            | **Fully implemented** (Phase 21) — per-twin schedules with their own lease; assembled from existing records so a window is reproducible; delivered through the twin's bound adapter and audited as a `tool_events` row |
 | Digest delivery: Slack, email                                         | **Fully implemented** (Phase 21) — via the `messaging` and `email` slots, twin-bound (ADR 006) |
 | Digest delivery: project trackers, repositories                       | Declared and refusing (Phase 21) — the channels are accepted and return an error recorded on the schedule, rather than a silent success |
+| GenAI-convention spans (`invoke_agent` / `chat` / `execute_tool`)    | **Fully implemented** (Phase 29, ADR 023) — vendor-free `telemetry.Tracer` port; exported natively over OTLP `/v1/traces`; every other exporter warns once that it does not take spans |
+| GenAI metric aliases (`gen_ai.client.token.usage`, `gen_ai.client.operation.duration`) | Defined, not yet recorded (Phase 29) — emitted beside the legacy names by `OTel.RecordChat`, which nothing in production calls yet |
+| Periodic telemetry flush                                              | **Fully implemented** (Phase 29) — every 10s and once on shutdown; before it, buffered metrics and logs never reached an exporter |
 
 
 ---

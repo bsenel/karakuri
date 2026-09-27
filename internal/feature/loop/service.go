@@ -17,6 +17,7 @@ import (
 	"github.com/bsenel/karakuri/internal/core/event"
 	"github.com/bsenel/karakuri/internal/core/loop"
 	"github.com/bsenel/karakuri/internal/core/objective"
+	"github.com/bsenel/karakuri/internal/core/telemetry"
 	featureart "github.com/bsenel/karakuri/internal/feature/artifact"
 	featurecp "github.com/bsenel/karakuri/internal/feature/checkpoint"
 	featurememory "github.com/bsenel/karakuri/internal/feature/memory"
@@ -74,6 +75,10 @@ type serviceImpl struct {
 	quota karakuriquota.Deps
 	costs *karakuriquota.Recorder
 
+	// tracer opens the invoke_agent and execute_tool spans. Nil means no
+	// tracing; read it through tracing() rather than directly.
+	tracer telemetry.Tracer
+
 	mu     sync.RWMutex
 	states map[string]*loopState // loopID → state
 }
@@ -91,6 +96,7 @@ func NewService(
 	otel *observability.OTel,
 	domReg *domain.Registry,
 	quotaDeps karakuriquota.Deps,
+	tracer telemetry.Tracer,
 ) Service {
 	// The whole Deps rather than just the token budget: the loop now also
 	// charges the per-capability allowance and records what work cost, and
@@ -110,8 +116,18 @@ func NewService(
 		budget:  quotaDeps.TokenBudget,
 		quota:   quotaDeps,
 		costs:   quotaDeps.Costs,
+		tracer:  tracer,
 		states:  make(map[string]*loopState),
 	}
+}
+
+// tracing returns the tracer to open spans with, never nil, so a service
+// built as a struct literal in a test traces nothing rather than panicking.
+func (s *serviceImpl) tracing() telemetry.Tracer {
+	if s.tracer == nil {
+		return telemetry.NoopTracer()
+	}
+	return s.tracer
 }
 
 func (s *serviceImpl) Run(ctx context.Context, req loop.Request) (loop.Result, error) {

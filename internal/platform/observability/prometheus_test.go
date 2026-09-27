@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/bsenel/karakuri/internal/core/telemetry"
 )
 
 func TestPrometheusExporter_ScrapeFormat(t *testing.T) {
@@ -49,6 +51,30 @@ func TestPrometheusExporter_LatestValueWins(t *testing.T) {
 	}
 	if strings.Contains(body, `x{a="b"} 1`) {
 		t.Errorf("old value (1) should have been overwritten")
+	}
+}
+
+// GenAI semantic conventions use dotted names, which the Prometheus text
+// format does not allow in metric or label names.
+func TestPrometheusExporter_DottedNamesSanitized(t *testing.T) {
+	e := NewPrometheusExporter()
+	_ = e.ExportMetrics(context.Background(), []MetricRecord{
+		{Name: "gen_ai.client.token.usage", Value: 100, Labels: map[string]string{telemetry.GenAIAgentName: "implementer"}, Timestamp: time.Now()},
+	})
+	rr := httptest.NewRecorder()
+	e.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+	body := rr.Body.String()
+
+	for _, want := range []string{
+		"# TYPE gen_ai_client_token_usage gauge",
+		`gen_ai_client_token_usage{gen_ai_agent_name="implementer"} 100`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("scrape body missing %q\n--- body ---\n%s", want, body)
+		}
+	}
+	if strings.Contains(body, "gen_ai.") {
+		t.Errorf("scrape body still contains dotted names:\n%s", body)
 	}
 }
 

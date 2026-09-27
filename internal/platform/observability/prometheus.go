@@ -66,8 +66,9 @@ func (p *PrometheusExporter) ExportMetrics(ctx context.Context, records []Metric
 	}
 	p.mu.Lock()
 	for _, r := range records {
-		key := seriesKey(r.Name, r.Labels)
-		p.series[key] = &promSeries{name: r.Name, labels: r.Labels, value: r.Value, when: r.Timestamp}
+		name, labels := promName(r.Name), promLabels(r.Labels)
+		key := seriesKey(name, labels)
+		p.series[key] = &promSeries{name: name, labels: labels, value: r.Value, when: r.Timestamp}
 	}
 	p.mu.Unlock()
 
@@ -147,6 +148,31 @@ type memWriter struct {
 func (m *memWriter) Header() http.Header         { return http.Header{} }
 func (m *memWriter) WriteHeader(_ int)           {}
 func (m *memWriter) Write(b []byte) (int, error) { return m.Buffer.Write(b) }
+
+// promName rewrites a metric or label name into the Prometheus charset
+// [a-zA-Z_][a-zA-Z0-9_]*, so dotted GenAI names like gen_ai.client.token.usage
+// export as gen_ai_client_token_usage.
+func promName(s string) string {
+	b := []byte(s)
+	for i, c := range b {
+		if c != '_' && (c < 'a' || c > 'z') && (c < 'A' || c > 'Z') && (i == 0 || c < '0' || c > '9') {
+			b[i] = '_'
+		}
+	}
+	return string(b)
+}
+
+// promLabels returns labels with promName applied to every key.
+func promLabels(labels map[string]string) map[string]string {
+	if len(labels) == 0 {
+		return labels
+	}
+	out := make(map[string]string, len(labels))
+	for k, v := range labels {
+		out[promName(k)] = v
+	}
+	return out
+}
 
 // seriesKey builds a stable map key for `(metric_name, labels)` so updates
 // to the same series overwrite the prior value rather than accumulating.
