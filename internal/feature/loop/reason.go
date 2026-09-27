@@ -101,7 +101,7 @@ func stepReason(ctx context.Context, sc *stepContext, ws loop.WorldState) plan {
 			slog.Warn("plan did not parse; retrying once",
 				"loop", sc.loopID, "objective", string(sc.obj.ID), "err", parseErr)
 			retry := input
-			retry.Task = "Your previous reply could not be parsed as JSON and was discarded.\n\n" +
+			retry.Task = "Your previous reply could not be parsed as a plan and was discarded: " + parseErr.Error() + "\n\n" +
 				"--- your previous reply ---\n" + truncateForRetry(output.Content) + "\n--- end ---\n\n" +
 				input.Task
 			if retryOut, retryErr := sc.agent.Run(ctx, retry); retryErr == nil {
@@ -228,9 +228,8 @@ func reflexionPass(ctx context.Context, sc *stepContext, draft plan) (plan, stri
 	if err != nil {
 		return draft, critOut.Content, false
 	}
-	var revised plan
-	cleanedRev := extractJSON(revOut.Content)
-	if jsonErr := json.Unmarshal([]byte(cleanedRev), &revised); jsonErr != nil {
+	revised, parseErr := parsePlan(revOut.Content)
+	if parseErr != nil {
 		return draft, critOut.Content, false
 	}
 	if len(revised.Actions) == 0 {
@@ -320,9 +319,8 @@ func stepReasonRevise(ctx context.Context, sc *stepContext, draft plan, dec core
 	if err != nil {
 		return draft, false
 	}
-	var revised plan
-	cleaned := extractJSON(revOut.Content)
-	if jsonErr := json.Unmarshal([]byte(cleaned), &revised); jsonErr != nil {
+	revised, parseErr := parsePlan(revOut.Content)
+	if parseErr != nil {
 		return draft, false
 	}
 	if len(revised.Actions) == 0 {
@@ -488,10 +486,21 @@ func buildReasonCatalog(sc *stepContext) string {
 //
 // Separate from stepReason so the retry path and the first attempt cannot
 // drift into parsing the same output two different ways.
+//
+// Valid JSON is not enough. An action that names no capability is routed
+// nowhere and fails at act a whole iteration later, so it is rejected here,
+// where the retry and the fallbacks can still do something about it. The
+// usual cause is a model inventing the field name ("capability_id"), which
+// decodes to "" without complaint.
 func parsePlan(content string) (plan, error) {
 	var p plan
 	if err := json.Unmarshal([]byte(extractJSON(content)), &p); err != nil {
 		return plan{}, err
+	}
+	for i, a := range p.Actions {
+		if strings.TrimSpace(a.CapabilityID) == "" {
+			return plan{}, fmt.Errorf("action %d names no capability: every action needs a \"capability\" field", i)
+		}
 	}
 	return p, nil
 }

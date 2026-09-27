@@ -89,3 +89,28 @@ func TestStepReasonDoesNotRetryWhenTheFirstPlanParses(t *testing.T) {
 		t.Errorf("made %d calls; a parseable plan must not trigger a retry", len(agent.tasksSeen))
 	}
 }
+
+// A plan whose action names no capability parses as JSON and is still not a
+// plan. The live case: a model wrote "capability_id" instead of "capability",
+// the field decoded to "", and act failed on it with `no environment matches
+// env_id=""` a whole iteration later. It is the same failure as prose, caught
+// at the same place, and gets the same one retry.
+func TestStepReasonRetriesWhenAnActionNamesNoCapability(t *testing.T) {
+	agent := &scriptedAgent{scripted: []coreagent.Output{
+		{Content: `{"actions":[{"capability_id":"software.act.write_code","params":{}}],"confidence":0.8}`, Confidence: 0.8},
+		{Content: goodPlan, Confidence: 0.8},
+	}}
+	sc := scriptedReasonContext(t, agent)
+
+	p := stepReason(context.Background(), sc, loop.WorldState{})
+
+	if len(p.Actions) != 1 || p.Actions[0].CapabilityID != "software.act.shell_exec" {
+		t.Fatalf("expected the retry's plan to land, got %+v", p.Actions)
+	}
+	if len(agent.tasksSeen) < 2 {
+		t.Fatalf("expected a retry, saw %d calls", len(agent.tasksSeen))
+	}
+	if !strings.Contains(agent.tasksSeen[1], "capability") {
+		t.Error("retry prompt must say what was wrong with the plan")
+	}
+}

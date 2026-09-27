@@ -240,3 +240,23 @@ func TestStepReasonRevise_NonModifyChoiceIsNoop(t *testing.T) {
 		t.Errorf("agent must not be called for non-modify choices, got %d calls", agent.calls)
 	}
 }
+
+// An operator who removes every action leaves the revise pass no example of
+// the action shape, and that is when a model invents its own field names. A
+// revision whose action names no capability is not an improvement on the
+// draft, so the draft stands.
+func TestStepReasonRevise_FallsBackWhenAnActionNamesNoCapability(t *testing.T) {
+	agent := &scriptedAgent{scripted: []coreagent.Output{
+		{Content: `{"actions":[{"capability_id":"software.act.write_code","params":{}}],"confidence":0.8}`},
+	}}
+	sc := newModifyContext(agent)
+	draft := plan{Actions: []plannedAction{{CapabilityID: "kept"}}, Confidence: 0.5}
+	decision := corecheckpoint.Decision{Choice: "modify", Note: "rework"}
+	revised, applied := stepReasonRevise(context.Background(), sc, draft, decision)
+	if applied {
+		t.Errorf("expected applied=false when a revised action names no capability")
+	}
+	if len(revised.Actions) != 1 || revised.Actions[0].CapabilityID != "kept" {
+		t.Errorf("expected draft preserved, got %+v", revised.Actions)
+	}
+}
