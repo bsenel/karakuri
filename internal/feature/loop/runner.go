@@ -14,6 +14,7 @@ import (
 	"github.com/bsenel/karakuri/internal/core/loop"
 	"github.com/bsenel/karakuri/internal/core/memory"
 	"github.com/bsenel/karakuri/internal/core/objective"
+	"github.com/bsenel/karakuri/internal/core/telemetry"
 	"github.com/bsenel/karakuri/internal/platform/storage"
 )
 
@@ -105,6 +106,11 @@ func (s *serviceImpl) runLoop(ctx context.Context, loopID string, req loop.Reque
 		iterations  []loop.Iteration
 	)
 
+	agentName := agentDef.Name
+	if agentName == "" {
+		agentName = string(agentDef.ID)
+	}
+
 	for iter := 0; iter < maxIter; iter++ {
 		sc.iteration = iter
 
@@ -145,13 +151,21 @@ func (s *serviceImpl) runLoop(ctx context.Context, loopID string, req loop.Reque
 			break
 		}
 
+		// Started after the budget gates, so an iteration that does no work
+		// emits no span (Phase 29 Step 2 in docs/roadmap.md). Ended by hand on
+		// every exit below; the ctx.Done selects and finalizeLoop stay on ctx.
+		ictx, span := s.tracing().Start(ctx, "invoke_agent "+agentName,
+			telemetry.Attribute{Key: telemetry.GenAIOperationName, Value: telemetry.OpInvokeAgent},
+			telemetry.Attribute{Key: telemetry.GenAIAgentName, Value: agentName},
+		)
+
 		state.mu.Lock()
 		state.status.Iteration = iter
 		state.status.Step = loop.StepObserve
 		state.mu.Unlock()
 
 		// observe
-		ws := stepObserve(ctx, sc)
+		ws := stepObserve(ictx, sc)
 		iterations = append(iterations, loop.Iteration{
 			Number:    iter,
 			Step:      loop.StepObserve,
@@ -165,7 +179,7 @@ func (s *serviceImpl) runLoop(ctx context.Context, loopID string, req loop.Reque
 		state.status.Step = loop.StepReason
 		state.mu.Unlock()
 
-		p := stepReason(ctx, sc, ws)
+		p := stepReason(ictx, sc, ws)
 		inputJSON, _ := json.Marshal(ws)
 		outputJSON, _ := json.Marshal(p)
 		iterations = append(iterations, loop.Iteration{
@@ -181,7 +195,7 @@ func (s *serviceImpl) runLoop(ctx context.Context, loopID string, req loop.Reque
 		state.status.Step = loop.StepDecide
 		state.mu.Unlock()
 
-		p, paused := stepDecide(ctx, sc, p, nil)
+		p, paused := stepDecide(ictx, sc, p, nil)
 		if paused {
 			state.mu.Lock()
 			state.status.Paused = true
@@ -190,7 +204,7 @@ func (s *serviceImpl) runLoop(ctx context.Context, loopID string, req loop.Reque
 			// Persist the paused state so a server restart picks up the loop
 			// in the right shape (Phase 11). The decision channel itself
 			// remains in-memory — a new Resume() call will recreate it.
-			s.persistState(ctx, state, false)
+			s.persistState(ictx, state, false)
 
 			// Wait for resume signal. Phase 13.5: branch on Choice.
 			// Approve falls through with the draft. Reject finalizes
@@ -200,6 +214,7 @@ func (s *serviceImpl) runLoop(ctx context.Context, loopID string, req loop.Reque
 			var decision corecheckpoint.Decision
 			select {
 			case <-ctx.Done():
+				span.End()
 				s.finalizeLoop(ctx, state, obj, iterations, false, ctx.Err())
 				return
 			case decision = <-state.decisionCh:
@@ -211,25 +226,28 @@ func (s *serviceImpl) runLoop(ctx context.Context, loopID string, req loop.Reque
 
 			switch decision.Choice {
 			case "reject":
-				s.recordCheckpointTerminal(ctx, state, "rejected_at_checkpoint", decision)
+				s.recordCheckpointTerminal(ictx, state, "rejected_at_checkpoint", decision)
+				span.End()
 				s.finalizeLoop(ctx, state, obj, iterations, false, fmt.Errorf("rejected_at_checkpoint"))
 				return
 			case "modify":
-				revised, modPaused := s.applyModification(ctx, sc, p, decision)
+				revised, modPaused := s.applyModification(ictx, sc, p, decision)
 				p = revised
 				if modPaused {
 					// Re-approval required. Wait once more — the
 					// second escalation auto-rejects if it trips again.
-					s.persistState(ctx, state, false)
+					s.persistState(ictx, state, false)
 					var second corecheckpoint.Decision
 					select {
 					case <-ctx.Done():
+						span.End()
 						s.finalizeLoop(ctx, state, obj, iterations, false, ctx.Err())
 						return
 					case second = <-state.decisionCh:
 					}
 					if second.Choice != "approve" {
-						s.recordCheckpointTerminal(ctx, state, "modify_loop_exceeded", second)
+						s.recordCheckpointTerminal(ictx, state, "modify_loop_exceeded", second)
+						span.End()
 						s.finalizeLoop(ctx, state, obj, iterations, false, fmt.Errorf("modify_loop_exceeded"))
 						return
 					}
@@ -246,7 +264,7 @@ func (s *serviceImpl) runLoop(ctx context.Context, loopID string, req loop.Reque
 		state.status.Step = loop.StepAct
 		state.mu.Unlock()
 
-		results := stepAct(ctx, sc, p)
+		results := stepAct(ictx, sc, p)
 		iterations = append(iterations, loop.Iteration{
 			Number:    iter,
 			Step:      loop.StepAct,
@@ -260,7 +278,7 @@ func (s *serviceImpl) runLoop(ctx context.Context, loopID string, req loop.Reque
 		state.status.Step = loop.StepVerify
 		state.mu.Unlock()
 
-		score, criteriaMet = stepVerify(ctx, sc, results)
+		score, criteriaMet = stepVerify(ictx, sc, results)
 		iterations = append(iterations, loop.Iteration{
 			Number:    iter,
 			Step:      loop.StepVerify,
@@ -278,12 +296,13 @@ func (s *serviceImpl) runLoop(ctx context.Context, loopID string, req loop.Reque
 		state.status.Step = loop.StepLearn
 		state.mu.Unlock()
 
-		stepLearn(ctx, sc, ws, p, results, score)
+		stepLearn(ictx, sc, ws, p, results, score)
 
 		// Persist progress at iteration boundary so a server crash never loses
 		// more than one iteration of work (Phase 11).
-		s.persistState(ctx, state, false)
+		s.persistState(ictx, state, false)
 
+		span.End()
 		if score >= 1.0 {
 			break
 		}

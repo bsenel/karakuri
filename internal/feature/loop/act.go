@@ -10,6 +10,7 @@ import (
 	"github.com/bsenel/karakuri/internal/core/environment"
 	"github.com/bsenel/karakuri/internal/core/event"
 	"github.com/bsenel/karakuri/internal/core/loop"
+	"github.com/bsenel/karakuri/internal/core/telemetry"
 	"github.com/bsenel/karakuri/internal/platform/git"
 	"github.com/bsenel/karakuri/internal/platform/storage"
 	karakuriquota "github.com/bsenel/karakuri/internal/quota"
@@ -123,8 +124,16 @@ func stepAct(ctx context.Context, sc *stepContext, p plan) []actionOutcome {
 
 		var result environment.ActionResult
 		if targetEnv != nil {
+			// Wraps only a real Environment.Act call: a quota-refused or
+			// unrouted action ran no tool, so a span for it would claim one
+			// did (Phase 29 Step 2 in docs/roadmap.md).
+			actCtx, span := sc.svc.tracing().Start(ctx, "execute_tool "+action.CapabilityID,
+				telemetry.Attribute{Key: telemetry.GenAIOperationName, Value: telemetry.OpExecuteTool},
+				telemetry.Attribute{Key: telemetry.GenAIToolName, Value: action.CapabilityID},
+				telemetry.Attribute{Key: telemetry.AttrKarakuriEnvironmentID, Value: string(targetEnv.ID())},
+			)
 			var err error
-			result, err = targetEnv.Act(ctx, environment.Action{
+			result, err = targetEnv.Act(actCtx, environment.Action{
 				CapabilityID: capability.CapabilityID(action.CapabilityID),
 				Params:       params,
 			})
@@ -134,6 +143,10 @@ func stepAct(ctx context.Context, sc *stepContext, p plan) []actionOutcome {
 					Error:   err.Error(),
 				}
 			}
+			if !result.Success {
+				span.SetError(result.Error)
+			}
+			span.End()
 		} else {
 			// Nothing declared it serves this capability, and the plan's
 			// env_id matched nothing either. Used to silently succeed with
