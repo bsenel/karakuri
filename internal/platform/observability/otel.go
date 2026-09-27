@@ -2,6 +2,7 @@ package observability
 
 import (
 	"context"
+	"log/slog"
 	"sync"
 	"time"
 
@@ -17,6 +18,9 @@ type OTel struct {
 	mu        sync.Mutex
 	buffer    []MetricRecord
 	logBuffer []LogRecord
+	spans     []SpanRecord
+	// spanWarned names the exporters already warned that they drop spans.
+	spanWarned map[string]bool
 }
 
 func NewOTel(registry *ExporterRegistry) *OTel {
@@ -36,19 +40,50 @@ func (o *OTel) RecordLog(level, message string, labels map[string]string) {
 	o.logBuffer = append(o.logBuffer, LogRecord{Level: level, Message: message, Labels: labels, Timestamp: time.Now().UTC()})
 }
 
+// Flush drains every buffer, then hands the batches to each active exporter.
+// Nothing is kept for a later flush, whether or not an exporter took it.
 func (o *OTel) Flush(ctx context.Context) error {
 	o.mu.Lock()
 	metrics := o.buffer
 	logs := o.logBuffer
+	spans := o.spans
 	o.buffer = nil
 	o.logBuffer = nil
+	o.spans = nil
 	o.mu.Unlock()
 	for _, e := range o.registry.Active() {
 		_ = e.ExportMetrics(ctx, metrics)
 		_ = e.ExportLogs(ctx, logs)
+		o.exportSpans(ctx, e, spans)
 		_ = e.Flush(ctx)
 	}
 	return nil
+}
+
+// exportSpans hands spans to e, or warns once per exporter that it drops them.
+// A failure is logged and does not stop the other exporters.
+func (o *OTel) exportSpans(ctx context.Context, e Exporter, spans []SpanRecord) {
+	if len(spans) == 0 {
+		return
+	}
+	se, ok := spanExporterFor(e)
+	if !ok {
+		o.mu.Lock()
+		warned := o.spanWarned[e.Name()]
+		if o.spanWarned == nil {
+			o.spanWarned = map[string]bool{}
+		}
+		o.spanWarned[e.Name()] = true
+		o.mu.Unlock()
+		if !warned {
+			slog.WarnContext(ctx, "exporter does not support spans; dropping them",
+				"exporter", e.Name(), "dropped_spans", len(spans))
+		}
+		return
+	}
+	if err := se.ExportSpans(ctx, spans); err != nil {
+		slog.WarnContext(ctx, "span export failed", "exporter", e.Name(), "spans", len(spans), "err", err)
+	}
 }
 
 func (o *OTel) IncWorktreeCreated() { o.RecordMetric("worktree_created", 1, nil) }

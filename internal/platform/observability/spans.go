@@ -2,6 +2,10 @@ package observability
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
+	"fmt"
+	"sync"
 	"time"
 
 	"github.com/bsenel/karakuri/internal/core/telemetry"
@@ -61,9 +65,98 @@ func spanExporterFor(e Exporter) (SpanExporter, bool) {
 
 var _ telemetry.Tracer = (*OTel)(nil)
 
-// Start is not yet implemented and records nothing.
+// spanKey carries the open span in a context so a child can find its parent.
+type spanKey struct{}
+
+// Start opens a span as a child of the span ctx carries, if any, and returns a
+// ctx carrying the new span.
 func (o *OTel) Start(ctx context.Context, name string, attrs ...telemetry.Attribute) (context.Context, telemetry.Span) {
-	return telemetry.NoopTracer().Start(ctx, name, attrs...)
+	s := &span{o: o}
+	s.rec.Name = name
+	s.rec.SpanID = newID(8)
+	if parent, ok := ctx.Value(spanKey{}).(*span); ok {
+		s.rec.TraceID = parent.rec.TraceID
+		s.rec.ParentSpanID = parent.rec.SpanID
+	} else {
+		s.rec.TraceID = newID(16)
+	}
+	s.rec.Start = time.Now().UTC()
+	s.SetAttributes(attrs...)
+	return context.WithValue(ctx, spanKey{}, s), s
+}
+
+// newID returns n random bytes hex-encoded, never all zeros: OTLP treats an
+// all-zero ID as invalid.
+func newID(n int) string {
+	b := make([]byte, n)
+	for {
+		if _, err := rand.Read(b); err != nil {
+			panic(fmt.Sprintf("observability: crypto/rand: %v", err))
+		}
+		for _, c := range b {
+			if c != 0 {
+				return hex.EncodeToString(b)
+			}
+		}
+	}
+}
+
+// span is an open span. Its IDs are fixed at Start, so a child reads them
+// without taking the lock.
+type span struct {
+	o     *OTel
+	mu    sync.Mutex
+	rec   SpanRecord
+	ended bool
+}
+
+// SetAttributes adds attrs, replacing any attribute with the same key.
+func (s *span) SetAttributes(attrs ...telemetry.Attribute) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+next:
+	for _, a := range attrs {
+		for i := range s.rec.Attributes {
+			if s.rec.Attributes[i].Key == a.Key {
+				s.rec.Attributes[i] = a
+				continue next
+			}
+		}
+		s.rec.Attributes = append(s.rec.Attributes, a)
+	}
+}
+
+func (s *span) SetError(msg string) {
+	if msg == "" {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.rec.Status = SpanStatus{Code: StatusError, Description: msg}
+}
+
+// End buffers a copy of the span for the next Flush. Later calls do nothing.
+func (s *span) End() {
+	s.mu.Lock()
+	if s.ended {
+		s.mu.Unlock()
+		return
+	}
+	s.ended = true
+	s.rec.End = time.Now().UTC()
+	s.rec.Kind = SpanKindInternal
+	for _, a := range s.rec.Attributes {
+		if a.Key == telemetry.GenAIOperationName && a.Value == telemetry.OpChat {
+			s.rec.Kind = SpanKindClient
+		}
+	}
+	rec := s.rec
+	rec.Attributes = append([]telemetry.Attribute(nil), s.rec.Attributes...)
+	s.mu.Unlock()
+
+	s.o.mu.Lock()
+	s.o.spans = append(s.o.spans, rec)
+	s.o.mu.Unlock()
 }
 
 // ExportSpans is not yet implemented.
