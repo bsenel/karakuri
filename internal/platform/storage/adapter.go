@@ -154,10 +154,11 @@ const (
 
 // ResolvedCheckpointFilter narrows the resolved-checkpoint listing. Empty
 // TwinID matches every twin; a zero Since or Until leaves that end of the
-// resolution window unbounded.
+// resolution window unbounded. A zero Limit lists every match.
 type ResolvedCheckpointFilter struct {
 	TwinID       string
 	Since, Until time.Time
+	Limit        int
 }
 
 // ToolEventFilter narrows the audit log query. All fields are optional;

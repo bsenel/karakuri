@@ -235,6 +235,7 @@ func NewApp(
 		Containers: containerSvc,
 	}
 	audH := &handler.AuditHandler{Store: store}
+	evalH := &handler.EvalHandler{}
 	// Karakuri as an MCP server (Phase 28). Read and propose only, and no
 	// permission model of its own: each tool declares the action the REST route
 	// answering the same question declares. See ADR 022.
@@ -472,6 +473,9 @@ func NewApp(
 			// bindings the twin listing reads — a report must not be a way
 			// around the tenancy those enforce.
 			r.With(require(karakuriauth.ActionCostRead, costRead)).Get("/cost", quotaH.CostReport)
+			// Judge calibration (Phase 30). Admin only: it spends a model call
+			// per resolved checkpoint and reads them across twins.
+			r.With(require(karakuriauth.ActionEvalRun, nil)).Post("/eval/calibrate", evalH.Calibrate)
 		})
 	})
 

@@ -84,6 +84,12 @@ const (
 	// deployments want everybody to see the first and not the second.
 	ActionCostRead auth.Action = "cost:read"
 
+	// ActionEvalRun is running a judge calibration (Phase 30). Admin only, and
+	// not folded into cost:read or checkpoint:read: it spends a model call per
+	// checkpoint, and it reads resolved checkpoints across every twin in the
+	// window rather than the ones a caller's bindings cover.
+	ActionEvalRun auth.Action = "eval:run"
+
 	// Containers are the tenancy tree (Phase 17). They are authorized like
 	// anything else, which is what makes the hierarchy govern changes to
 	// itself: creating a team under an org needs a grant covering that org, so
@@ -146,6 +152,7 @@ func NewCatalog() *auth.Catalog {
 		ActionQuotaRequest: "ask for a limit to be raised",
 		ActionQuotaApprove: "approve or reject a quota request",
 		ActionCostRead:     "read what was spent",
+		ActionEvalRun:      "Run a judge calibration over resolved checkpoints; spends model calls and reads checkpoints across twins",
 
 		ActionContainerRead:  "read organisations, teams and projects",
 		ActionContainerWrite: "create, rename and delete containers, and place resources in them",
