@@ -167,18 +167,24 @@ func stepDecide(ctx context.Context, sc *stepContext, p plan, mods *corecheckpoi
 			})
 		}
 
+		cpOpts := featurecp.CreateOptions{
+			Capability:   capability.CapabilityID(primaryCap),
+			Confidence:   p.Confidence,
+			Actions:      actions,
+			AuditEventID: auditID,
+		}
+		// Record what the planner saw, so the escalation can be replayed.
+		if sc.observed != nil {
+			cpOpts.WorldState = recordedWorldState(*sc.observed)
+		}
+
 		cp, err := sc.svc.cpSvc.Create(ctx,
 			sc.obj.ID,
 			sc.twinID,
 			escalateReason,
 			summary,
 			options,
-			featurecp.CreateOptions{
-				Capability:   capability.CapabilityID(primaryCap),
-				Confidence:   p.Confidence,
-				Actions:      actions,
-				AuditEventID: auditID,
-			},
+			cpOpts,
 		)
 
 		cpID := ""
