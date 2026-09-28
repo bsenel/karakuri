@@ -319,6 +319,22 @@ func TestCalibrate_SkipsUnlabelled(t *testing.T) {
 	}
 }
 
+// An item keeps what the judge was shown so it can be exported to a golden set.
+func TestCalibrate_ItemKeepsWhatTheJudgeSaw(t *testing.T) {
+	store, judge := fixture(fixtureCase{id: "a", choice: choiceApprove, reply: "PASS"})
+	rep := calibrate(t, store, judge, storage.ResolvedCheckpointFilter{})
+	it := itemFor(t, rep, "a")
+	if want := "Objective title <a>"; it.Title != want {
+		t.Errorf("Title = %q, want %q", it.Title, want)
+	}
+	if want := "criterion for a"; it.Criterion != want {
+		t.Errorf("Criterion = %q, want %q", it.Criterion, want)
+	}
+	if want := "1. vcs.open_pr: draft for a\n"; it.Actions != want {
+		t.Errorf("Actions = %q, want %q", it.Actions, want)
+	}
+}
+
 func TestCalibrate_WindowPassedThrough(t *testing.T) {
 	store, judge := fixture()
 	f := storage.ResolvedCheckpointFilter{

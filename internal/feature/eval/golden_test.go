@@ -1,13 +1,16 @@
 package eval
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/bsenel/karakuri/internal/core/checkpoint"
 	"github.com/bsenel/karakuri/internal/feature/loop"
+	"github.com/bsenel/karakuri/internal/platform/storage"
 )
 
 const goldenPath = "testdata/golden.v1.json"
@@ -216,5 +219,77 @@ func TestExportGolden(t *testing.T) {
 			t.Errorf("entry %d: duplicate id %q", i, e.ID)
 		}
 		seen[e.ID] = true
+	}
+}
+
+func TestLoadGoldenSetRejectsMalformedSets(t *testing.T) {
+	const ok = `{"id":"e1","label":"approve","reply":"PASS","provenance":"constructed"}`
+	cases := map[string]string{
+		"no entries":        `{"version":1,"baseline":1,"entries":[]}`,
+		"baseline above 1":  `{"version":1,"baseline":1.5,"entries":[` + ok + `]}`,
+		"baseline below 0":  `{"version":1,"baseline":-0.1,"entries":[` + ok + `]}`,
+		"missing id":        `{"version":1,"baseline":1,"entries":[{"label":"approve","reply":"PASS","provenance":"p"}]}`,
+		"missing reply":     `{"version":1,"baseline":1,"entries":[{"id":"e1","label":"approve","provenance":"p"}]}`,
+		"unknown label":     `{"version":1,"baseline":1,"entries":[{"id":"e1","label":"maybe","reply":"PASS","provenance":"p"}]}`,
+		"duplicate id":      `{"version":1,"baseline":1,"entries":[` + ok + `,` + ok + `]}`,
+		"not json":          `{"version":1,`,
+		"version below one": `{"version":0,"baseline":1,"entries":[` + ok + `]}`,
+	}
+	for name, body := range cases {
+		t.Run(name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "golden.json")
+			if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := LoadGoldenSet(path); err == nil {
+				t.Error("LoadGoldenSet: want error, got nil")
+			}
+		})
+	}
+}
+
+func TestGateEmptySetFails(t *testing.T) {
+	res := Gate(GoldenSet{Version: 1, Baseline: 0}, loop.VerdictIsPass)
+	if res.Pass || res.Agreement != 0 || res.N != 0 {
+		t.Errorf("Gate(empty) = %+v, want N 0, agreement 0, not passing", res)
+	}
+}
+
+func TestGateReportsEachDisagreement(t *testing.T) {
+	set := GoldenSet{Version: 1, Baseline: 0.5, Entries: []GoldenEntry{
+		{ID: "a", Label: choiceApprove, Reply: "PASS"},
+		{ID: "b", Label: choiceModify, Reply: "PASS"},
+	}}
+	res := Gate(set, loop.VerdictIsPass)
+	if res.N != 2 || res.Agreed != 1 || res.Agreement != 0.5 || !res.Pass {
+		t.Errorf("Gate = %+v, want N 2, agreed 1, agreement 0.5, pass", res)
+	}
+	if want := []string{"b: label=modify verdict=true"}; len(res.Disagreements) != 1 || res.Disagreements[0] != want[0] {
+		t.Errorf("Disagreements = %q, want %q", res.Disagreements, want)
+	}
+}
+
+func TestExportGoldenSkipsItemsWithoutReplyAndCarriesWhatTheJudgeSaw(t *testing.T) {
+	long := strings.Repeat("x", maxActionChars+50)
+	store, judge := fixture(
+		fixtureCase{id: "a", choice: choiceReject, reply: "FAIL",
+			actions: []checkpoint.Action{{CapabilityID: "shell.run", Reason: long}}},
+		fixtureCase{id: "b", choice: choiceApprove, err: errors.New("provider down")},
+	)
+	rep := calibrate(t, store, judge, storage.ResolvedCheckpointFilter{})
+
+	got := ExportGolden(rep, "acme", time.Date(2026, 9, 28, 0, 0, 0, 0, time.UTC))
+	if len(got) != 1 {
+		t.Fatalf("ExportGolden returned %d entries, want 1 (errored item skipped): %+v", len(got), got)
+	}
+	e := got[0]
+	if e.Label != choiceReject || e.Reply != "FAIL" {
+		t.Errorf("label, reply = %q, %q, want reject, FAIL", e.Label, e.Reply)
+	}
+	if e.Title != "Objective title <a>" || e.Criterion != "criterion for a" {
+		t.Errorf("title, criterion = %q, %q", e.Title, e.Criterion)
+	}
+	if strings.Contains(e.Actions, long) || !strings.Contains(e.Actions, "…(truncated)") {
+		t.Errorf("actions not bounded: %q", e.Actions)
 	}
 }

@@ -84,11 +84,13 @@ type DecisionStats struct {
 	N, Agreed, JudgePass int
 }
 
-// Item is one scored checkpoint.
+// Item is one scored checkpoint. Title, Criterion and Actions are what the
+// judge was shown, kept so the item can be exported to a golden set.
 type Item struct {
 	CheckpointID, ObjectiveID, Choice string
 	HumanApprove, JudgePass, Agreed   bool
 	Reply, Error                      string
+	Title, Criterion, Actions         string
 }
 
 // Calibrate scores the judge against every labelled checkpoint f selects.
@@ -130,7 +132,8 @@ func (s *Service) Calibrate(ctx context.Context, f storage.ResolvedCheckpointFil
 
 		it := Item{
 			CheckpointID: cp.ID, ObjectiveID: string(cp.ObjectiveID), Choice: choice,
-			HumanApprove: choice == decisionApprove,
+			HumanApprove: humanApproves(choice),
+			Title:        obj.Title, Criterion: renderCriteria(obj), Actions: renderActions(cp.Actions),
 		}
 		it.JudgePass, it.Reply, it.Error = s.judgePlan(ctx, obj, cp.Actions)
 		it.Agreed = it.JudgePass == it.HumanApprove
@@ -164,6 +167,13 @@ func (s *Service) Calibrate(ctx context.Context, f storage.ResolvedCheckpointFil
 		rep.Agreement = float64(rep.Agreed) / float64(rep.N)
 	}
 	return rep, nil
+}
+
+// humanApproves maps a reviewer's choice to the label the judge is scored
+// against: only approve is positive, because a plan the reviewer rejected or
+// had to modify is not one they would have let run as drafted.
+func humanApproves(choice string) bool {
+	return choice == decisionApprove
 }
 
 // CountReplayable counts the resolved checkpoints f selects that carry a
@@ -230,6 +240,15 @@ func renderPlanTask(obj objective.Objective, actions []checkpoint.Action) string
 		"absence of evidence is not evidence it would.\n" +
 		"Answer with exactly one word: PASS or FAIL.")
 	return sb.String()
+}
+
+// renderCriteria joins an objective's success criteria one per line.
+func renderCriteria(obj objective.Objective) string {
+	cs := make([]string, 0, len(obj.SuccessCriteria))
+	for _, c := range obj.SuccessCriteria {
+		cs = append(cs, c.Description)
+	}
+	return strings.Join(cs, "\n")
 }
 
 // renderActions lays the draft out the way renderOutcomes lays out results,
