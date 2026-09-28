@@ -222,3 +222,67 @@ func TestEvalCalibrateServiceErrorIs500(t *testing.T) {
 		t.Fatalf("status = %d, want 500: %s", rec.Code, rec.Body)
 	}
 }
+
+// scopeGrants answers the same grants for every principal and action.
+type scopeGrants auth.ScopeGrants
+
+func (g scopeGrants) GrantedScopes(context.Context, string, auth.Action) (auth.ScopeGrants, error) {
+	return auth.ScopeGrants(g), nil
+}
+
+// scopedEvalRouter mounts the handler behind authentication only, with the
+// caller's twin grants fixed, so a test exercises the handler's own scoping.
+func scopedEvalRouter(cal *fakeCalibrator, grants auth.ScopeGrants) http.Handler {
+	resolve := auth.ResolverFunc(func(*http.Request) (auth.Principal, error) {
+		return auth.Principal{ID: "admin"}, nil
+	})
+	h := &handler.EvalHandler{Calibrator: cal, Scopes: scopeGrants(grants)}
+	r := chi.NewRouter()
+	r.With(auth.Authenticate(resolve)).Post("/api/v1/eval/calibrate", h.Calibrate)
+	return r
+}
+
+func TestEvalCalibrateScopesTheTwin(t *testing.T) {
+	oneTwin := auth.ScopeGrants{Allow: []string{"twin:t1"}}
+	for name, tc := range map[string]struct {
+		grants   auth.ScopeGrants
+		body     string
+		status   int
+		wantTwin string
+	}{
+		"unrestricted keeps every twin": {auth.ScopeGrants{Allow: []string{"*"}}, `{}`, http.StatusOK, ""},
+		"granted twin":                  {oneTwin, `{"twin":"t1"}`, http.StatusOK, "t1"},
+		"other twin":                    {oneTwin, `{"twin":"t2"}`, http.StatusForbidden, ""},
+		"no twin names the only one":    {oneTwin, `{}`, http.StatusOK, "t1"},
+		"no twin with several":          {auth.ScopeGrants{Allow: []string{"twin:t1", "twin:t2"}}, `{}`, http.StatusForbidden, ""},
+		"denied twin":                   {auth.ScopeGrants{Allow: []string{"*"}, Deny: []string{"twin:t2"}}, `{"twin":"t2"}`, http.StatusForbidden, ""},
+	} {
+		t.Run(name, func(t *testing.T) {
+			cal := &fakeCalibrator{}
+			rec := postCalibrate(t, scopedEvalRouter(cal, tc.grants), "", tc.body)
+			if rec.Code != tc.status {
+				t.Fatalf("status = %d, want %d: %s", rec.Code, tc.status, rec.Body)
+			}
+			if tc.status != http.StatusOK {
+				if cal.calls != 0 {
+					t.Fatal("a forbidden request reached the calibrator")
+				}
+				return
+			}
+			if cal.filter.TwinID != tc.wantTwin {
+				t.Errorf("twin = %q, want %q", cal.filter.TwinID, tc.wantTwin)
+			}
+		})
+	}
+}
+
+func TestEvalCalibrateWithNoTwinGrantsReadsNothing(t *testing.T) {
+	cal := &fakeCalibrator{}
+	rec := postCalibrate(t, scopedEvalRouter(cal, auth.ScopeGrants{Allow: []string{}}), "", `{}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200: %s", rec.Code, rec.Body)
+	}
+	if cal.calls != 0 {
+		t.Fatal("a caller with no twin grants reached the calibrator")
+	}
+}
