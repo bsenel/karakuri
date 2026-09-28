@@ -196,7 +196,7 @@ func evaluateWithAgent(ctx context.Context, sc *stepContext, criterion objective
 	if err != nil {
 		return false
 	}
-	return verdictIsPass(output.Content)
+	return VerdictIsPass(output.Content)
 }
 
 // renderOutcomes turns the outcomes into the evidence the judge reads. Each
@@ -238,7 +238,7 @@ func renderOutcomes(outcomes []actionOutcome) string {
 	return sb.String()
 }
 
-// verdictIsPass reads the judge's answer.
+// VerdictIsPass reads the judge's answer.
 //
 // The old version searched the whole reply for "pass", "met", "approved" or
 // "yes" and returned true on any hit, so "this does not pass" scored as met and
@@ -250,7 +250,7 @@ func renderOutcomes(outcomes []actionOutcome) string {
 // back to an explicit-negation check rather than to a substring search: an
 // answer nobody can parse is a FAIL, because scoring a criterion met on an
 // unparseable reply is exactly the silent success this codebase keeps finding.
-func verdictIsPass(content string) bool {
+func VerdictIsPass(content string) bool {
 	lower := strings.ToLower(strings.TrimSpace(content))
 	if lower == "" {
 		return false

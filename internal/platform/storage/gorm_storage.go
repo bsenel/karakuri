@@ -480,6 +480,11 @@ func (s *GORMStorage) ListPendingCheckpoints(ctx context.Context, twinID string)
 	return out, nil
 }
 
+// ListResolvedCheckpoints is a stub until Phase 30 slice 1 lands.
+func (s *GORMStorage) ListResolvedCheckpoints(ctx context.Context, f ResolvedCheckpointFilter) ([]checkpoint.Checkpoint, error) {
+	return nil, nil
+}
+
 func checkpointFromModel(m schema.CheckpointModel) checkpoint.Checkpoint {
 	var opts []string
 	_ = json.Unmarshal([]byte(m.OptionsJSON), &opts)
