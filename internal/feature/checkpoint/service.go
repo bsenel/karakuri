@@ -11,6 +11,7 @@ import (
 	"github.com/bsenel/karakuri/internal/core/capability"
 	corecheckpoint "github.com/bsenel/karakuri/internal/core/checkpoint"
 	"github.com/bsenel/karakuri/internal/core/event"
+	"github.com/bsenel/karakuri/internal/core/loop"
 	"github.com/bsenel/karakuri/internal/core/objective"
 	"github.com/bsenel/karakuri/internal/platform/storage"
 )
@@ -55,6 +56,9 @@ type CreateOptions struct {
 	Confidence   float64
 	Actions      []corecheckpoint.Action
 	AuditEventID string
+	// WorldState is what the planner saw when it escalated; nil when the
+	// caller has none (budget pauses, manual checkpoints).
+	WorldState *loop.WorldState
 }
 
 // Create persists a pending checkpoint and publishes a checkpoint event.
@@ -77,6 +81,7 @@ func (s *Service) Create(
 		Confidence:   opts.Confidence,
 		Actions:      opts.Actions,
 		AuditEventID: opts.AuditEventID,
+		WorldState:   opts.WorldState,
 		Status:       corecheckpoint.StatusPending,
 		CreatedAt:    time.Now().UTC(),
 	}

@@ -8,7 +8,9 @@ import (
 
 	"github.com/bsenel/karakuri/internal/core/capability"
 	corecheckpoint "github.com/bsenel/karakuri/internal/core/checkpoint"
+	"github.com/bsenel/karakuri/internal/core/environment"
 	"github.com/bsenel/karakuri/internal/core/event"
+	"github.com/bsenel/karakuri/internal/core/loop"
 	"github.com/bsenel/karakuri/internal/core/objective"
 	"github.com/bsenel/karakuri/internal/platform/storage"
 )
@@ -94,6 +96,28 @@ func TestServiceCreate_PersistsPlannerDraft(t *testing.T) {
 	stored, _ := store.GetCheckpoint(context.Background(), cp.ID)
 	if stored.Confidence != 0.84 || len(stored.Actions) != 2 || stored.AuditEventID != "audit-123" {
 		t.Errorf("planner draft lost on round-trip: %+v", stored)
+	}
+}
+
+func TestServiceCreate_StoresWorldState(t *testing.T) {
+	store := newFakeStore()
+	svc := NewService(store, event.NewHub())
+	ws := &loop.WorldState{
+		Observations: []environment.Observation{{EnvID: "software.env.repo", Version: "obs-1"}},
+		Version:      "composite",
+		Blind:        []string{"software.env.ci"},
+	}
+
+	cp, err := svc.Create(context.Background(), "obj", "twin", "r", "s",
+		[]string{"approve", "reject", "modify"}, CreateOptions{WorldState: ws})
+	if err != nil {
+		t.Fatalf("Create failed: %v", err)
+	}
+	if cp.WorldState != ws {
+		t.Errorf("returned WorldState = %+v, want %+v", cp.WorldState, ws)
+	}
+	if stored := store.checkpoints[cp.ID]; stored.WorldState != ws {
+		t.Errorf("stored WorldState = %+v, want %+v", stored.WorldState, ws)
 	}
 }
 

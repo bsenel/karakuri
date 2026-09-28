@@ -63,6 +63,11 @@ type CalibrationReport struct {
 	N, Agreed, Skipped int
 	Agreement          float64
 
+	// Replayable counts the resolved checkpoints in the window that carry a
+	// recorded world state. This is the planner-replay corpus, which starts
+	// empty and grows only from escalations after this shipped.
+	Replayable int
+
 	Confusion  Confusion
 	ByDecision map[string]DecisionStats
 	Items      []Item
@@ -156,6 +161,12 @@ func (s *Service) Calibrate(ctx context.Context, f storage.ResolvedCheckpointFil
 		rep.Agreement = float64(rep.Agreed) / float64(rep.N)
 	}
 	return rep, nil
+}
+
+// CountReplayable counts the resolved checkpoints f selects that carry a
+// recorded world state.
+func (s *Service) CountReplayable(ctx context.Context, f storage.ResolvedCheckpointFilter) (int, error) {
+	return 0, nil
 }
 
 // judgePlan asks the judge the loop's question about a drafted plan. It has to

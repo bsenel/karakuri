@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/bsenel/karakuri/internal/core/capability"
+	"github.com/bsenel/karakuri/internal/core/loop"
 	"github.com/bsenel/karakuri/internal/core/objective"
 )
 
@@ -41,11 +42,15 @@ type Checkpoint struct {
 	// AuditEventID links the checkpoint to the kind=escalation row in the
 	// audit log that captured the full escalation payload. Empty when the
 	// audit write failed; reviewers can still resolve.
-	AuditEventID string     `json:"audit_event_id,omitempty"`
-	Status       Status     `json:"status"`
-	Decision     *Decision  `json:"decision,omitempty"`
-	CreatedAt    time.Time  `json:"created_at"`
-	ResolvedAt   *time.Time `json:"resolved_at,omitempty"`
+	AuditEventID string `json:"audit_event_id,omitempty"`
+	// WorldState is the world state the planner saw when it escalated. Nil
+	// for budget pauses and for every checkpoint written before this column
+	// existed. Kept off JSON until slice 3 decides the API shape.
+	WorldState *loop.WorldState `json:"-"`
+	Status     Status           `json:"status"`
+	Decision   *Decision        `json:"decision,omitempty"`
+	CreatedAt  time.Time        `json:"created_at"`
+	ResolvedAt *time.Time       `json:"resolved_at,omitempty"`
 }
 
 // Modifications carries the structured edits a reviewer applies when they
