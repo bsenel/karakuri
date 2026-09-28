@@ -1,0 +1,186 @@
+{
+  "version": 1,
+  "baseline": 1.0,
+  "entries": [
+    {
+      "id": "g001",
+      "title": "Fix flaky login test",
+      "criterion": "The login test suite passes three runs in a row.",
+      "actions": "1. shell.run (repo): Run the login suite three times\n   params: {\"cmd\":\"go test -count=3 ./auth/...\"}\n",
+      "label": "approve",
+      "reply": "PASS",
+      "provenance": "constructed",
+      "note": "The requested one-word form: a bare PASS is a pass."
+    },
+    {
+      "id": "g002",
+      "title": "Add changelog entry",
+      "criterion": "CHANGELOG.md has an entry for the release.",
+      "actions": "1. repo.write_file (repo): Append the release entry to CHANGELOG.md\n",
+      "label": "approve",
+      "reply": "PASS — the plan writes the entry the criterion asks for.",
+      "provenance": "constructed",
+      "note": "PASS first, then an explanation: the first word decides."
+    },
+    {
+      "id": "g003",
+      "title": "Rotate staging credentials",
+      "criterion": "The old staging key no longer authenticates.",
+      "actions": "1. vault.rotate (staging): Rotate the staging API key\n2. shell.run (staging): Confirm the old key is refused\n",
+      "label": "approve",
+      "reply": "pass",
+      "provenance": "constructed",
+      "note": "Case does not matter: a lowercase pass is a pass."
+    },
+    {
+      "id": "g004",
+      "title": "Bump Go toolchain",
+      "criterion": "The module builds with the new toolchain.",
+      "actions": "1. repo.write_file (repo): Set go 1.24 in go.mod\n2. shell.run (repo): go build ./...\n",
+      "label": "approve",
+      "reply": "Approved.",
+      "provenance": "constructed",
+      "note": "Approved as the first word is a positive verdict."
+    },
+    {
+      "id": "g005",
+      "title": "Close stale issues",
+      "criterion": "No open issue is older than 180 days without a label.",
+      "actions": "1. github.list_issues (tracker): List unlabelled issues older than 180 days\n2. github.close_issue (tracker): Close each with the stale notice\n",
+      "label": "approve",
+      "reply": "Yes",
+      "provenance": "constructed",
+      "note": "Yes as the first word is a positive verdict."
+    },
+    {
+      "id": "g006",
+      "title": "Document the retry policy",
+      "criterion": "docs/retries.md describes the backoff limits.",
+      "actions": "1. repo.write_file (repo): Write docs/retries.md with the backoff table\n",
+      "label": "approve",
+      "reply": "The criterion is met: the plan writes the backoff table to docs/retries.md.",
+      "provenance": "constructed",
+      "note": "A discursive pass: a positive marker with no negation of it is a pass."
+    },
+    {
+      "id": "g007",
+      "title": "Pin base image digest",
+      "criterion": "The Dockerfile references the base image by digest.",
+      "actions": "1. repo.write_file (repo): Replace the base image tag with its sha256 digest\n",
+      "label": "approve",
+      "reply": "Passed.",
+      "provenance": "constructed",
+      "note": "Passed as the first word is a positive verdict."
+    },
+    {
+      "id": "g008",
+      "title": "Ship the retry fix",
+      "criterion": "The retry fix is merged with the test suite green.",
+      "actions": "1. github.open_pr (repo): Open the retry fix PR\n2. github.merge_pr (repo): Merge it\n",
+      "label": "reject",
+      "reply": "This does not pass: the criterion is not met.",
+      "provenance": "constructed",
+      "note": "Negated verdict: \"does not pass\" contains \"pass\" and \"not met\" contains \"met\"; neither may read as a pass."
+    },
+    {
+      "id": "g009",
+      "title": "Migrate billing schema",
+      "criterion": "The billing migration has run in staging.",
+      "actions": "1. repo.write_file (repo): Add the migration file\n",
+      "label": "reject",
+      "reply": "FAIL — the criterion is not met",
+      "provenance": "constructed",
+      "note": "FAIL first decides the verdict even though the explanation contains \"met\"."
+    },
+    {
+      "id": "g010",
+      "title": "Delete unused buckets",
+      "criterion": "Only buckets with no reads in 90 days are deleted.",
+      "actions": "1. cloud.delete_bucket (prod): Delete every bucket named tmp-*\n",
+      "label": "reject",
+      "reply": "Not approved.",
+      "provenance": "constructed",
+      "note": "Negated verdict: \"not approved\" contains \"approved\" and must read as a fail."
+    },
+    {
+      "id": "g011",
+      "title": "Release 2.3.0",
+      "criterion": "The release is tagged only after the full test suite passes.",
+      "actions": "1. git.tag (repo): Tag v2.3.0\n2. github.create_release (repo): Publish the release notes\n",
+      "label": "modify",
+      "reply": "No. The tests were never run, so the criterion is not met.",
+      "provenance": "constructed",
+      "note": "A leading No decides the verdict even though the reply goes on to mention \"met\"."
+    },
+    {
+      "id": "g012",
+      "title": "Harden the upload endpoint",
+      "criterion": "Uploads over 10 MB are refused with 413.",
+      "actions": "1. repo.write_file (repo): Add a size check to the upload handler\n",
+      "label": "modify",
+      "reply": "The plan does not meet the criterion; it would not pass review.",
+      "provenance": "constructed",
+      "note": "Discursive negation: \"does not\" and \"not pass\" outweigh the \"pass\" substring."
+    },
+    {
+      "id": "g013",
+      "title": "Refresh the search index",
+      "criterion": "The search index is rebuilt and queries return new documents.",
+      "actions": "1. search.reindex (prod): Rebuild the index\n",
+      "label": "reject",
+      "reply": "FAIL",
+      "provenance": "constructed",
+      "note": "The requested one-word form: a bare FAIL is a fail."
+    },
+    {
+      "id": "g014",
+      "title": "Enable audit logging",
+      "criterion": "Every admin action is written to the audit log.",
+      "actions": "1. config.set (prod): Set audit.enabled=true\n",
+      "label": "modify",
+      "reply": "Unmet: nothing in the plan covers the admin actions outside the web console.",
+      "provenance": "constructed",
+      "note": "Unmet as the first word is a fail even though it contains \"met\"."
+    },
+    {
+      "id": "g015",
+      "title": "Deprecate v1 API",
+      "criterion": "v1 clients receive a Sunset header for 30 days before removal.",
+      "actions": "1. repo.write_file (repo): Remove the v1 routes\n",
+      "label": "reject",
+      "reply": "Rejected: removing the routes skips the 30-day sunset the criterion requires, so it would not pass.",
+      "provenance": "constructed",
+      "note": "Rejected first decides the verdict even though the reply contains \"pass\"."
+    },
+    {
+      "id": "g016",
+      "title": "Backfill missing invoices",
+      "criterion": "Every order from March has an invoice.",
+      "actions": "1. billing.backfill (prod): Generate invoices for March orders\n",
+      "label": "modify",
+      "reply": "There is no evidence the plan checks that the backfill covered every order, so I cannot say yes.",
+      "provenance": "constructed",
+      "note": "Discursive negation: \"no evidence\" and \"cannot\" outweigh the \"yes\" substring."
+    },
+    {
+      "id": "g017",
+      "title": "Rename the metrics prefix",
+      "criterion": "Dashboards keep working after the rename.",
+      "actions": "1. repo.write_file (repo): Change the metrics prefix to karakuri_\n",
+      "label": "reject",
+      "reply": "The plan renames the metrics but doesn't update a single dashboard, so it has not met the criterion and I would not have approved it.",
+      "provenance": "constructed",
+      "note": "Discursive negation: \"doesn't\" outweighs the \"met\" and \"approved\" substrings."
+    },
+    {
+      "id": "g018",
+      "title": "Turn on dependabot",
+      "criterion": "Dependency update PRs are opened weekly.",
+      "actions": "1. repo.write_file (repo): Add .github/dependabot.yml with a weekly schedule\n",
+      "label": "approve",
+      "reply": "Met — the config schedules weekly update PRs.",
+      "provenance": "constructed",
+      "note": "Met as the first word is a positive verdict."
+    }
+  ]
+}
