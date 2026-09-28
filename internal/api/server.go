@@ -1,6 +1,8 @@
 package api
 
 import (
+	"context"
+	"log/slog"
 	"net/http"
 
 	"github.com/bsenel/karakuri/auth"
@@ -8,6 +10,7 @@ import (
 	"github.com/bsenel/karakuri/internal/api/handler"
 	"github.com/bsenel/karakuri/internal/api/middleware"
 	karakuriauth "github.com/bsenel/karakuri/internal/auth"
+	coreagent "github.com/bsenel/karakuri/internal/core/agent"
 	"github.com/bsenel/karakuri/internal/core/capability"
 	"github.com/bsenel/karakuri/internal/core/domain"
 	"github.com/bsenel/karakuri/internal/core/environment"
@@ -18,6 +21,7 @@ import (
 	"github.com/bsenel/karakuri/internal/feature/artifact"
 	"github.com/bsenel/karakuri/internal/feature/checkpoint"
 	"github.com/bsenel/karakuri/internal/feature/container"
+	"github.com/bsenel/karakuri/internal/feature/eval"
 	featureloop "github.com/bsenel/karakuri/internal/feature/loop"
 	"github.com/bsenel/karakuri/internal/feature/memory"
 	"github.com/bsenel/karakuri/internal/feature/objective"
@@ -235,7 +239,20 @@ func NewApp(
 		Containers: containerSvc,
 	}
 	audH := &handler.AuditHandler{Store: store}
-	evalH := &handler.EvalHandler{}
+	evalH := &handler.EvalHandler{Scopes: authDeps.Authorizer}
+	// The judge asks the loop's PASS/FAIL question through the default
+	// provider. With no such provider the route answers 503 rather than
+	// scoring every checkpoint as a judge error.
+	if judge, err := agentFactory.New(context.Background(), coreagent.Definition{
+		ID:                "karakuri-judge",
+		Name:              "Judge",
+		Domain:            "universal",
+		ReasoningStrategy: coreagent.ReasoningReAct,
+	}); err == nil {
+		evalH.Calibrator = eval.NewService(store, judge)
+	} else {
+		slog.Warn("judge calibration disabled", "err", err)
+	}
 	// Karakuri as an MCP server (Phase 28). Read and propose only, and no
 	// permission model of its own: each tool declares the action the REST route
 	// answering the same question declares. See ADR 022.

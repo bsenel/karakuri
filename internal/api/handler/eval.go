@@ -38,6 +38,10 @@ type calibrateRequest struct {
 //
 // POST /api/v1/eval/calibrate {"twin":…,"since":RFC3339,"until":RFC3339,"limit":…}
 func (h *EvalHandler) Calibrate(w http.ResponseWriter, r *http.Request) {
+	if h.Calibrator == nil {
+		authError(w, http.StatusServiceUnavailable, "unavailable", "no judge provider is configured")
+		return
+	}
 	var req calibrateRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil && !errors.Is(err, io.EOF) {
 		authError(w, http.StatusBadRequest, "bad_request", "body: "+err.Error())

@@ -223,6 +223,15 @@ func TestEvalCalibrateServiceErrorIs500(t *testing.T) {
 	}
 }
 
+func TestEvalCalibrateWithNoJudgeIs503(t *testing.T) {
+	h := &handler.EvalHandler{}
+	rec := httptest.NewRecorder()
+	h.Calibrate(rec, httptest.NewRequest(http.MethodPost, "/api/v1/eval/calibrate", strings.NewReader(`{}`)))
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want 503: %s", rec.Code, rec.Body)
+	}
+}
+
 // scopeGrants answers the same grants for every principal and action.
 type scopeGrants auth.ScopeGrants
 
