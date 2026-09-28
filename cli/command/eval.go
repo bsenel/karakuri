@@ -1,9 +1,14 @@
 package command
 
 import (
-	"errors"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/url"
+	"os"
 	"time"
 
+	"github.com/bsenel/karakuri/cli/client"
 	"github.com/spf13/cobra"
 )
 
@@ -70,8 +75,52 @@ approved, rejected or modified in the window, and reports how often the two
 agree. It spends one model call per checkpoint and writes nothing back.`,
 		Example: `  krk eval calibrate --since 720h --markdown
   krk eval calibrate --twin t_7f2a --since 72h --limit 50 --export golden.json`,
-		RunE: func(_ *cobra.Command, _ []string) error {
-			return errors.New("not implemented")
+		RunE: func(c *cobra.Command, _ []string) error {
+			now := time.Now().UTC()
+			body := map[string]any{}
+			if twin != "" {
+				body["twin"] = twin
+			}
+			if since > 0 {
+				body["since"] = now.Add(-since).Format(time.RFC3339)
+			}
+			if limit > 0 {
+				body["limit"] = limit
+			}
+			data, _, err := api.Post("/eval/calibrate", body)
+			if err != nil {
+				return err
+			}
+			var rep evalReport
+			if err := json.Unmarshal(data, &rep); err != nil {
+				return fmt.Errorf("decode calibration report: %w", err)
+			}
+
+			if export != "" {
+				entries := exportGolden(rep, deploymentName(api.BaseURL), now)
+				raw, err := json.MarshalIndent(entries, "", "  ")
+				if err != nil {
+					return err
+				}
+				if err := os.WriteFile(export, append(raw, '\n'), 0o644); err != nil {
+					return fmt.Errorf("write %s: %w", export, err)
+				}
+			}
+
+			w := c.OutOrStdout()
+			switch {
+			case markdown:
+				writeCalibrationMarkdown(w, rep, now)
+			case output == "json":
+				client.PrintOutput(data, output)
+			case output == "quiet":
+			default:
+				writeCalibrationSummary(w, rep)
+			}
+			if export != "" && output != "quiet" {
+				fmt.Fprintf(c.ErrOrStderr(), "wrote %s\n", export)
+			}
+			return nil
 		},
 	}
 	cmd.Flags().StringVar(&twin, "twin", "", "only this twin's checkpoints")
@@ -80,4 +129,123 @@ agree. It spends one model call per checkpoint and writes nothing back.`,
 	cmd.Flags().StringVar(&export, "export", "", "write the judged items to FILE as golden entries")
 	cmd.Flags().BoolVar(&markdown, "markdown", false, "print the report as markdown")
 	return cmd
+}
+
+// The human decisions a report breaks agreement down by, in the order and with
+// the names docs/benchmarks.md reads them.
+var evalDecisions = []struct{ choice, kind string }{
+	{"approve", "approval"},
+	{"reject", "rejection"},
+	{"modify", "modification"},
+}
+
+// exportGolden mirrors eval.ExportGolden, which the CLI may not import: one
+// entry per item the judge answered, with provenance exported:<deployment>:<date>.
+func exportGolden(rep evalReport, deployment string, at time.Time) []goldenEntry {
+	provenance := fmt.Sprintf("exported:%s:%s", deployment, at.Format("2006-01-02"))
+	out := []goldenEntry{}
+	for _, it := range rep.Items {
+		if it.Reply == "" {
+			continue
+		}
+		out = append(out, goldenEntry{
+			ID:         fmt.Sprintf("%s:%s", deployment, it.CheckpointID),
+			Title:      it.Title,
+			Criterion:  it.Criterion,
+			Actions:    it.Actions,
+			Label:      it.Choice,
+			Reply:      it.Reply,
+			Provenance: provenance,
+		})
+	}
+	return out
+}
+
+// deploymentName is the server's host, which is what names a deployment in a
+// golden entry's id and provenance.
+func deploymentName(baseURL string) string {
+	if u, err := url.Parse(baseURL); err == nil && u.Host != "" {
+		return u.Host
+	}
+	return baseURL
+}
+
+func judgeErrors(rep evalReport) int {
+	n := 0
+	for _, it := range rep.Items {
+		if it.Error != "" {
+			n++
+		}
+	}
+	return n
+}
+
+// calibrationWindow renders the window the report covers, or "all history"
+// when neither end was bounded.
+func calibrationWindow(rep evalReport) string {
+	if rep.Since.IsZero() && rep.Until.IsZero() {
+		return "all history"
+	}
+	from, to := "the start", "now"
+	if !rep.Since.IsZero() {
+		from = rep.Since.UTC().Format("2006-01-02")
+	}
+	if !rep.Until.IsZero() {
+		to = rep.Until.UTC().Format("2006-01-02")
+	}
+	return from + " – " + to
+}
+
+func percent(agreed, n int) string {
+	if n == 0 {
+		return "—"
+	}
+	return fmt.Sprintf("%.1f%%", 100*float64(agreed)/float64(n))
+}
+
+func calibrationScope(rep evalReport) string {
+	if rep.TwinID == "" {
+		return "every twin"
+	}
+	return "twin " + rep.TwinID
+}
+
+func writeCalibrationSummary(w io.Writer, rep evalReport) {
+	c := rep.Confusion
+	fmt.Fprintf(w, "Judge calibration over %s, %s\n", calibrationScope(rep), calibrationWindow(rep))
+	fmt.Fprintf(w, "  agreement      %s (%d of %d)\n", percent(rep.Agreed, rep.N), rep.Agreed, rep.N)
+	fmt.Fprintf(w, "  human approve  judge pass %d, fail %d\n", c.JudgePassHumanApprove, c.JudgeFailHumanApprove)
+	fmt.Fprintf(w, "  human reject   judge pass %d, fail %d\n", c.JudgePassHumanReject, c.JudgeFailHumanReject)
+	fmt.Fprintf(w, "  skipped        %d\n", rep.Skipped)
+	if n := judgeErrors(rep); n > 0 {
+		fmt.Fprintf(w, "  judge errors   %d (scored as fail)\n", n)
+	}
+	fmt.Fprintf(w, "  replayable     %d\n", rep.Replayable)
+}
+
+// writeCalibrationMarkdown prints the section docs/benchmarks.md carries.
+func writeCalibrationMarkdown(w io.Writer, rep evalReport, today time.Time) {
+	c := rep.Confusion
+	fmt.Fprintf(w, "## Real-history judge calibration\n\n")
+	fmt.Fprintf(w, "Measured %s over %s, window: %s.\n\n",
+		today.Format("2006-01-02"), calibrationScope(rep), calibrationWindow(rep))
+	fmt.Fprintf(w, "- N (checkpoints judged): %d\n", rep.N)
+	fmt.Fprintf(w, "- Agreement with the human decision: %s (%d of %d)\n", percent(rep.Agreed, rep.N), rep.Agreed, rep.N)
+	fmt.Fprintf(w, "- Skipped (no usable label or objective): %d\n", rep.Skipped)
+	if n := judgeErrors(rep); n > 0 {
+		fmt.Fprintf(w, "- Judge errors (scored as FAIL): %d\n", n)
+	}
+	fmt.Fprintf(w, "- Replayable (recorded world state): %d\n\n", rep.Replayable)
+
+	fmt.Fprintf(w, "Confusion matrix:\n\n")
+	fmt.Fprintf(w, "| | Judge PASS | Judge FAIL |\n|---|---:|---:|\n")
+	fmt.Fprintf(w, "| Human approve | %d | %d |\n", c.JudgePassHumanApprove, c.JudgeFailHumanApprove)
+	fmt.Fprintf(w, "| Human reject or modify | %d | %d |\n\n", c.JudgePassHumanReject, c.JudgeFailHumanReject)
+
+	fmt.Fprintf(w, "By human decision:\n\n")
+	fmt.Fprintf(w, "| Kind | N | Agreed | Agreement | Judge PASS |\n|---|---:|---:|---:|---:|\n")
+	for _, d := range evalDecisions {
+		s := rep.ByDecision[d.choice]
+		fmt.Fprintf(w, "| %s | %d | %d | %s | %d |\n", d.kind, s.N, s.Agreed, percent(s.Agreed, s.N), s.JudgePass)
+	}
 }
