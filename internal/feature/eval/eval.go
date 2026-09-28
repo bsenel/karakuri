@@ -101,6 +101,9 @@ func (s *Service) Calibrate(ctx context.Context, f storage.ResolvedCheckpointFil
 	rep := CalibrationReport{
 		TwinID: f.TwinID, Since: f.Since, Until: f.Until,
 		ByDecision: map[string]DecisionStats{},
+		// Over every listed checkpoint, skipped ones included: replay needs a
+		// world state, not a label the judge can be scored against.
+		Replayable: countReplayable(cps),
 	}
 	for _, cp := range cps {
 		if err := ctx.Err(); err != nil {
@@ -166,7 +169,21 @@ func (s *Service) Calibrate(ctx context.Context, f storage.ResolvedCheckpointFil
 // CountReplayable counts the resolved checkpoints f selects that carry a
 // recorded world state.
 func (s *Service) CountReplayable(ctx context.Context, f storage.ResolvedCheckpointFilter) (int, error) {
-	return 0, nil
+	cps, err := s.store.ListResolvedCheckpoints(ctx, f)
+	if err != nil {
+		return 0, err
+	}
+	return countReplayable(cps), nil
+}
+
+func countReplayable(cps []checkpoint.Checkpoint) int {
+	n := 0
+	for _, cp := range cps {
+		if cp.WorldState != nil {
+			n++
+		}
+	}
+	return n
 }
 
 // judgePlan asks the judge the loop's question about a drafted plan. It has to

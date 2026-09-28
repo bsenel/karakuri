@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 	"math"
 	"time"
 
@@ -431,6 +432,19 @@ func (s *GORMStorage) SaveCheckpoint(ctx context.Context, c checkpoint.Checkpoin
 		b, _ := json.Marshal(c.Decision)
 		decJ = string(b)
 	}
+	// '' rather than "null" for no world state, so a checkpoint that never
+	// recorded one reads the same as a row written before the column existed.
+	// One that cannot be encoded is dropped rather than failing the save: the
+	// reviewer still needs the checkpoint.
+	var wsJ string
+	if c.WorldState != nil {
+		if b, err := json.Marshal(c.WorldState); err != nil {
+			slog.Warn("checkpoint world state unencodable; storing none",
+				"checkpoint_id", c.ID, "error", err)
+		} else {
+			wsJ = string(b)
+		}
+	}
 	return s.db.WithContext(ctx).Save(&schema.CheckpointModel{
 		ID: c.ID, ObjectiveID: string(c.ObjectiveID), TwinID: c.TwinID,
 		Reason: c.Reason, Summary: c.Summary, OptionsJSON: string(optsJ),
@@ -439,6 +453,7 @@ func (s *GORMStorage) SaveCheckpoint(ctx context.Context, c checkpoint.Checkpoin
 		ActionsJSON:  string(actsJ),
 		AuditEventID: c.AuditEventID,
 		Status:       string(c.Status), DecisionJSON: decJ, ResolvedAt: c.ResolvedAt,
+		WorldStateJSON: wsJ,
 		// Passed through rather than always stamped. GORM's autoCreateTime
 		// fills a zero value, so a caller that does not care still gets now —
 		// but one that does (a backfill, a test fabricating history, a digest
@@ -518,6 +533,18 @@ func checkpointFromModel(m schema.CheckpointModel) checkpoint.Checkpoint {
 		_ = json.Unmarshal([]byte(m.DecisionJSON), &d)
 		dec = &d
 	}
+	// A world state that does not decode costs the replay corpus one entry,
+	// not the reviewer the checkpoint or a listing the rest of its rows.
+	var ws *coreloop.WorldState
+	if m.WorldStateJSON != "" {
+		var w coreloop.WorldState
+		if err := json.Unmarshal([]byte(m.WorldStateJSON), &w); err != nil {
+			slog.Warn("checkpoint world state undecodable; reading as none",
+				"checkpoint_id", m.ID, "error", err)
+		} else {
+			ws = &w
+		}
+	}
 	return checkpoint.Checkpoint{
 		ID: m.ID, ObjectiveID: objective.ObjectiveID(m.ObjectiveID), TwinID: m.TwinID,
 		Reason: m.Reason, Summary: m.Summary, Options: opts,
@@ -526,7 +553,8 @@ func checkpointFromModel(m schema.CheckpointModel) checkpoint.Checkpoint {
 		Actions:      acts,
 		AuditEventID: m.AuditEventID,
 		Status:       checkpoint.Status(m.Status), Decision: dec,
-		CreatedAt: m.CreatedAt, ResolvedAt: m.ResolvedAt,
+		WorldState: ws,
+		CreatedAt:  m.CreatedAt, ResolvedAt: m.ResolvedAt,
 	}
 }
 
