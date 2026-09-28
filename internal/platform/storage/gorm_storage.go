@@ -480,9 +480,29 @@ func (s *GORMStorage) ListPendingCheckpoints(ctx context.Context, twinID string)
 	return out, nil
 }
 
-// ListResolvedCheckpoints is a stub until Phase 30 slice 1 lands.
 func (s *GORMStorage) ListResolvedCheckpoints(ctx context.Context, f ResolvedCheckpointFilter) ([]checkpoint.Checkpoint, error) {
-	return nil, nil
+	var models []schema.CheckpointModel
+	q := s.db.WithContext(ctx).Where("status = ?", string(checkpoint.StatusResolved))
+	if f.TwinID != "" {
+		q = q.Where("twin_id = ?", f.TwinID)
+	}
+	// In UTC because ResolveCheckpoint stamps resolved_at in UTC, and SQLite
+	// compares datetimes as text: a bound carrying another zone's offset sorts
+	// against the stored value by its digits, not by the instant it names.
+	if !f.Since.IsZero() {
+		q = q.Where("resolved_at >= ?", f.Since.UTC())
+	}
+	if !f.Until.IsZero() {
+		q = q.Where("resolved_at < ?", f.Until.UTC())
+	}
+	if err := q.Order("resolved_at ASC").Find(&models).Error; err != nil {
+		return nil, err
+	}
+	out := make([]checkpoint.Checkpoint, len(models))
+	for i, m := range models {
+		out[i] = checkpointFromModel(m)
+	}
+	return out, nil
 }
 
 func checkpointFromModel(m schema.CheckpointModel) checkpoint.Checkpoint {

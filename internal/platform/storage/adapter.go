@@ -232,6 +232,8 @@ type StorageAdapter interface {
 	GetCheckpoint(ctx context.Context, id string) (checkpoint.Checkpoint, error)
 	ResolveCheckpoint(ctx context.Context, id string, d checkpoint.Decision) error
 	ListPendingCheckpoints(ctx context.Context, twinID string) ([]checkpoint.Checkpoint, error)
+	// ListResolvedCheckpoints is the judge-calibration corpus (Phase 30):
+	// every checkpoint a human has decided, oldest decision first.
 	ListResolvedCheckpoints(ctx context.Context, f ResolvedCheckpointFilter) ([]checkpoint.Checkpoint, error)
 
 	// Worktrees
