@@ -38,6 +38,10 @@ type stepContext struct {
 	// act path in particular delivers its payload one step *after* the decision
 	// that would have gated it, so the plan it justifies is the next one.
 	evidence coreagent.Evidence
+
+	// observed is the world state stepObserve returned this iteration — what
+	// the planner saw — so an escalation can record it on the checkpoint.
+	observed *loop.WorldState
 }
 
 func (s *serviceImpl) runLoop(ctx context.Context, loopID string, req loop.Request) {
@@ -166,6 +170,7 @@ func (s *serviceImpl) runLoop(ctx context.Context, loopID string, req loop.Reque
 
 		// observe
 		ws := stepObserve(ictx, sc)
+		sc.observed = &ws
 		iterations = append(iterations, loop.Iteration{
 			Number:    iter,
 			Step:      loop.StepObserve,
