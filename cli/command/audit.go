@@ -86,7 +86,15 @@ most recent entries across all kinds.`,
 	cmd.Flags().IntVar(&limit, "limit", 50, "Max entries to return (server caps at 100 by default)")
 	cmd.Flags().BoolVar(&boundsViolation, "bounds-violation", false, "Explicit tri-state filter; use --violations-only as shorthand for true")
 	cmd.Flags().BoolVar(&violationOnly, "violations-only", false, "Shorthand for --bounds-violation=true")
+	cmd.AddCommand(auditExportCmd())
 	return cmd
+}
+
+func auditExportCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "export",
+		Short: "Export the audit log for a closed window",
+	}
 }
 
 func itoa(n int) string {

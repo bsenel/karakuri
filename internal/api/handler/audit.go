@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"net/http"
 	"strconv"
 	"time"
@@ -13,7 +14,20 @@ import (
 // tool_events filtered by the supplied query string. Listed event Kinds:
 // "execute", "escalation", "approval".
 type AuditHandler struct {
-	Store storage.StorageAdapter
+	Store  storage.StorageAdapter
+	Export auditExporter
+}
+
+// auditExporter assembles the audit export for a closed window.
+type auditExporter interface {
+	Export(ctx context.Context, from, to, now time.Time) ([]byte, error)
+}
+
+// ExportWindow returns the audit export for one window.
+//
+// GET /api/v1/audit/export?from=RFC3339&to=RFC3339
+func (h *AuditHandler) ExportWindow(w http.ResponseWriter, _ *http.Request) {
+	http.Error(w, "not implemented", http.StatusNotImplemented)
 }
 
 func (h *AuditHandler) List(w http.ResponseWriter, r *http.Request) {
