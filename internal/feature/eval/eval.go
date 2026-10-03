@@ -19,6 +19,8 @@ import (
 	"github.com/bsenel/karakuri/internal/core/objective"
 	"github.com/bsenel/karakuri/internal/feature/loop"
 	"github.com/bsenel/karakuri/internal/platform/storage"
+	karakuriquota "github.com/bsenel/karakuri/internal/quota"
+	"github.com/bsenel/karakuri/quota/cost"
 )
 
 // The choices a reviewer resolves a checkpoint with. internal/feature/checkpoint
@@ -44,14 +46,27 @@ type Store interface {
 	GetObjective(ctx context.Context, id objective.ObjectiveID) (objective.Objective, error)
 }
 
+// JudgeFor returns the agent that judges an objective's criteria in the loop.
+//
+// The loop has no one judge: evaluateWithAgent asks the objective's own agent,
+// and each agent chooses its provider and temperature. So the judge is
+// resolved per objective, the way the loop resolves it. One fixed agent for
+// every objective would calibrate a judge the loop does not run for most of
+// them, and on a deployment with more than one provider it could be a
+// different model.
+type JudgeFor func(ctx context.Context, obj objective.Objective) (coreagent.Agent, error)
+
 // Service runs judge calibration.
 type Service struct {
-	store Store
-	judge coreagent.Agent
+	store    Store
+	judgeFor JudgeFor
+	costs    *karakuriquota.Recorder
 }
 
-func NewService(store Store, judge coreagent.Agent) *Service {
-	return &Service{store: store, judge: judge}
+// NewService builds the calibration service. costs may be nil, which records
+// nothing.
+func NewService(store Store, judgeFor JudgeFor, costs *karakuriquota.Recorder) *Service {
+	return &Service{store: store, judgeFor: judgeFor, costs: costs}
 }
 
 // CalibrationReport says how often the judge agreed with the humans who
@@ -135,7 +150,7 @@ func (s *Service) Calibrate(ctx context.Context, f storage.ResolvedCheckpointFil
 			HumanApprove: humanApproves(choice),
 			Title:        obj.Title, Criterion: renderCriteria(obj), Actions: renderActions(cp.Actions),
 		}
-		it.JudgePass, it.Reply, it.Error = s.judgePlan(ctx, obj, cp.Actions)
+		it.JudgePass, it.Reply, it.Error = s.judgePlan(ctx, cp.TwinID, obj, cp.Actions)
 		// A caller who left mid-call gets no report: the judge's answer to a
 		// cancelled request is not a verdict, and on the last checkpoint there
 		// is no next iteration to notice in.
@@ -195,13 +210,18 @@ func countReplayable(cps []checkpoint.Checkpoint) int {
 // judgePlan asks the judge the loop's question about a drafted plan. It has to
 // be asked the loop's way and read with the loop's parser, or the report
 // measures a judge nobody runs.
-func (s *Service) judgePlan(ctx context.Context, obj objective.Objective, actions []checkpoint.Action) (pass bool, reply, errText string) {
+func (s *Service) judgePlan(ctx context.Context, twinID string, obj objective.Objective, actions []checkpoint.Action) (pass bool, reply, errText string) {
 	// Mirrors evaluateWithAgent: nothing drafted means nothing to judge, and
 	// asking anyway would score the judge on how plausible the objective sounds.
 	if len(actions) == 0 {
 		return false, "", ""
 	}
-	out, err := s.judge.Run(ctx, coreagent.Input{
+	judge, err := s.judgeFor(ctx, obj)
+	if err != nil {
+		// No agent to ask is no approval, the same as an agent that errored.
+		return false, "", err.Error()
+	}
+	out, err := judge.Run(ctx, coreagent.Input{
 		Objective: obj,
 		// Nil, as in evaluateWithAgent: the plan is in the task, and the world
 		// the reviewer saw was never recorded on the checkpoint.
@@ -213,6 +233,16 @@ func (s *Service) judgePlan(ctx context.Context, obj objective.Objective, action
 		// A judge that could not answer did not approve, same as in the loop.
 		return false, "", err.Error()
 	}
+	// Charged to the twin and not to the objective. An objective's ledger
+	// entries count toward its own daily budget, and measuring the judge must
+	// not push a standing objective over its ceiling.
+	s.costs.Record(ctx, karakuriquota.Spend{
+		TwinID:   twinID,
+		Provider: out.Provider,
+		Model:    out.Model,
+		Units:    float64(out.TokensUsed),
+		UnitKind: cost.UnitTokens,
+	})
 	return loop.VerdictIsPass(out.Content), out.Content, ""
 }
 

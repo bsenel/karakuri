@@ -141,7 +141,7 @@ func fixture(cases ...fixtureCase) (*fakeStore, *fakeJudge) {
 
 func calibrate(t *testing.T, store *fakeStore, judge *fakeJudge, f storage.ResolvedCheckpointFilter) CalibrationReport {
 	t.Helper()
-	rep, err := NewService(store, judge).Calibrate(context.Background(), f)
+	rep, err := NewService(store, fixedJudge(judge), nil).Calibrate(context.Background(), f)
 	if err != nil {
 		t.Fatalf("Calibrate: %v", err)
 	}
@@ -448,7 +448,7 @@ func TestCalibrate_StopsWhenCallerIsGone(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
 
-		_, err := NewService(store, judge).Calibrate(ctx, storage.ResolvedCheckpointFilter{})
+		_, err := NewService(store, fixedJudge(judge), nil).Calibrate(ctx, storage.ResolvedCheckpointFilter{})
 		if !errors.Is(err, context.Canceled) {
 			t.Fatalf("err = %v, want context.Canceled", err)
 		}
@@ -463,7 +463,7 @@ func TestCalibrate_StopsWhenCallerIsGone(t *testing.T) {
 		defer cancel()
 		judge := &cancellingJudge{cancel: cancel}
 
-		_, err := NewService(store, judge).Calibrate(ctx, storage.ResolvedCheckpointFilter{})
+		_, err := NewService(store, fixedJudge(judge), nil).Calibrate(ctx, storage.ResolvedCheckpointFilter{})
 		if !errors.Is(err, context.Canceled) {
 			t.Fatalf("err = %v, want context.Canceled", err)
 		}
@@ -479,7 +479,7 @@ func TestCalibrate_StopsWhenCallerIsGone(t *testing.T) {
 		defer cancel()
 		judge := &cancellingJudge{cancel: cancel}
 
-		_, err := NewService(store, judge).Calibrate(ctx, storage.ResolvedCheckpointFilter{})
+		_, err := NewService(store, fixedJudge(judge), nil).Calibrate(ctx, storage.ResolvedCheckpointFilter{})
 		if !errors.Is(err, context.Canceled) {
 			t.Fatalf("err = %v, want context.Canceled", err)
 		}

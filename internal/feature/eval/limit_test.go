@@ -72,7 +72,7 @@ func TestCalibrate_LimitBoundsJudgeCalls(t *testing.T) {
 
 func calibrateStore(t *testing.T, store Store, judge *fakeJudge, f storage.ResolvedCheckpointFilter) CalibrationReport {
 	t.Helper()
-	rep, err := NewService(store, judge).Calibrate(context.Background(), f)
+	rep, err := NewService(store, fixedJudge(judge), nil).Calibrate(context.Background(), f)
 	if err != nil {
 		t.Fatalf("Calibrate: %v", err)
 	}

@@ -240,16 +240,17 @@ func NewApp(
 	}
 	audH := &handler.AuditHandler{Store: store}
 	evalH := &handler.EvalHandler{Scopes: authDeps.Authorizer}
-	// The judge asks the loop's PASS/FAIL question through the default
-	// provider. With no such provider the route answers 503 rather than
+	// Calibration judges each objective with the agent the loop would use, and
+	// records what it spends. The probe below only decides availability: with
+	// no provider able to build an agent, the route answers 503 rather than
 	// scoring every checkpoint as a judge error.
-	if judge, err := agentFactory.New(context.Background(), coreagent.Definition{
-		ID:                "karakuri-judge",
+	if _, err := agentFactory.New(context.Background(), coreagent.Definition{
+		ID:                "karakuri-judge-probe",
 		Name:              "Judge",
 		Domain:            "universal",
 		ReasoningStrategy: coreagent.ReasoningReAct,
 	}); err == nil {
-		evalH.Calibrator = eval.NewService(store, judge)
+		evalH.Calibrator = eval.NewService(store, eval.LoopJudge(agentFactory, domReg), quotaDeps.Costs)
 	} else {
 		slog.Warn("judge calibration disabled", "err", err)
 	}

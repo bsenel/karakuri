@@ -32,12 +32,16 @@ Three constraints shaped the work:
   needs only the plan; replaying the planner needs the world state, and nothing
   persisted it.
 
-## Decision 1 — calibrate the production parser, not a copy
+## Decision 1 — calibrate the production parser and the loop's own agent, not copies
 
 `verdictIsPass` in `internal/feature/loop/verify.go` is exported as
 `VerdictIsPass`, and `internal/feature/eval` calls it. `Service.Calibrate` lists
 resolved checkpoints through `storage.ListResolvedCheckpoints`, puts each
-drafted plan to a judge agent, and reads the reply with that one function.
+drafted plan to the agent the loop would have asked, and reads the reply with
+that one function. The loop has no single judge: `evaluateWithAgent` calls the
+objective's own agent, which chooses its provider and temperature, so
+`eval.LoopJudge` resolves the judge per objective with `loop.SelectAgent` and
+the agent factory.
 `approve` is the positive label; `reject` and `modify` are negative.
 `renderPlanTask` keeps `evaluateWithAgent`'s contract: judge only what is shown,
 absence is FAIL, answer in one word. A judge error and an empty plan score as
@@ -50,6 +54,12 @@ The question is not the loop's question word for word. The loop asks whether a
 criterion is met by what the actions produced; a checkpoint holds a plan that
 has not run, so calibration asks whether the plan should be accepted as
 proposed. The parser and the reply contract are shared. The prompt is not.
+
+**Rejected: one judge agent for every objective.** It was the first
+implementation: a `karakuri-judge` agent on the default provider. On a
+deployment with one provider it differs only in persona. With more than one it
+can be a different model from the one that judges, and the report would not say
+so.
 
 **Rejected: a parser inside the eval package.** It is the smaller change and
 keeps `loop`'s surface closed. It also measures a judge nobody runs: the two
@@ -101,24 +111,24 @@ Nothing from this deployment was exported. All 18 entries in
 `golden.v1.json` are constructed, and each note says which parser behaviour it
 pins.
 
-The reason is who labelled the history. Most of the 34 resolved checkpoints were
+The reason is who labelled the history. Most of the 45 resolved checkpoints were
 decided by an operator account driving Karakuri's own delivery, largely by an AI
 assistant acting as that operator, and many rejections were procedural. A golden
 entry is a claim that a label is right. These labels do not support that claim.
 
 **Rejected: exporting them anyway, since they are real.** A gate whose baseline
-is 55.9% agreement with procedural rejections would pin noise, and the first
+is 51.1% agreement with procedural rejections would pin noise, and the first
 honest improvement to the judge would turn it red.
 
 ## Consequences
 
-- **The agreement rate is a number.** 55.9% (19 of 34), in `docs/benchmarks.md`
+- **The agreement rate is a number.** 51.1% (23 of 45), in `docs/benchmarks.md`
   with its confusion matrix. It is one measurement, taken on demand. Nothing
   tracks it over time.
-- **That number is not a verdict on the judge.** Agreement is 93.8% on approvals
-  and 15.4% on rejections, because the judge sees the objective and the plan and
+- **That number is not a verdict on the judge.** Agreement is 90.5% on approvals
+  and 10.5% on rejections, because the judge sees the objective and the plan and
   cannot see that the work was already done or that the plan was an error
-  placeholder. What it shows is a judge that passes 29 of 34 plans.
+  placeholder. What it shows is a judge that passes 39 of 45 plans.
 - **Agreement is not correctness.** A human who approved a bad plan labels it
   approved.
 - **The corpus over-represents hard cases.** Routine competence never escalates,
@@ -126,7 +136,7 @@ honest improvement to the judge would turn it red.
 - **The gate measures the parser, not the model.** A judge that starts answering
   differently is invisible to it. It catches the Phase 25 regression and nothing
   wider.
-- **Replay is not built.** The corpus for it is 2 checkpoints, because recording
+- **Replay is not built.** The corpus for it is 13 checkpoints, because recording
   started with this phase. Checkpoints written before migration 000011 can never
   be replayed.
 - **`loop.VerdictIsPass` is exported.** `internal/feature/loop` has one more
@@ -134,8 +144,10 @@ honest improvement to the judge would turn it red.
 - **A new permission and a new column.** `eval:run` is admin only: the route
   spends a model call per checkpoint and reads checkpoints across twins. A
   checkpoint row can grow by up to roughly 256 KiB.
-- **A run takes minutes.** One judge call per checkpoint; 34 took 2 minutes 57
-  seconds through a CLI-backed provider. The CLI command has its own 30-minute
+- **A run takes minutes and costs tokens.** One judge call per checkpoint; 45
+  took 4 minutes 44 seconds through a CLI-backed provider. Each call is
+  recorded in the cost ledger against the checkpoint's twin, not its objective,
+  whose ledger entries count toward its own daily budget. The CLI command has its own 30-minute
   bound, and the server stops judging when the caller disconnects.
 
 ## Alternatives considered
