@@ -719,8 +719,8 @@ func TestObservabilityRefusesOtherCapabilities(t *testing.T) {
 
 // ADR 019 decision 4: which environment runs a capability is declared on the
 // factory, and the registry routes on that.
-func TestObservabilityServesLogsAndMetrics(t *testing.T) {
-	want := []capability.CapabilityID{CapFetchLogs, CapFetchMetrics}
+func TestObservabilityServesLogsMetricsAndAlertsResolved(t *testing.T) {
+	want := []capability.CapabilityID{CapFetchLogs, CapFetchMetrics, CapAlertsResolved}
 	if got := observabilityFactory(t, nil).Serves; !reflect.DeepEqual(got, want) {
 		t.Errorf("Serves = %v, want %v", got, want)
 	}

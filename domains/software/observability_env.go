@@ -17,6 +17,8 @@ import (
 const (
 	CapFetchLogs    = "software.observe.fetch_logs"
 	CapFetchMetrics = "software.observe.fetch_metrics"
+	// CapAlertsResolved verifies that the named alerts are no longer open.
+	CapAlertsResolved = "software.verify.alerts_resolved"
 )
 
 const (
