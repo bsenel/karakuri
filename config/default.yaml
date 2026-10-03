@@ -378,16 +378,20 @@ tools:
   cli_agents:
     default: ""
     instances: {}
-  # Observability tool slot (Phase 32). type: prometheus | loki
+  # Observability tool slot (Phase 32). type: prometheus | loki | datadog | pagerduty
   # Prometheus serves alerts and metrics, Loki serves logs; `tenant` is sent to
-  # Loki as X-Scope-OrgID. This is NOT the top-level `observability:` section,
-  # which configures the telemetry exporters.
+  # Loki as X-Scope-OrgID. Datadog takes an API key and an application key;
+  # `site` is optional and defaults to datadoghq.com. PagerDuty serves alerts
+  # only. This is NOT the top-level `observability:` section, which configures
+  # the telemetry exporters.
   #
   #   observability:
   #     default: acme_prometheus
   #     instances:
   #       acme_prometheus: { type: prometheus, url: https://prometheus.acme.com, bearer_token_env: ACME_PROMETHEUS_TOKEN }
   #       acme_loki:       { type: loki, url: https://loki.acme.com, bearer_token_env: ACME_LOKI_TOKEN, tenant: acme }
+  #       acme_datadog:    { type: datadog, api_key_env: ACME_DATADOG_API_KEY, app_key_env: ACME_DATADOG_APP_KEY, site: datadoghq.eu }
+  #       acme_pagerduty:  { type: pagerduty, token_env: ACME_PAGERDUTY_TOKEN }
   observability:
     default: ""
     instances: {}
