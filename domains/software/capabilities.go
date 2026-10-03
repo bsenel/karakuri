@@ -92,6 +92,38 @@ func softwareCapabilities() []capability.Capability {
 		writes(act("software.act.delegate_to_cli", "Delegate to CLI Agent", "Hand a task to a coding-agent CLI (Claude Code, Cursor, Gemini, Copilot) in an isolated worktree", false)),
 		act("software.act.shell_exec", "Shell Exec", "Run a /bin/sh command with params.cmd (required), optional params.workdir and params.timeout_sec (max 600). Result includes exit_code, stdout, stderr. Dangerous patterns (rm -rf /, mkfs, sudo, curl|sh) are blocked.", true),
 
+		// Not shell_exec under another name: it names the alert it is for and
+		// why, and the SRE agent's bounds escalate every call.
+		{
+			ID: CapRunRemediation, Name: "Run Remediation", Domain: "software",
+			Description: "Run a /bin/sh command that changes a running system, to remediate one observed alert. Always escalated for approval under the SRE agent's bounds. Requires params.alert_id, params.rationale and params.cmd; optional params.workdir and params.timeout_sec (max 600). Result includes exit_code, stdout, stderr, alert_id and rationale. Dangerous patterns (rm -rf /, mkfs, sudo, curl|sh) are blocked.",
+			InputSchema: capability.Schema{
+				Type: "object",
+				Properties: map[string]capability.SchemaProperty{
+					"alert_id":    {Type: "string", Description: "ID of the observed alert this remediation is for, as observed"},
+					"rationale":   {Type: "string", Description: "Why this command addresses that alert"},
+					"cmd":         {Type: "string", Description: "The /bin/sh command to run"},
+					"workdir":     {Type: "string", Description: "Directory to run the command in. Defaults to the environment's root"},
+					"timeout_sec": {Type: "integer", Description: "Command timeout in seconds. Default 60, max 600"},
+				},
+				Required: []string{"alert_id", "rationale", "cmd"},
+			},
+			OutputSchema: capability.Schema{Type: "object"},
+		},
+
+		{
+			ID: CapAlertsResolved, Name: "Alerts Resolved", Domain: "software",
+			Description: "Verify that the alerts a remediation was for are no longer open, by asking the twin's bound observability instance what is firing or acknowledged. Requires params.alert_ids. Result includes resolved and still_open; it fails while any named alert is open, and when the instance could not be asked.",
+			Verifiable:  true,
+			InputSchema: capability.Schema{
+				Type: "object",
+				Properties: map[string]capability.SchemaProperty{
+					"alert_ids": {Type: "array", Description: "IDs of the alerts the remediation was for, as observed. A list of strings, or one comma-separated string"},
+				},
+				Required: []string{"alert_ids"},
+			},
+			OutputSchema: capability.Schema{Type: "object"},
+		},
 		act("software.verify.run_tests", "Run Tests", "Execute test suite in worktree", true),
 		act("software.verify.lint", "Lint", "Run linter in worktree", true),
 		act("software.verify.review", "Code Review", "Peer review of an artifact", true),

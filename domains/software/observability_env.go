@@ -173,8 +173,77 @@ func (e *observabilityEnv) Act(ctx context.Context, a environment.Action) (envir
 		return e.fetchLogs(ctx, a.Params), nil
 	case CapFetchMetrics:
 		return e.fetchMetrics(ctx, a.Params), nil
+	case CapAlertsResolved:
+		return e.alertsResolved(ctx, a.Params), nil
 	}
-	return observabilityRefusal("%s fetches logs and metrics; %s cannot be executed here", e.id, a.CapabilityID), nil
+	return observabilityRefusal("%s serves %s, %s and %s; %s cannot be executed here",
+		e.id, CapFetchLogs, CapFetchMetrics, CapAlertsResolved, a.CapabilityID), nil
+}
+
+// alertsResolved settles "the alert is gone" by asking the instance what is
+// open. Not being able to ask is a failure, never a resolution.
+func (e *observabilityEnv) alertsResolved(ctx context.Context, params map[string]any) environment.ActionResult {
+	ids := alertIDsParam(params)
+	if len(ids) == 0 {
+		return observabilityRefusal("%s needs the alerts to check: pass params.alert_ids", CapAlertsResolved)
+	}
+	if reason := e.blindReason(); reason != "" {
+		return observabilityRefusal("%s could not look: %s", CapAlertsResolved, reason)
+	}
+	open, err := e.fetchOpenAlerts(ctx)
+	if err != nil {
+		return observabilityRefusal("%s could not look: %v", CapAlertsResolved, err)
+	}
+	isOpen := make(map[string]bool, len(open))
+	for _, a := range open {
+		isOpen[a.ID] = true
+	}
+
+	resolved, stillOpen := []string{}, []string{}
+	for _, id := range ids {
+		if isOpen[id] {
+			stillOpen = append(stillOpen, id)
+		} else {
+			resolved = append(resolved, id)
+		}
+	}
+
+	// IDs the caller passed, never an alert's message, so the operator's.
+	res := environment.ActionResult{Success: len(stillOpen) == 0, Trust: environment.TrustOperator, StateDelta: map[string]any{
+		"verifier": CapAlertsResolved, "resolved": resolved, "still_open": stillOpen,
+	}}
+	if !res.Success {
+		res.Error = fmt.Sprintf("%s: still open: %s", CapAlertsResolved, strings.Join(stillOpen, ", "))
+	}
+	return res
+}
+
+// alertIDsParam reads params.alert_ids as a list of strings, as []any off JSON,
+// or as one comma-separated string: trimmed, without empties or repeats, sorted.
+func alertIDsParam(params map[string]any) []string {
+	var raw []string
+	switch v := params["alert_ids"].(type) {
+	case []string:
+		raw = v
+	case []any:
+		for _, item := range v {
+			if s, ok := item.(string); ok {
+				raw = append(raw, s)
+			}
+		}
+	case string:
+		raw = strings.Split(v, ",")
+	}
+	seen := make(map[string]bool, len(raw))
+	ids := make([]string, 0, len(raw))
+	for _, s := range raw {
+		if s = strings.TrimSpace(s); s != "" && !seen[s] {
+			seen[s] = true
+			ids = append(ids, s)
+		}
+	}
+	sort.Strings(ids)
+	return ids
 }
 
 // observabilityRefusal is a look that did not happen: never Success true with

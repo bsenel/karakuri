@@ -122,6 +122,7 @@ func softwareEnvironmentFactories(reg *tools.Registry) []environment.Factory {
 			Serves: []capability.CapabilityID{
 				CapFetchLogs,
 				CapFetchMetrics,
+				CapAlertsResolved,
 			},
 			Build: func(ctx environment.BuildContext) (environment.Environment, error) {
 				// Left a true nil when nothing resolves: there is no no-op
@@ -187,6 +188,16 @@ func softwareEnvironmentFactories(reg *tools.Registry) []environment.Factory {
 			Serves:      []capability.CapabilityID{"software.act.shell_exec"},
 			Build: func(_ environment.BuildContext) (environment.Environment, error) {
 				return newShellEnv("software.env.shell", "", 60*time.Second), nil
+			},
+		},
+		{
+			EnvID:  "software.env.remediation",
+			Domain: "software",
+			Description: "Remediation commands: runs a command that changes a running system, for one observed alert and a stated reason. " +
+				"Takes params.alert_id, params.rationale and params.cmd (all required) and optional params.workdir, params.timeout_sec (max 600).",
+			Serves: []capability.CapabilityID{CapRunRemediation},
+			Build: func(_ environment.BuildContext) (environment.Environment, error) {
+				return newRemediationEnv("software.env.remediation", newShellEnv("software.env.remediation", "", 60*time.Second)), nil
 			},
 		},
 	}
