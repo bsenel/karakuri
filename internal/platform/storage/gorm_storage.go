@@ -623,7 +623,12 @@ func (s *GORMStorage) SaveToolEvent(ctx context.Context, e ToolEvent) error {
 }
 
 func (s *GORMStorage) ListToolEvents(ctx context.Context, f ToolEventFilter) ([]ToolEvent, error) {
-	q := s.db.WithContext(ctx).Order("created_at DESC")
+	q := s.db.WithContext(ctx)
+	if f.OldestFirst {
+		q = q.Order("created_at ASC").Order("id ASC")
+	} else {
+		q = q.Order("created_at DESC")
+	}
 	if f.ObjectiveID != "" {
 		q = q.Where("objective_id = ?", f.ObjectiveID)
 	}
@@ -653,8 +658,13 @@ func (s *GORMStorage) ListToolEvents(ctx context.Context, f ToolEventFilter) ([]
 	if f.BoundsViolation != nil {
 		q = q.Where("bounds_violation = ?", *f.BoundsViolation)
 	}
+	// In UTC for the reason ListResolvedCheckpoints gives: SQLite compares
+	// datetimes as text, so a bound in another zone would sort by its digits.
 	if f.CreatedAtSince != nil {
-		q = q.Where("created_at >= ?", *f.CreatedAtSince)
+		q = q.Where("created_at >= ?", f.CreatedAtSince.UTC())
+	}
+	if f.CreatedAtBefore != nil {
+		q = q.Where("created_at < ?", f.CreatedAtBefore.UTC())
 	}
 	if f.Limit > 0 {
 		q = q.Limit(f.Limit)
