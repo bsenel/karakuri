@@ -14,6 +14,7 @@ import (
 	domainsw "github.com/bsenel/karakuri/domains/software"
 	"github.com/bsenel/karakuri/internal/feature/audit"
 	platformdb "github.com/bsenel/karakuri/internal/platform/db"
+	"github.com/bsenel/karakuri/internal/platform/db/schema"
 	"github.com/bsenel/karakuri/internal/platform/storage"
 )
 
@@ -108,9 +109,14 @@ func TestAuditExportIsWiredToTheExporter(t *testing.T) {
 	if err := store.SaveToolEvent(ctx, storage.ToolEvent{
 		ID: "ev-export-1", ObjectiveID: "obj-export", Kind: storage.ToolEventExecute,
 		Capability: "code.review", Success: true,
-		CreatedAt: time.Date(2026, 1, 15, 12, 0, 0, 0, time.UTC),
 	}); err != nil {
 		t.Fatalf("seed tool event: %v", err)
+	}
+	// SaveToolEvent stamps created_at on insert, so the row is moved into the
+	// window afterwards.
+	if err := gormDB.Model(&schema.ToolEventModel{}).Where("id = ?", "ev-export-1").
+		UpdateColumn("created_at", time.Date(2026, 1, 15, 12, 0, 0, 0, time.UTC)).Error; err != nil {
+		t.Fatalf("backdate tool event: %v", err)
 	}
 
 	// The shipped default: never prune, at the declared floor.
