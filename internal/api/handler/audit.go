@@ -2,10 +2,12 @@ package handler
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strconv"
 	"time"
 
+	"github.com/bsenel/karakuri/internal/feature/audit"
 	"github.com/bsenel/karakuri/internal/platform/storage"
 	"github.com/go-chi/chi/v5"
 )
@@ -26,8 +28,31 @@ type auditExporter interface {
 // ExportWindow returns the audit export for one window.
 //
 // GET /api/v1/audit/export?from=RFC3339&to=RFC3339
-func (h *AuditHandler) ExportWindow(w http.ResponseWriter, _ *http.Request) {
-	http.Error(w, "not implemented", http.StatusNotImplemented)
+func (h *AuditHandler) ExportWindow(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	from, err := time.Parse(time.RFC3339, q.Get("from"))
+	if err != nil {
+		http.Error(w, "from must be an RFC3339 timestamp", http.StatusBadRequest)
+		return
+	}
+	to, err := time.Parse(time.RFC3339, q.Get("to"))
+	if err != nil {
+		http.Error(w, "to must be an RFC3339 timestamp", http.StatusBadRequest)
+		return
+	}
+	data, err := h.Export.Export(r.Context(), from, to, time.Now())
+	if err != nil {
+		if errors.Is(err, audit.ErrWindow) {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	// The exporter's bytes are the document: written as they are, so two
+	// requests for one window are byte-identical.
+	w.Header().Set("Content-Type", "application/json")
+	_, _ = w.Write(data)
 }
 
 func (h *AuditHandler) List(w http.ResponseWriter, r *http.Request) {

@@ -22,6 +22,7 @@ import (
 	"github.com/bsenel/karakuri/internal/core/environment"
 	"github.com/bsenel/karakuri/internal/core/event"
 	objectivepkg "github.com/bsenel/karakuri/internal/core/objective"
+	"github.com/bsenel/karakuri/internal/feature/audit"
 	platformdb "github.com/bsenel/karakuri/internal/platform/db"
 	"github.com/bsenel/karakuri/internal/platform/git"
 	"github.com/bsenel/karakuri/internal/platform/llm"
@@ -154,7 +155,13 @@ func startServerWith(t *testing.T, configure func(*config.Config)) (baseURL stri
 	}
 	t.Cleanup(func() { _ = quotaDeps.Close() })
 
-	apiApp := api.NewApp(cfg, store, providers, toolReg, exporters, wt, hub, otel, capReg, envReg, domReg, templates, nil, nil, authDeps, quotaDeps)
+	// The audit retention as bootstrap resolves it: no floor configured means
+	// the package floor.
+	auditKeep := audit.Retention{FloorDays: cfg.Audit.Retention.FloorDays, Days: cfg.Audit.Retention.Days}
+	if auditKeep.FloorDays == 0 {
+		auditKeep.FloorDays = audit.FloorDays
+	}
+	apiApp := api.NewApp(cfg, store, providers, toolReg, exporters, wt, hub, otel, capReg, envReg, domReg, templates, auditKeep, nil, nil, authDeps, quotaDeps)
 
 	pair, err := authDeps.Tokens.IssueForPassword(ctx, cfg.Auth.Bootstrap.AdminID, testAdminPassword)
 	if err != nil {

@@ -19,6 +19,7 @@ import (
 	coreobjective "github.com/bsenel/karakuri/internal/core/objective"
 	"github.com/bsenel/karakuri/internal/core/telemetry"
 	"github.com/bsenel/karakuri/internal/feature/artifact"
+	"github.com/bsenel/karakuri/internal/feature/audit"
 	"github.com/bsenel/karakuri/internal/feature/checkpoint"
 	"github.com/bsenel/karakuri/internal/feature/container"
 	"github.com/bsenel/karakuri/internal/feature/eval"
@@ -104,6 +105,7 @@ func NewApp(
 	envReg *environment.Registry,
 	domReg *domain.Registry,
 	templates []coreobjective.Template,
+	auditKeep audit.Retention, // the resolved audit retention the export reports
 	semanticBackend corememory.Memory, // optional override; nil → default SQLite keyword
 	prometheusHandler http.Handler, // optional; mounted at /metrics outside auth when non-nil
 	authDeps AuthDeps,
@@ -238,7 +240,7 @@ func NewApp(
 		Scopes:     authDeps.Authorizer,
 		Containers: containerSvc,
 	}
-	audH := &handler.AuditHandler{Store: store}
+	audH := &handler.AuditHandler{Store: store, Export: audit.NewExporter(store, auditKeep, templates)}
 	evalH := &handler.EvalHandler{Scopes: authDeps.Authorizer}
 	// Calibration judges each objective with the agent the loop would use, and
 	// records what it spends. The probe below only decides availability: with
@@ -486,6 +488,7 @@ func NewApp(
 			r.Post("/mcp", mcpH.ServeHTTP)
 
 			r.With(require(karakuriauth.ActionAuditRead, nil)).Get("/audit", audH.List)
+			r.With(require(karakuriauth.ActionAuditRead, nil)).Get("/audit/export", audH.ExportWindow)
 			r.With(require(karakuriauth.ActionAuditRead, nil)).Get("/audit/{id}", audH.Get)
 			// Filtered to the containers the caller may see, from the same
 			// bindings the twin listing reads — a report must not be a way
