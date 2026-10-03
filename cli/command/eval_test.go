@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -157,6 +158,14 @@ func TestEvalCalibrateExport(t *testing.T) {
 	raw, err := os.ReadFile(file)
 	if err != nil {
 		t.Fatalf("read export: %v", err)
+	}
+	// The export holds plan text from real checkpoints: owner-only.
+	info, err := os.Stat(file)
+	if err != nil {
+		t.Fatalf("stat export: %v", err)
+	}
+	if runtime.GOOS != "windows" && info.Mode().Perm() != 0o600 {
+		t.Errorf("export mode = %o, want 600", info.Mode().Perm())
 	}
 	var entries []goldenEntry
 	if err := json.Unmarshal(raw, &entries); err != nil {

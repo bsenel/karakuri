@@ -37,7 +37,7 @@ type GoldenEntry struct {
 // provenance, reply or recognisable label, a repeated id, or a baseline
 // outside [0,1] — is an error rather than a set the gate quietly passes.
 func LoadGoldenSet(path string) (GoldenSet, error) {
-	b, err := os.ReadFile(path)
+	b, err := os.ReadFile(path) // #nosec G304 -- operator- or test-chosen golden file path; never from a request
 	if err != nil {
 		return GoldenSet{}, err
 	}
