@@ -510,6 +510,11 @@ func TestExportSaysWhetherAPersonWasConsulted(t *testing.T) {
 		if strings.HasPrefix(o.Statement, "No person was consulted") || o.Statement == "" {
 			t.Errorf("statement = %q, want one saying a person was consulted", o.Statement)
 		}
+		// The log knows which account resolved a checkpoint, not who was at
+		// it, and the statement must not claim more than that.
+		if !strings.Contains(o.Statement, "cannot show who was operating that account") {
+			t.Errorf("statement %q claims more than the record shows about who decided", o.Statement)
+		}
 		if len(o.Interventions) != 1 || o.Interventions[0].ID != "ev-approval" {
 			t.Errorf("interventions = %+v, want the approval", o.Interventions)
 		}
@@ -669,8 +674,10 @@ func TestExportRetentionSection(t *testing.T) {
 	}{
 		{"window reaches back past the retention period", Retention{FloorDays: 183, Days: 200}, to.Add(-201 * day), true,
 			[]string{"may have been pruned", "not inactivity"}, false},
-		{"window exactly the retention period", Retention{FloorDays: 183, Days: 200}, to.Add(-200 * day), false, nil, false},
-		{"window inside the retention period", Retention{FloorDays: 183, Days: 200}, to.Add(-30 * day), false, nil, false},
+		{"window exactly the retention period", Retention{FloorDays: 183, Days: 200}, to.Add(-200 * day), false,
+			[]string{"are pruned", "not inactivity"}, false},
+		{"window inside the retention period", Retention{FloorDays: 183, Days: 200}, to.Add(-30 * day), false,
+			[]string{"are pruned", "not inactivity"}, false},
 		{"never pruned", Retention{FloorDays: 183, Days: 0}, to.Add(-900 * day), false, nil, true},
 	}
 	for _, tt := range tests {

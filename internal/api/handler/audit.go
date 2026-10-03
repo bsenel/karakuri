@@ -52,7 +52,7 @@ func (h *AuditHandler) ExportWindow(w http.ResponseWriter, r *http.Request) {
 	// The exporter's bytes are the document: written as they are, so two
 	// requests for one window are byte-identical.
 	w.Header().Set("Content-Type", "application/json")
-	_, _ = w.Write(data)
+	_, _ = w.Write(data) // #nosec G705 -- a JSON document the exporter built from stored rows, served as application/json with nosniff (middleware/security.go); never rendered as HTML
 }
 
 func (h *AuditHandler) List(w http.ResponseWriter, r *http.Request) {

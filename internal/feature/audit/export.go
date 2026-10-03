@@ -261,10 +261,13 @@ func (e *Exporter) checkpoints(ctx context.Context, from, to time.Time, doc *Exp
 	o.PersonConsulted = o.CheckpointsResolved > 0 || len(o.Interventions) > 0
 	switch {
 	case o.PersonConsulted:
-		o.Statement = fmt.Sprintf("A person was consulted in this window: %d checkpoints were raised, %d were resolved and %d approvals, rejections or modifications were recorded.",
+		// Says what the rows show and no more. A resolution is recorded under
+		// an approver account; whether a person, a script or another agent was
+		// operating that account is not something the log can know.
+		o.Statement = fmt.Sprintf("Decisions were asked for and given in this window: %d checkpoints were raised, %d were resolved and %d approvals, rejections or modifications were recorded, each under the approver named on it. The record shows which account decided; it cannot show who was operating that account.",
 			o.CheckpointsRaised, o.CheckpointsResolved, len(o.Interventions))
 	case o.CheckpointsRaised > 0:
-		o.Statement = fmt.Sprintf("A person was asked and had not answered in this window: %d checkpoints were raised and none was resolved in the window.", o.CheckpointsRaised)
+		o.Statement = fmt.Sprintf("A decision was asked for and not given in this window: %d checkpoints were raised and none was resolved in the window.", o.CheckpointsRaised)
 	default:
 		o.Statement = "No person was consulted in this window: no checkpoint was raised and none was resolved."
 	}
@@ -286,7 +289,12 @@ func (e *Exporter) retentionSection(from, to time.Time) ExportRetention {
 		r.WindowPrecedesRetention = true
 		r.Note = fmt.Sprintf("This window starts more than %d days before it ends, which is longer than the audit log is kept: rows from its earliest part may have been pruned, so their absence is not inactivity.", e.retention.Days)
 	default:
-		r.Note = fmt.Sprintf("This window is no longer than the %d days the audit log is kept.", e.retention.Days)
+		// Says what the retention does as well as how the window compares: a
+		// short window that ended long ago can have been pruned whole, and
+		// only the reader knows today's date. It cannot be worked out here
+		// without making the bytes depend on when the export was asked for.
+		r.Note = fmt.Sprintf("This window is no longer than the %d days the audit log is kept. Rows older than %d days are pruned, so an export asked for more than %d days after the window ended may be missing rows, and their absence is not inactivity.",
+			e.retention.Days, e.retention.Days, e.retention.Days)
 	}
 	return r
 }
