@@ -179,6 +179,12 @@ What this is not comes first, because the rest is read in its light.
   prunes rows from a window, an export of that window changes. The export's
   `retention.note` says so without knowing today's date, because knowing it
   would make the bytes depend on when the export was asked for.
+- **The `templates` section is the deployment as it is when the export is
+  made.** It lists the templates of the packs active at that moment and how
+  they are classified now, so enabling a pack or reclassifying a template
+  changes the bytes of an old window's export. The `risk_class` on each
+  decision row does not move: it was copied onto the row when the decision was
+  taken.
 
 Then what was measured, on this deployment on 2026-10-03:
 

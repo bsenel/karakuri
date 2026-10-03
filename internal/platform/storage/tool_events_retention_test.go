@@ -220,3 +220,49 @@ func TestToolEventWrittenBeforeProvenanceReadsBackEmpty(t *testing.T) {
 		t.Errorf("old row with empty provenance columns = %d, want 1", n)
 	}
 }
+
+// The cutoff names an instant, not a wall-clock reading. SQLite compares
+// datetimes as text, so a cutoff carried in another zone would be compared by
+// its digits and delete rows newer than the instant it names: hours taken out
+// of the retention floor. The delete must not depend on its caller passing UTC.
+func TestDeleteToolEventsBeforeTakesTheCutoffAsAnInstant(t *testing.T) {
+	ctx := context.Background()
+	s, db := newStoreWithDB(t)
+
+	cutoff := time.Date(2026, 4, 1, 12, 0, 0, 0, time.UTC)
+	for id, at := range map[string]time.Time{
+		"older":         cutoff.Add(-time.Hour),
+		"newer-by-1h":   cutoff.Add(time.Hour),
+		"newer-by-4h":   cutoff.Add(4 * time.Hour),
+		"newer-by-days": cutoff.Add(72 * time.Hour),
+	} {
+		if err := s.SaveToolEvent(ctx, storage.ToolEvent{ID: id, ObjectiveID: "obj-1", Kind: storage.ToolEventExecute, Success: true}); err != nil {
+			t.Fatalf("save %s: %v", id, err)
+		}
+		if err := db.Model(&schema.ToolEventModel{}).Where("id = ?", id).UpdateColumn("created_at", at).Error; err != nil {
+			t.Fatalf("backdate %s: %v", id, err)
+		}
+	}
+
+	// The same instant, read off a clock five hours ahead of UTC.
+	elsewhere := cutoff.In(time.FixedZone("UTC+5", 5*60*60))
+	n, err := s.DeleteToolEventsBefore(ctx, elsewhere)
+	if err != nil {
+		t.Fatalf("delete: %v", err)
+	}
+	if n != 1 {
+		t.Errorf("deleted = %d, want 1: only the row older than the instant", n)
+	}
+	left, err := s.ListToolEvents(ctx, storage.ToolEventFilter{})
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	got := make([]string, 0, len(left))
+	for _, e := range left {
+		got = append(got, e.ID)
+	}
+	slices.Sort(got)
+	if want := []string{"newer-by-1h", "newer-by-4h", "newer-by-days"}; !slices.Equal(got, want) {
+		t.Errorf("rows left = %v, want %v: a row newer than the cutoff was pruned", got, want)
+	}
+}

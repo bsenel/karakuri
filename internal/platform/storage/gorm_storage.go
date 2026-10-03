@@ -714,8 +714,14 @@ func (s *GORMStorage) GetToolEvent(ctx context.Context, id string) (ToolEvent, e
 // internal/feature/audit.Service.Prune is its only permitted caller: that is
 // where the retention floor is enforced, and a delete reached any other way
 // is a delete nothing checked against the floor.
+//
+// The cutoff is compared in UTC, for the reason ListResolvedCheckpoints gives:
+// SQLite compares datetimes as text, and a cutoff carried in another zone
+// would be compared by its digits and take rows newer than the instant it
+// names. This is the one delete in the audit log, so it does not rely on its
+// caller having passed UTC.
 func (s *GORMStorage) DeleteToolEventsBefore(ctx context.Context, cutoff time.Time) (int64, error) {
-	res := s.db.WithContext(ctx).Where("created_at < ?", cutoff).Delete(&schema.ToolEventModel{})
+	res := s.db.WithContext(ctx).Where("created_at < ?", cutoff.UTC()).Delete(&schema.ToolEventModel{})
 	return res.RowsAffected, res.Error
 }
 

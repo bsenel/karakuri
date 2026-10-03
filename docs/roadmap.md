@@ -2934,6 +2934,18 @@ named account, and nothing stronger.
 Byte-identity holds while the rows are retained. Once a retention horizon prunes
 rows from a window, an export of that window changes, and the export's
 `retention.note` says so without knowing today's date.
+The same holds for the pack set: the export's `templates` section lists the
+templates active when the export is made, so enabling a pack or reclassifying a
+template changes an old window's bytes. The `risk_class` on each decision row
+was copied at decision time and does not move.
+
+Review found the one delete in the audit log comparing its cutoff as text.
+`DeleteToolEventsBefore` passed the cutoff to SQLite in whatever zone its
+caller used, and SQLite compares datetimes as text: with a cutoff five hours
+ahead of UTC it pruned two rows newer than the cutoff. The sweep passes UTC, so
+production was not affected, but the floor is enforced where the delete happens
+precisely so that it does not rest on a caller. The cutoff is now converted to
+UTC in the delete, with a test that fails without it.
 
 **What's deferred:**
 
