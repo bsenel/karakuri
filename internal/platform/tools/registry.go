@@ -98,15 +98,14 @@ type InstanceInfo struct {
 // ── Registry ─────────────────────────────────────────────────────────────────
 
 type Registry struct {
-	VC          SlotInstances[versioncontrol.VersionControlAdapter]
-	ProjectMgmt SlotInstances[projectmgmt.ProjectManagementAdapter]
-	Messaging   SlotInstances[messaging.MessagingAdapter]
-	Design      SlotInstances[design.DesignAdapter]
-	Testing     SlotInstances[testing.TestingAdapter]
-	Calendar    SlotInstances[calendar.CalendarAdapter]
-	Email       SlotInstances[email.EmailAdapter]
-	CLIAgents   SlotInstances[cliagent.CLIAgentAdapter]
-
+	VC            SlotInstances[versioncontrol.VersionControlAdapter]
+	ProjectMgmt   SlotInstances[projectmgmt.ProjectManagementAdapter]
+	Messaging     SlotInstances[messaging.MessagingAdapter]
+	Design        SlotInstances[design.DesignAdapter]
+	Testing       SlotInstances[testing.TestingAdapter]
+	Calendar      SlotInstances[calendar.CalendarAdapter]
+	Email         SlotInstances[email.EmailAdapter]
+	CLIAgents     SlotInstances[cliagent.CLIAgentAdapter]
 	Observability SlotInstances[observability.ObservabilityAdapter]
 
 	// MCP is the eleventh slot and the only one whose adapters were not written
@@ -299,8 +298,16 @@ func (r *Registry) Status() []AdapterStatus {
 		a, ok := r.MCP.Resolve(n)
 		return ok && a.Active()
 	})
-	// Single-instance slots — show as one row each.
-	out = append(out, AdapterStatus{Slot: "observability", Instance: "<default>", Type: "noop", Active: false, IsDefault: true})
+	// No adapter type ships for observability yet and nothing falls back to a
+	// no-op through this slot, so it reports only what is configured: no
+	// instances, no row.
+	if obs := r.Observability.List(); len(obs) > 0 {
+		collect("observability", obs, func(n string) bool {
+			a, ok := r.Observability.Resolve(n)
+			return ok && a.Active()
+		})
+	}
+	// Single-instance slot — shows as one row.
 	researchName := "http-scraper"
 	if n, ok := r.Research.(interface{ Name() string }); ok {
 		researchName = n.Name()
@@ -459,10 +466,19 @@ func buildCLIAgentSlot(cfg config.SlotConfig) SlotInstances[cliagent.CLIAgentAda
 	return s
 }
 
-// buildObservabilitySlot has no adapter types to dispatch on yet, so every
-// slot it returns is empty.
-func buildObservabilitySlot(_ config.SlotConfig) SlotInstances[observability.ObservabilityAdapter] {
-	return SlotInstances[observability.ObservabilityAdapter]{}
+func buildObservabilitySlot(cfg config.SlotConfig) SlotInstances[observability.ObservabilityAdapter] {
+	s := SlotInstances[observability.ObservabilityAdapter]{
+		defaultName: cfg.Default,
+		instances:   map[string]instanceEntry[observability.ObservabilityAdapter]{},
+	}
+	for name, inst := range cfg.Instances {
+		// No adapter type ships yet; the cases arrive in Phase 32 slice 2.
+		switch inst.Type {
+		default:
+			slog.Warn("unknown observability adapter type", "instance", name, "type", inst.Type)
+		}
+	}
+	return s
 }
 
 // buildMCPSlot dials every configured server and asks it what it offers.

@@ -102,7 +102,7 @@ All packs are validated at startup and on demand via `krk domain test <id>` (7 c
 
 ## Tool Adapters (Multi-Instance, Twin-Bound)
 
-External integrations live in `internal/platform/tools/` behind per-category **slot** interfaces (`versioncontrol`, `projectmgmt`, `messaging`, `design`, `testing`, `calendar`, `email`). Each slot can hold many named adapter instances simultaneously, and each `DigitalTwin` selects which instance answers for it via `AdapterBindings`.
+External integrations live in `internal/platform/tools/` behind per-category **slot** interfaces (`versioncontrol`, `projectmgmt`, `messaging`, `design`, `testing`, `calendar`, `email`, `observability`). Each slot can hold many named adapter instances simultaneously, and each `DigitalTwin` selects which instance answers for it via `AdapterBindings`.
 
 ```
 config.ToolsConfig
