@@ -393,3 +393,72 @@ func TestRenderPlanTask_Bounded(t *testing.T) {
 		t.Errorf("len(task) = %d, want < 8000", len(task))
 	}
 }
+
+// cancellingJudge counts its calls and cancels the request's context on the
+// first one, the way a caller hanging up mid-calibration would.
+type cancellingJudge struct {
+	cancel context.CancelFunc
+	calls  int
+}
+
+func (j *cancellingJudge) Run(context.Context, coreagent.Input) (coreagent.Output, error) {
+	j.calls++
+	j.cancel()
+	return coreagent.Output{Content: "PASS"}, nil
+}
+
+func (j *cancellingJudge) Stream(context.Context, coreagent.Input) (<-chan coreagent.OutputChunk, error) {
+	return nil, errors.New("cancellingJudge does not stream")
+}
+
+// Every checkpoint costs a model call, so a calibration nobody is waiting for
+// must stop asking rather than finish the window.
+func TestCalibrate_StopsWhenCallerIsGone(t *testing.T) {
+	cases := []fixtureCase{
+		{id: "a", choice: choiceApprove, reply: "PASS"},
+		{id: "b", choice: choiceReject, reply: "FAIL"},
+		{id: "c", choice: choiceModify, reply: "PASS"},
+	}
+
+	t.Run("already cancelled", func(t *testing.T) {
+		store, judge := fixture(cases...)
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+
+		_, err := NewService(store, judge).Calibrate(ctx, storage.ResolvedCheckpointFilter{})
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("err = %v, want context.Canceled", err)
+		}
+		if n := judge.callCount(); n != 0 {
+			t.Errorf("judge called %d times, want 0", n)
+		}
+	})
+
+	t.Run("cancelled part way", func(t *testing.T) {
+		store, _ := fixture(cases...)
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		judge := &cancellingJudge{cancel: cancel}
+
+		_, err := NewService(store, judge).Calibrate(ctx, storage.ResolvedCheckpointFilter{})
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("err = %v, want context.Canceled", err)
+		}
+		if judge.calls != 1 {
+			t.Errorf("judge called %d times, want 1: the remaining checkpoints must not be judged", judge.calls)
+		}
+	})
+
+	// The last checkpoint has no next iteration to notice the cancellation in.
+	t.Run("cancelled on the last checkpoint", func(t *testing.T) {
+		store, _ := fixture(cases[0])
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		judge := &cancellingJudge{cancel: cancel}
+
+		_, err := NewService(store, judge).Calibrate(ctx, storage.ResolvedCheckpointFilter{})
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("err = %v, want context.Canceled", err)
+		}
+	})
+}

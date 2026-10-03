@@ -136,6 +136,12 @@ func (s *Service) Calibrate(ctx context.Context, f storage.ResolvedCheckpointFil
 			Title:        obj.Title, Criterion: renderCriteria(obj), Actions: renderActions(cp.Actions),
 		}
 		it.JudgePass, it.Reply, it.Error = s.judgePlan(ctx, obj, cp.Actions)
+		// A caller who left mid-call gets no report: the judge's answer to a
+		// cancelled request is not a verdict, and on the last checkpoint there
+		// is no next iteration to notice in.
+		if err := ctx.Err(); err != nil {
+			return CalibrationReport{}, err
+		}
 		it.Agreed = it.JudgePass == it.HumanApprove
 
 		rep.N++

@@ -2,6 +2,7 @@ package client
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -35,6 +36,15 @@ func New(baseURL string) *Client {
 	}
 }
 
+// WithTimeout returns a copy of c whose requests are bounded by d instead of
+// the default, for the few calls that legitimately run for minutes. c itself
+// is left as it was.
+func (c *Client) WithTimeout(d time.Duration) *Client {
+	long := *c
+	long.HTTP = &http.Client{Timeout: d}
+	return &long
+}
+
 // do issues an unauthenticated request. Used for the login and refresh
 // endpoints, where the credential is the body.
 func (c *Client) do(method, path string, body any) ([]byte, int, error) {
@@ -62,6 +72,12 @@ func (c *Client) do(method, path string, body any) ([]byte, int, error) {
 
 // doAuth issues an authenticated request, attaching a valid access token.
 func (c *Client) doAuth(method, path string, body any) ([]byte, int, error) {
+	return c.doAuthContext(context.Background(), method, path, body)
+}
+
+// doAuthContext is doAuth for a request the caller may abandon: cancelling ctx
+// drops the connection, which is how the server learns nobody is waiting.
+func (c *Client) doAuthContext(ctx context.Context, method, path string, body any) ([]byte, int, error) {
 	token, err := c.accessToken()
 	if err != nil {
 		return nil, 0, err
@@ -74,7 +90,7 @@ func (c *Client) doAuth(method, path string, body any) ([]byte, int, error) {
 		}
 		rdr = bytes.NewReader(data)
 	}
-	req, err := http.NewRequest(method, c.BaseURL+path, rdr)
+	req, err := http.NewRequestWithContext(ctx, method, c.BaseURL+path, rdr)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -100,6 +116,11 @@ func (c *Client) doAuth(method, path string, body any) ([]byte, int, error) {
 func (c *Client) Get(path string) ([]byte, int, error) { return c.doAuth(http.MethodGet, path, nil) }
 func (c *Client) Post(path string, body any) ([]byte, int, error) {
 	return c.doAuth(http.MethodPost, path, body)
+}
+
+// PostContext is Post for a call long enough that the user may interrupt it.
+func (c *Client) PostContext(ctx context.Context, path string, body any) ([]byte, int, error) {
+	return c.doAuthContext(ctx, http.MethodPost, path, body)
 }
 func (c *Client) Put(path string, body any) ([]byte, int, error) {
 	return c.doAuth(http.MethodPut, path, body)

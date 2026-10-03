@@ -2,7 +2,9 @@ package command
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -175,5 +177,71 @@ func TestEvalCalibrateExport(t *testing.T) {
 	}
 	if entries[1].Label != "reject" || entries[1].Reply != "PASS — it would work" || entries[1].Title != "Ship the release" {
 		t.Errorf("entry = %+v, want cp-2's label, reply and title", entries[1])
+	}
+}
+
+// Calibration spends a model call per checkpoint and runs for minutes, so the
+// client it posts with must outlast the bound every other command keeps.
+func TestEvalCalibrateClientOutlastsTheDefaultTimeout(t *testing.T) {
+	def := client.New("http://example.invalid/api/v1")
+	if def.HTTP.Timeout != 120*time.Second {
+		t.Fatalf("default client timeout = %v, want 2m0s", def.HTTP.Timeout)
+	}
+
+	long := evalCalibrateClient(def)
+	if long.HTTP.Timeout != evalCalibrateTimeout {
+		t.Errorf("calibrate client timeout = %v, want %v", long.HTTP.Timeout, evalCalibrateTimeout)
+	}
+	if evalCalibrateTimeout < 10*time.Minute {
+		t.Errorf("evalCalibrateTimeout = %v, want well past the 2m default", evalCalibrateTimeout)
+	}
+	if long.BaseURL != def.BaseURL {
+		t.Errorf("calibrate client BaseURL = %q, want %q", long.BaseURL, def.BaseURL)
+	}
+	if def.HTTP.Timeout != 120*time.Second {
+		t.Errorf("default client timeout became %v: the shared client must not be mutated", def.HTTP.Timeout)
+	}
+}
+
+// Ctrl-C cancels the command's context; the request must go with it rather
+// than wait out the long timeout.
+func TestEvalCalibrateStopsWhenCancelled(t *testing.T) {
+	release := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		select {
+		case <-r.Context().Done():
+		case <-release:
+		}
+	}))
+	t.Cleanup(srv.Close)
+	t.Cleanup(func() { close(release) })
+
+	apiURL := srv.URL + "/api/v1"
+	t.Setenv("KARAKURI_CREDENTIALS", filepath.Join(t.TempDir(), "credentials.json"))
+	if err := client.SaveSession(apiURL, client.Session{
+		AccessToken: "test-token", ExpiresAt: time.Now().Add(time.Hour),
+	}); err != nil {
+		t.Fatalf("save session: %v", err)
+	}
+	t.Cleanup(func() { api = nil })
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	root := NewRoot()
+	root.SetOut(io.Discard)
+	root.SetErr(io.Discard)
+	root.SetArgs([]string{"--api-url", apiURL, "--output", "quiet", "eval", "calibrate"})
+
+	done := make(chan error, 1)
+	go func() { done <- root.ExecuteContext(ctx) }()
+	time.AfterFunc(100*time.Millisecond, cancel)
+
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("err = %v, want context.Canceled", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("krk eval calibrate did not stop when its context was cancelled")
 	}
 }

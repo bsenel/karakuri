@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/url"
 	"os"
+	"os/signal"
 	"time"
 
 	"github.com/bsenel/karakuri/cli/client"
@@ -50,6 +51,18 @@ type goldenEntry struct {
 	Note       string `json:"note,omitempty"`
 }
 
+// evalCalibrateTimeout bounds POST /eval/calibrate. The server spends one
+// judge call per resolved checkpoint, and a CLI-backed provider takes several
+// seconds or more per call, so a default 30-day window runs for minutes — past
+// the 120s every other command is bounded by.
+const evalCalibrateTimeout = 30 * time.Minute
+
+// evalCalibrateClient is the client calibrate posts with: c, with the longer
+// bound.
+func evalCalibrateClient(c *client.Client) *client.Client {
+	return c.WithTimeout(evalCalibrateTimeout)
+}
+
 func evalCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "eval",
@@ -87,7 +100,11 @@ agree. It spends one model call per checkpoint and writes nothing back.`,
 			if limit > 0 {
 				body["limit"] = limit
 			}
-			data, _, err := api.Post("/eval/calibrate", body)
+			// Ctrl-C drops the request, and the server stops judging when it
+			// sees the caller go.
+			ctx, stop := signal.NotifyContext(c.Context(), os.Interrupt)
+			defer stop()
+			data, _, err := evalCalibrateClient(api).PostContext(ctx, "/eval/calibrate", body)
 			if err != nil {
 				return err
 			}
