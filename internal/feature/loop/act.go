@@ -256,17 +256,17 @@ func stepAct(ctx context.Context, sc *stepContext, p plan) []actionOutcome {
 		// environment, because "the pack said so" and "the model said so" are
 		// different claims about the same successful action, and the second
 		// one is the one worth noticing when it stops being true.
-		payloadJSON, _ := json.Marshal(map[string]any{
+		payload := map[string]any{
 			"params":    params,
 			"result":    result,
 			"routed_by": routedBy,
-		})
+		}
 		agentIDStr := string(sc.agentDef.ID)
 		envAdapter := ""
 		if targetEnv != nil {
 			envAdapter = string(targetEnv.ID())
 		}
-		_ = sc.svc.store.SaveToolEvent(ctx, storage.ToolEvent{
+		row := storage.ToolEvent{
 			ID:          fmt.Sprintf("te-%d-%d", time.Now().UnixNano(), i),
 			ObjectiveID: string(sc.obj.ID),
 			AgentID:     agentIDStr,
@@ -274,9 +274,12 @@ func stepAct(ctx context.Context, sc *stepContext, p plan) []actionOutcome {
 			Adapter:     envAdapter,
 			Success:     result.Success,
 			Confidence:  p.Confidence,
-			PayloadJSON: string(payloadJSON),
 			CreatedAt:   time.Now().UTC(),
-		})
+		}
+		sc.stampProvenance(&row, p, payload)
+		payloadJSON, _ := json.Marshal(payload)
+		row.PayloadJSON = string(payloadJSON)
+		_ = sc.svc.store.SaveToolEvent(ctx, row)
 
 		// g. And what it cost. Attributed to the objective rather than the twin,
 		// because "which piece of work spent this" is the question a bill

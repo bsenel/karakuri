@@ -40,12 +40,14 @@ type fakeLoop struct {
 	paused      bool
 	checkpoint  string
 	authority   coreagent.AuthorityBounds
+	rung        objective.AutonomyLevel
 }
 
 func (f *fakeLoop) Run(ctx context.Context, req coreloop.Request) (coreloop.Result, error) {
 	f.mu.Lock()
 	f.runs++
 	f.authority = req.Agent.Authority
+	f.rung = req.AutonomyRung
 	err := f.err
 	f.mu.Unlock()
 	if err != nil {
@@ -78,6 +80,12 @@ func (f *fakeLoop) bounds() coreagent.AuthorityBounds {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return f.authority
+}
+
+func (f *fakeLoop) autonomyRung() objective.AutonomyLevel {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.rung
 }
 
 // fakeEnv is an environment whose snapshot hash the test controls.
@@ -381,6 +389,24 @@ func TestProposeLevelPinsTheAuthorityBoundsShut(t *testing.T) {
 	}
 	if bounds.ConfidenceThreshold <= 1.0 {
 		t.Errorf("ConfidenceThreshold = %v at propose, want above any attainable confidence", bounds.ConfidenceThreshold)
+	}
+}
+
+// The rung travels with the bounds it produced. The loop cannot work it out
+// from the bounds alone, and an audit row that guessed would be a false record.
+func TestTheRunIsToldTheRungItStandsOn(t *testing.T) {
+	f := newFixture(t, Config{})
+	f.use(t, map[string]string{"git": "aaa"})
+	f.loops.criteriaMet = 1.0
+	obj := f.declare(t, objective.Objective{
+		Cadence:  &objective.Cadence{Every: "1h"},
+		Autonomy: &objective.Autonomy{Level: objective.AutonomyPropose, Ceiling: objective.AutonomyPropose},
+	})
+
+	f.pass(t, obj.ID, reconcile.TriggerManual)
+
+	if got := f.loops.autonomyRung(); got != objective.AutonomyPropose {
+		t.Errorf("request autonomy rung = %q, want %q", got, objective.AutonomyPropose)
 	}
 }
 

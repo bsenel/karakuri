@@ -83,6 +83,7 @@ func stepDecide(ctx context.Context, sc *stepContext, p plan, mods *corecheckpoi
 	escalateReason := ""
 
 	threshold := effectiveThreshold(authority.ConfidenceThreshold, mods)
+	sc.threshold = threshold
 	var capHistory map[string]float64
 
 	if mods != nil && mods.RevisedConfidence != nil {
@@ -124,19 +125,16 @@ func stepDecide(ctx context.Context, sc *stepContext, p plan, mods *corecheckpoi
 		// 3. Write the audit row first so the checkpoint payload can
 		// reference its ID — reviewers deep-link from /checkpoints into
 		// /audit without joining tables.
-		auditPayload, _ := json.Marshal(map[string]any{
-			"actions":              p.Actions,
-			"confidence":           p.Confidence,
-			"confidence_threshold": authority.ConfidenceThreshold,
-			"effective_threshold":  threshold,
-			"max_autonomous":       authority.MaxAutonomousActions,
+		payload := map[string]any{
+			"actions":    p.Actions,
+			"confidence": p.Confidence,
 			// Named in the audit row as well as in the reason string, so a
 			// reviewer deep-linking from /checkpoints into /audit can see which
 			// sources to go and read without parsing prose.
 			"third_party_sources": sc.evidence.ThirdParty,
-		})
+		}
 		auditID := fmt.Sprintf("audit-%d", time.Now().UnixNano())
-		_ = sc.svc.store.SaveToolEvent(ctx, storage.ToolEvent{
+		row := storage.ToolEvent{
 			ID:               auditID,
 			ObjectiveID:      string(sc.obj.ID),
 			AgentID:          string(sc.agentDef.ID),
@@ -145,8 +143,11 @@ func stepDecide(ctx context.Context, sc *stepContext, p plan, mods *corecheckpoi
 			Kind:             storage.ToolEventEscalation,
 			EscalationReason: escalateReason,
 			BoundsViolation:  true,
-			PayloadJSON:      string(auditPayload),
-		})
+		}
+		sc.stampProvenance(&row, p, payload)
+		auditPayload, _ := json.Marshal(payload)
+		row.PayloadJSON = string(auditPayload)
+		_ = sc.svc.store.SaveToolEvent(ctx, row)
 
 		// 4. Create checkpoint carrying the planner draft so reviewers
 		// see what they're approving without leaving the response.
