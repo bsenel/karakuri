@@ -16,7 +16,9 @@ import (
 // The CLI may not import internal/feature/eval (cli/AGENTS.md), so the report
 // and golden entries are decoded into local types. CalibrationReport carries no
 // JSON tags, so its fields arrive under their Go names; GoldenEntry's tags are
-// mirrored here so an exported file loads with eval.LoadGoldenSet.
+// mirrored here so an exported entry reads as one. --export writes a bare JSON
+// array of entries, not a golden set: an operator merges them into a set's
+// "entries" and then recomputes its baseline.
 type evalReport struct {
 	TwinID       string
 	Since, Until time.Time
@@ -156,8 +158,14 @@ var evalDecisions = []struct{ choice, kind string }{
 	{"modify", "modification"},
 }
 
-// exportGolden mirrors eval.ExportGolden, which the CLI may not import: one
-// entry per item the judge answered, with provenance exported:<deployment>:<date>.
+// exportGolden turns a calibration report into golden entries, one per item
+// the judge actually answered: an item with no reply, because the judge
+// errored or there was nothing to judge, has nothing for a parser to read.
+//
+// The id is the deployment and checkpoint id, so exporting the same report
+// twice yields the same ids, and the provenance is exported:<deployment>:<date>.
+// The baseline is not set here; it is whatever the shipped parser reaches on
+// the set the entries end up in.
 func exportGolden(rep evalReport, deployment string, at time.Time) []goldenEntry {
 	provenance := fmt.Sprintf("exported:%s:%s", deployment, at.Format("2006-01-02"))
 	out := []goldenEntry{}

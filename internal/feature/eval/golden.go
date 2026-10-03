@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"time"
 )
 
 // GoldenSet is a versioned set of recorded judge replies with the human label
@@ -106,31 +105,4 @@ func Gate(set GoldenSet, verdict func(reply string) bool) GateResult {
 		res.Pass = res.Agreement >= res.Baseline
 	}
 	return res
-}
-
-// ExportGolden turns a calibration report into golden entries, one per item
-// the judge actually answered: an item with no reply, because the judge
-// errored or there was nothing to judge, has nothing for a parser to read.
-//
-// The id is the deployment and checkpoint id, so exporting the same report
-// twice yields the same ids. The baseline is not set here; it is whatever the
-// shipped parser reaches on the set the entries end up in.
-func ExportGolden(report CalibrationReport, deployment string, at time.Time) []GoldenEntry {
-	provenance := fmt.Sprintf("exported:%s:%s", deployment, at.Format("2006-01-02"))
-	var out []GoldenEntry
-	for _, it := range report.Items {
-		if it.Reply == "" {
-			continue
-		}
-		out = append(out, GoldenEntry{
-			ID:         fmt.Sprintf("%s:%s", deployment, it.CheckpointID),
-			Title:      it.Title,
-			Criterion:  it.Criterion,
-			Actions:    it.Actions,
-			Label:      it.Choice,
-			Reply:      it.Reply,
-			Provenance: provenance,
-		})
-	}
-	return out
 }

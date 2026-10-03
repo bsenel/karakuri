@@ -335,6 +335,29 @@ func TestCalibrate_ItemKeepsWhatTheJudgeSaw(t *testing.T) {
 	}
 }
 
+// The actions an item keeps are the bounded ones the judge was shown, and an
+// item the judge never answered keeps no reply.
+func TestCalibrate_ItemActionsAreBoundedAndErroredItemHasNoReply(t *testing.T) {
+	long := strings.Repeat("x", maxActionChars+50)
+	store, judge := fixture(
+		fixtureCase{id: "a", choice: choiceReject, reply: "FAIL",
+			actions: []checkpoint.Action{{CapabilityID: "shell.run", Reason: long}}},
+		fixtureCase{id: "b", choice: choiceApprove, err: errors.New("provider down")},
+	)
+	rep := calibrate(t, store, judge, storage.ResolvedCheckpointFilter{})
+
+	a := itemFor(t, rep, "a")
+	if a.Choice != choiceReject || a.Reply != "FAIL" {
+		t.Errorf("choice, reply = %q, %q, want reject, FAIL", a.Choice, a.Reply)
+	}
+	if strings.Contains(a.Actions, long) || !strings.Contains(a.Actions, "…(truncated)") {
+		t.Errorf("actions not bounded: %q", a.Actions)
+	}
+	if b := itemFor(t, rep, "b"); b.Reply != "" {
+		t.Errorf("errored item reply = %q, want empty", b.Reply)
+	}
+}
+
 func TestCalibrate_WindowPassedThrough(t *testing.T) {
 	store, judge := fixture()
 	f := storage.ResolvedCheckpointFilter{

@@ -2667,7 +2667,7 @@ a plan is right. The field is `json:"-"`, so it is not on the REST response. A
 world state that will not encode or decode costs the corpus one entry, with a
 warning, and never the reviewer the checkpoint.
 
-`CalibrationReport.Replayable` and `Service.CountReplayable` count the resolved
+`CalibrationReport.Replayable` counts the replay corpus: the resolved
 checkpoints that carry one. **The replay itself is not built.** This step
 creates the corpus a replay would read, starting from escalations after it
 shipped.
@@ -2686,8 +2686,8 @@ parser as it was before Phase 25 — any of "pass", "met", "approved" or "yes"
 anywhere in the reply — and asserts the gate goes red. Both run under
 `go test ./...` in the Test job of `.github/workflows/ci.yml`.
 
-`ExportGolden` turns calibration items into golden entries, one per item the
-judge answered, with the id `<deployment>:<checkpoint id>` and the provenance
+`krk eval calibrate --export` turns calibration items into golden entries, one
+per item the judge answered, with the id `<deployment>:<checkpoint id>` and the provenance
 `exported:<deployment>:<date>`.
 
 The surface: a new action `eval:run` in `internal/auth/catalog.go`, held by

@@ -96,8 +96,8 @@ of a megabyte a row.
 
 ## Decision 4 — operator-labelled history is not exported into the golden set
 
-`ExportGolden` and `krk eval calibrate --export` turn calibration items into
-golden entries. Nothing from this deployment was exported. All 18 entries in
+`krk eval calibrate --export` turns calibration items into golden entries.
+Nothing from this deployment was exported. All 18 entries in
 `golden.v1.json` are constructed, and each note says which parser behaviour it
 pins.
 

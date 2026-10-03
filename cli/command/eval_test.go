@@ -172,7 +172,7 @@ func TestEvalCalibrateExport(t *testing.T) {
 		t.Fatalf("export is not a JSON array of golden entries: %v\n%s", err, raw)
 	}
 	// cp-3 has no reply, so there is nothing for a parser to read: it is left
-	// out, as eval.ExportGolden leaves it out.
+	// out.
 	if len(entries) != 2 {
 		t.Fatalf("exported %d entries, want 2: %+v", len(entries), entries)
 	}
@@ -186,6 +186,40 @@ func TestEvalCalibrateExport(t *testing.T) {
 	}
 	if entries[1].Label != "reject" || entries[1].Reply != "PASS — it would work" || entries[1].Title != "Ship the release" {
 		t.Errorf("entry = %+v, want cp-2's label, reply and title", entries[1])
+	}
+}
+
+// --export writes a list of entries, not a golden set: a bare JSON array with
+// no version or baseline around it, for an operator to merge into a set's
+// "entries".
+func TestEvalCalibrateExportIsABareArrayOfEntries(t *testing.T) {
+	_, apiURL := startEvalServer(t)
+	file := filepath.Join(t.TempDir(), "golden.json")
+
+	runKrk(t, "--api-url", apiURL, "--output", "quiet",
+		"eval", "calibrate", "--since", "72h", "--export", file)
+
+	raw, err := os.ReadFile(file)
+	if err != nil {
+		t.Fatalf("read export: %v", err)
+	}
+	var entries []map[string]any
+	if err := json.Unmarshal(raw, &entries); err != nil {
+		t.Fatalf("export is not a JSON array: %v\n%s", err, raw)
+	}
+	if len(entries) == 0 {
+		t.Fatalf("export is empty:\n%s", raw)
+	}
+	for i, e := range entries {
+		p, _ := e["provenance"].(string)
+		if !strings.HasPrefix(p, "exported:") {
+			t.Errorf("entry %d provenance = %q, want exported:…", i, p)
+		}
+		for _, k := range []string{"version", "baseline", "entries"} {
+			if _, ok := e[k]; ok {
+				t.Errorf("entry %d carries %q: that belongs to a golden set, not an entry", i, k)
+			}
+		}
 	}
 }
 

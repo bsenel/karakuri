@@ -1,16 +1,12 @@
 package eval
 
 import (
-	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
-	"github.com/bsenel/karakuri/internal/core/checkpoint"
 	"github.com/bsenel/karakuri/internal/feature/loop"
-	"github.com/bsenel/karakuri/internal/platform/storage"
 )
 
 const goldenPath = "testdata/golden.v1.json"
@@ -178,50 +174,6 @@ func TestLoadGoldenSetRejectsMissingVersionOrProvenance(t *testing.T) {
 	}
 }
 
-func TestExportGolden(t *testing.T) {
-	items := []Item{
-		{
-			CheckpointID: "cp-1", ObjectiveID: "obj-1", Choice: choiceApprove,
-			HumanApprove: true, JudgePass: true, Agreed: true,
-			Reply: "PASS",
-		},
-		{
-			CheckpointID: "cp-2", ObjectiveID: "obj-2", Choice: choiceModify,
-			Reply: "No. The tests were never run, so the criterion is not met.",
-		},
-	}
-	report := CalibrationReport{TwinID: "twin-1", N: 2, Agreed: 2, Agreement: 1, Items: items}
-	at := time.Date(2026, 9, 28, 14, 30, 0, 0, time.UTC)
-
-	got := ExportGolden(report, "acme", at)
-	if len(got) != len(items) {
-		t.Fatalf("ExportGolden returned %d entries, want %d", len(got), len(items))
-	}
-
-	seen := map[string]bool{}
-	for i, e := range got {
-		it := items[i]
-		if e.Provenance != "exported:acme:2026-09-28" {
-			t.Errorf("entry %d: provenance = %q, want %q", i, e.Provenance, "exported:acme:2026-09-28")
-		}
-		if e.Label != it.Choice {
-			t.Errorf("entry %d: label = %q, want %q", i, e.Label, it.Choice)
-		}
-		if e.Reply != it.Reply {
-			t.Errorf("entry %d: reply = %q, want %q", i, e.Reply, it.Reply)
-		}
-		// Item carries no objective title or rendered actions, so neither can
-		// be asserted against the item here.
-		if e.ID == "" {
-			t.Errorf("entry %d: empty id", i)
-		}
-		if seen[e.ID] {
-			t.Errorf("entry %d: duplicate id %q", i, e.ID)
-		}
-		seen[e.ID] = true
-	}
-}
-
 func TestLoadGoldenSetRejectsMalformedSets(t *testing.T) {
 	const ok = `{"id":"e1","label":"approve","reply":"PASS","provenance":"constructed"}`
 	cases := map[string]string{
@@ -266,30 +218,5 @@ func TestGateReportsEachDisagreement(t *testing.T) {
 	}
 	if want := []string{"b: label=modify verdict=true"}; len(res.Disagreements) != 1 || res.Disagreements[0] != want[0] {
 		t.Errorf("Disagreements = %q, want %q", res.Disagreements, want)
-	}
-}
-
-func TestExportGoldenSkipsItemsWithoutReplyAndCarriesWhatTheJudgeSaw(t *testing.T) {
-	long := strings.Repeat("x", maxActionChars+50)
-	store, judge := fixture(
-		fixtureCase{id: "a", choice: choiceReject, reply: "FAIL",
-			actions: []checkpoint.Action{{CapabilityID: "shell.run", Reason: long}}},
-		fixtureCase{id: "b", choice: choiceApprove, err: errors.New("provider down")},
-	)
-	rep := calibrate(t, store, judge, storage.ResolvedCheckpointFilter{})
-
-	got := ExportGolden(rep, "acme", time.Date(2026, 9, 28, 0, 0, 0, 0, time.UTC))
-	if len(got) != 1 {
-		t.Fatalf("ExportGolden returned %d entries, want 1 (errored item skipped): %+v", len(got), got)
-	}
-	e := got[0]
-	if e.Label != choiceReject || e.Reply != "FAIL" {
-		t.Errorf("label, reply = %q, %q, want reject, FAIL", e.Label, e.Reply)
-	}
-	if e.Title != "Objective title <a>" || e.Criterion != "criterion for a" {
-		t.Errorf("title, criterion = %q, %q", e.Title, e.Criterion)
-	}
-	if strings.Contains(e.Actions, long) || !strings.Contains(e.Actions, "…(truncated)") {
-		t.Errorf("actions not bounded: %q", e.Actions)
 	}
 }

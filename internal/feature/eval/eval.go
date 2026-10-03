@@ -182,16 +182,6 @@ func humanApproves(choice string) bool {
 	return choice == decisionApprove
 }
 
-// CountReplayable counts the resolved checkpoints f selects that carry a
-// recorded world state.
-func (s *Service) CountReplayable(ctx context.Context, f storage.ResolvedCheckpointFilter) (int, error) {
-	cps, err := s.store.ListResolvedCheckpoints(ctx, f)
-	if err != nil {
-		return 0, err
-	}
-	return countReplayable(cps), nil
-}
-
 func countReplayable(cps []checkpoint.Checkpoint) int {
 	n := 0
 	for _, cp := range cps {
