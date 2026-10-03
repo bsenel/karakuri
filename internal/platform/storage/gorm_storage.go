@@ -615,6 +615,10 @@ func (s *GORMStorage) SaveToolEvent(ctx context.Context, e ToolEvent) error {
 		EscalationReason: e.EscalationReason,
 		Approver:         e.Approver,
 		BoundsViolation:  e.BoundsViolation,
+		Provider:         e.Provider,
+		Model:            e.Model,
+		TemplateID:       e.TemplateID,
+		AutonomyRung:     e.AutonomyRung,
 	}).Error
 }
 
@@ -637,6 +641,15 @@ func (s *GORMStorage) ListToolEvents(ctx context.Context, f ToolEventFilter) ([]
 	if f.Kind != "" {
 		q = q.Where("kind = ?", f.Kind)
 	}
+	if f.Provider != "" {
+		q = q.Where("provider = ?", f.Provider)
+	}
+	if f.Model != "" {
+		q = q.Where("model = ?", f.Model)
+	}
+	if f.TemplateID != "" {
+		q = q.Where("template_id = ?", f.TemplateID)
+	}
 	if f.BoundsViolation != nil {
 		q = q.Where("bounds_violation = ?", *f.BoundsViolation)
 	}
@@ -656,7 +669,9 @@ func (s *GORMStorage) ListToolEvents(ctx context.Context, f ToolEventFilter) ([]
 			ID: m.ID, ObjectiveID: m.ObjectiveID, AgentID: m.AgentID, Capability: m.Capability,
 			Adapter: m.Adapter, Success: m.Success, Confidence: m.Confidence, PayloadJSON: m.PayloadJSON,
 			Kind: m.Kind, EscalationReason: m.EscalationReason, Approver: m.Approver,
-			BoundsViolation: m.BoundsViolation, CreatedAt: m.CreatedAt,
+			BoundsViolation: m.BoundsViolation,
+			Provider:        m.Provider, Model: m.Model, TemplateID: m.TemplateID, AutonomyRung: m.AutonomyRung,
+			CreatedAt: m.CreatedAt,
 		}
 	}
 	return out, nil
@@ -677,7 +692,9 @@ func (s *GORMStorage) GetToolEvent(ctx context.Context, id string) (ToolEvent, e
 		ID: m.ID, ObjectiveID: m.ObjectiveID, AgentID: m.AgentID, Capability: m.Capability,
 		Adapter: m.Adapter, Success: m.Success, Confidence: m.Confidence, PayloadJSON: m.PayloadJSON,
 		Kind: m.Kind, EscalationReason: m.EscalationReason, Approver: m.Approver,
-		BoundsViolation: m.BoundsViolation, CreatedAt: m.CreatedAt,
+		BoundsViolation: m.BoundsViolation,
+		Provider:        m.Provider, Model: m.Model, TemplateID: m.TemplateID, AutonomyRung: m.AutonomyRung,
+		CreatedAt: m.CreatedAt,
 	}, nil
 }
 
