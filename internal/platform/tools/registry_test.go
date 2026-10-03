@@ -244,6 +244,14 @@ func (f *fakeObservability) GetAlerts(context.Context, string, string, time.Time
 	return []observability.Alert{{Service: f.label}}, nil
 }
 
+func (f *fakeObservability) FetchLogs(context.Context, observability.LogQuery) ([]observability.LogLine, error) {
+	return nil, nil
+}
+
+func (f *fakeObservability) FetchMetrics(context.Context, observability.MetricQuery) ([]observability.MetricSeries, error) {
+	return nil, nil
+}
+
 func TestNewRegistry_ObservabilitySlotEmpty(t *testing.T) {
 	r := NewRegistry()
 	if _, ok := r.Observability.Resolve(""); ok {
