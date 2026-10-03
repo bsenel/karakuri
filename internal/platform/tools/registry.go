@@ -472,8 +472,17 @@ func buildObservabilitySlot(cfg config.SlotConfig) SlotInstances[observability.O
 		instances:   map[string]instanceEntry[observability.ObservabilityAdapter]{},
 	}
 	for name, inst := range cfg.Instances {
-		// No adapter type ships yet; the cases arrive in Phase 32 slice 2.
 		switch inst.Type {
+		case "prometheus":
+			s.instances[name] = instanceEntry[observability.ObservabilityAdapter]{
+				typeName: "prometheus",
+				adapter:  observability.NewPrometheus(inst.OptString("url"), inst.OptString("bearer_token")),
+			}
+		case "loki":
+			s.instances[name] = instanceEntry[observability.ObservabilityAdapter]{
+				typeName: "loki",
+				adapter:  observability.NewLoki(inst.OptString("url"), inst.OptString("bearer_token"), inst.OptString("tenant")),
+			}
 		default:
 			slog.Warn("unknown observability adapter type", "instance", name, "type", inst.Type)
 		}
