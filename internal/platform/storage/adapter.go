@@ -194,6 +194,8 @@ type ToolEventFilter struct {
 	TemplateID      string
 	BoundsViolation *bool      // tri-state: nil = ignore, &true = only violations, &false = only clean
 	CreatedAtSince  *time.Time // events at or after this time only
+	CreatedAtBefore *time.Time // events strictly before this time only (exclusive)
+	OldestFirst     bool       // order by created_at ASC, id ASC instead of newest first
 	Limit           int        // 0 = no cap (caller should usually set this)
 }
 
