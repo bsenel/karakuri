@@ -688,7 +688,8 @@ func (s *GORMStorage) GetToolEvent(ctx context.Context, id string) (ToolEvent, e
 // where the retention floor is enforced, and a delete reached any other way
 // is a delete nothing checked against the floor.
 func (s *GORMStorage) DeleteToolEventsBefore(ctx context.Context, cutoff time.Time) (int64, error) {
-	return 0, nil
+	res := s.db.WithContext(ctx).Where("created_at < ?", cutoff).Delete(&schema.ToolEventModel{})
+	return res.RowsAffected, res.Error
 }
 
 // ── Loop state (Phase 11) ─────────────────────────────────────────────────

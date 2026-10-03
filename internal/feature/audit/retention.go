@@ -6,6 +6,7 @@ package audit
 
 import (
 	"context"
+	"fmt"
 	"time"
 )
 
@@ -26,6 +27,12 @@ type Retention struct {
 
 // CheckRetention reports whether r respects the retention floor.
 func CheckRetention(r Retention) error {
+	if r.FloorDays < FloorDays {
+		return fmt.Errorf("audit retention floor is %d days and is configurable upward only: floor_days %d refused", FloorDays, r.FloorDays)
+	}
+	if r.Days != 0 && r.Days < r.FloorDays {
+		return fmt.Errorf("audit retention of %d days is below the floor of %d days: refused", r.Days, r.FloorDays)
+	}
 	return nil
 }
 
@@ -46,6 +53,16 @@ func NewService(store eventPruner, r Retention) *Service {
 
 // Prune deletes audit rows older than the retention window measured back from
 // now and returns how many it removed.
+//
+// The floor is checked here as well as at config load, so a Service built
+// directly with a below-floor retention deletes nothing.
 func (s *Service) Prune(ctx context.Context, now time.Time) (int64, error) {
-	return 0, nil
+	if err := CheckRetention(s.retention); err != nil {
+		return 0, err
+	}
+	if s.retention.Days == 0 {
+		return 0, nil
+	}
+	cutoff := now.Add(-time.Duration(s.retention.Days) * 24 * time.Hour)
+	return s.store.DeleteToolEventsBefore(ctx, cutoff)
 }
