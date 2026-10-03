@@ -107,14 +107,15 @@ type Registry struct {
 	Email       SlotInstances[email.EmailAdapter]
 	CLIAgents   SlotInstances[cliagent.CLIAgentAdapter]
 
+	Observability SlotInstances[observability.ObservabilityAdapter]
+
 	// MCP is the eleventh slot and the only one whose adapters were not written
 	// here: each instance is one MCP server, and what it offers is read off it
 	// at boot rather than declared in this package (ADR 022).
 	MCP SlotInstances[*mcp.Instance]
 
-	// Single-instance slots — kept simple until use cases demand multi-instance.
-	Observability observability.ObservabilityAdapter
-	Research      research.ResearchAdapter
+	// Single-instance slot — kept simple until use cases demand multi-instance.
+	Research research.ResearchAdapter
 
 	mu sync.RWMutex
 }
@@ -133,8 +134,7 @@ type AdapterStatus struct {
 // (added below in NewRegistryFromConfig as the implicit zero-value behavior).
 func NewRegistry() *Registry {
 	return &Registry{
-		Observability: observability.NewNoOp(),
-		Research:      research.NewHTTPScraper(),
+		Research: research.NewHTTPScraper(),
 	}
 }
 
@@ -151,6 +151,7 @@ func NewRegistryFromConfig(cfg config.ToolsConfig) *Registry {
 	r.Calendar = buildCalendarSlot(cfg.Calendar)
 	r.Email = buildEmailSlot(cfg.Email)
 	r.CLIAgents = buildCLIAgentSlot(cfg.CLIAgents)
+	r.Observability = buildObservabilitySlot(cfg.Observability)
 	// Last, because it is the only slot builder that talks to anything: each
 	// instance runs its handshake and its one tools/list here, so the registry
 	// this returns already knows what every server offers.
@@ -299,7 +300,7 @@ func (r *Registry) Status() []AdapterStatus {
 		return ok && a.Active()
 	})
 	// Single-instance slots — show as one row each.
-	out = append(out, AdapterStatus{Slot: "observability", Instance: "<default>", Type: "noop", Active: r.Observability.Active(), IsDefault: true})
+	out = append(out, AdapterStatus{Slot: "observability", Instance: "<default>", Type: "noop", Active: false, IsDefault: true})
 	researchName := "http-scraper"
 	if n, ok := r.Research.(interface{ Name() string }); ok {
 		researchName = n.Name()
@@ -456,6 +457,12 @@ func buildCLIAgentSlot(cfg config.SlotConfig) SlotInstances[cliagent.CLIAgentAda
 		}
 	}
 	return s
+}
+
+// buildObservabilitySlot has no adapter types to dispatch on yet, so every
+// slot it returns is empty.
+func buildObservabilitySlot(_ config.SlotConfig) SlotInstances[observability.ObservabilityAdapter] {
+	return SlotInstances[observability.ObservabilityAdapter]{}
 }
 
 // buildMCPSlot dials every configured server and asks it what it offers.

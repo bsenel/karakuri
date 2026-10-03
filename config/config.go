@@ -252,6 +252,7 @@ type ToolsConfig struct {
 	Calendar       SlotConfig `yaml:"calendar"`
 	Email          SlotConfig `yaml:"email"`
 	CLIAgents      SlotConfig `yaml:"cli_agents"`
+	Observability  SlotConfig `yaml:"observability"`
 
 	// MCP is the eleventh slot, and the only one whose instances are servers
 	// somebody else wrote: each named instance is one MCP server, reached over

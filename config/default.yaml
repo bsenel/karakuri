@@ -378,6 +378,12 @@ tools:
   cli_agents:
     default: ""
     instances: {}
+  # Observability tool slot (Phase 32). The adapter types arrive with Phase 32;
+  # until then the slot stays empty. This is NOT the top-level `observability:`
+  # section, which configures the telemetry exporters.
+  observability:
+    default: ""
+    instances: {}
   # MCP servers (Phase 28). type: stdio | streamable_http
   #
   # Each instance is one server this deployment reaches as a tool source. Its
