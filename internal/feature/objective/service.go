@@ -64,6 +64,7 @@ func (s *Service) Create(ctx context.Context, req CreateRequest) (objective.Obje
 		if tmpl, ok := s.templates[req.TemplateID]; ok {
 			o.SuccessCriteria = tmpl.SuccessCriteria
 			o.Constraints = tmpl.Constraints
+			o.TemplateID = tmpl.ID
 			// The template's first suggested agent, carried onto the
 			// objective so selection can honour it. Without this the field
 			// was decoration: the objective kept no link back to the

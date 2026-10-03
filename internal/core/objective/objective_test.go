@@ -1,6 +1,8 @@
 package objective
 
 import (
+	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/bsenel/karakuri/internal/core/capability"
@@ -76,5 +78,25 @@ func TestCriterion_VerifierIsReserved(t *testing.T) {
 		if got := c.VerifierIsReserved(); got != tc.want {
 			t.Errorf("VerifierIsReserved(%q) = %v, want %v", tc.verifier, got, tc.want)
 		}
+	}
+}
+
+// An objective created from a template says which one. One created without a
+// template leaves the field out rather than sending an empty string.
+func TestObjective_TemplateIDJSON(t *testing.T) {
+	withTmpl, err := json.Marshal(Objective{ID: "o1", TemplateID: "software.bugfix"})
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if !strings.Contains(string(withTmpl), `"template_id":"software.bugfix"`) {
+		t.Errorf("template_id missing from %s", withTmpl)
+	}
+
+	without, err := json.Marshal(Objective{ID: "o2"})
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if strings.Contains(string(without), "template_id") {
+		t.Errorf("template_id must be omitted when empty, got %s", without)
 	}
 }

@@ -72,6 +72,11 @@ type Objective struct {
 	// pack it silently was not.
 	AgentID string `json:"agent_id,omitempty"`
 
+	// TemplateID names the template this objective was created from. Empty
+	// means none was used, which is what every objective written before the
+	// field existed reads as.
+	TemplateID string `json:"template_id,omitempty"`
+
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
