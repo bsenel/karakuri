@@ -32,3 +32,88 @@ tradeoff is worthwhile when each call is cheap relative to the cost of
 an unmet objective (manual escalation, repeated retries). Set 
 `agent.reasoning_strategy: reflexion` on agents that handle high-stakes 
 tasks; leave the default `chain_of_thought` on routine ones.
+
+---
+
+# Real history
+
+The section above is synthetic. This one is measured over decisions recorded in
+a running deployment: `krk eval calibrate` asks the judge the loop's PASS/FAIL
+question about every plan a human already approved, rejected or modified, and
+reports how often the two agree (Phase 30,
+[ADR 024](adr/024-the-evaluation-set-is-recorded-history.md)).
+
+## Read this before the number
+
+**This deployment's labels are not independent human judgements of plan
+quality.** Most of the 34 decisions were made by an operator account driving
+Karakuri's own Phase 29 and Phase 30 delivery, and most were made by an AI
+assistant acting as that operator on the owner's behalf. Many rejections were
+procedural: the plan repeated work that was already complete, or the "plan" was
+an error placeholder from a failed model call. The judge is shown only the
+objective and the plan, so it cannot know either of those things. That is why
+agreement on rejections is 15.4% while agreement on approvals is 93.8%, and why
+55.9% must not be read as a verdict on the judge.
+
+What the number does show: the judge passes almost everything (29 of 34), so on
+this corpus it carries little information about whether a human would reject.
+That is worth knowing and worth re-measuring on a deployment with real
+reviewers.
+
+## Real-history judge calibration
+
+Measured 2026-10-03 over every twin, window: 2026-09-03 – now.
+
+- N (checkpoints judged): 34
+- Agreement with the human decision: 55.9% (19 of 34)
+- Skipped (no usable label or objective): 0
+- Replayable (recorded world state): 2
+
+Confusion matrix:
+
+| | Judge PASS | Judge FAIL |
+|---|---:|---:|
+| Human approve | 15 | 1 |
+| Human reject or modify | 14 | 4 |
+
+By human decision:
+
+| Kind | N | Agreed | Agreement | Judge PASS |
+|---|---:|---:|---:|---:|
+| approval | 16 | 15 | 93.8% | 15 |
+| rejection | 13 | 2 | 15.4% | 11 |
+| modification | 5 | 2 | 40.0% | 3 |
+
+Wall time: 2 minutes 57 seconds for 34 judge calls through a CLI-backed provider.
+
+## How to reproduce
+
+```bash
+krk eval calibrate --since 720h --markdown
+```
+
+It needs the `eval:run` permission, which only the admin role holds, and it
+spends one model call per resolved checkpoint. `--twin <id>` narrows it to one
+twin. The output is the section above, without the wall-time line. The numbers
+will differ: the window moves, the corpus grows, and a model does not answer
+the same way twice.
+
+## What the set is not
+
+1. **Agreement is not correctness.** A human who approved a bad plan labels it
+   approved.
+2. **The corpus over-represents hard cases by construction.** Routine
+   competence never escalates, so it never generates a label.
+3. **The labels here are operator decisions, not independent review.** Stated
+   in full above the numbers: most of the 34 decisions were made during
+   Karakuri's own delivery, largely by an AI assistant acting as the operator,
+   and many rejections were procedural in ways the judge cannot see. 55.9% is
+   not a verdict on the judge. It shows a judge that passes 29 of 34.
+4. **None of this history is in the golden set.** For the same reason, nothing
+   from this deployment was exported into
+   `internal/feature/eval/testdata/golden.v1.json`. All 18 golden entries are
+   constructed, and each says which parser behaviour it pins. The CI gate
+   measures the parser against recorded replies; it does not measure the model.
+5. **The planner-replay corpus is nearly empty.** 2 replayable checkpoints,
+   because recording the world state started with this phase. Replay is not
+   available and is not claimed.

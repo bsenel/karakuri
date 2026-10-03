@@ -65,6 +65,8 @@ OBSERVE → REASON → DECIDE → ACT → VERIFY → LEARN
 
 Synthetic Reflexion-vs-ChainOfThought comparison lives in [`docs/benchmarks.md`](docs/benchmarks.md); regenerate with `go run ./cmd/krk-bench`.
 
+The same file carries a real-history section: how often the judge agrees with the humans who resolved this deployment's checkpoints, measured with `krk eval calibrate --since 720h --markdown` (Phase 30 — [ADR 024](docs/adr/024-the-evaluation-set-is-recorded-history.md)). Read the caveats there before the number; agreement is not correctness.
+
 ## Standing Objectives
 
 An objective converges once and stops. A **standing** objective is a desired
@@ -315,6 +317,11 @@ krk cost report [--since 720h] [--twin <id>] [--org <name> --team <name>] \
 # Audit log (Phase 13)
 krk audit [--kind execute|escalation|approval] [--objective <id>] \
           [--agent <id>] [--violations-only] [--since <RFC3339>] [--limit N]
+
+# Judge calibration (Phase 30) — admin only (eval:run); one model call per resolved checkpoint.
+# --limit is accepted and not yet applied by the server; bound a run with --since or --twin
+krk eval calibrate [--twin <id>] [--since 720h] [--limit N] \
+                   [--export <file>] [--markdown]
 ```
 
 ## Web interface
