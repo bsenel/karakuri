@@ -22,6 +22,9 @@ func (h *AuditHandler) List(w http.ResponseWriter, r *http.Request) {
 		ObjectiveID: q.Get("objective_id"),
 		AgentID:     q.Get("agent_id"),
 		Kind:        q.Get("kind"),
+		Provider:    q.Get("provider"),
+		Model:       q.Get("model"),
+		TemplateID:  q.Get("template"),
 	}
 
 	if v := q.Get("limit"); v != "" {

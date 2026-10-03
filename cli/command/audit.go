@@ -12,6 +12,9 @@ func auditCmd() *cobra.Command {
 		objectiveID     string
 		agentID         string
 		kind            string
+		provider        string
+		model           string
+		template        string
 		since           string
 		limit           int
 		boundsViolation bool
@@ -21,8 +24,11 @@ func auditCmd() *cobra.Command {
 		Use:   "audit",
 		Short: "Inspect the authority-bounds audit log",
 		Long: `Reads tool_events filtered by kind (execute|escalation|approval),
-objective, agent, or bounds-violation status. Default is the 50 most
-recent entries across all kinds.`,
+objective, agent, or bounds-violation status, or by what produced the
+decision: the provider and model that drafted the plan, and the template
+the objective was created from. Each row lists its provider, model,
+template_id and autonomy_rung where one was recorded. Default is the 50
+most recent entries across all kinds.`,
 		RunE: func(c *cobra.Command, _ []string) error {
 			q := url.Values{}
 			if objectiveID != "" {
@@ -33,6 +39,15 @@ recent entries across all kinds.`,
 			}
 			if kind != "" {
 				q.Set("kind", kind)
+			}
+			if provider != "" {
+				q.Set("provider", provider)
+			}
+			if model != "" {
+				q.Set("model", model)
+			}
+			if template != "" {
+				q.Set("template", template)
 			}
 			if since != "" {
 				q.Set("since", since)
@@ -64,6 +79,9 @@ recent entries across all kinds.`,
 	cmd.Flags().StringVar(&objectiveID, "objective", "", "Filter by objective ID")
 	cmd.Flags().StringVar(&agentID, "agent", "", "Filter by agent ID")
 	cmd.Flags().StringVar(&kind, "kind", "", "Filter by event kind (execute|escalation|approval)")
+	cmd.Flags().StringVar(&provider, "provider", "", "Filter by the provider that drafted the plan")
+	cmd.Flags().StringVar(&model, "model", "", "Filter by the model that drafted the plan")
+	cmd.Flags().StringVar(&template, "template", "", "Filter by the template the objective was created from")
 	cmd.Flags().StringVar(&since, "since", "", "Show events on or after this RFC3339 timestamp")
 	cmd.Flags().IntVar(&limit, "limit", 50, "Max entries to return (server caps at 100 by default)")
 	cmd.Flags().BoolVar(&boundsViolation, "bounds-violation", false, "Explicit tri-state filter; use --violations-only as shorthand for true")
