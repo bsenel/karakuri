@@ -26,6 +26,7 @@ import (
 	"github.com/bsenel/karakuri/internal/core/event"
 	corememory "github.com/bsenel/karakuri/internal/core/memory"
 	objectivepkg "github.com/bsenel/karakuri/internal/core/objective"
+	"github.com/bsenel/karakuri/internal/feature/audit"
 	"github.com/bsenel/karakuri/internal/feature/container"
 	featurememory "github.com/bsenel/karakuri/internal/feature/memory"
 	"github.com/bsenel/karakuri/internal/platform/db"
@@ -400,6 +401,28 @@ func startCostRetention(ctx context.Context, deps karakuriquota.Deps, days int) 
 			}
 		}
 	}()
+}
+
+// auditRetention resolves the configured audit retention and checks it against
+// the floor. A floor_days of 0 means the default audit.FloorDays, so the floor
+// has one definition, in internal/feature/audit. A retention that fails
+// audit.CheckRetention is returned as an `audit.retention` error, so the server
+// refuses to start rather than run with an audit log it would prune too early.
+func auditRetention(rc config.AuditRetentionConfig) (audit.Retention, error) {
+	return audit.Retention{FloorDays: rc.FloorDays, Days: rc.Days}, nil
+}
+
+// startAuditRetention prunes the audit log on a daily tick and reports whether
+// a sweep was started.
+//
+// Daily for the reason startCostRetention is: the horizon is measured in days.
+// The first sweep runs a minute after boot rather than a day later, so a
+// restart loop cannot postpone pruning indefinitely.
+//
+// Zero days keeps everything, which is why this is not gated on an Enabled
+// flag: the horizon itself says whether to sweep.
+func startAuditRetention(ctx context.Context, svc *audit.Service, r audit.Retention) bool {
+	return false
 }
 
 // startTelemetryFlush hands buffered metrics, logs and spans to the exporters

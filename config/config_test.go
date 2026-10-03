@@ -79,3 +79,48 @@ func TestOptStringsAndOptStringMap(t *testing.T) {
 		t.Errorf("OptStringMap(missing) = %v, want nil", got)
 	}
 }
+
+// loadYAML writes body to a temp file and loads it. The token is set so Load
+// does not shell out to gh.
+func loadYAML(t *testing.T, body string) *Config {
+	t.Helper()
+	t.Setenv("GITHUB_TOKEN", "preexisting-token")
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	return cfg
+}
+
+// Config sets no default for the audit retention: the floor is declared in
+// internal/feature/audit and resolved at startup.
+func TestLoad_AuditRetentionAbsentIsZero(t *testing.T) {
+	cfg := loadYAML(t, "executor: local\n")
+	if got := cfg.Audit.Retention; got.FloorDays != 0 || got.Days != 0 {
+		t.Fatalf("Audit.Retention = %+v, want zero values", got)
+	}
+}
+
+func TestLoad_AuditRetentionParsed(t *testing.T) {
+	cfg := loadYAML(t, "audit:\n  retention:\n    floor_days: 365\n    days: 400\n")
+	if got := cfg.Audit.Retention; got.FloorDays != 365 || got.Days != 400 {
+		t.Fatalf("Audit.Retention = %+v, want FloorDays 365, Days 400", got)
+	}
+}
+
+// Config does not validate: a value below the floor loads as written, and the
+// refusal is internal/app's.
+func TestLoad_AuditRetentionBelowFloorIsNotRejected(t *testing.T) {
+	cfg := loadYAML(t, "audit:\n  retention:\n    floor_days: 100\n")
+	if got := cfg.Audit.Retention; got.FloorDays != 100 || got.Days != 0 {
+		t.Fatalf("Audit.Retention = %+v, want FloorDays 100, Days 0", got)
+	}
+	cfg = loadYAML(t, "audit:\n  retention:\n    days: 30\n")
+	if got := cfg.Audit.Retention; got.FloorDays != 0 || got.Days != 30 {
+		t.Fatalf("Audit.Retention = %+v, want FloorDays 0, Days 30", got)
+	}
+}
