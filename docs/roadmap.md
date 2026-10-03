@@ -2726,10 +2726,12 @@ that the judge passes almost everything — 29 of 34 — so on this corpus it
 carries little information about whether a human would reject. For the same
 reason none of this history was exported into the golden set.
 
-`--limit` reaches the server and does nothing. `ResolvedCheckpointFilter.Limit`
-is documented as "a zero Limit lists every match", the handler and the CLI pass
-it through, and `GORMStorage.ListResolvedCheckpoints` never applies it. Bound a
-run with `--since` or `--twin` until it does.
+`--limit` reached the server and did nothing. `ResolvedCheckpointFilter.Limit`
+was documented as "a zero Limit lists every match", the handler and the CLI
+passed it through, and `GORMStorage.ListResolvedCheckpoints` never applied it,
+so the flag that bounds a run's model spend bounded nothing. This was fixed
+before the phase merged: a positive limit now keeps the most recently resolved
+checkpoints in the window, still returned oldest first.
 
 **What's deferred:**
 
@@ -2741,7 +2743,6 @@ run with `--since` or `--twin` until it does.
   `docs/benchmarks.md` holds one measurement.
 - Exporting real history into the golden set, once a deployment has independent
   human reviewers. `--export` exists for that day.
-- Applying `--limit` in `ListResolvedCheckpoints`.
 
 ---
 

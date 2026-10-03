@@ -102,3 +102,77 @@ func TestListResolvedCheckpoints(t *testing.T) {
 		t.Errorf("Until=now-1h = %v, want none", ids(got))
 	}
 }
+
+// --limit is the operator's spend bound on a calibration, which costs one
+// model call per checkpoint listed here. The cap keeps the newest decisions
+// and still hands them back oldest-first.
+func TestListResolvedCheckpoints_Limit(t *testing.T) {
+	ctx := context.Background()
+	s := newStore(t)
+
+	// Resolved in this order, a few milliseconds apart so resolved_at orders
+	// them; marks[i] is an instant just before the i-th resolution.
+	seed := []struct{ id, twin string }{
+		{"c1", "twin-a"}, {"c2", "twin-b"}, {"c3", "twin-a"}, {"c4", "twin-b"}, {"c5", "twin-a"},
+	}
+	marks := make([]time.Time, len(seed))
+	for i, c := range seed {
+		err := s.SaveCheckpoint(ctx, checkpoint.Checkpoint{
+			ID: c.id, ObjectiveID: coreobjective.ObjectiveID("obj-" + c.id), TwinID: c.twin,
+			Summary: "summary " + c.id,
+			Options: []string{"approve", "reject", "modify"},
+			Status:  checkpoint.StatusPending,
+		})
+		if err != nil {
+			t.Fatalf("save %s: %v", c.id, err)
+		}
+		time.Sleep(5 * time.Millisecond)
+		marks[i] = time.Now()
+		time.Sleep(5 * time.Millisecond)
+		if err := s.ResolveCheckpoint(ctx, c.id, checkpoint.Decision{Choice: "approve"}); err != nil {
+			t.Fatalf("resolve %s: %v", c.id, err)
+		}
+	}
+
+	// In result order, unsorted: the order is part of what is asserted.
+	list := func(f storage.ResolvedCheckpointFilter) []string {
+		t.Helper()
+		cps, err := s.ListResolvedCheckpoints(ctx, f)
+		if err != nil {
+			t.Fatalf("list %+v: %v", f, err)
+		}
+		out := make([]string, 0, len(cps))
+		for _, c := range cps {
+			out = append(out, c.ID)
+		}
+		return out
+	}
+
+	if got, want := list(storage.ResolvedCheckpointFilter{Limit: 2}), []string{"c4", "c5"}; !slices.Equal(got, want) {
+		t.Errorf("Limit=2 = %v, want %v (the most recently resolved, oldest first)", got, want)
+	}
+	if got, want := list(storage.ResolvedCheckpointFilter{}), []string{"c1", "c2", "c3", "c4", "c5"}; !slices.Equal(got, want) {
+		t.Errorf("Limit=0 = %v, want %v", got, want)
+	}
+	if got, want := list(storage.ResolvedCheckpointFilter{Limit: 10}), []string{"c1", "c2", "c3", "c4", "c5"}; !slices.Equal(got, want) {
+		t.Errorf("Limit=10 = %v, want %v", got, want)
+	}
+	// The cap applies within the twin's matches, not before the twin filter.
+	if got, want := list(storage.ResolvedCheckpointFilter{TwinID: "twin-a", Limit: 2}), []string{"c3", "c5"}; !slices.Equal(got, want) {
+		t.Errorf("TwinID=twin-a Limit=2 = %v, want %v", got, want)
+	}
+	if got, want := list(storage.ResolvedCheckpointFilter{TwinID: "twin-b", Limit: 1}), []string{"c4"}; !slices.Equal(got, want) {
+		t.Errorf("TwinID=twin-b Limit=1 = %v, want %v", got, want)
+	}
+	// And within the window: c2..c4 are in it, and the newest two of those are kept.
+	window := storage.ResolvedCheckpointFilter{Since: marks[1], Until: marks[4], Limit: 2}
+	if got, want := list(window), []string{"c3", "c4"}; !slices.Equal(got, want) {
+		t.Errorf("Since/Until Limit=2 = %v, want %v", got, want)
+	}
+	if got, want := list(storage.ResolvedCheckpointFilter{Since: marks[3], Limit: 1}), []string{"c5"}; !slices.Equal(got, want) {
+		t.Errorf("Since Limit=1 = %v, want %v", got, want)
+	}
+	if got, want := list(storage.ResolvedCheckpointFilter{Until: marks[2], Limit: 1}), []string{"c2"}; !slices.Equal(got, want) {
+		t.Errorf("Until Limit=1 = %v, want %v", got, want)
+	}
+}

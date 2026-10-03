@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"math"
+	"slices"
 	"time"
 
 	"github.com/bsenel/karakuri/internal/core/agent"
@@ -510,8 +511,18 @@ func (s *GORMStorage) ListResolvedCheckpoints(ctx context.Context, f ResolvedChe
 	if !f.Until.IsZero() {
 		q = q.Where("resolved_at < ?", f.Until.UTC())
 	}
-	if err := q.Order("resolved_at ASC").Find(&models).Error; err != nil {
+	// A cap keeps the newest decisions, so it is taken from the newest end and
+	// the rows are put back oldest-first afterwards.
+	if f.Limit > 0 {
+		q = q.Order("resolved_at DESC").Limit(f.Limit)
+	} else {
+		q = q.Order("resolved_at ASC")
+	}
+	if err := q.Find(&models).Error; err != nil {
 		return nil, err
+	}
+	if f.Limit > 0 {
+		slices.Reverse(models)
 	}
 	out := make([]checkpoint.Checkpoint, len(models))
 	for i, m := range models {

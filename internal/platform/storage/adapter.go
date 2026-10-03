@@ -154,7 +154,9 @@ const (
 
 // ResolvedCheckpointFilter narrows the resolved-checkpoint listing. Empty
 // TwinID matches every twin; a zero Since or Until leaves that end of the
-// resolution window unbounded. A zero Limit lists every match.
+// resolution window unbounded. A zero or negative Limit lists every match; a
+// positive one keeps the Limit most recently resolved of them, still returned
+// oldest decision first.
 type ResolvedCheckpointFilter struct {
 	TwinID       string
 	Since, Until time.Time

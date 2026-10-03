@@ -319,7 +319,6 @@ krk audit [--kind execute|escalation|approval] [--objective <id>] \
           [--agent <id>] [--violations-only] [--since <RFC3339>] [--limit N]
 
 # Judge calibration (Phase 30) — admin only (eval:run); one model call per resolved checkpoint.
-# --limit is accepted and not yet applied by the server; bound a run with --since or --twin
 krk eval calibrate [--twin <id>] [--since 720h] [--limit N] \
                    [--export <file>] [--markdown]
 ```
