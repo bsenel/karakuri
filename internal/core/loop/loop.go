@@ -26,6 +26,10 @@ type Request struct {
 	Twin      twin.DigitalTwin
 	Agent     agent.Definition
 	MaxIter   int // hard cap; default 50
+
+	// AutonomyRung is the rung a standing objective was reconciled at. Empty
+	// for a one-shot run, which has no ladder to stand on.
+	AutonomyRung objective.AutonomyLevel
 }
 
 type Result struct {
