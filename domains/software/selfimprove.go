@@ -609,6 +609,7 @@ func selfImproveTemplates() []objective.Template {
 			ID:     "software.objective.watch_platform_health",
 			Title:  "Watch this deployment's health",
 			Domain: "software",
+			Risk:   objective.RiskRoutine,
 			// Named, because selection otherwise takes the first agent the
 			// pack declares — the strategist, which is not this.
 			SuggestedAgents: []agent.Definition{{ID: "software.agent.analyst"}},
@@ -626,6 +627,10 @@ func selfImproveTemplates() []objective.Template {
 			ID:     "software.objective.self_improve",
 			Title:  "Improve this deployment from its own evidence",
 			Domain: "software",
+			// Opens a pull request against the deployment's own repository.
+			// Consequential rather than high because it stops at the pull
+			// request: a person reviews and merges.
+			Risk: objective.RiskConsequential,
 			// The maintainer, whose bounds are the ones this template's
 			// safety story rests on. Before SuggestedAgents was read, this
 			// ran under the strategist and the guarantee held by luck.

@@ -20,9 +20,11 @@ func agricultureObjectiveTemplates() []objective.Template {
 
 	return []objective.Template{
 		{
-			ID:          "agriculture.objective.optimize_yield",
-			Title:       "Optimize Crop Yield",
-			Domain:      "agriculture",
+			ID:     "agriculture.objective.optimize_yield",
+			Title:  "Optimize Crop Yield",
+			Domain: "agriculture",
+			// Applies treatments to a field: a wrong one costs a season, not a person.
+			Risk:        objective.RiskConsequential,
 			Description: "Observe field conditions, forecast yield, apply targeted treatments, and verify the yield target is met",
 			SuccessCriteria: []objective.Criterion{
 				crit("yield-forecast", "Yield forecast produced with confidence >= 80%", "agriculture.reason.yield_forecast", 0.3),
@@ -34,9 +36,11 @@ func agricultureObjectiveTemplates() []objective.Template {
 			},
 		},
 		{
-			ID:          "agriculture.objective.irrigation_schedule",
-			Title:       "Create Irrigation Schedule",
-			Domain:      "agriculture",
+			ID:     "agriculture.objective.irrigation_schedule",
+			Title:  "Create Irrigation Schedule",
+			Domain: "agriculture",
+			// Not just a schedule: it executes the irrigation events it plans.
+			Risk:        objective.RiskConsequential,
 			Description: "Analyse soil moisture and weather forecast, generate an optimised irrigation schedule, and execute it",
 			SuccessCriteria: []objective.Criterion{
 				crit("plan-produced", "Irrigation plan generated for the requested planning horizon", "agriculture.reason.irrigation_plan", 0.4),

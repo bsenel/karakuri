@@ -39,9 +39,9 @@ Phases 27–32 were proposed from two kinds of evidence: what this repository de
 | 26    | The Write Path                             | **Completed** |
 | 27    | Observations Carry Provenance              | **Completed** |
 | 28    | MCP — The Tools Nobody Has To Write        | **Completed** |
-| 29    | Telemetry Other Tools Already Understand   | Planned       |
-| 30    | The Evaluation Set Karakuri Already Has    | Planned       |
-| 31    | The Evidence Pack                          | Planned       |
+| 29    | Telemetry Other Tools Already Understand   | **Completed** |
+| 30    | The Evaluation Set Karakuri Already Has    | **Completed** |
+| 31    | The Evidence Pack                          | **Completed** |
 | 32    | The SRE Path, Actually Wired               | Planned       |
 
 
@@ -2758,7 +2758,7 @@ checkpoints in the window, still returned oldest first.
 
 ---
 
-## Phase 31 — The Evidence Pack (Planned)
+## Phase 31 — The Evidence Pack (Completed)
 
 **Goal:** An operator can produce, for any past window, the record a high-risk
 deployment is asked for — without Karakuri having accumulated anything in order
@@ -2814,6 +2814,153 @@ not read like one. It produces the record; whether a given deployment is
 high-risk, and whether the record satisfies its assessor, are somebody else's
 determinations. Claiming otherwise would be the same dishonesty as reporting a
 file ratio under the name "coverage" (Phase 25).
+
+**Shipped (step 1).** See
+[ADR 025](adr/025-the-evidence-pack-is-a-read.md).
+`internal/feature/audit/retention.go` declares the floor: `audit.FloorDays` is
+183. `audit.CheckRetention` refuses a floor below it and a retention below the
+floor. Config has two keys, `audit.retention.floor_days` and
+`audit.retention.days`, in `AuditRetentionConfig` in `config/config.go`. Package
+`config` parses them and checks nothing, so it stays a leaf. The check runs in
+`auditRetention` in `internal/app/bootstrap.go` before the database is opened,
+and a refusal returns an `audit.retention` error that stops `BootstrapServer`.
+The messages name the floor and the value refused:
+`audit retention floor is 183 days and is configurable upward only: floor_days 90 refused`
+and `audit retention of 30 days is below the floor of 183 days: refused`. A
+`floor_days` of 0 or absent means the default; nothing is rounded up.
+
+`audit.Service.Prune` is the only caller of `GORMStorage.DeleteToolEventsBefore`
+in `internal/platform/storage/gorm_storage.go`. It calls `CheckRetention` again
+before it deletes, so a `Service` built directly with a retention below the
+floor deletes nothing and returns the same error. `days: 0` never prunes, and it
+is the default. `startAuditRetention` starts the sweep only when `days` is set:
+one minute after boot and then daily, logging how many rows went.
+
+**Shipped (step 2).** `objective.Objective.TemplateID` in
+`internal/core/objective/objective.go` is set by `Service.Create` in
+`internal/feature/objective/service.go` and persisted in
+`objectives.template_id`. The loop's `plan` in `internal/feature/loop/reason.go`
+carries the `provider` and `model` of the call that produced it, including a
+Reflexion or checkpoint-driven revision; both are empty on the placeholder built
+when the call failed, because no model produced that one. Migration
+`000012_decision_provenance` adds `provider`, `model`, `template_id` and
+`autonomy_rung` to `tool_events`, each `TEXT NOT NULL DEFAULT ''`.
+`stepContext.stampProvenance` in `internal/feature/loop/runner.go` writes them
+on the escalation row (`decide.go`) and the execute row (`act.go`), and puts
+`agent_definition_id`, `reasoning_strategy`, `max_autonomous`,
+`confidence_threshold`, `effective_threshold` and `requires_approval_for` in the
+payload. One function writes both rows so the two cannot describe one decision
+differently.
+
+The rung is not inferred. `reconcileNow` in `internal/feature/reconcile/run.go`
+writes it into `loop.Request.AutonomyRung` beside the bounds it produced, and
+the loop copies it; a one-shot run has none and the column is empty.
+`storage.ToolEventFilter` gained `Provider`, `Model` and `TemplateID`.
+`GET /api/v1/audit` takes `provider`, `model` and `template`, and `krk audit`
+takes `--provider`, `--model` and `--template`.
+
+**Shipped (step 3).** `objective.RiskClass` in `internal/core/objective/risk.go`
+has four values: unclassified (the zero value), `routine`, `consequential` and
+`high`. `objective.Template.Risk` carries one. `conformance.CheckTemplateRisk`
+in `internal/conformance/suite.go` returns one result per template of the active
+packs, and `BootstrapServer` logs each: a classified template at info, an
+unclassified one as a warning, a value outside the set as a warning naming it.
+None of the three refuses startup. All 13 shipped templates are classified: six
+`routine`, four `consequential` and three `high` (the two healthcare templates
+and `software.objective.incident_response`). `stampProvenance` copies the class
+into each decision row's payload as `risk_class`, because a template can be
+reclassified afterwards.
+
+The classes are the pack author's own words about a template. They are not legal
+categories, and `risk.go` says so above the type.
+
+**Shipped (step 4).** `audit.Exporter` in `internal/feature/audit/export.go`
+builds the export for a closed-open window `[from, to)`. It reads `tool_events`
+and checkpoints and writes nothing. The document has `schema_version`, `window`,
+`retention`, `templates`, `decisions` (the escalation and execute rows, with
+`without_provenance` counting the rows that have no provider, model or
+template), `oversight` (the approval, rejection and modification rows, with
+`checkpoints_raised`, `checkpoints_resolved` and a `statement`),
+`autonomy_changes`, `counts_by_kind`, `pending_checkpoints` and
+`not_a_certification`. Rows are ordered by `created_at` then `id`, payloads are
+re-encoded with sorted keys, and no generation time is in the bytes. `now` is
+used once, to refuse a window that has not ended.
+
+`GET /api/v1/audit/export?from=&to=` in `internal/api/handler/audit.go` is
+behind `audit:read`, like the listing, and answers 400 for a refused window.
+`krk audit export --from --to [--out FILE]` in `cli/command/audit.go` writes the
+server's bytes as received, to stdout or to a file with mode 0600, and prints
+their SHA-256 to stderr. `storage.ToolEventFilter` gained `CreatedAtBefore`
+(exclusive) and `OldestFirst` for it.
+
+**Found while wiring it.** Nothing pruned the audit log at all. The roadmap
+feared a future retention job deleting below the floor; there was no retention
+job and no delete on `tool_events`. So the floor shipped together with the only
+pruner, and the pruner is where the floor is enforced.
+
+An objective did not remember its template. `Service.Create` copied a template's
+criteria, constraints and agent onto the objective and kept no reference back,
+so "which template" could not be recorded on a decision until `TemplateID` was
+persisted.
+
+The oversight statement first claimed a person was consulted. The record cannot
+show that. A resolution is written under an approver account, and the log cannot
+know whether a person, a script or another agent was operating it. The statement
+was corrected to what the rows show: "The record shows which account decided; it
+cannot show who was operating that account." The JSON field beside it is still
+named `person_consulted`. It is true when a checkpoint was resolved or an
+approval, rejection or modification was recorded in the window, and it means an
+approver account acted, nothing stronger. The statement for a window with no
+checkpoint raised or resolved still opens "No person was consulted in this
+window", which is the acceptance's wording.
+
+**Measured.** On this deployment, on 2026-10-03. The window
+2026-09-26T00:00:00Z to 2026-10-03T12:00:00Z was exported twice: 1,682,039 bytes
+each time, SHA-256
+`9a7d2df5a86362477e061176cc60722bb39d56e288b9b850fece7750654db0c5` both times. A
+window ending in the future was refused: "a window must have ended to be
+exported, because an open window cannot produce the same bytes tomorrow". In
+that window there were 41 escalations, 73 executes, 19 approvals, 32 rejections
+and 5 modifications; 41 checkpoints were raised and 41 resolved.
+
+114 of 114 decision rows had no recorded provenance, because every one was
+written before migration 000012. The export counts them and does not hide them.
+
+The approver account on those resolutions was largely an AI assistant acting as
+operator on the owner's behalf, as in Phase 30. What the export shows for this
+deployment is that the checkpoint mechanism existed and was exercised under a
+named account, and nothing stronger.
+
+Byte-identity holds while the rows are retained. Once a retention horizon prunes
+rows from a window, an export of that window changes, and the export's
+`retention.note` says so without knowing today's date.
+The same holds for the pack set: the export's `templates` section lists the
+templates active when the export is made, so enabling a pack or reclassifying a
+template changes an old window's bytes. The `risk_class` on each decision row
+was copied at decision time and does not move.
+
+Review found the one delete in the audit log comparing its cutoff as text.
+`DeleteToolEventsBefore` passed the cutoff to SQLite in whatever zone its
+caller used, and SQLite compares datetimes as text: with a cutoff five hours
+ahead of UTC it pruned two rows newer than the cutoff. The sweep passes UTC, so
+production was not affected, but the floor is enforced where the delete happens
+precisely so that it does not rest on a caller. The cutoff is now converted to
+UTC in the delete, with a test that fails without it.
+
+**What's deferred:**
+
+- The prompt, or a prompt version, behind a decision. The gap list above names
+  it; the steps did not, and this phase records provider, model, agent
+  definition, template, rung and bounds.
+- Signing or hash-chaining. The export is reproducible. It is not
+  tamper-evident: nothing shows a file is the one the server produced, short of
+  asking the server again.
+- Tenant scoping. The export covers every twin and sits behind `audit:read`,
+  like the audit listing.
+- Streaming. A window is assembled in memory; the eight-day window above was
+  1.7 MB.
+- The software delivery template's two review criteria are still served by no
+  environment (see Phase 29's deferred list).
 
 ---
 
@@ -3360,6 +3507,10 @@ Checks (run via `krk domain test <id>`):
 | Judge calibration against resolved checkpoints                        | **Fully implemented** (Phase 30, ADR 024) — `krk eval calibrate` / `POST /api/v1/eval/calibrate`, admin-only `eval:run`; on demand, not scheduled. Measured once: 51.1% (23 of 45) on an operator-labelled corpus — see `docs/benchmarks.md` for why that is not a verdict on the judge |
 | Verdict-parser gate over a golden set                                 | **Fully implemented** (Phase 30) — 18 constructed entries in `internal/feature/eval/testdata/golden.v1.json`, replayed through `loop.VerdictIsPass` in CI's Test job; calls no model, and measures the parser, not the judge |
 | Planner replay                                                        | Corpus recorded, replay not built (Phase 30) — escalations record a bounded world state on the checkpoint (`world_state_json`, migration 000011); 13 replayable checkpoints when measured on 2026-10-03 |
+| Audit-log retention floor                                             | **Fully implemented** (Phase 31, ADR 025) — `audit.FloorDays` is 183; `audit.retention.floor_days` is configurable upward only and `audit.retention.days` defaults to 0 (never prune); a value below the floor refuses startup, and `audit.Service.Prune`, the only delete on `tool_events`, re-checks before it deletes |
+| Decision provenance on audit rows                                     | **Fully implemented** (Phase 31) for rows written after migration 000012 — `provider`, `model`, `template_id` and `autonomy_rung` as columns on escalation and execute rows, with the agent definition, strategy, bounds and `risk_class` in the payload. Earlier rows have none. The prompt behind a decision is not recorded |
+| Template risk classification                                          | **Fully implemented** (Phase 31) — `objective.Template.Risk`, logged per active template at boot by `conformance.CheckTemplateRisk`; all 13 shipped templates classified. The deployment's own words, not legal categories |
+| Audit export for a closed window                                      | **Fully implemented** (Phase 31, ADR 025) — `krk audit export --from --to` / `GET /api/v1/audit/export`, behind `audit:read`; a read, byte-identical while the rows are retained (1,682,039 bytes twice with one SHA-256 when measured on 2026-10-03). A record, not a certification; not signed, not tenant-scoped, not streamed |
 
 
 ---
@@ -3388,7 +3539,7 @@ Checks (run via `krk domain test <id>`):
 | An agent redirected by the content it observes                | High     | **Mitigated in Phase 27**, not closed — nothing here detects an injected instruction. `environment.Observation` and `environment.ActionResult` each carry a `Trust` the environment declares, and a plan drafted while a third party's writing is in evidence escalates through `AuthorityBounds.Decide` — whatever autonomy the agent has earned, and through the one gate ADR 015 permits rather than a second one beside it. The escalation names the source, in the checkpoint reason and in the audit row. That property holds against attacks nobody has enumerated, which a filter on suspicious-looking text does not. Where the content actually enters was the finding: `researchEnv.Observe` reports only whether an adapter is wired and scraped pages arrive as `ActionResult.StateDelta` on the act path, so the wider surface is action results and both paths are marked. **What remains open** is the honesty of the labels: an environment returning `TrustOperator` over a chat transcript is indistinguishable from one returning it over a metric, and the zero value is the trusted one — a pack that forgets is trusted, and no check outside the pack can find it |
 | A third-party MCP tool acts without review                    | High     | Phase 28 registers discovered tools in a reserved `mcp.<instance>.<tool>` namespace that is in `RequiresApprovalFor` by default, never valid as a `Criterion.Verifier`, never `NeedsWorkspace`, and outside pack conformance entirely. A pack that could be graded by a verifier that appeared this morning is a pack whose criteria mean nothing; a tool that could write files without declaring it would bypass ADR 019. Instances carry an allowlist, so a server adding a tool does not widen what a twin may do |
 | An uncalibrated judge grades every criterion in every pack    | High     | **Measured in Phase 30, not closed.** `evaluateWithAgent` settles every verified criterion in every domain, and the completion score the whole system reports rests on it. Phase 25 fixed what it was shown (nothing the actions produced) and how it parsed a verdict (a negation counted as a pass); neither of those is calibration. Phase 30 measured agreement with human checkpoint decisions for the first time: 51.1% (23 of 45), published in `docs/benchmarks.md`. That corpus is operator-labelled and many of its rejections were procedural, so the figure is not a verdict on the judge; what it shows is that the judge passed 39 of 45 plans, and so says little about whether a human would reject. The verdict parser is now gated in CI against a golden set, which catches the Phase 25 regression and nothing wider. **What remains open** is a measurement on a deployment with independent reviewers, calibration tracked over time, and any change to the judge itself ([ADR 024](adr/024-the-evaluation-set-is-recorded-history.md)) |
-| Audit rows pruned below what an assessor asks for             | Medium   | **Open until Phase 31.** Memory has had a retention scheduler since Phase 13; `tool_events` has no declared floor, so nothing stops a future retention job from deleting the record of who approved what. Phase 31 declares a floor (six months minimum, configurable upward only) and refuses a pruning path configured below it, naming the floor rather than trimming quietly. The export it adds is reproducible for the same reason a digest is — it reads and accumulates nothing — so a failed export is retried rather than reconstructed |
+| Audit rows pruned below what an assessor asks for             | Medium   | **Floor declared in Phase 31; whether it is enough is not Karakuri's call.** `tool_events` had no declared floor and, as it turned out, no pruner at all. Phase 31 declares a floor of 183 days, configurable upward only, refuses startup on a floor or a retention below it with the floor named, and enforces it again in `audit.Service.Prune`, the only delete on the table. The export it adds reads and accumulates nothing, so a failed export is retried rather than reconstructed. **What remains open:** the floor is a number this project chose from the six-month minimum the roadmap cites, and what a given deployment owes is its assessor's determination; a delete issued outside the service (a migration, an operator with database access) is not checked; and the export is reproducible but not tamper-evident ([ADR 025](adr/025-the-evidence-pack-is-a-read.md)) |
 | A quota approval used to raise another tenant's limit         | Medium   | Phase 18 checks `quota:approve` against the subject the request names, rendered as a resource carrying its containers — the same containment rule ADR 010 set for handing out bindings. A route gate cannot do this: the subject arrives inside a stored request rather than in the URL. Pinned by `TestQuotaApprovalIsConfinedToTheApproversTenant`. Rejecting is deliberately ungated, so requests from tenants nobody administers cannot get stuck pending |
 
 

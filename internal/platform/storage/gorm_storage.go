@@ -186,7 +186,7 @@ func (s *GORMStorage) SaveObjective(ctx context.Context, o objective.Objective) 
 		CriteriaJSON: string(critJ), ConstraintsJSON: string(constrJ), ParentID: parentID,
 		Status: string(o.Status),
 		Mode:   string(o.Mode), CadenceJSON: string(cadenceJ), AutonomyJSON: string(autonomyJ),
-		BudgetJSON: string(budgetJ), AgentID: o.AgentID,
+		BudgetJSON: string(budgetJ), AgentID: o.AgentID, TemplateID: o.TemplateID,
 	}).Error
 }
 
@@ -266,12 +266,12 @@ func objectiveFromModel(m schema.ObjectiveModel) objective.Objective {
 		Domain: m.Domain, AdditionalDomains: additionalDomains,
 		TwinID: m.TwinID, Priority: m.Priority, MaxIterations: m.MaxIterations, Deadline: m.Deadline,
 		SuccessCriteria: criteria, Constraints: constraints, ParentID: parentID,
-		Status:    objective.ObjectiveStatus(m.Status),
-		Mode:      objective.Mode(m.Mode),
-		Cadence:   cadence,
-		Autonomy:  autonomy,
-		Budget:    budget,
-		AgentID:   m.AgentID,
+		Status:   objective.ObjectiveStatus(m.Status),
+		Mode:     objective.Mode(m.Mode),
+		Cadence:  cadence,
+		Autonomy: autonomy,
+		Budget:   budget,
+		AgentID:  m.AgentID, TemplateID: m.TemplateID,
 		CreatedAt: m.CreatedAt, UpdatedAt: m.UpdatedAt,
 	}
 }
@@ -615,11 +615,20 @@ func (s *GORMStorage) SaveToolEvent(ctx context.Context, e ToolEvent) error {
 		EscalationReason: e.EscalationReason,
 		Approver:         e.Approver,
 		BoundsViolation:  e.BoundsViolation,
+		Provider:         e.Provider,
+		Model:            e.Model,
+		TemplateID:       e.TemplateID,
+		AutonomyRung:     e.AutonomyRung,
 	}).Error
 }
 
 func (s *GORMStorage) ListToolEvents(ctx context.Context, f ToolEventFilter) ([]ToolEvent, error) {
-	q := s.db.WithContext(ctx).Order("created_at DESC")
+	q := s.db.WithContext(ctx)
+	if f.OldestFirst {
+		q = q.Order("created_at ASC").Order("id ASC")
+	} else {
+		q = q.Order("created_at DESC")
+	}
 	if f.ObjectiveID != "" {
 		q = q.Where("objective_id = ?", f.ObjectiveID)
 	}
@@ -637,11 +646,25 @@ func (s *GORMStorage) ListToolEvents(ctx context.Context, f ToolEventFilter) ([]
 	if f.Kind != "" {
 		q = q.Where("kind = ?", f.Kind)
 	}
+	if f.Provider != "" {
+		q = q.Where("provider = ?", f.Provider)
+	}
+	if f.Model != "" {
+		q = q.Where("model = ?", f.Model)
+	}
+	if f.TemplateID != "" {
+		q = q.Where("template_id = ?", f.TemplateID)
+	}
 	if f.BoundsViolation != nil {
 		q = q.Where("bounds_violation = ?", *f.BoundsViolation)
 	}
+	// In UTC for the reason ListResolvedCheckpoints gives: SQLite compares
+	// datetimes as text, so a bound in another zone would sort by its digits.
 	if f.CreatedAtSince != nil {
-		q = q.Where("created_at >= ?", *f.CreatedAtSince)
+		q = q.Where("created_at >= ?", f.CreatedAtSince.UTC())
+	}
+	if f.CreatedAtBefore != nil {
+		q = q.Where("created_at < ?", f.CreatedAtBefore.UTC())
 	}
 	if f.Limit > 0 {
 		q = q.Limit(f.Limit)
@@ -656,7 +679,9 @@ func (s *GORMStorage) ListToolEvents(ctx context.Context, f ToolEventFilter) ([]
 			ID: m.ID, ObjectiveID: m.ObjectiveID, AgentID: m.AgentID, Capability: m.Capability,
 			Adapter: m.Adapter, Success: m.Success, Confidence: m.Confidence, PayloadJSON: m.PayloadJSON,
 			Kind: m.Kind, EscalationReason: m.EscalationReason, Approver: m.Approver,
-			BoundsViolation: m.BoundsViolation, CreatedAt: m.CreatedAt,
+			BoundsViolation: m.BoundsViolation,
+			Provider:        m.Provider, Model: m.Model, TemplateID: m.TemplateID, AutonomyRung: m.AutonomyRung,
+			CreatedAt: m.CreatedAt,
 		}
 	}
 	return out, nil
@@ -677,8 +702,27 @@ func (s *GORMStorage) GetToolEvent(ctx context.Context, id string) (ToolEvent, e
 		ID: m.ID, ObjectiveID: m.ObjectiveID, AgentID: m.AgentID, Capability: m.Capability,
 		Adapter: m.Adapter, Success: m.Success, Confidence: m.Confidence, PayloadJSON: m.PayloadJSON,
 		Kind: m.Kind, EscalationReason: m.EscalationReason, Approver: m.Approver,
-		BoundsViolation: m.BoundsViolation, CreatedAt: m.CreatedAt,
+		BoundsViolation: m.BoundsViolation,
+		Provider:        m.Provider, Model: m.Model, TemplateID: m.TemplateID, AutonomyRung: m.AutonomyRung,
+		CreatedAt: m.CreatedAt,
 	}, nil
+}
+
+// DeleteToolEventsBefore deletes tool_events rows whose timestamp is strictly
+// older than cutoff and returns how many rows it removed.
+//
+// internal/feature/audit.Service.Prune is its only permitted caller: that is
+// where the retention floor is enforced, and a delete reached any other way
+// is a delete nothing checked against the floor.
+//
+// The cutoff is compared in UTC, for the reason ListResolvedCheckpoints gives:
+// SQLite compares datetimes as text, and a cutoff carried in another zone
+// would be compared by its digits and take rows newer than the instant it
+// names. This is the one delete in the audit log, so it does not rely on its
+// caller having passed UTC.
+func (s *GORMStorage) DeleteToolEventsBefore(ctx context.Context, cutoff time.Time) (int64, error) {
+	res := s.db.WithContext(ctx).Where("created_at < ?", cutoff.UTC()).Delete(&schema.ToolEventModel{})
+	return res.RowsAffected, res.Error
 }
 
 // ── Loop state (Phase 11) ─────────────────────────────────────────────────

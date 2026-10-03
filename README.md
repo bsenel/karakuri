@@ -314,9 +314,15 @@ krk quota requests reject <request-id> --note "..."
 krk cost report [--since 720h] [--twin <id>] [--org <name> --team <name>] \
                 [--provider <p>] [--group-by day,provider,model,label] [--limit N]
 
-# Audit log (Phase 13)
+# Audit log (Phase 13) — Phase 31 adds filters by what produced the decision
 krk audit [--kind execute|escalation|approval] [--objective <id>] \
-          [--agent <id>] [--violations-only] [--since <RFC3339>] [--limit N]
+          [--agent <id>] [--provider <p>] [--model <m>] [--template <id>] \
+          [--violations-only] [--since <RFC3339>] [--limit N]
+
+# Audit export (Phase 31) — a closed past window [from, to); a record, not a
+# certification. Writes the server's bytes as received and prints their SHA-256
+# to stderr; --out writes a file readable by the owner only.
+krk audit export --from <RFC3339> --to <RFC3339> [--out <file>]
 
 # Judge calibration (Phase 30) — admin only (eval:run); one model call per resolved checkpoint.
 krk eval calibrate [--twin <id>] [--since 720h] [--limit N] \
@@ -359,6 +365,12 @@ auth:
                    # start without a signing key
 quota:
   backend: memory  # per replica — see Rate limits and quotas below
+audit:
+  retention:
+    floor_days: 183  # the minimum the audit log is kept; raise it, never lower
+                     # it — a value below 183 refuses startup
+    days: 0          # 0 never prunes; any other value below floor_days
+                     # refuses startup
 memory:
   semantic_top_k: 5
 ```
@@ -434,6 +446,13 @@ curl -s -XPOST localhost:8080/api/v1/auth/check -H "Authorization: Bearer $TOKEN
 Refused requests are recorded in the same audit log as authority-bounds
 escalations, so `krk audit --kind authz_denied` shows who was turned away
 alongside who approved what.
+
+The audit log can be exported for a closed past window with
+`krk audit export --from --to` (Phase 31 —
+[ADR 025](docs/adr/025-the-evidence-pack-is-a-read.md)): the same window gives
+the same bytes for as long as its rows are retained. It is a record, not a
+certification. It shows which approver account resolved each checkpoint, and
+cannot show who was operating that account.
 
 #### Organisations, teams and projects
 

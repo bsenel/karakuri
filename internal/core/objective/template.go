@@ -7,6 +7,7 @@ type Template struct {
 	Title           string             `json:"title"`
 	Description     string             `json:"description,omitempty"`
 	Domain          string             `json:"domain"`
+	Risk            RiskClass          `json:"risk"`
 	SuccessCriteria []Criterion        `json:"success_criteria,omitempty"`
 	Constraints     []Constraint       `json:"constraints,omitempty"`
 	SuggestedAgents []agent.Definition `json:"suggested_agents,omitempty"`

@@ -236,6 +236,20 @@ quota:
   # deployment with no database gets neither overrides nor cost reporting, and
   # says so in a log line at startup.
 
+# The audit log (tool_events) and how long it is kept (Phase 31). The log is
+# the record of what every run did, so it has a floor rather than only a
+# horizon: a deployment can keep it longer, never shorter.
+audit:
+  retention:
+    # The minimum the audit log is kept: six months. Raise it for a deployment
+    # that owes a longer record; a value below 183 refuses startup rather than
+    # being quietly rounded up.
+    floor_days: 183
+
+    # How long audit rows are kept before they are pruned. Zero never prunes.
+    # Any other value below floor_days refuses startup.
+    days: 0
+
 # The supervisor that holds standing objectives at their declared state
 # (Phase 20). A standing objective declares its own cadence and autonomy; these
 # are the ceilings every one of them runs under.

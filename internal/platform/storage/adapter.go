@@ -117,11 +117,20 @@ type ToolEvent struct {
 	// Audit fields (Phase 13). Default Kind is "execute"; escalation
 	// records use "escalation" and human approvals use "approval".
 	// Phase 13.5 adds "modification" + "rejection".
-	Kind             string    `json:"kind"`
-	EscalationReason string    `json:"escalation_reason,omitempty"`
-	Approver         string    `json:"approver,omitempty"`
-	BoundsViolation  bool      `json:"bounds_violation,omitempty"`
-	CreatedAt        time.Time `json:"created_at"`
+	Kind             string `json:"kind"`
+	EscalationReason string `json:"escalation_reason,omitempty"`
+	Approver         string `json:"approver,omitempty"`
+	BoundsViolation  bool   `json:"bounds_violation,omitempty"`
+	// What produced the decision this row records (Phase 31). Provider and
+	// Model are those of the call that drafted the plan, both empty when no
+	// model did; TemplateID is the template the objective was created from;
+	// AutonomyRung is the rung a standing run was started at, empty for a
+	// one-shot run.
+	Provider     string    `json:"provider,omitempty"`
+	Model        string    `json:"model,omitempty"`
+	TemplateID   string    `json:"template_id,omitempty"`
+	AutonomyRung string    `json:"autonomy_rung,omitempty"`
+	CreatedAt    time.Time `json:"created_at"`
 }
 
 // ToolEventKind enumerates the audit-relevant event types.
@@ -180,8 +189,13 @@ type ToolEventFilter struct {
 
 	AgentID         string
 	Kind            string
+	Provider        string
+	Model           string
+	TemplateID      string
 	BoundsViolation *bool      // tri-state: nil = ignore, &true = only violations, &false = only clean
 	CreatedAtSince  *time.Time // events at or after this time only
+	CreatedAtBefore *time.Time // events strictly before this time only (exclusive)
+	OldestFirst     bool       // order by created_at ASC, id ASC instead of newest first
 	Limit           int        // 0 = no cap (caller should usually set this)
 }
 

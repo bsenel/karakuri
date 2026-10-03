@@ -1,10 +1,13 @@
 package handler
 
 import (
+	"context"
+	"errors"
 	"net/http"
 	"strconv"
 	"time"
 
+	"github.com/bsenel/karakuri/internal/feature/audit"
 	"github.com/bsenel/karakuri/internal/platform/storage"
 	"github.com/go-chi/chi/v5"
 )
@@ -13,7 +16,43 @@ import (
 // tool_events filtered by the supplied query string. Listed event Kinds:
 // "execute", "escalation", "approval".
 type AuditHandler struct {
-	Store storage.StorageAdapter
+	Store  storage.StorageAdapter
+	Export auditExporter
+}
+
+// auditExporter assembles the audit export for a closed window.
+type auditExporter interface {
+	Export(ctx context.Context, from, to, now time.Time) ([]byte, error)
+}
+
+// ExportWindow returns the audit export for one window.
+//
+// GET /api/v1/audit/export?from=RFC3339&to=RFC3339
+func (h *AuditHandler) ExportWindow(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	from, err := time.Parse(time.RFC3339, q.Get("from"))
+	if err != nil {
+		http.Error(w, "from must be an RFC3339 timestamp", http.StatusBadRequest)
+		return
+	}
+	to, err := time.Parse(time.RFC3339, q.Get("to"))
+	if err != nil {
+		http.Error(w, "to must be an RFC3339 timestamp", http.StatusBadRequest)
+		return
+	}
+	data, err := h.Export.Export(r.Context(), from, to, time.Now())
+	if err != nil {
+		if errors.Is(err, audit.ErrWindow) {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	// The exporter's bytes are the document: written as they are, so two
+	// requests for one window are byte-identical.
+	w.Header().Set("Content-Type", "application/json")
+	_, _ = w.Write(data) // #nosec G705 -- a JSON document the exporter built from stored rows, served as application/json with nosniff (middleware/security.go); never rendered as HTML
 }
 
 func (h *AuditHandler) List(w http.ResponseWriter, r *http.Request) {
@@ -22,6 +61,9 @@ func (h *AuditHandler) List(w http.ResponseWriter, r *http.Request) {
 		ObjectiveID: q.Get("objective_id"),
 		AgentID:     q.Get("agent_id"),
 		Kind:        q.Get("kind"),
+		Provider:    q.Get("provider"),
+		Model:       q.Get("model"),
+		TemplateID:  q.Get("template"),
 	}
 
 	if v := q.Get("limit"); v != "" {

@@ -284,6 +284,9 @@ func (s *Service) reconcileNow(
 		Twin:      twin,
 		Agent:     def,
 		MaxIter:   obj.MaxIterations,
+		// Beside the bounds it produced, so the audit rows the loop writes can
+		// name the rung without the loop working it back out of the bounds.
+		AutonomyRung: level,
 	})
 	if err != nil {
 		outcome.Error = err.Error()

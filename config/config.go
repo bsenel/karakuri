@@ -24,6 +24,28 @@ type Config struct {
 	Quota         QuotaConfig         `yaml:"quota"`
 	Reconcile     ReconcileConfig     `yaml:"reconcile"`
 	Reports       ReportsConfig       `yaml:"reports"`
+	Audit         AuditConfig         `yaml:"audit"`
+}
+
+// AuditConfig configures the audit log (Phase 31).
+type AuditConfig struct {
+	Retention AuditRetentionConfig `yaml:"retention"`
+}
+
+// AuditRetentionConfig says how long the audit log is kept.
+//
+// Both values are parsed as written: no default is set and nothing is checked
+// here. The check happens at server startup in internal/app, against the floor
+// declared in internal/feature/audit, so the floor has one definition and this
+// package stays free of internal imports.
+type AuditRetentionConfig struct {
+	// FloorDays is the minimum the audit log is kept. 0 or absent means the
+	// default floor of 183 days declared in internal/feature/audit. It is
+	// configurable upward only: a lower value refuses startup.
+	FloorDays int `yaml:"floor_days"`
+	// Days is how long audit rows are kept before pruning. 0 means never
+	// prune; any other value below the floor refuses startup.
+	Days int `yaml:"days"`
 }
 
 // ReportsConfig bounds the digest sender (Phase 21).

@@ -26,6 +26,7 @@ import (
 	"github.com/bsenel/karakuri/internal/core/event"
 	corememory "github.com/bsenel/karakuri/internal/core/memory"
 	objectivepkg "github.com/bsenel/karakuri/internal/core/objective"
+	"github.com/bsenel/karakuri/internal/feature/audit"
 	"github.com/bsenel/karakuri/internal/feature/container"
 	featurememory "github.com/bsenel/karakuri/internal/feature/memory"
 	"github.com/bsenel/karakuri/internal/platform/db"
@@ -52,6 +53,14 @@ func BootstrapServer(cfgPath string) (*Bootstrap, error) {
 	if err != nil {
 		slog.Warn("config load failed, using defaults", "err", err)
 		cfg = config.Default()
+	}
+
+	// Phase 31: the audit log has a declared retention floor. A retention
+	// below it is refused here, before anything starts, the way a missing
+	// signing key is — a misconfiguration is never silently exceeded.
+	auditKeep, err := auditRetention(cfg.Audit.Retention)
+	if err != nil {
+		return nil, err
 	}
 
 	gormDB, err := db.Open(cfg.Database.Driver, cfg.Database.DSN)
@@ -242,6 +251,24 @@ func BootstrapServer(cfgPath string) (*Bootstrap, error) {
 					"check", res.Check, "msg", res.Message)
 			}
 		}
+		// How each active template's author regards it, said once at boot so
+		// the log answers "what was this deployment running, and how was it
+		// classified". Reports only: an unclassified template is a pack
+		// written before the field existed, and a typo is the pack author's
+		// to fix; neither is a reason to refuse to start.
+		for _, res := range conformance.CheckTemplateRisk(activePacks...) {
+			switch {
+			case !res.Passed:
+				slog.Warn("objective template declares a risk that is not a risk class",
+					"check", res.Check, "msg", res.Message)
+			case res.Warning:
+				slog.Warn("objective template is unclassified",
+					"check", res.Check, "msg", res.Message)
+			default:
+				slog.Info("objective template risk",
+					"check", res.Check, "msg", res.Message)
+			}
+		}
 	}
 
 	// Tools discovered from MCP servers (Phase 28).
@@ -308,7 +335,7 @@ func BootstrapServer(cfgPath string) (*Bootstrap, error) {
 	// BuildContext; every pack but karakuri's ignores it.
 	envReg.SetTelemetry(plattelemetry.New(store, quotaDeps))
 
-	apiApp := api.NewApp(cfg, store, providers, toolReg, exporters, wt, hub, otel, capReg, envReg, domReg, allTemplates, semanticBackend, promHandler, authDeps, quotaDeps)
+	apiApp := api.NewApp(cfg, store, providers, toolReg, exporters, wt, hub, otel, capReg, envReg, domReg, allTemplates, auditKeep, semanticBackend, promHandler, authDeps, quotaDeps)
 
 	// Resume any non-completed loops left behind by a previous server process
 	// (Phase 11). Failures are logged but don't block startup — a working
@@ -327,6 +354,11 @@ func BootstrapServer(cfgPath string) (*Bootstrap, error) {
 	// adds up, so raw rows age out while the daily rollup does not — a shorter
 	// horizon costs the drill-down and not the totals.
 	startCostRetention(ctx, quotaDeps, cfg.Quota.CostRetentionDays)
+
+	// Audit retention (Phase 31). The sweep runs only when a horizon is
+	// configured, and with the retention the startup check accepted, so the
+	// service and the sweep cannot disagree with what was refused or allowed.
+	startAuditRetention(ctx, audit.NewService(store, auditKeep), auditKeep)
 
 	// Nothing reaches an exporter until something flushes the buffers
 	// (Phase 29), so they drain on a tick rather than growing until exit.
@@ -400,6 +432,71 @@ func startCostRetention(ctx context.Context, deps karakuriquota.Deps, days int) 
 			}
 		}
 	}()
+}
+
+// auditRetention resolves the configured audit retention and checks it against
+// the floor. A floor_days of 0 means the default audit.FloorDays, so the floor
+// has one definition, in internal/feature/audit. A retention that fails
+// audit.CheckRetention is returned as an `audit.retention` error, so the server
+// refuses to start rather than run with an audit log it would prune too early.
+func auditRetention(rc config.AuditRetentionConfig) (audit.Retention, error) {
+	r := audit.Retention{FloorDays: rc.FloorDays, Days: rc.Days}
+	if r.FloorDays == 0 {
+		r.FloorDays = audit.FloorDays
+	}
+	if err := audit.CheckRetention(r); err != nil {
+		return audit.Retention{}, fmt.Errorf("audit.retention: %w", err)
+	}
+	return r, nil
+}
+
+// startAuditRetention prunes the audit log on a daily tick and reports whether
+// a sweep was started.
+//
+// Daily for the reason startCostRetention is: the horizon is measured in days.
+// The first sweep runs a minute after boot rather than a day later, so a
+// restart loop cannot postpone pruning indefinitely.
+//
+// Zero days keeps everything, which is why this is not gated on an Enabled
+// flag: the horizon itself says whether to sweep.
+func startAuditRetention(ctx context.Context, svc *audit.Service, r audit.Retention) bool {
+	if r.Days <= 0 {
+		return false
+	}
+	slog.Info("audit log retention enabled",
+		"days", r.Days,
+		"floor_days", r.FloorDays)
+
+	go func() {
+		sweep := func() {
+			n, err := svc.Prune(ctx, time.Now().UTC())
+			if err != nil {
+				slog.Warn("audit retention sweep failed", "err", err)
+				return
+			}
+			slog.Info("audit rows pruned",
+				"rows", n,
+				"older_than_days", r.Days,
+				"floor_days", r.FloorDays)
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(time.Minute):
+			sweep()
+		}
+		ticker := time.NewTicker(24 * time.Hour)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				sweep()
+			}
+		}
+	}()
+	return true
 }
 
 // startTelemetryFlush hands buffered metrics, logs and spans to the exporters

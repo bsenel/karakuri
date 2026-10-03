@@ -43,6 +43,7 @@ type ObjectiveModel struct {
 	AutonomyJSON string    `gorm:"column:autonomy_json;not null;default:''"`
 	BudgetJSON   string    `gorm:"column:budget_json;not null;default:''"`
 	AgentID      string    `gorm:"column:agent_id;not null;default:''"`
+	TemplateID   string    `gorm:"column:template_id;not null;default:''"`
 	CreatedAt    time.Time `gorm:"column:created_at;autoCreateTime"`
 	UpdatedAt    time.Time `gorm:"column:updated_at;autoUpdateTime"`
 }
@@ -167,11 +168,18 @@ type ToolEventModel struct {
 	// ("execute") from escalation events ("escalation") and approval
 	// resolutions ("approval"). Most operators only filter by kind +
 	// objective; the other audit columns surface for forensics.
-	Kind             string    `gorm:"column:kind;not null;default:'execute';index"`
-	EscalationReason string    `gorm:"column:escalation_reason;not null;default:''"`
-	Approver         string    `gorm:"column:approver;not null;default:''"`
-	BoundsViolation  bool      `gorm:"column:bounds_violation;not null;default:false;index"`
-	CreatedAt        time.Time `gorm:"column:created_at;autoCreateTime;index"`
+	Kind             string `gorm:"column:kind;not null;default:'execute';index"`
+	EscalationReason string `gorm:"column:escalation_reason;not null;default:''"`
+	Approver         string `gorm:"column:approver;not null;default:''"`
+	BoundsViolation  bool   `gorm:"column:bounds_violation;not null;default:false;index"`
+	// What produced the decision (Phase 31). Columns rather than payload
+	// fields so "everything this model decided" is a WHERE clause. Empty
+	// means "not recorded", which is what every earlier row means.
+	Provider     string    `gorm:"column:provider;not null;default:''"`
+	Model        string    `gorm:"column:model;not null;default:''"`
+	TemplateID   string    `gorm:"column:template_id;not null;default:''"`
+	AutonomyRung string    `gorm:"column:autonomy_rung;not null;default:''"`
+	CreatedAt    time.Time `gorm:"column:created_at;autoCreateTime;index"`
 }
 
 func (ToolEventModel) TableName() string { return "tool_events" }

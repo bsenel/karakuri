@@ -39,6 +39,7 @@ func healthcareObjectiveTemplates() []objective.Template {
 			ID:          "healthcare.objective.diagnosis_support",
 			Title:       "Diagnosis Support",
 			Domain:      "healthcare",
+			Risk:        objective.RiskHigh,
 			Description: "Synthesise vitals, labs, history, and symptoms into a differential, propose a treatment plan, and verify against guideline + senior review",
 			SuccessCriteria: []objective.Criterion{
 				crit("differential-quality",
@@ -64,9 +65,12 @@ func healthcareObjectiveTemplates() []objective.Template {
 			},
 		},
 		{
-			ID:          "healthcare.objective.guideline_check",
-			Title:       "Guideline Check",
-			Domain:      "healthcare",
+			ID:     "healthcare.objective.guideline_check",
+			Title:  "Guideline Check",
+			Domain: "healthcare",
+			// An audit that writes nothing, and still high: a missed deviation
+			// leaves a patient on a plan the guideline no longer supports.
+			Risk:        objective.RiskHigh,
 			Description: "Audit a patient's active care plan against the current published clinical guideline and surface deviations",
 			SuccessCriteria: []objective.Criterion{
 				crit("history-loaded",

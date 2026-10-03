@@ -28,6 +28,12 @@ type plan struct {
 	Actions    []plannedAction `json:"actions"`
 	Confidence float64         `json:"confidence"`
 	Reasoning  string          `json:"reasoning"`
+
+	// provider and model say which call produced this plan. Both are empty on
+	// the placeholder built when the call failed: no model produced that one,
+	// and a guessed name would be a false record.
+	provider string
+	model    string
 }
 
 func stepReason(ctx context.Context, sc *stepContext, ws loop.WorldState) plan {
@@ -130,6 +136,7 @@ func stepReason(ctx context.Context, sc *stepContext, ws loop.WorldState) plan {
 				Reasoning:  output.Content,
 			}
 		}
+		p.provider, p.model = output.Provider, output.Model
 	} else {
 		// On error create a minimal plan
 		p = plan{
@@ -239,6 +246,7 @@ func reflexionPass(ctx context.Context, sc *stepContext, draft plan) (plan, stri
 	if revised.Confidence == 0 {
 		revised.Confidence = revOut.Confidence
 	}
+	revised.provider, revised.model = revOut.Provider, revOut.Model
 	return revised, critOut.Content, true
 }
 
@@ -329,6 +337,7 @@ func stepReasonRevise(ctx context.Context, sc *stepContext, draft plan, dec core
 	if revised.Confidence == 0 {
 		revised.Confidence = revOut.Confidence
 	}
+	revised.provider, revised.model = revOut.Provider, revOut.Model
 	return revised, true
 }
 
