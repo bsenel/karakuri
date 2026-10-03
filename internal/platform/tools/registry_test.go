@@ -1,9 +1,15 @@
 package tools
 
 import (
+	"bytes"
+	"context"
+	"log/slog"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/bsenel/karakuri/config"
+	"github.com/bsenel/karakuri/internal/platform/tools/observability"
 )
 
 func TestNewRegistry_EmptySlots(t *testing.T) {
@@ -222,5 +228,120 @@ func TestInstanceOptString_AndOptInt(t *testing.T) {
 	}
 	if got := inst.OptInt("missing"); got != 0 {
 		t.Errorf("OptInt missing: expected 0, got %d", got)
+	}
+}
+
+// fakeObservability is an ObservabilityAdapter told apart by its label; no real
+// adapter type exists for the slot yet, so instances go in through Set.
+type fakeObservability struct {
+	label  string
+	active bool
+}
+
+func (f *fakeObservability) Active() bool { return f.active }
+
+func (f *fakeObservability) GetAlerts(context.Context, string, string, time.Time, string) ([]observability.Alert, error) {
+	return []observability.Alert{{Service: f.label}}, nil
+}
+
+func TestNewRegistry_ObservabilitySlotEmpty(t *testing.T) {
+	r := NewRegistry()
+	if _, ok := r.Observability.Resolve(""); ok {
+		t.Errorf("empty Observability slot should not resolve")
+	}
+	if n := r.Observability.DefaultName(); n != "" {
+		t.Errorf("empty Observability slot should have no default, got %q", n)
+	}
+}
+
+func TestObservabilitySlot_ResolvesInstancesByName(t *testing.T) {
+	r := NewRegistry()
+	prod := &fakeObservability{label: "prod", active: true}
+	staging := &fakeObservability{label: "staging"}
+	r.Observability.Set("prod", "fake", prod)
+	r.Observability.Set("staging", "fake", staging)
+
+	// Empty name → default (the first instance set)
+	def, ok := r.Observability.Resolve("")
+	if !ok || def != observability.ObservabilityAdapter(prod) {
+		t.Errorf("expected default prod, got ok=%t adapter=%v", ok, def)
+	}
+	// Named → specific
+	gotProd, ok := r.Observability.Resolve("prod")
+	if !ok || gotProd != observability.ObservabilityAdapter(prod) {
+		t.Errorf("expected prod instance, got ok=%t adapter=%v", ok, gotProd)
+	}
+	gotStaging, ok := r.Observability.Resolve("staging")
+	if !ok || gotStaging != observability.ObservabilityAdapter(staging) {
+		t.Errorf("expected staging instance, got ok=%t adapter=%v", ok, gotStaging)
+	}
+	if gotProd == gotStaging {
+		t.Errorf("prod and staging should resolve to different adapters")
+	}
+	// Unknown → false
+	if _, ok := r.Observability.Resolve("nonexistent"); ok {
+		t.Errorf("unknown instance should not resolve")
+	}
+}
+
+func TestRegistryStatus_ListsObservabilityInstances(t *testing.T) {
+	r := NewRegistry()
+	r.Observability.Set("prod", "fake", &fakeObservability{label: "prod", active: true})
+	r.Observability.Set("staging", "fake", &fakeObservability{label: "staging"})
+
+	rows := map[string]AdapterStatus{}
+	count := 0
+	for _, s := range r.Status() {
+		if s.Slot == "observability" {
+			count++
+			rows[s.Instance] = s
+		}
+	}
+	if count != 2 {
+		t.Fatalf("expected 2 observability rows, got %d: %+v", count, rows)
+	}
+	prod, ok := rows["prod"]
+	if !ok || prod.Type != "fake" || !prod.Active || !prod.IsDefault {
+		t.Errorf("expected prod row fake+active+default, got ok=%t %+v", ok, prod)
+	}
+	staging, ok := rows["staging"]
+	if !ok || staging.Type != "fake" || staging.Active || staging.IsDefault {
+		t.Errorf("expected staging row fake+inactive+non-default, got ok=%t %+v", ok, staging)
+	}
+}
+
+func TestEmptyObservabilitySlotHasNoStatusRow(t *testing.T) {
+	r := NewRegistry()
+	for _, s := range r.Status() {
+		if s.Slot == "observability" {
+			t.Errorf("empty Observability slot should have no status row, got %+v", s)
+		}
+	}
+}
+
+func TestUnknownObservabilityType_LoggedAndSkipped(t *testing.T) {
+	var logs bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, nil)))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+
+	cfg := config.SlotConfig{
+		Default: "x",
+		Instances: map[string]config.InstanceConfig{
+			"x": {Type: "weird_provider", Options: map[string]any{}},
+		},
+	}
+	slot := buildObservabilitySlot(cfg)
+	if _, ok := slot.Resolve("x"); ok {
+		t.Errorf("unknown type should not produce an adapter")
+	}
+	if n := len(slot.List()); n != 0 {
+		t.Errorf("unknown type should yield no instance, got %d", n)
+	}
+	got := logs.String()
+	for _, want := range []string{"level=WARN", "unknown observability adapter type", "instance=x", "type=weird_provider"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("expected warning containing %q, got %q", want, got)
+		}
 	}
 }
