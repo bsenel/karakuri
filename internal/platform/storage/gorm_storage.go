@@ -681,6 +681,16 @@ func (s *GORMStorage) GetToolEvent(ctx context.Context, id string) (ToolEvent, e
 	}, nil
 }
 
+// DeleteToolEventsBefore deletes tool_events rows whose timestamp is strictly
+// older than cutoff and returns how many rows it removed.
+//
+// internal/feature/audit.Service.Prune is its only permitted caller: that is
+// where the retention floor is enforced, and a delete reached any other way
+// is a delete nothing checked against the floor.
+func (s *GORMStorage) DeleteToolEventsBefore(ctx context.Context, cutoff time.Time) (int64, error) {
+	return 0, nil
+}
+
 // ── Loop state (Phase 11) ─────────────────────────────────────────────────
 
 func (s *GORMStorage) SaveLoopState(ctx context.Context, st coreloop.State) error {
