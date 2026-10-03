@@ -506,6 +506,8 @@ func TestObservabilityFetchLogs(t *testing.T) {
 		{"service only", map[string]any{"service": "checkout"}, "", "checkout", 60, 200},
 		{"explicit", map[string]any{"query": "timeout", "service": "checkout", "since_minutes": 15, "limit": 25}, "timeout", "checkout", 15, 25},
 		{"clamped", map[string]any{"query": "timeout", "since_minutes": 5000}, "timeout", "", 1440, 200},
+		// Off the wire: JSON numbers are float64, and models quote numbers.
+		{"wire types", map[string]any{"query": "timeout", "since_minutes": float64(15), "limit": "25"}, "timeout", "", 15, 25},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			adapter := &fakeObservability{name: "prod", active: true, logs: lines}

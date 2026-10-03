@@ -29,8 +29,37 @@ func softwareCapabilities() []capability.Capability {
 	return []capability.Capability{
 		obs("software.observe.fetch_commits", "Fetch Commits", "Fetch recent commits from GitEnvironment"),
 		obs("software.observe.fetch_prs", "Fetch PRs", "Fetch pull requests awaiting review"),
-		obs("software.observe.fetch_logs", "Fetch Logs", "Fetch runtime logs from ObservabilityEnvironment"),
-		obs("software.observe.fetch_metrics", "Fetch Metrics", "Fetch runtime metrics"),
+		// Inputs declared for the same reason write_design_doc's are below: a
+		// capability whose inputs are undocumented is one models call with an
+		// empty payload, and both of these refuse an empty payload.
+		{
+			ID: CapFetchLogs, Name: "Fetch Logs", Domain: "software",
+			Description: "Fetch runtime logs from the twin's bound observability instance. Requires at least one of params.query and params.service. Optional params.since_minutes (default 60, max 1440) and params.limit (default 200). Result includes lines (time, service, message) and count.",
+			InputSchema: capability.Schema{
+				Type: "object",
+				Properties: map[string]capability.SchemaProperty{
+					"query":         {Type: "string", Description: "Text or backend query to match log lines against. Required unless service is given"},
+					"service":       {Type: "string", Description: "Service whose logs to fetch. Required unless query is given"},
+					"since_minutes": {Type: "integer", Description: "How far back to look, in minutes. Default 60, max 1440"},
+					"limit":         {Type: "integer", Description: "Maximum number of lines to return. Default 200"},
+				},
+			},
+			OutputSchema: capability.Schema{Type: "object"},
+		},
+		{
+			ID: CapFetchMetrics, Name: "Fetch Metrics", Domain: "software",
+			Description: "Fetch runtime metrics from the twin's bound observability instance. Requires params.query (in the backend's query language). Optional params.since_minutes (default 60, max 1440) and params.step_seconds (default 60). Result includes series (name, labels, points) and count.",
+			InputSchema: capability.Schema{
+				Type: "object",
+				Properties: map[string]capability.SchemaProperty{
+					"query":         {Type: "string", Description: "The metric query, in the bound backend's query language"},
+					"since_minutes": {Type: "integer", Description: "How far back to look, in minutes. Default 60, max 1440"},
+					"step_seconds":  {Type: "integer", Description: "Resolution of the returned points, in seconds. Default 60"},
+				},
+				Required: []string{"query"},
+			},
+			OutputSchema: capability.Schema{Type: "object"},
+		},
 		obs("software.observe.read_codebase", "Read Codebase", "Read file tree, symbols, and dependencies"),
 
 		act("software.reason.architecture_review", "Architecture Review", "Evaluate a design against architectural principles", false),

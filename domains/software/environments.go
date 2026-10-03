@@ -14,6 +14,7 @@ import (
 	"github.com/bsenel/karakuri/internal/platform/tools"
 	"github.com/bsenel/karakuri/internal/platform/tools/cliagent"
 	"github.com/bsenel/karakuri/internal/platform/tools/messaging"
+	"github.com/bsenel/karakuri/internal/platform/tools/observability"
 	"github.com/bsenel/karakuri/internal/platform/tools/projectmgmt"
 	"github.com/bsenel/karakuri/internal/platform/tools/research"
 	"github.com/bsenel/karakuri/internal/platform/tools/versioncontrol"
@@ -21,8 +22,11 @@ import (
 
 // softwareEnvironmentFactories builds the six software environments. The Git,
 // Ticket, and Communication envs dispatch to the tools.Registry adapters
-// (GitHub / Linear / Slack when configured). The remaining envs are no-op.
-// reg may be nil — in that case every env falls back to no-op behavior.
+// (GitHub / Linear / Slack when configured). The observability env reads the
+// twin's bound observability instance and reports itself blind without one;
+// only the CI env is still a no-op.
+// reg may be nil — in that case every adapter-backed env falls back to no-op
+// behavior, except observability, which has no no-op to fall back on.
 func softwareEnvironmentFactories(reg *tools.Registry) []environment.Factory {
 	noopFactory := func(id, desc string) environment.Factory {
 		return environment.Factory{
@@ -111,7 +115,26 @@ func softwareEnvironmentFactories(reg *tools.Registry) []environment.Factory {
 			},
 		},
 		noopFactory("software.env.ci", "CI pipeline: build status, test results, coverage"),
-		noopFactory("software.env.observability", "Runtime: logs, metrics, alerts"),
+		{
+			EnvID:       "software.env.observability",
+			Domain:      "software",
+			Description: "Runtime: logs, metrics, alerts",
+			Serves: []capability.CapabilityID{
+				CapFetchLogs,
+				CapFetchMetrics,
+			},
+			Build: func(ctx environment.BuildContext) (environment.Environment, error) {
+				// Left a true nil when nothing resolves: there is no no-op
+				// adapter, and the env says it is blind rather than quiet.
+				var adapter observability.ObservabilityAdapter
+				if reg != nil {
+					if a, ok := reg.Observability.Resolve(ctx.AdapterBindings["observability"]); ok {
+						adapter = a
+					}
+				}
+				return newObservabilityEnv("software.env.observability", adapter), nil
+			},
+		},
 		{
 			EnvID:       "software.env.research",
 			Domain:      "software",
