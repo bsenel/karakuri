@@ -281,6 +281,10 @@ func Routes() []Route {
 		{http.MethodPost, "/quota/requests/{id}/decide", ActionQuotaApprove, false},
 		{http.MethodGet, "/cost", ActionCostRead, false},
 
+		// Judge calibration (Phase 30). Admin only: it spends model calls and
+		// reads resolved checkpoints across twins.
+		{http.MethodPost, "/eval/calibrate", ActionEvalRun, false},
+
 		// The limits an operator has stored (Phase 19). Editing one changes it
 		// for the whole deployment, which is why it is quota:admin rather than
 		// the tenant-scoped quota:approve.

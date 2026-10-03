@@ -2554,7 +2554,7 @@ times.
 
 ---
 
-## Phase 30 — The Evaluation Set Karakuri Already Has (Planned)
+## Phase 30 — The Evaluation Set Karakuri Already Has (Completed)
 
 **Goal:** A change to an agent definition, a strategy, a provider or a prompt is
 measured against decisions real people made, before it merges.
@@ -2623,6 +2623,138 @@ on a component nobody has checked against the humans it stands in for.
 does not pass" scored as satisfied — turns the eval gate red, the way
 reintroducing the `> 0` guard turns conformance red in three packs. The judge's
 agreement rate is a number in `docs/benchmarks.md` rather than an assumption.
+
+**Shipped (step 1).** See
+[ADR 024](adr/024-the-evaluation-set-is-recorded-history.md).
+`internal/feature/eval/eval.go` is read-only. `Service.Calibrate` lists the
+checkpoints a human resolved, puts each drafted plan to a judge agent — the
+objective's title, description and success criteria, then the proposed actions,
+with the description cut at 2000 characters and each action's reason and params
+at 600 — and compares the answer with the decision. `approve` is the positive
+label; `reject` and `modify` are both negative, because a plan the reviewer had
+to change is not one they would have let run as drafted. `CalibrationReport`
+carries `N`, `Agreed`, `Agreement`, `Skipped`, a `Confusion` matrix, a
+`ByDecision` breakdown and, per item, the judge's reply and what it was shown.
+A checkpoint with no decision, an unrecognised choice or a deleted objective is
+skipped, not guessed at. A judge error and a plan with no actions both score as
+FAIL, the same as in the loop.
+
+`storage.ListResolvedCheckpoints` is the corpus: resolved checkpoints, oldest
+decision first, filtered by twin and by a `resolved_at` window.
+`verdictIsPass` in `internal/feature/loop/verify.go` became `VerdictIsPass`, and
+eval calls it. There is one parser, so reintroducing a defect in it changes the
+number calibration reports.
+
+The judge here is not `evaluateWithAgent` itself. That function grades a
+criterion against what the actions produced; a checkpoint holds a plan that has
+not run. `renderPlanTask` keeps its contract — judge only what is shown, absence
+is FAIL, answer in one word — and asks whether the plan should be accepted as
+proposed. It is asked of the agent the loop would have asked: `eval.LoopJudge`
+resolves each objective's judge with `loop.SelectAgent` and the agent factory,
+because the loop has no single judge — `evaluateWithAgent` calls the objective's
+own agent, which chooses its provider and temperature.
+
+**Shipped (step 2).** `Checkpoint.WorldState` in
+`internal/core/checkpoint/checkpoint.go` holds the `loop.WorldState` the planner
+saw when it escalated, stored in `checkpoints.world_state_json` (migration
+`000011_checkpoint_world_state`). `stepDecide` records it through
+`recordedWorldState` in `internal/feature/loop/worldstate_record.go`, which
+copies and never mutates. An observation whose `State` is more than 16 KiB of
+JSON is replaced by a marker (`_truncated`, `_original_bytes`) with a 4096-byte
+`_preview`; once the running total passes 256 KiB, later observations keep the
+marker only. Each observation's `Trust` and the `Blind` list survive unchanged
+(ADR 021), so a replay would not run without the third-party notice the original
+planner got. A budget pause records none: it asks "keep spending?", not whether
+a plan is right. The field is `json:"-"`, so it is not on the REST response. A
+world state that will not encode or decode costs the corpus one entry, with a
+warning, and never the reviewer the checkpoint.
+
+`CalibrationReport.Replayable` counts the replay corpus: the resolved
+checkpoints that carry one. **The replay itself is not built.** This step
+creates the corpus a replay would read, starting from escalations after it
+shipped.
+
+**Shipped (step 3).** `internal/feature/eval/testdata/golden.v1.json` is a
+versioned golden set: 18 entries, each a recorded judge reply with a label, a
+`provenance` and a `note` saying which parser behaviour it pins. All 18 are
+`constructed`. `LoadGoldenSet` in `golden.go` refuses a set with no version, no
+entries, a baseline outside [0,1], a repeated id, or an entry missing an id, a
+reply, a provenance or a recognisable label. `Gate` replays the replies through
+a verdict function and fails below the committed baseline, which is 1.0: the
+agreement `loop.VerdictIsPass` actually reaches on the set, asserted by
+`TestGatePassesWithVerdictIsPass`. It calls no model, and an empty set fails.
+The acceptance test, `TestGateGoesRedWithPhase25Parser`, re-implements the
+parser as it was before Phase 25 — any of "pass", "met", "approved" or "yes"
+anywhere in the reply — and asserts the gate goes red. Both run under
+`go test ./...` in the Test job of `.github/workflows/ci.yml`.
+
+`krk eval calibrate --export` turns calibration items into golden entries, one
+per item the judge answered, with the id `<deployment>:<checkpoint id>` and the provenance
+`exported:<deployment>:<date>`.
+
+The surface: a new action `eval:run` in `internal/auth/catalog.go`, held by
+admin only (`TestEvalRunIsAdminOnly`), because it spends a model call per
+checkpoint and reads checkpoints across twins; `POST /api/v1/eval/calibrate` in
+`internal/api/handler/eval.go`, which takes `twin`, `since`, `until` and
+`limit`, narrows a scoped caller to a twin they may read the way the cost report
+does, and answers 503 when no judge provider is configured; and
+`krk eval calibrate` in `cli/command/eval.go` with `--twin`, `--since` (default
+720h), `--limit`, `--export` and `--markdown`. `--markdown` prints the section
+`docs/benchmarks.md` carries. `--export` writes the judged items as a JSON array
+of golden entries, readable by the owner only.
+
+**Shipped (step 4).** `docs/benchmarks.md` has a real-history section beside the
+synthetic one: 45 checkpoints judged, 51.1% agreement (23 of 45), with the
+confusion matrix, the per-decision breakdown and what the number is not, stated
+before the number.
+
+**Found while wiring it.** The CLI's HTTP client has a 120-second timeout, and
+the first run against a real corpus was cut off by it: 34 judge calls through a
+CLI-backed provider took 2 minutes 57 seconds. `krk eval calibrate` now posts
+through `Client.WithTimeout` with a 30-minute bound, Ctrl-C cancels the request
+through `PostContext`, and `Calibrate` checks the caller's context before each
+checkpoint and after each judge call, so the server stops judging when nobody is
+waiting and returns no partial report.
+
+The corpus in this deployment is operator-labelled. Most of the 45 decisions
+were made by an operator account driving Karakuri's own Phase 29 and Phase 30
+delivery, and most of those by an AI assistant acting as that operator on the
+owner's behalf. Many rejections were procedural: the plan repeated work that was
+already complete, or the "plan" was an error placeholder from a failed model
+call. The judge is shown only the objective and the plan, so it cannot know
+either. Agreement on approvals is 90.5% and on rejections 10.5%, and that split
+is why 51.1% must not be read as a verdict on the judge. What it does show is
+that the judge passes almost everything — 39 of 45 — so on this corpus it
+carries little information about whether a human would reject. For the same
+reason none of this history was exported into the golden set.
+
+Review found the calibration judging with the wrong agent and spending
+unrecorded. It built one `karakuri-judge` agent on the default provider and
+asked it about every objective, where the loop asks each objective's own agent;
+on a deployment with more than one provider that measures a model the loop may
+never run. And each judge call is a model call that reached no ledger, so
+`krk cost report` could not say what a calibration cost. Both were fixed before
+the phase merged: the judge is resolved per objective, and each call is recorded
+against the checkpoint's twin — not its objective, whose ledger entries count
+toward its own daily budget.
+
+`--limit` reached the server and did nothing. `ResolvedCheckpointFilter.Limit`
+was documented as "a zero Limit lists every match", the handler and the CLI
+passed it through, and `GORMStorage.ListResolvedCheckpoints` never applied it,
+so the flag that bounds a run's model spend bounded nothing. This was fixed
+before the phase merged: a positive limit now keeps the most recently resolved
+checkpoints in the window, still returned oldest first.
+
+**What's deferred:**
+
+- The planner replay itself. Recording started with this phase, so the corpus
+  is 13 replayable checkpoints. Replay is not available and is not claimed.
+- A judge-improvement loop. This phase names the agreement rate; it does not
+  change the judge.
+- Scheduled calibration tracked over time. Today it is on demand, and
+  `docs/benchmarks.md` holds one measurement.
+- Exporting real history into the golden set, once a deployment has independent
+  human reviewers. `--export` exists for that day.
 
 ---
 
@@ -3225,6 +3357,9 @@ Checks (run via `krk domain test <id>`):
 | GenAI-convention spans (`invoke_agent` / `chat` / `execute_tool`)    | **Fully implemented** (Phase 29, ADR 023) — vendor-free `telemetry.Tracer` port; exported natively over OTLP `/v1/traces`; every other exporter warns once that it does not take spans |
 | GenAI metric aliases (`gen_ai.client.token.usage`, `gen_ai.client.operation.duration`) | Defined, not yet recorded (Phase 29) — emitted beside the legacy names by `OTel.RecordChat`, which nothing in production calls yet |
 | Periodic telemetry flush                                              | **Fully implemented** (Phase 29) — every 10s and once on shutdown; before it, buffered metrics and logs never reached an exporter |
+| Judge calibration against resolved checkpoints                        | **Fully implemented** (Phase 30, ADR 024) — `krk eval calibrate` / `POST /api/v1/eval/calibrate`, admin-only `eval:run`; on demand, not scheduled. Measured once: 51.1% (23 of 45) on an operator-labelled corpus — see `docs/benchmarks.md` for why that is not a verdict on the judge |
+| Verdict-parser gate over a golden set                                 | **Fully implemented** (Phase 30) — 18 constructed entries in `internal/feature/eval/testdata/golden.v1.json`, replayed through `loop.VerdictIsPass` in CI's Test job; calls no model, and measures the parser, not the judge |
+| Planner replay                                                        | Corpus recorded, replay not built (Phase 30) — escalations record a bounded world state on the checkpoint (`world_state_json`, migration 000011); 13 replayable checkpoints when measured on 2026-10-03 |
 
 
 ---
@@ -3252,7 +3387,7 @@ Checks (run via `krk domain test <id>`):
 | Cross-tenant access through a container scope                 | Medium   | Phase 17 keys every scope on an issued ID, never a display name, so two organisations with a team called "eng" cannot collide — the case is pinned end to end from the tree through `InScope` to a 403. A resource with no containers carries no labels and matches exactly what it matched under the flat model, so no existing grant widens. Listing is filtered from the same bindings the per-resource check reads, and an empty grant set matches no rows rather than every row |
 | An agent redirected by the content it observes                | High     | **Mitigated in Phase 27**, not closed — nothing here detects an injected instruction. `environment.Observation` and `environment.ActionResult` each carry a `Trust` the environment declares, and a plan drafted while a third party's writing is in evidence escalates through `AuthorityBounds.Decide` — whatever autonomy the agent has earned, and through the one gate ADR 015 permits rather than a second one beside it. The escalation names the source, in the checkpoint reason and in the audit row. That property holds against attacks nobody has enumerated, which a filter on suspicious-looking text does not. Where the content actually enters was the finding: `researchEnv.Observe` reports only whether an adapter is wired and scraped pages arrive as `ActionResult.StateDelta` on the act path, so the wider surface is action results and both paths are marked. **What remains open** is the honesty of the labels: an environment returning `TrustOperator` over a chat transcript is indistinguishable from one returning it over a metric, and the zero value is the trusted one — a pack that forgets is trusted, and no check outside the pack can find it |
 | A third-party MCP tool acts without review                    | High     | Phase 28 registers discovered tools in a reserved `mcp.<instance>.<tool>` namespace that is in `RequiresApprovalFor` by default, never valid as a `Criterion.Verifier`, never `NeedsWorkspace`, and outside pack conformance entirely. A pack that could be graded by a verifier that appeared this morning is a pack whose criteria mean nothing; a tool that could write files without declaring it would bypass ADR 019. Instances carry an allowlist, so a server adding a tool does not widen what a twin may do |
-| An uncalibrated judge grades every criterion in every pack    | High     | **Open until Phase 30.** `evaluateWithAgent` settles every verified criterion in every domain, and how often it agrees with a person has never been measured. Phase 25 fixed what it was shown (nothing the actions produced) and how it parsed a verdict (a negation counted as a pass); neither of those is calibration. The completion score the whole system reports rests on it. Phase 30's corpus is the one this deployment already has — resolved checkpoints carry a plan and a human's verdict on it — and the number it produces is published rather than assumed |
+| An uncalibrated judge grades every criterion in every pack    | High     | **Measured in Phase 30, not closed.** `evaluateWithAgent` settles every verified criterion in every domain, and the completion score the whole system reports rests on it. Phase 25 fixed what it was shown (nothing the actions produced) and how it parsed a verdict (a negation counted as a pass); neither of those is calibration. Phase 30 measured agreement with human checkpoint decisions for the first time: 51.1% (23 of 45), published in `docs/benchmarks.md`. That corpus is operator-labelled and many of its rejections were procedural, so the figure is not a verdict on the judge; what it shows is that the judge passed 39 of 45 plans, and so says little about whether a human would reject. The verdict parser is now gated in CI against a golden set, which catches the Phase 25 regression and nothing wider. **What remains open** is a measurement on a deployment with independent reviewers, calibration tracked over time, and any change to the judge itself ([ADR 024](adr/024-the-evaluation-set-is-recorded-history.md)) |
 | Audit rows pruned below what an assessor asks for             | Medium   | **Open until Phase 31.** Memory has had a retention scheduler since Phase 13; `tool_events` has no declared floor, so nothing stops a future retention job from deleting the record of who approved what. Phase 31 declares a floor (six months minimum, configurable upward only) and refuses a pruning path configured below it, naming the floor rather than trimming quietly. The export it adds is reproducible for the same reason a digest is — it reads and accumulates nothing — so a failed export is retried rather than reconstructed |
 | A quota approval used to raise another tenant's limit         | Medium   | Phase 18 checks `quota:approve` against the subject the request names, rendered as a resource carrying its containers — the same containment rule ADR 010 set for handing out bindings. A route gate cannot do this: the subject arrives inside a stored request rather than in the URL. Pinned by `TestQuotaApprovalIsConfinedToTheApproversTenant`. Rejecting is deliberately ungated, so requests from tenants nobody administers cannot get stuck pending |
 

@@ -152,6 +152,17 @@ const (
 	ToolEventDemotion  = "demotion"
 )
 
+// ResolvedCheckpointFilter narrows the resolved-checkpoint listing. Empty
+// TwinID matches every twin; a zero Since or Until leaves that end of the
+// resolution window unbounded. A zero or negative Limit lists every match; a
+// positive one keeps the Limit most recently resolved of them, still returned
+// oldest decision first.
+type ResolvedCheckpointFilter struct {
+	TwinID       string
+	Since, Until time.Time
+	Limit        int
+}
+
 // ToolEventFilter narrows the audit log query. All fields are optional;
 // CreatedAtSince applies an inclusive lower bound on event timestamps.
 type ToolEventFilter struct {
@@ -224,6 +235,9 @@ type StorageAdapter interface {
 	GetCheckpoint(ctx context.Context, id string) (checkpoint.Checkpoint, error)
 	ResolveCheckpoint(ctx context.Context, id string, d checkpoint.Decision) error
 	ListPendingCheckpoints(ctx context.Context, twinID string) ([]checkpoint.Checkpoint, error)
+	// ListResolvedCheckpoints is the judge-calibration corpus (Phase 30):
+	// every checkpoint a human has decided, oldest decision first.
+	ListResolvedCheckpoints(ctx context.Context, f ResolvedCheckpointFilter) ([]checkpoint.Checkpoint, error)
 
 	// Worktrees
 	SaveWorktree(ctx context.Context, w Worktree) error

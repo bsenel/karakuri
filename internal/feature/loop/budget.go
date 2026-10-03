@@ -167,6 +167,9 @@ func (s *serviceImpl) pauseIfBudgetExhausted(ctx context.Context, sc *stepContex
 			"Approve to continue for one more iteration, or reject to stop here.",
 		sc.loopID, sc.twinID, usage.Limit-usage.Remaining, usage.Limit)
 
+	// No WorldState: this asks "keep spending?", not whether a plan is right,
+	// so there is no plan label to replay against. Recording one would count
+	// this checkpoint as replayable in the eval corpus.
 	cp, err := s.cpSvc.Create(ctx, sc.obj.ID, sc.twinID,
 		budgetExhaustedReason, summary,
 		[]string{"approve", "reject"},

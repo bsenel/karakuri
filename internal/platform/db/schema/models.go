@@ -119,11 +119,14 @@ type CheckpointModel struct {
 	ActionsJSON string `gorm:"column:actions_json;not null;default:'[]'"`
 	// AuditEventID links the checkpoint to its kind=escalation audit row
 	// (Phase 13.5). Empty when the audit write failed at escalation time.
-	AuditEventID string     `gorm:"column:audit_event_id;not null;default:''"`
-	Status       string     `gorm:"column:status;not null;default:'pending';index"`
-	DecisionJSON string     `gorm:"column:decision_json"`
-	CreatedAt    time.Time  `gorm:"column:created_at;autoCreateTime"`
-	ResolvedAt   *time.Time `gorm:"column:resolved_at"`
+	AuditEventID string `gorm:"column:audit_event_id;not null;default:''"`
+	// WorldStateJSON serializes the loop.WorldState the planner saw when it
+	// escalated (Phase 30). Empty for budget pauses and older rows.
+	WorldStateJSON string     `gorm:"column:world_state_json;type:text;not null;default:''"`
+	Status         string     `gorm:"column:status;not null;default:'pending';index"`
+	DecisionJSON   string     `gorm:"column:decision_json"`
+	CreatedAt      time.Time  `gorm:"column:created_at;autoCreateTime"`
+	ResolvedAt     *time.Time `gorm:"column:resolved_at"`
 }
 
 func (CheckpointModel) TableName() string { return "checkpoints" }

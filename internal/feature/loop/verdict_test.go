@@ -31,7 +31,7 @@ func TestVerdictDoesNotInvertOnNegation(t *testing.T) {
 		"unmet",
 	} {
 		t.Run(reply, func(t *testing.T) {
-			if verdictIsPass(reply) {
+			if VerdictIsPass(reply) {
 				t.Errorf("%q scored as met", reply)
 			}
 		})
@@ -49,7 +49,7 @@ func TestVerdictAcceptsAPass(t *testing.T) {
 		"PASS — the results show the pull request URL.",
 	} {
 		t.Run(reply, func(t *testing.T) {
-			if !verdictIsPass(reply) {
+			if !VerdictIsPass(reply) {
 				t.Errorf("%q scored as unmet", reply)
 			}
 		})
@@ -60,7 +60,7 @@ func TestVerdictAcceptsAPass(t *testing.T) {
 // unintelligible reply is the silent success this codebase keeps finding.
 func TestVerdictFailsOnAnUnparseableAnswer(t *testing.T) {
 	for _, reply := range []string{"", "   ", "\n", "???", "42"} {
-		if verdictIsPass(reply) {
+		if VerdictIsPass(reply) {
 			t.Errorf("%q scored as met", reply)
 		}
 	}

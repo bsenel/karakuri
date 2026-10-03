@@ -54,6 +54,7 @@ func NewRoot() *cobra.Command {
 		teamCmd(),
 		projectCmd(),
 		costCmd(),
+		evalCmd(),
 	)
 	return root
 }

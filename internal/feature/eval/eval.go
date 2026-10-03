@@ -1,0 +1,307 @@
+// Package eval calibrates the judge against human checkpoint verdicts.
+//
+// It is read-only: it lists checkpoints a human already resolved, asks the
+// judge the same PASS/FAIL question about each drafted plan, and reports how
+// often the two agree. Nothing is written back. A human "approve" is the
+// positive label; "reject" and "modify" are both negative, because a plan the
+// reviewer had to change is not one they would have let run as drafted.
+package eval
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"strings"
+	"time"
+
+	coreagent "github.com/bsenel/karakuri/internal/core/agent"
+	"github.com/bsenel/karakuri/internal/core/checkpoint"
+	"github.com/bsenel/karakuri/internal/core/objective"
+	"github.com/bsenel/karakuri/internal/feature/loop"
+	"github.com/bsenel/karakuri/internal/platform/storage"
+	karakuriquota "github.com/bsenel/karakuri/internal/quota"
+	"github.com/bsenel/karakuri/quota/cost"
+)
+
+// The choices a reviewer resolves a checkpoint with. internal/feature/checkpoint
+// spells them as string literals rather than exported constants, so they are
+// spelled the same way here; anything else is not a label we can score.
+const (
+	decisionApprove = "approve"
+	decisionReject  = "reject"
+	decisionModify  = "modify"
+)
+
+// Bounds on what the judge reads, for the reason renderOutcomes bounds its
+// evidence: a plan is judged against its objective, and a payload large enough
+// to push the objective out of the model's attention defeats showing it at all.
+const (
+	maxDescriptionChars = 2000
+	maxActionChars      = 600
+)
+
+// Store is the slice of storage calibration reads.
+type Store interface {
+	ListResolvedCheckpoints(ctx context.Context, f storage.ResolvedCheckpointFilter) ([]checkpoint.Checkpoint, error)
+	GetObjective(ctx context.Context, id objective.ObjectiveID) (objective.Objective, error)
+}
+
+// JudgeFor returns the agent that judges an objective's criteria in the loop.
+//
+// The loop has no one judge: evaluateWithAgent asks the objective's own agent,
+// and each agent chooses its provider and temperature. So the judge is
+// resolved per objective, the way the loop resolves it. One fixed agent for
+// every objective would calibrate a judge the loop does not run for most of
+// them, and on a deployment with more than one provider it could be a
+// different model.
+type JudgeFor func(ctx context.Context, obj objective.Objective) (coreagent.Agent, error)
+
+// Service runs judge calibration.
+type Service struct {
+	store    Store
+	judgeFor JudgeFor
+	costs    *karakuriquota.Recorder
+}
+
+// NewService builds the calibration service. costs may be nil, which records
+// nothing.
+func NewService(store Store, judgeFor JudgeFor, costs *karakuriquota.Recorder) *Service {
+	return &Service{store: store, judgeFor: judgeFor, costs: costs}
+}
+
+// CalibrationReport says how often the judge agreed with the humans who
+// resolved the checkpoints in the window.
+type CalibrationReport struct {
+	TwinID       string
+	Since, Until time.Time
+
+	N, Agreed, Skipped int
+	Agreement          float64
+
+	// Replayable counts the resolved checkpoints in the window that carry a
+	// recorded world state. This is the planner-replay corpus, which starts
+	// empty and grows only from escalations after this shipped.
+	Replayable int
+
+	Confusion  Confusion
+	ByDecision map[string]DecisionStats
+	Items      []Item
+}
+
+// Confusion crosses the judge's verdict with the human's.
+type Confusion struct {
+	JudgePassHumanApprove, JudgePassHumanReject int
+	JudgeFailHumanApprove, JudgeFailHumanReject int
+}
+
+// DecisionStats breaks agreement down by the human's choice.
+type DecisionStats struct {
+	N, Agreed, JudgePass int
+}
+
+// Item is one scored checkpoint. Title, Criterion and Actions are what the
+// judge was shown, kept so the item can be exported to a golden set.
+type Item struct {
+	CheckpointID, ObjectiveID, Choice string
+	HumanApprove, JudgePass, Agreed   bool
+	Reply, Error                      string
+	Title, Criterion, Actions         string
+}
+
+// Calibrate scores the judge against every labelled checkpoint f selects.
+func (s *Service) Calibrate(ctx context.Context, f storage.ResolvedCheckpointFilter) (CalibrationReport, error) {
+	cps, err := s.store.ListResolvedCheckpoints(ctx, f)
+	if err != nil {
+		return CalibrationReport{}, err
+	}
+
+	rep := CalibrationReport{
+		TwinID: f.TwinID, Since: f.Since, Until: f.Until,
+		ByDecision: map[string]DecisionStats{},
+		// Over every listed checkpoint, skipped ones included: replay needs a
+		// world state, not a label the judge can be scored against.
+		Replayable: countReplayable(cps),
+	}
+	for _, cp := range cps {
+		if err := ctx.Err(); err != nil {
+			return CalibrationReport{}, err
+		}
+
+		// Skipped rather than guessed at: a checkpoint without a recognisable
+		// human verdict has no label, and one whose objective is gone cannot be
+		// put to the judge the way the loop would have put it.
+		if cp.Decision == nil {
+			rep.Skipped++
+			continue
+		}
+		choice := cp.Decision.Choice
+		if choice != decisionApprove && choice != decisionReject && choice != decisionModify {
+			rep.Skipped++
+			continue
+		}
+		obj, err := s.store.GetObjective(ctx, cp.ObjectiveID)
+		if err != nil {
+			rep.Skipped++
+			continue
+		}
+
+		it := Item{
+			CheckpointID: cp.ID, ObjectiveID: string(cp.ObjectiveID), Choice: choice,
+			HumanApprove: humanApproves(choice),
+			Title:        obj.Title, Criterion: renderCriteria(obj), Actions: renderActions(cp.Actions),
+		}
+		it.JudgePass, it.Reply, it.Error = s.judgePlan(ctx, cp.TwinID, obj, cp.Actions)
+		// A caller who left mid-call gets no report: the judge's answer to a
+		// cancelled request is not a verdict, and on the last checkpoint there
+		// is no next iteration to notice in.
+		if err := ctx.Err(); err != nil {
+			return CalibrationReport{}, err
+		}
+		it.Agreed = it.JudgePass == it.HumanApprove
+
+		rep.N++
+		if it.Agreed {
+			rep.Agreed++
+		}
+		switch {
+		case it.JudgePass && it.HumanApprove:
+			rep.Confusion.JudgePassHumanApprove++
+		case it.JudgePass:
+			rep.Confusion.JudgePassHumanReject++
+		case it.HumanApprove:
+			rep.Confusion.JudgeFailHumanApprove++
+		default:
+			rep.Confusion.JudgeFailHumanReject++
+		}
+		ds := rep.ByDecision[choice]
+		ds.N++
+		if it.Agreed {
+			ds.Agreed++
+		}
+		if it.JudgePass {
+			ds.JudgePass++
+		}
+		rep.ByDecision[choice] = ds
+		rep.Items = append(rep.Items, it)
+	}
+	if rep.N > 0 {
+		rep.Agreement = float64(rep.Agreed) / float64(rep.N)
+	}
+	return rep, nil
+}
+
+// humanApproves maps a reviewer's choice to the label the judge is scored
+// against: only approve is positive, because a plan the reviewer rejected or
+// had to modify is not one they would have let run as drafted.
+func humanApproves(choice string) bool {
+	return choice == decisionApprove
+}
+
+func countReplayable(cps []checkpoint.Checkpoint) int {
+	n := 0
+	for _, cp := range cps {
+		if cp.WorldState != nil {
+			n++
+		}
+	}
+	return n
+}
+
+// judgePlan asks the judge the loop's question about a drafted plan. It has to
+// be asked the loop's way and read with the loop's parser, or the report
+// measures a judge nobody runs.
+func (s *Service) judgePlan(ctx context.Context, twinID string, obj objective.Objective, actions []checkpoint.Action) (pass bool, reply, errText string) {
+	// Mirrors evaluateWithAgent: nothing drafted means nothing to judge, and
+	// asking anyway would score the judge on how plausible the objective sounds.
+	if len(actions) == 0 {
+		return false, "", ""
+	}
+	judge, err := s.judgeFor(ctx, obj)
+	if err != nil {
+		// No agent to ask is no approval, the same as an agent that errored.
+		return false, "", err.Error()
+	}
+	out, err := judge.Run(ctx, coreagent.Input{
+		Objective: obj,
+		// Nil, as in evaluateWithAgent: the plan is in the task, and the world
+		// the reviewer saw was never recorded on the checkpoint.
+		WorldState: nil,
+		Memory:     nil,
+		Task:       renderPlanTask(obj, actions),
+	})
+	if err != nil {
+		// A judge that could not answer did not approve, same as in the loop.
+		return false, "", err.Error()
+	}
+	// Charged to the twin and not to the objective. An objective's ledger
+	// entries count toward its own daily budget, and measuring the judge must
+	// not push a standing objective over its ceiling.
+	s.costs.Record(ctx, karakuriquota.Spend{
+		TwinID:   twinID,
+		Provider: out.Provider,
+		Model:    out.Model,
+		Units:    float64(out.TokensUsed),
+		UnitKind: cost.UnitTokens,
+	})
+	return loop.VerdictIsPass(out.Content), out.Content, ""
+}
+
+// renderPlanTask builds the judge's prompt for one drafted plan. It keeps
+// evaluateWithAgent's contract — shown evidence only, absence is FAIL, one
+// word — so the only thing that differs from the loop's judgement is what is
+// being judged.
+func renderPlanTask(obj objective.Objective, actions []checkpoint.Action) string {
+	var sb strings.Builder
+	sb.WriteString("Evaluate whether this proposed plan should be accepted as proposed " +
+		"for the objective below, based only on what is shown.\n\n")
+	fmt.Fprintf(&sb, "Objective: %s\n", obj.Title)
+	fmt.Fprintf(&sb, "Description: %s\n", truncate(obj.Description, maxDescriptionChars))
+	sb.WriteString("Success criteria:\n")
+	for _, c := range obj.SuccessCriteria {
+		fmt.Fprintf(&sb, "- %s\n", c.Description)
+	}
+	sb.WriteString("\nProposed actions:\n")
+	sb.WriteString(renderActions(actions))
+	sb.WriteString("\nIf the plan does not clearly serve the objective, answer FAIL — " +
+		"absence of evidence is not evidence it would.\n" +
+		"Answer with exactly one word: PASS or FAIL.")
+	return sb.String()
+}
+
+// renderCriteria joins an objective's success criteria one per line.
+func renderCriteria(obj objective.Objective) string {
+	cs := make([]string, 0, len(obj.SuccessCriteria))
+	for _, c := range obj.SuccessCriteria {
+		cs = append(cs, c.Description)
+	}
+	return strings.Join(cs, "\n")
+}
+
+// renderActions lays the draft out the way renderOutcomes lays out results,
+// capability first, because that is what a reviewer reads first too.
+func renderActions(actions []checkpoint.Action) string {
+	var sb strings.Builder
+	for i, a := range actions {
+		fmt.Fprintf(&sb, "%d. %s", i+1, a.CapabilityID)
+		if a.EnvID != "" {
+			fmt.Fprintf(&sb, " (%s)", a.EnvID)
+		}
+		if a.Reason != "" {
+			fmt.Fprintf(&sb, ": %s", truncate(a.Reason, maxActionChars))
+		}
+		if len(a.Params) > 0 {
+			if params, err := json.Marshal(a.Params); err == nil {
+				fmt.Fprintf(&sb, "\n   params: %s", truncate(string(params), maxActionChars))
+			}
+		}
+		sb.WriteString("\n")
+	}
+	return sb.String()
+}
+
+func truncate(s string, max int) string {
+	if len(s) <= max {
+		return s
+	}
+	return s[:max] + "…(truncated)"
+}
