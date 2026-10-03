@@ -57,6 +57,10 @@ type stepContext struct {
 // columns an auditor filters on, and in the payload the agent definition and
 // the bounds that were applied. Shared by the escalation and execute rows so
 // the two cannot come to describe the same decision differently.
+//
+// risk_class is how the template's author regarded the work when the decision
+// was taken; it is copied onto the row because a template can be reclassified
+// afterwards.
 func (sc *stepContext) stampProvenance(e *storage.ToolEvent, p plan, payload map[string]any) {
 	authority := sc.agentDef.Authority
 	payload["agent_definition_id"] = string(sc.agentDef.ID)
@@ -65,11 +69,31 @@ func (sc *stepContext) stampProvenance(e *storage.ToolEvent, p plan, payload map
 	payload["confidence_threshold"] = authority.ConfidenceThreshold
 	payload["effective_threshold"] = sc.threshold
 	payload["requires_approval_for"] = authority.RequiresApprovalFor
+	payload["risk_class"] = sc.riskClass().String()
 
 	e.Provider = p.provider
 	e.Model = p.model
 	e.TemplateID = sc.obj.TemplateID
 	e.AutonomyRung = string(sc.rung)
+}
+
+// riskClass is the class declared by the template the objective was built from.
+// The template is looked up by ID in every registered pack, since a
+// cross-domain objective's template may live outside its primary domain. No
+// template, or one no pack declares any more, is unclassified.
+func (sc *stepContext) riskClass() objective.RiskClass {
+	id := sc.obj.TemplateID
+	if id == "" || sc.svc == nil || sc.svc.domReg == nil {
+		return objective.RiskUnclassified
+	}
+	for _, pack := range sc.svc.domReg.List() {
+		for _, tmpl := range pack.ObjectiveTemplates() {
+			if tmpl.ID == id {
+				return tmpl.Risk
+			}
+		}
+	}
+	return objective.RiskUnclassified
 }
 
 func (s *serviceImpl) runLoop(ctx context.Context, loopID string, req loop.Request) {
