@@ -85,11 +85,12 @@ func softwareObjectiveTemplates() []objective.Template {
 			// time pressure: the one software template where a wrong action
 			// reaches the people depending on the service.
 			Risk:        objective.RiskHigh,
-			Description: "Fetch logs/metrics, identify issues, produce and execute remediation plan",
+			Description: "Observe open alerts, fetch logs and metrics, propose a remediation that a human approves, verify the alerts cleared",
 			SuccessCriteria: []objective.Criterion{
 				judged("root-cause", "Root cause identified", 0.4),
-				crit("remediation", "Remediation applied", "software.verify.run_tests", 0.6),
+				crit("remediation", "Remediation applied and the alerts cleared", CapAlertsResolved, 0.6),
 			},
+			SuggestedAgents: []agent.Definition{{ID: "software.agent.sre"}},
 			Constraints: []objective.Constraint{
 				hard("approval-required", "All act capabilities require human approval", "approval_given"),
 			},

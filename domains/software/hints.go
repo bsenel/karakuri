@@ -43,6 +43,12 @@ func softwarePlannerHints() []domain.PlannerHint {
 			Priority: 10,
 		},
 		{
+			Condition: "objective.template == 'software.objective.incident_response'",
+			Guidance: "fetch evidence first (observe.fetch_logs / observe.fetch_metrics), name the observed alert_id " +
+				"in software.act.run_remediation, and end with software.verify.alerts_resolved for the same alert_ids",
+			Priority: 9,
+		},
+		{
 			Condition: "capability.id startswith 'software.reason.research'",
 			Guidance:  "prefer Gemini provider for research capabilities",
 			Priority:  5,
