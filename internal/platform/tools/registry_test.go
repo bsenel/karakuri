@@ -419,6 +419,94 @@ func TestObservabilitySlot_BuildsPrometheusAndLokiFromConfig(t *testing.T) {
 	}
 }
 
+func TestObservabilitySlot_BuildsDatadogAndPagerDutyFromConfig(t *testing.T) {
+	r := NewRegistryFromConfig(config.ToolsConfig{
+		Observability: config.SlotConfig{
+			Default: "monitors",
+			Instances: map[string]config.InstanceConfig{
+				"monitors": {Type: "datadog", Options: map[string]any{"api_key": "dd-api", "app_key": "dd-app", "site": "datadoghq.eu"}},
+				"paging":   {Type: "pagerduty", Options: map[string]any{"token": "pd-tok"}},
+			},
+		},
+	})
+
+	types := map[string]string{}
+	for _, info := range r.Observability.List() {
+		types[info.Name] = info.Type
+	}
+	if len(types) != 2 {
+		t.Fatalf("expected 2 observability instances, got %d: %+v", len(types), types)
+	}
+	if types["monitors"] != "datadog" {
+		t.Errorf("monitors type = %q, want datadog", types["monitors"])
+	}
+	if types["paging"] != "pagerduty" {
+		t.Errorf("paging type = %q, want pagerduty", types["paging"])
+	}
+
+	monitors, ok := r.Observability.Resolve("monitors")
+	if !ok {
+		t.Fatalf("monitors instance should resolve")
+	}
+	paging, ok := r.Observability.Resolve("paging")
+	if !ok {
+		t.Fatalf("paging instance should resolve")
+	}
+	if !monitors.Active() {
+		t.Errorf("datadog instance with both keys should be active")
+	}
+	if !paging.Active() {
+		t.Errorf("pagerduty instance with a token should be active")
+	}
+
+	rows := map[string]AdapterStatus{}
+	for _, s := range r.Status() {
+		if s.Slot == "observability" {
+			rows[s.Instance] = s
+		}
+	}
+	if len(rows) != 2 {
+		t.Fatalf("expected 2 observability status rows, got %d: %+v", len(rows), rows)
+	}
+	if row := rows["monitors"]; row.Type != "datadog" || !row.Active || !row.IsDefault {
+		t.Errorf("expected monitors row datadog+active+default, got %+v", row)
+	}
+	if row := rows["paging"]; row.Type != "pagerduty" || !row.Active || row.IsDefault {
+		t.Errorf("expected paging row pagerduty+active+non-default, got %+v", row)
+	}
+}
+
+func TestObservabilitySlot_DatadogWithoutAppKeyIsListedButInactive(t *testing.T) {
+	r := NewRegistryFromConfig(config.ToolsConfig{
+		Observability: config.SlotConfig{
+			Default: "monitors",
+			Instances: map[string]config.InstanceConfig{
+				"monitors": {Type: "datadog", Options: map[string]any{"api_key": "dd-api", "site": "datadoghq.eu"}},
+			},
+		},
+	})
+
+	infos := r.Observability.List()
+	if len(infos) != 1 {
+		t.Fatalf("expected 1 observability instance, got %d: %+v", len(infos), infos)
+	}
+	if infos[0].Name != "monitors" || infos[0].Type != "datadog" {
+		t.Errorf("instance = %+v, want monitors of type datadog", infos[0])
+	}
+	monitors, ok := r.Observability.Resolve("monitors")
+	if !ok {
+		t.Fatalf("monitors instance should resolve")
+	}
+	if monitors.Active() {
+		t.Errorf("datadog instance without an app_key should not be active")
+	}
+	for _, s := range r.Status() {
+		if s.Slot == "observability" && s.Instance == "monitors" && s.Active {
+			t.Errorf("expected an inactive status row, got %+v", s)
+		}
+	}
+}
+
 func TestUnknownObservabilityType_LoggedAndSkipped(t *testing.T) {
 	var logs bytes.Buffer
 	prev := slog.Default()
