@@ -16,6 +16,9 @@ type Result struct {
 	Check   string `json:"check"`
 	Passed  bool   `json:"passed"`
 	Message string `json:"message"`
+	// Warning marks a result worth saying out loud that is not a failure:
+	// Passed stays true, so nothing counting failures counts it.
+	Warning bool `json:"warning,omitempty"`
 }
 
 // Suite runs conformance checks against a domain.Pack.
@@ -162,8 +165,8 @@ func checkCapabilityRouting(_ context.Context, p domain.Pack) Result {
 	for _, c := range p.Capabilities() {
 		if c.NeedsWorkspace && servedBy[c.ID] == "" {
 			return Result{
-				Check:  name,
-				Passed: false,
+				Check:   name,
+				Passed:  false,
 				Message: fmt.Sprintf("capability %q declares NeedsWorkspace but no environment serves it: it would be given a worktree and then fail", c.ID),
 			}
 		}
@@ -623,6 +626,18 @@ func CheckDanglingVerifiers(packs ...domain.Pack) []Result {
 		}}
 	}
 	return results
+}
+
+// CheckTemplateRisk reports how each template of the given packs is classified.
+// Run it at boot against the packs that are actually active.
+//
+// One Result per template, naming its ID, domain and classification. A
+// classified template passes. An unclassified one passes with Warning set: the
+// author has not said how they regard it, which is worth a line in the log and
+// is not a reason to refuse to start. A value outside objective.RiskClass's set
+// fails — it is a typo, and a classification nobody can read is worse than none.
+func CheckTemplateRisk(packs ...domain.Pack) []Result {
+	return nil // stub: Phase 31 slice 3 part B
 }
 
 // CheckCrossPackCollisions verifies no two packs share the same capability ID,
