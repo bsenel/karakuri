@@ -71,3 +71,152 @@ func TestDeleteToolEventsBefore(t *testing.T) {
 		t.Errorf("second delete = %d, want 0", again)
 	}
 }
+
+// What produced a decision is kept as columns, not inside the payload: an
+// auditor asks "everything this model decided" across the whole log, and that
+// is a WHERE clause or it is a scan of every row's JSON.
+func TestToolEventProvenanceRoundTripsAsColumns(t *testing.T) {
+	ctx := context.Background()
+	s, db := newStoreWithDB(t)
+
+	if err := s.SaveToolEvent(ctx, storage.ToolEvent{
+		ID: "ev-1", ObjectiveID: "obj-1", AgentID: "agent-1", Kind: storage.ToolEventEscalation,
+		Provider: "anthropic", Model: "model-a", TemplateID: "tmpl-green-build", AutonomyRung: "propose",
+	}); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+
+	listed, err := s.ListToolEvents(ctx, storage.ToolEventFilter{})
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if len(listed) != 1 {
+		t.Fatalf("listed %d rows, want 1", len(listed))
+	}
+	got := listed[0]
+	if got.Provider != "anthropic" || got.Model != "model-a" {
+		t.Errorf("provider/model = %q/%q, want anthropic/model-a", got.Provider, got.Model)
+	}
+	if got.TemplateID != "tmpl-green-build" {
+		t.Errorf("template id = %q, want tmpl-green-build", got.TemplateID)
+	}
+	if got.AutonomyRung != "propose" {
+		t.Errorf("autonomy rung = %q, want propose", got.AutonomyRung)
+	}
+
+	var cols struct{ Provider, Model, TemplateID, AutonomyRung string }
+	if err := db.Raw("SELECT provider, model, template_id, autonomy_rung FROM tool_events WHERE id = ?", "ev-1").
+		Scan(&cols).Error; err != nil {
+		t.Fatalf("read the columns: %v", err)
+	}
+	if cols.Provider != "anthropic" || cols.Model != "model-a" ||
+		cols.TemplateID != "tmpl-green-build" || cols.AutonomyRung != "propose" {
+		t.Errorf("columns = %+v, want anthropic/model-a/tmpl-green-build/propose", cols)
+	}
+}
+
+// Each filter is seeded with rows that differ in that one field and nothing
+// else, so a filter that is accepted and ignored returns all three and fails.
+func TestListToolEventsNarrowsByProvenance(t *testing.T) {
+	base := storage.ToolEvent{
+		ObjectiveID: "obj-1", AgentID: "agent-1", Kind: storage.ToolEventExecute, Success: true,
+		Provider: "anthropic", Model: "model-a", TemplateID: "tmpl-green-build", AutonomyRung: "act",
+	}
+	cases := map[string]struct {
+		set    func(e *storage.ToolEvent, v string)
+		filter func(v string) storage.ToolEventFilter
+		values [3]string // the first is the one asked for; the last is "unset"
+	}{
+		"provider": {
+			set:    func(e *storage.ToolEvent, v string) { e.Provider = v },
+			filter: func(v string) storage.ToolEventFilter { return storage.ToolEventFilter{Provider: v} },
+			values: [3]string{"anthropic", "fallback", ""},
+		},
+		"model": {
+			set:    func(e *storage.ToolEvent, v string) { e.Model = v },
+			filter: func(v string) storage.ToolEventFilter { return storage.ToolEventFilter{Model: v} },
+			values: [3]string{"model-a", "model-b", ""},
+		},
+		"template": {
+			set:    func(e *storage.ToolEvent, v string) { e.TemplateID = v },
+			filter: func(v string) storage.ToolEventFilter { return storage.ToolEventFilter{TemplateID: v} },
+			values: [3]string{"tmpl-green-build", "tmpl-triage", ""},
+		},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			ctx := context.Background()
+			s := newStore(t)
+			for i, v := range tc.values {
+				e := base
+				e.ID = []string{"wanted", "other", "unset"}[i]
+				tc.set(&e, v)
+				if err := s.SaveToolEvent(ctx, e); err != nil {
+					t.Fatalf("save %s: %v", e.ID, err)
+				}
+			}
+
+			got, err := s.ListToolEvents(ctx, tc.filter(tc.values[0]))
+			if err != nil {
+				t.Fatalf("list: %v", err)
+			}
+			ids := make([]string, 0, len(got))
+			for _, e := range got {
+				ids = append(ids, e.ID)
+			}
+			slices.Sort(ids)
+			if !slices.Equal(ids, []string{"wanted"}) {
+				t.Errorf("filtering %s by %q listed %v, want only [wanted]", name, tc.values[0], ids)
+			}
+
+			// An empty filter field means unfiltered, as every other field does.
+			all, err := s.ListToolEvents(ctx, storage.ToolEventFilter{})
+			if err != nil {
+				t.Fatalf("list all: %v", err)
+			}
+			if len(all) != 3 {
+				t.Errorf("unfiltered listing = %d rows, want 3", len(all))
+			}
+		})
+	}
+}
+
+// Every row written before these columns existed names none of them. It must
+// still list, and read back as "not recorded" rather than fail the scan.
+func TestToolEventWrittenBeforeProvenanceReadsBackEmpty(t *testing.T) {
+	ctx := context.Background()
+	s, db := newStoreWithDB(t)
+
+	if err := db.Exec(
+		`INSERT INTO tool_events (id, objective_id, agent_id, capability, adapter, success, confidence, kind, created_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		"ev-old", "obj-1", "agent-1", "test.run", "software.env.ci", true, 0.9, storage.ToolEventExecute,
+		time.Date(2026, 4, 1, 12, 0, 0, 0, time.UTC),
+	).Error; err != nil {
+		t.Fatalf("insert the old row: %v", err)
+	}
+
+	listed, err := s.ListToolEvents(ctx, storage.ToolEventFilter{ObjectiveID: "obj-1"})
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if len(listed) != 1 || listed[0].ID != "ev-old" {
+		t.Fatalf("listed %+v, want the one old row", listed)
+	}
+	got := listed[0]
+	if got.Provider != "" || got.Model != "" || got.TemplateID != "" || got.AutonomyRung != "" {
+		t.Errorf("provider/model/template/rung = %q/%q/%q/%q, want all empty",
+			got.Provider, got.Model, got.TemplateID, got.AutonomyRung)
+	}
+
+	// And the columns are there to be empty: without them this row would be
+	// indistinguishable from one the schema simply cannot describe.
+	var n int64
+	if err := db.Raw("SELECT COUNT(*) FROM tool_events WHERE id = ? AND provider = '' AND model = '' AND template_id = '' AND autonomy_rung = ''", "ev-old").
+		Scan(&n).Error; err != nil {
+		t.Fatalf("read the columns: %v", err)
+	}
+	if n != 1 {
+		t.Errorf("old row with empty provenance columns = %d, want 1", n)
+	}
+}
