@@ -4,7 +4,10 @@ import (
 	"bytes"
 	"context"
 	"log/slog"
+	"net/http"
+	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -324,6 +327,95 @@ func TestEmptyObservabilitySlotHasNoStatusRow(t *testing.T) {
 		if s.Slot == "observability" {
 			t.Errorf("empty Observability slot should have no status row, got %+v", s)
 		}
+	}
+}
+
+func TestObservabilitySlot_BuildsPrometheusAndLokiFromConfig(t *testing.T) {
+	var promAuth, lokiAuth, lokiTenant atomic.Value
+	promSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		promAuth.Store(r.Header.Get("Authorization"))
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"status":"success","data":{"alerts":[]}}`))
+	}))
+	t.Cleanup(promSrv.Close)
+	lokiSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		lokiAuth.Store(r.Header.Get("Authorization"))
+		lokiTenant.Store(r.Header.Get("X-Scope-OrgID"))
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"status":"success","data":{"resultType":"streams","result":[]}}`))
+	}))
+	t.Cleanup(lokiSrv.Close)
+
+	r := NewRegistryFromConfig(config.ToolsConfig{
+		Observability: config.SlotConfig{
+			Default: "metrics",
+			Instances: map[string]config.InstanceConfig{
+				"metrics": {Type: "prometheus", Options: map[string]any{"url": promSrv.URL, "bearer_token": "prom-tok"}},
+				"logs":    {Type: "loki", Options: map[string]any{"url": lokiSrv.URL, "bearer_token": "loki-tok", "tenant": "acme"}},
+			},
+		},
+	})
+
+	types := map[string]string{}
+	for _, info := range r.Observability.List() {
+		types[info.Name] = info.Type
+	}
+	if len(types) != 2 {
+		t.Fatalf("expected 2 observability instances, got %d: %+v", len(types), types)
+	}
+	if types["metrics"] != "prometheus" {
+		t.Errorf("metrics type = %q, want prometheus", types["metrics"])
+	}
+	if types["logs"] != "loki" {
+		t.Errorf("logs type = %q, want loki", types["logs"])
+	}
+
+	metrics, ok := r.Observability.Resolve("metrics")
+	if !ok {
+		t.Fatalf("metrics instance should resolve")
+	}
+	logs, ok := r.Observability.Resolve("logs")
+	if !ok {
+		t.Fatalf("logs instance should resolve")
+	}
+	if !metrics.Active() {
+		t.Errorf("prometheus instance with a url should be active")
+	}
+	if !logs.Active() {
+		t.Errorf("loki instance with a url should be active")
+	}
+
+	rows := map[string]AdapterStatus{}
+	for _, s := range r.Status() {
+		if s.Slot == "observability" {
+			rows[s.Instance] = s
+		}
+	}
+	if len(rows) != 2 {
+		t.Fatalf("expected 2 observability status rows, got %d: %+v", len(rows), rows)
+	}
+	if row := rows["metrics"]; row.Type != "prometheus" || !row.Active || !row.IsDefault {
+		t.Errorf("expected metrics row prometheus+active+default, got %+v", row)
+	}
+	if row := rows["logs"]; row.Type != "loki" || !row.Active || row.IsDefault {
+		t.Errorf("expected logs row loki+active+non-default, got %+v", row)
+	}
+
+	// The options reach the adapters end to end, not just the type switch.
+	if _, err := metrics.GetAlerts(context.Background(), "", "", time.Time{}, ""); err != nil {
+		t.Fatalf("GetAlerts through the registry: %v", err)
+	}
+	if got, _ := promAuth.Load().(string); got != "Bearer prom-tok" {
+		t.Errorf("prometheus Authorization = %q, want %q", got, "Bearer prom-tok")
+	}
+	if _, err := logs.FetchLogs(context.Background(), observability.LogQuery{Service: "api", Since: time.Now().Add(-time.Hour)}); err != nil {
+		t.Fatalf("FetchLogs through the registry: %v", err)
+	}
+	if got, _ := lokiTenant.Load().(string); got != "acme" {
+		t.Errorf("loki X-Scope-OrgID = %q, want acme", got)
+	}
+	if got, _ := lokiAuth.Load().(string); got != "Bearer loki-tok" {
+		t.Errorf("loki Authorization = %q, want %q", got, "Bearer loki-tok")
 	}
 }
 
