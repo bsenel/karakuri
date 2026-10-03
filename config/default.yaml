@@ -378,9 +378,16 @@ tools:
   cli_agents:
     default: ""
     instances: {}
-  # Observability tool slot (Phase 32). The adapter types arrive with Phase 32;
-  # until then the slot stays empty. This is NOT the top-level `observability:`
-  # section, which configures the telemetry exporters.
+  # Observability tool slot (Phase 32). type: prometheus | loki
+  # Prometheus serves alerts and metrics, Loki serves logs; `tenant` is sent to
+  # Loki as X-Scope-OrgID. This is NOT the top-level `observability:` section,
+  # which configures the telemetry exporters.
+  #
+  #   observability:
+  #     default: acme_prometheus
+  #     instances:
+  #       acme_prometheus: { type: prometheus, url: https://prometheus.acme.com, bearer_token_env: ACME_PROMETHEUS_TOKEN }
+  #       acme_loki:       { type: loki, url: https://loki.acme.com, bearer_token_env: ACME_LOKI_TOKEN, tenant: acme }
   observability:
     default: ""
     instances: {}
