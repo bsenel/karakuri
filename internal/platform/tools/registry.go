@@ -483,6 +483,16 @@ func buildObservabilitySlot(cfg config.SlotConfig) SlotInstances[observability.O
 				typeName: "loki",
 				adapter:  observability.NewLoki(inst.OptString("url"), inst.OptString("bearer_token"), inst.OptString("tenant")),
 			}
+		case "datadog":
+			s.instances[name] = instanceEntry[observability.ObservabilityAdapter]{
+				typeName: "datadog",
+				adapter:  observability.NewDatadog(inst.OptString("api_key"), inst.OptString("app_key"), inst.OptString("site")),
+			}
+		case "pagerduty":
+			s.instances[name] = instanceEntry[observability.ObservabilityAdapter]{
+				typeName: "pagerduty",
+				adapter:  observability.NewPagerDuty(inst.OptString("token")),
+			}
 		default:
 			slog.Warn("unknown observability adapter type", "instance", name, "type", inst.Type)
 		}

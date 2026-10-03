@@ -24,7 +24,7 @@ func NewPagerDuty(token string) *PagerDuty {
 
 func (p *PagerDuty) Name() string { return "pagerduty" }
 
-func (p *PagerDuty) Active() bool { return false }
+func (p *PagerDuty) Active() bool { return p.token != "" }
 
 func (p *PagerDuty) GetAlerts(ctx context.Context, env, service string, since time.Time, threshold string) ([]Alert, error) {
 	return nil, errors.New("pagerduty: not implemented")
