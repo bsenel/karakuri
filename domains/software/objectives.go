@@ -29,6 +29,7 @@ func softwareObjectiveTemplates() []objective.Template {
 	return []objective.Template{
 		{
 			ID: "software.objective.strategy", Title: "Strategy", Domain: "software",
+			Risk:        objective.RiskRoutine,
 			Description: "Research, business model, and value proposition",
 			SuccessCriteria: []objective.Criterion{
 				judged("strategy-doc", "Strategy document produced", 1.0),
@@ -36,6 +37,7 @@ func softwareObjectiveTemplates() []objective.Template {
 		},
 		{
 			ID: "software.objective.discovery", Title: "Discovery", Domain: "software",
+			Risk:        objective.RiskRoutine,
 			Description: "Requirements, design doc, user stories, and task breakdown",
 			SuccessCriteria: []objective.Criterion{
 				judged("design-doc", "Design document produced", 0.5),
@@ -44,6 +46,8 @@ func softwareObjectiveTemplates() []objective.Template {
 		},
 		{
 			ID: "software.objective.delivery", Title: "Delivery", Domain: "software",
+			// Writes code and opens a pull request against a shared repository.
+			Risk:            objective.RiskConsequential,
 			Description:     "TDD implementation with design doc, review, and PR",
 			SuggestedAgents: []agent.Definition{{ID: "software.agent.implementer"}},
 			SuccessCriteria: []objective.Criterion{
@@ -60,6 +64,8 @@ func softwareObjectiveTemplates() []objective.Template {
 		},
 		{
 			ID: "software.objective.code_review", Title: "Code Review", Domain: "software",
+			// Produces a review report; it merges nothing.
+			Risk:        objective.RiskRoutine,
 			Description: "Review all open PRs or a specific PR",
 			SuccessCriteria: []objective.Criterion{
 				judged("review-complete", "Review report produced", 1.0),
@@ -67,6 +73,7 @@ func softwareObjectiveTemplates() []objective.Template {
 		},
 		{
 			ID: "software.objective.research", Title: "Research", Domain: "software",
+			Risk:        objective.RiskRoutine,
 			Description: "Deep research on a topic or ticket",
 			SuccessCriteria: []objective.Criterion{
 				crit("research-report", "Research report produced", "software.reason.research", 1.0),
@@ -74,6 +81,10 @@ func softwareObjectiveTemplates() []objective.Template {
 		},
 		{
 			ID: "software.objective.incident_response", Title: "Incident Response", Domain: "software",
+			// Executes remediation against a running production system, under
+			// time pressure: the one software template where a wrong action
+			// reaches the people depending on the service.
+			Risk:        objective.RiskHigh,
 			Description: "Fetch logs/metrics, identify issues, produce and execute remediation plan",
 			SuccessCriteria: []objective.Criterion{
 				judged("root-cause", "Root cause identified", 0.4),
@@ -85,6 +96,9 @@ func softwareObjectiveTemplates() []objective.Template {
 		},
 		{
 			ID: "software.objective.autonomous_watch", Title: "Autonomous Watch", Domain: "software",
+			// Observes only. What it promotes to runs under that template's
+			// own classification, not this one.
+			Risk:        objective.RiskRoutine,
 			Description: "Continuous environment observation; promotes to other templates on signal",
 			SuccessCriteria: []objective.Criterion{
 				judged("running", "Watcher active", 1.0),

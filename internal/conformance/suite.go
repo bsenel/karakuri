@@ -9,6 +9,7 @@ import (
 	"github.com/bsenel/karakuri/internal/core/capability"
 	"github.com/bsenel/karakuri/internal/core/domain"
 	"github.com/bsenel/karakuri/internal/core/environment"
+	"github.com/bsenel/karakuri/internal/core/objective"
 )
 
 // Result holds the outcome of a single conformance check.
@@ -637,7 +638,27 @@ func CheckDanglingVerifiers(packs ...domain.Pack) []Result {
 // is not a reason to refuse to start. A value outside objective.RiskClass's set
 // fails — it is a typo, and a classification nobody can read is worse than none.
 func CheckTemplateRisk(packs ...domain.Pack) []Result {
-	return nil // stub: Phase 31 slice 3 part B
+	var results []Result
+	for _, p := range packs {
+		for _, tmpl := range p.ObjectiveTemplates() {
+			res := Result{Check: "template_risk", Passed: true}
+			switch {
+			case !tmpl.Risk.Valid():
+				res.Passed = false
+				res.Message = fmt.Sprintf("template %q of domain %q declares risk %q, which is not a risk class",
+					tmpl.ID, tmpl.Domain, string(tmpl.Risk))
+			case tmpl.Risk == objective.RiskUnclassified:
+				res.Warning = true
+				res.Message = fmt.Sprintf("template %q of domain %q is %s: its author has not said how they regard it",
+					tmpl.ID, tmpl.Domain, tmpl.Risk)
+			default:
+				res.Message = fmt.Sprintf("template %q of domain %q is classified %s",
+					tmpl.ID, tmpl.Domain, tmpl.Risk)
+			}
+			results = append(results, res)
+		}
+	}
+	return results
 }
 
 // CheckCrossPackCollisions verifies no two packs share the same capability ID,

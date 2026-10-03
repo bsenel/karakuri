@@ -22,10 +22,17 @@ const (
 
 // Valid reports whether r is one of the declared classes, the zero value included.
 func (r RiskClass) Valid() bool {
-	return false // stub: Phase 31 slice 3 part B
+	switch r {
+	case RiskUnclassified, RiskRoutine, RiskConsequential, RiskHigh:
+		return true
+	}
+	return false
 }
 
 // String returns the class as written, or "unclassified" for the zero value.
 func (r RiskClass) String() string {
-	return string(r) // stub: Phase 31 slice 3 part B
+	if r == RiskUnclassified {
+		return "unclassified"
+	}
+	return string(r)
 }

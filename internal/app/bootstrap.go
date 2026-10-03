@@ -251,6 +251,24 @@ func BootstrapServer(cfgPath string) (*Bootstrap, error) {
 					"check", res.Check, "msg", res.Message)
 			}
 		}
+		// How each active template's author regards it, said once at boot so
+		// the log answers "what was this deployment running, and how was it
+		// classified". Reports only: an unclassified template is a pack
+		// written before the field existed, and a typo is the pack author's
+		// to fix; neither is a reason to refuse to start.
+		for _, res := range conformance.CheckTemplateRisk(activePacks...) {
+			switch {
+			case !res.Passed:
+				slog.Warn("objective template declares a risk that is not a risk class",
+					"check", res.Check, "msg", res.Message)
+			case res.Warning:
+				slog.Warn("objective template is unclassified",
+					"check", res.Check, "msg", res.Message)
+			default:
+				slog.Info("objective template risk",
+					"check", res.Check, "msg", res.Message)
+			}
+		}
 	}
 
 	// Tools discovered from MCP servers (Phase 28).
