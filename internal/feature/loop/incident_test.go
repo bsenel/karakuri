@@ -16,10 +16,12 @@ import (
 	"github.com/bsenel/karakuri/internal/core/objective"
 	featurecp "github.com/bsenel/karakuri/internal/feature/checkpoint"
 	featurememory "github.com/bsenel/karakuri/internal/feature/memory"
+	"github.com/bsenel/karakuri/internal/feature/report"
 	platformobs "github.com/bsenel/karakuri/internal/platform/observability"
 	"github.com/bsenel/karakuri/internal/platform/storage"
 	"github.com/bsenel/karakuri/internal/platform/tools"
 	"github.com/bsenel/karakuri/internal/platform/tools/observability"
+	karakuriquota "github.com/bsenel/karakuri/internal/quota"
 )
 
 const (
@@ -92,7 +94,7 @@ func incidentContext(t *testing.T, obs *scriptedObservability, bind bool) *stepC
 	if !found {
 		t.Fatal("the software pack declares no software.agent.sre")
 	}
-	sc.obj = objective.Objective{ID: "obj-incident", Title: "checkout is returning 5xx", Domain: "software", TwinID: "twin-1"}
+	sc.obj = objective.Objective{ID: "obj-incident", Title: "checkout is returning 5xx", Domain: "software", TwinID: "twin-1", Mode: objective.ModeStanding}
 	for _, tmpl := range pack.ObjectiveTemplates() {
 		if tmpl.ID == "software.objective.incident_response" {
 			sc.obj.TemplateID = "software.objective.incident_response"
@@ -211,6 +213,7 @@ func TestIncidentObservedEscalatedRemediatedRecorded(t *testing.T) {
 	})
 
 	var cpID string
+	var acted []actionOutcome
 	t.Run("A2 propose and escalate", func(t *testing.T) {
 		_, paused := stepDecide(ctx, sc, p, nil)
 		if !paused {
@@ -241,6 +244,35 @@ func TestIncidentObservedEscalatedRemediatedRecorded(t *testing.T) {
 		}
 	})
 
+	// A5 runs while the checkpoint is still pending: a digest lists what the
+	// reader owes an answer on, and once ada answers it is no longer owed.
+	t.Run("A5 digest", func(t *testing.T) {
+		if cpID == "" {
+			t.Fatal("no checkpoint to report: stage A2 did not escalate")
+		}
+		now := time.Now().UTC()
+		d, err := report.NewService(sc.svc.store, nil, nil, karakuriquota.Deps{}, report.Config{}).
+			Assemble(ctx, sc.twinID, now.Add(-time.Hour), now.Add(time.Hour))
+		if err != nil {
+			t.Fatalf("assemble: %v", err)
+		}
+		var hasObjective, hasDecision bool
+		for _, o := range d.Objectives {
+			hasObjective = hasObjective || o.ID == sc.obj.ID
+		}
+		for _, dec := range d.Decisions {
+			if dec.CheckpointID == cpID && dec.ObjectiveID == sc.obj.ID && listed(dec.Proposed, software.CapRunRemediation) {
+				hasDecision = true
+			}
+		}
+		if !hasObjective {
+			t.Errorf("the digest does not include objective %s: %+v", sc.obj.ID, d.Objectives)
+		}
+		if !hasDecision {
+			t.Errorf("the digest does not list checkpoint %s proposing %s: %+v", cpID, software.CapRunRemediation, d.Decisions)
+		}
+	})
+
 	t.Run("A3 approve and act", func(t *testing.T) {
 		if cpID == "" {
 			t.Fatal("no checkpoint to approve: stage A2 did not escalate")
@@ -258,6 +290,7 @@ func TestIncidentObservedEscalatedRemediatedRecorded(t *testing.T) {
 		}
 
 		outcomes := stepAct(ctx, sc, p)
+		acted = outcomes
 		if len(outcomes) != 3 {
 			t.Fatalf("got %d outcomes, want 3: %+v", len(outcomes), outcomes)
 		}
@@ -317,6 +350,54 @@ func TestIncidentObservedEscalatedRemediatedRecorded(t *testing.T) {
 			t.Error("the run_remediation execute row is not marked successful")
 		}
 	})
+
+	// Only the verifier-backed criterion is scored: root-cause is judged by a
+	// model, and no judge is wired into this harness.
+	t.Run("A6 verify", func(t *testing.T) {
+		if len(acted) == 0 {
+			t.Fatal("no outcomes to verify: stage A3 did not act")
+		}
+		sc.obj.SuccessCriteria = remediationCriterion(t, sc.obj.SuccessCriteria)
+		if score, met := stepVerify(ctx, sc, acted); !met || score < 1 {
+			t.Errorf("remediation criterion scored %.2f (met=%v) after the alert cleared", score, met)
+		}
+
+		// The same plan with a command that clears nothing: the alert is
+		// still firing, so the criterion must not be met.
+		still := &scriptedObservability{
+			alerts:  []observability.Alert{firingAlert()},
+			markers: map[string]string{incidentAlertID: filepath.Join(t.TempDir(), "never")},
+		}
+		sc2 := incidentContext(t, still, true)
+		outcomes := stepAct(ctx, sc2, incidentPlan("true"))
+		if len(outcomes) != 3 {
+			t.Fatalf("got %d outcomes, want 3: %+v", len(outcomes), outcomes)
+		}
+		if o := outcomeOf(t, outcomes, software.CapRunRemediation); !o.Result.Success {
+			t.Fatalf("the no-op remediation itself failed: %s", o.Result.Error)
+		}
+		if o := outcomeOf(t, outcomes, software.CapAlertsResolved); o.Result.Success {
+			t.Error("alerts_resolved succeeded while the alert was still firing")
+		}
+		sc2.obj.SuccessCriteria = remediationCriterion(t, sc2.obj.SuccessCriteria)
+		if score, met := stepVerify(ctx, sc2, outcomes); met || score != 0 {
+			t.Errorf("remediation criterion scored %.2f (met=%v) though the alert never cleared", score, met)
+		}
+	})
+}
+
+func remediationCriterion(t *testing.T, all []objective.Criterion) []objective.Criterion {
+	t.Helper()
+	var out []objective.Criterion
+	for _, c := range all {
+		if c.ID == "remediation" {
+			out = append(out, c)
+		}
+	}
+	if len(out) != 1 {
+		t.Fatalf("the incident template has %d remediation criteria, want 1", len(out))
+	}
+	return out
 }
 
 // A deployment that binds no observability instance, or binds one that is not
