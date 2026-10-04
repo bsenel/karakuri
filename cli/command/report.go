@@ -161,11 +161,11 @@ func reportDeleteCmd() *cobra.Command {
 		Use:   "delete <id>",
 		Short: "Delete a digest schedule",
 		Args:  cobra.ExactArgs(1),
-		RunE: func(_ *cobra.Command, args []string) error {
+		RunE: func(c *cobra.Command, args []string) error {
 			if _, _, err := api.Delete("/reports/" + args[0]); err != nil {
 				return err
 			}
-			fmt.Printf("report schedule %s deleted\n", args[0])
+			fmt.Fprintf(c.OutOrStdout(), "digest schedule %s deleted\n", args[0])
 			return nil
 		},
 	}
