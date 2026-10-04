@@ -220,6 +220,24 @@ krk objective create --title "Checkout 5xx" --domain software --twin twin_1 \
     --template software.objective.incident_response
 ```
 
+**Standing streams.** Four templates for a deployment that improves itself on a
+cadence. Their criteria describe the state a correct pass leaves behind, so a
+pass that looked and found nothing to do is not a failed one and does not count
+against the circuit breaker. Every criterion is judged by a model reading the
+pass's action results, and each template carries a hard `no-merge` constraint:
+a human merges.
+
+- `software.objective.market_discovery` — research users, needs and the field; a dated report with sources, and roadmap phases only where the evidence supports them.
+- `software.objective.engineering_backlog` — read this deployment's telemetry and audit log and record technical enhancements in the roadmap's Engineering Backlog, each with its data.
+- `software.objective.ux_improvement` — one small, tested CLI or web UX improvement per pass.
+- `software.objective.roadmap_delivery` — implement the next roadmap item marked Planned on main, one verified slice per pass.
+
+```bash
+krk objective create --title "Engineering backlog" --domain software --twin twin_1 \
+    --template software.objective.engineering_backlog
+krk objective standing <id> --daily-at 06:30 --timezone Europe/Paris --min-interval 20h --autonomy propose
+```
+
 Validate any pack with:
 ```bash
 krk domain test software
