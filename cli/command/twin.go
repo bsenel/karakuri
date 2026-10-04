@@ -61,6 +61,8 @@ func twinCreateCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "create",
 		Short: "Create a digital twin",
+		Example: `  krk twin create --name "Platform team"
+  krk twin create --name "Ada" --kind person`,
 		RunE: func(_ *cobra.Command, _ []string) error {
 			data, _, err := api.Post("/twins", map[string]string{
 				"name": name, "kind": kind, "domain": domain,

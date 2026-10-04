@@ -16,6 +16,20 @@ func requireExample(t *testing.T, cmd *cobra.Command) {
 	}
 }
 
+func TestCreateHelp(t *testing.T) {
+	requireExample(t, objectiveCreateCmd())
+	requireExample(t, twinCreateCmd())
+
+	// A bare "Twin ID" / "Description" repeats the flag name and says nothing.
+	flags := objectiveCreateCmd().Flags()
+	if usage := flags.Lookup("twin").Usage; !strings.Contains(usage, "krk twin list") {
+		t.Errorf("--twin usage %q does not say where a twin ID comes from", usage)
+	}
+	if usage := flags.Lookup("description").Usage; usage == "Description" {
+		t.Errorf("--description usage %q only repeats the flag name", usage)
+	}
+}
+
 func TestCheckpointHelp(t *testing.T) {
 	for _, cmd := range []*cobra.Command{checkpointListCmd(), checkpointGetCmd(), checkpointResolveCmd()} {
 		requireExample(t, cmd)
