@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -155,6 +156,59 @@ func TestTheCodebaseEnvironmentRefusesAnythingElse(t *testing.T) {
 	}
 	if res.Success {
 		t.Error("the codebase environment executed a write capability")
+	}
+}
+
+// read_codebase as an action returns what the environment already observes.
+//
+// Compared against Observe rather than against a literal: the two are the same
+// evidence by construction, and a second scan with its own shape would be a
+// second answer to "what is in this repository". An unreadable root is in the
+// table because the scan reports it rather than raising it, and the read must
+// degrade the same way Observe does.
+func TestReadCodebaseReturnsWhatObserveSees(t *testing.T) {
+	roots := map[string]string{
+		"a readable tree":    scratchTree(t, true),
+		"an unreadable root": filepath.Join(t.TempDir(), "does-not-exist"),
+	}
+	for name, root := range roots {
+		env := newCodebaseEnv("software.env.codebase", root)
+
+		obs, err := env.Observe(context.Background(), environment.ObservationQuery{})
+		if err != nil {
+			t.Fatalf("%s: observe: %v", name, err)
+		}
+		res, err := env.Act(context.Background(), environment.Action{CapabilityID: "software.observe.read_codebase"})
+		if err != nil {
+			t.Fatalf("%s: act: %v", name, err)
+		}
+		if !res.Success {
+			t.Errorf("%s: read_codebase failed where Observe did not: %s", name, res.Error)
+		}
+		if !reflect.DeepEqual(res.StateDelta, obs.State) {
+			t.Errorf("%s: read_codebase = %#v, want what Observe returns: %#v", name, res.StateDelta, obs.State)
+		}
+		if res.Trust != obs.Trust {
+			t.Errorf("%s: trust = %q, Observe gives the same evidence %q", name, res.Trust, obs.Trust)
+		}
+	}
+}
+
+// Serving the read changes nothing about the analysis beside it.
+func TestAnalyseRepoIsUnchangedByServingReadCodebase(t *testing.T) {
+	env := newCodebaseEnv("software.env.codebase", scratchTree(t, true))
+	res, err := env.Act(context.Background(), environment.Action{CapabilityID: CapAnalyseRepo})
+	if err != nil {
+		t.Fatalf("act: %v", err)
+	}
+	if !res.Success {
+		t.Fatalf("analyse_repo failed: %s", res.Error)
+	}
+	if res.StateDelta["capability"] != string(CapAnalyseRepo) {
+		t.Errorf("capability = %v, want %s", res.StateDelta["capability"], CapAnalyseRepo)
+	}
+	if res.StateDelta["available"] != true {
+		t.Error("analyse_repo did not report the tree it was given")
 	}
 }
 

@@ -45,6 +45,8 @@ The Phase 6 config also carried an asymmetry: most slots were flat top-level sec
 - Environment factories see the assigned twin's bindings once per loop run — no per-action lookup overhead. The factory signature changed from `Build(map[string]any)` to `Build(environment.BuildContext)`.
 - Operators set bindings via `krk twin bindings <id> --set versioncontrol=acme_github --set email=acme_outlook` or `PUT /twins/:id/bindings`.
 
+- Since Phase 32, `observability` is a slot of the same shape: named instances under `tools.observability` (`prometheus`, `loki`, `datadog`, `pagerduty`), bound per twin with the `observability` key. Unlike the other slots it has no no-op fallback — an unbound twin is blind, not healthy. See [ADR 026](026-an-environment-that-cannot-see-says-so.md).
+
 ## Out of scope (deferred)
 
 - Per-objective overrides beyond twin bindings.

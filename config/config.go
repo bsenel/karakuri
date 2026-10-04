@@ -252,6 +252,7 @@ type ToolsConfig struct {
 	Calendar       SlotConfig `yaml:"calendar"`
 	Email          SlotConfig `yaml:"email"`
 	CLIAgents      SlotConfig `yaml:"cli_agents"`
+	Observability  SlotConfig `yaml:"observability"`
 
 	// MCP is the eleventh slot, and the only one whose instances are servers
 	// somebody else wrote: each named instance is one MCP server, reached over
@@ -835,6 +836,7 @@ func resolveEnvRefs(cfg *Config) {
 		&cfg.Tools.Calendar,
 		&cfg.Tools.Email,
 		&cfg.Tools.CLIAgents,
+		&cfg.Tools.Observability,
 		// An MCP instance's credential is `bearer_token`, which is why the
 		// builder reads it as a top-level option and turns it into a header
 		// itself: this walk only sees the options map's own keys, so a

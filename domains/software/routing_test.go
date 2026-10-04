@@ -22,7 +22,22 @@ import (
 // A capability whose ID begins with "software.act." is one a plan can execute.
 // If nothing serves it, it is inert, and the only way anyone finds out is a
 // failed action in production.
-func TestEveryActCapabilityIsServed(t *testing.T) {
+//
+// So is one whose ID begins with "software.observe.", and that was the
+// uncovered part of the namespace. `fetch_logs` and `fetch_metrics` sat
+// declared, planned and unserved there since Phase 2, and this test passed over
+// them the whole time because it only looked at "software.act.". `fetch_commits`,
+// `fetch_prs` and `read_codebase` were reachable only ambiently, through
+// gitEnv.Observe and codebaseEnv.Observe — so a plan naming one as an action
+// reached no environment.
+//
+// The check lives in this pack and not in internal/conformance. Other packs
+// (agriculture, healthcare, ...) declare observe.* capabilities served by their
+// own no-op environments, deliberately placeholders, and a conformance-level
+// check would fail them. reason.* stays out: Phase 25 records that there is no
+// declarative marker separating adapter-backed from model-only reason
+// capabilities.
+func TestEveryActAndObserveCapabilityIsServed(t *testing.T) {
 	pack := New()
 
 	served := map[capability.CapabilityID]environment.EnvironmentID{}
@@ -36,11 +51,38 @@ func TestEveryActCapabilityIsServed(t *testing.T) {
 	}
 
 	for _, c := range pack.Capabilities() {
-		if !strings.HasPrefix(string(c.ID), "software.act.") {
+		if !planExecutable(c.ID) {
 			continue
 		}
 		if served[c.ID] == "" {
-			t.Errorf("capability %q acts on the world and no environment serves it: every plan that uses it fails", c.ID)
+			t.Errorf("capability %q is one a plan can execute and no environment serves it: every plan that uses it fails", c.ID)
+		}
+	}
+}
+
+// planExecutable reports whether a capability is one a plan can name as an
+// action: the act.* and observe.* halves of the software namespace.
+func planExecutable(id capability.CapabilityID) bool {
+	return strings.HasPrefix(string(id), "software.act.") ||
+		strings.HasPrefix(string(id), "software.observe.")
+}
+
+// The three reads are served by the environment that holds the data, which is
+// where Observe already got them from.
+func TestTheReadsAreServedWhereTheDataIs(t *testing.T) {
+	want := map[capability.CapabilityID]environment.EnvironmentID{
+		"software.observe.fetch_commits": EnvGit,
+		"software.observe.fetch_prs":     EnvGit,
+		"software.observe.read_codebase": "software.env.codebase",
+	}
+	for capID, env := range want {
+		got, ok := servedBy(capID)
+		if !ok {
+			t.Errorf("%s is served by nothing, want %s", capID, env)
+			continue
+		}
+		if got != env {
+			t.Errorf("%s is served by %s, want %s", capID, got, env)
 		}
 	}
 }
@@ -69,7 +111,11 @@ func TestNothingIsServedThatIsNotDeclared(t *testing.T) {
 // The tech-lead and strategist both list write_design_doc; before Phase 26 an
 // agent could be given a capability list whose steps all failed, and the only
 // symptom was a low score with no explanation of why.
-func TestAgentActCapabilitiesAreRunnable(t *testing.T) {
+//
+// observe.* is held to the same rule for the same reason: an agent listing
+// fetch_commits could plan it as a step, and until it was served that step
+// went nowhere.
+func TestAgentCapabilitiesAreRunnable(t *testing.T) {
 	pack := New()
 
 	served := map[capability.CapabilityID]bool{}
@@ -81,7 +127,7 @@ func TestAgentActCapabilitiesAreRunnable(t *testing.T) {
 
 	for _, def := range pack.AgentDefinitions() {
 		for _, capID := range def.Capabilities {
-			if !strings.HasPrefix(string(capID), "software.act.") {
+			if !planExecutable(capID) {
 				continue
 			}
 			if !served[capID] {

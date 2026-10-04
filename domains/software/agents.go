@@ -73,9 +73,14 @@ func softwareAgentDefinitions() []agent.Definition {
 		},
 		{
 			ID: "software.agent.sre", Name: "SRE", Domain: "software",
-			Capabilities: caps("software.observe.fetch_logs", "software.observe.fetch_metrics", "software.act.write_code", "software.verify.run_tests"),
-			Memory:       mem, ReasoningStrategy: agent.ReasoningReAct,
-			Authority: authority(10, 0.8, "software.act.create_pr"),
+			Capabilities: caps(
+				"software.observe.fetch_logs", "software.observe.fetch_metrics", "software.act.write_code", "software.verify.run_tests",
+				CapRunRemediation, CapAlertsResolved,
+			),
+			Memory: mem, ReasoningStrategy: agent.ReasoningReAct,
+			// Listing run_remediation here is the whole gate: a plan that
+			// names it escalates whatever its confidence (ADR 015).
+			Authority: authority(10, 0.8, "software.act.create_pr", CapRunRemediation),
 			LLMHints:  capability.LLMHints{PreferredProvider: "claude", TemperatureMax: 0.4},
 		},
 		{

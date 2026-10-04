@@ -98,23 +98,23 @@ type InstanceInfo struct {
 // ── Registry ─────────────────────────────────────────────────────────────────
 
 type Registry struct {
-	VC          SlotInstances[versioncontrol.VersionControlAdapter]
-	ProjectMgmt SlotInstances[projectmgmt.ProjectManagementAdapter]
-	Messaging   SlotInstances[messaging.MessagingAdapter]
-	Design      SlotInstances[design.DesignAdapter]
-	Testing     SlotInstances[testing.TestingAdapter]
-	Calendar    SlotInstances[calendar.CalendarAdapter]
-	Email       SlotInstances[email.EmailAdapter]
-	CLIAgents   SlotInstances[cliagent.CLIAgentAdapter]
+	VC            SlotInstances[versioncontrol.VersionControlAdapter]
+	ProjectMgmt   SlotInstances[projectmgmt.ProjectManagementAdapter]
+	Messaging     SlotInstances[messaging.MessagingAdapter]
+	Design        SlotInstances[design.DesignAdapter]
+	Testing       SlotInstances[testing.TestingAdapter]
+	Calendar      SlotInstances[calendar.CalendarAdapter]
+	Email         SlotInstances[email.EmailAdapter]
+	CLIAgents     SlotInstances[cliagent.CLIAgentAdapter]
+	Observability SlotInstances[observability.ObservabilityAdapter]
 
 	// MCP is the eleventh slot and the only one whose adapters were not written
 	// here: each instance is one MCP server, and what it offers is read off it
 	// at boot rather than declared in this package (ADR 022).
 	MCP SlotInstances[*mcp.Instance]
 
-	// Single-instance slots — kept simple until use cases demand multi-instance.
-	Observability observability.ObservabilityAdapter
-	Research      research.ResearchAdapter
+	// Single-instance slot — kept simple until use cases demand multi-instance.
+	Research research.ResearchAdapter
 
 	mu sync.RWMutex
 }
@@ -133,8 +133,7 @@ type AdapterStatus struct {
 // (added below in NewRegistryFromConfig as the implicit zero-value behavior).
 func NewRegistry() *Registry {
 	return &Registry{
-		Observability: observability.NewNoOp(),
-		Research:      research.NewHTTPScraper(),
+		Research: research.NewHTTPScraper(),
 	}
 }
 
@@ -151,6 +150,7 @@ func NewRegistryFromConfig(cfg config.ToolsConfig) *Registry {
 	r.Calendar = buildCalendarSlot(cfg.Calendar)
 	r.Email = buildEmailSlot(cfg.Email)
 	r.CLIAgents = buildCLIAgentSlot(cfg.CLIAgents)
+	r.Observability = buildObservabilitySlot(cfg.Observability)
 	// Last, because it is the only slot builder that talks to anything: each
 	// instance runs its handshake and its one tools/list here, so the registry
 	// this returns already knows what every server offers.
@@ -298,8 +298,16 @@ func (r *Registry) Status() []AdapterStatus {
 		a, ok := r.MCP.Resolve(n)
 		return ok && a.Active()
 	})
-	// Single-instance slots — show as one row each.
-	out = append(out, AdapterStatus{Slot: "observability", Instance: "<default>", Type: "noop", Active: r.Observability.Active(), IsDefault: true})
+	// No adapter type ships for observability yet and nothing falls back to a
+	// no-op through this slot, so it reports only what is configured: no
+	// instances, no row.
+	if obs := r.Observability.List(); len(obs) > 0 {
+		collect("observability", obs, func(n string) bool {
+			a, ok := r.Observability.Resolve(n)
+			return ok && a.Active()
+		})
+	}
+	// Single-instance slot — shows as one row.
 	researchName := "http-scraper"
 	if n, ok := r.Research.(interface{ Name() string }); ok {
 		researchName = n.Name()
@@ -453,6 +461,40 @@ func buildCLIAgentSlot(cfg config.SlotConfig) SlotInstances[cliagent.CLIAgentAda
 			}
 		default:
 			slog.Warn("unknown cli_agents adapter type", "instance", name, "type", inst.Type)
+		}
+	}
+	return s
+}
+
+func buildObservabilitySlot(cfg config.SlotConfig) SlotInstances[observability.ObservabilityAdapter] {
+	s := SlotInstances[observability.ObservabilityAdapter]{
+		defaultName: cfg.Default,
+		instances:   map[string]instanceEntry[observability.ObservabilityAdapter]{},
+	}
+	for name, inst := range cfg.Instances {
+		switch inst.Type {
+		case "prometheus":
+			s.instances[name] = instanceEntry[observability.ObservabilityAdapter]{
+				typeName: "prometheus",
+				adapter:  observability.NewPrometheus(inst.OptString("url"), inst.OptString("bearer_token")),
+			}
+		case "loki":
+			s.instances[name] = instanceEntry[observability.ObservabilityAdapter]{
+				typeName: "loki",
+				adapter:  observability.NewLoki(inst.OptString("url"), inst.OptString("bearer_token"), inst.OptString("tenant")),
+			}
+		case "datadog":
+			s.instances[name] = instanceEntry[observability.ObservabilityAdapter]{
+				typeName: "datadog",
+				adapter:  observability.NewDatadog(inst.OptString("api_key"), inst.OptString("app_key"), inst.OptString("site")),
+			}
+		case "pagerduty":
+			s.instances[name] = instanceEntry[observability.ObservabilityAdapter]{
+				typeName: "pagerduty",
+				adapter:  observability.NewPagerDuty(inst.OptString("token")),
+			}
+		default:
+			slog.Warn("unknown observability adapter type", "instance", name, "type", inst.Type)
 		}
 	}
 	return s

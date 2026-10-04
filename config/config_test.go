@@ -124,3 +124,34 @@ func TestLoad_AuditRetentionBelowFloorIsNotRejected(t *testing.T) {
 		t.Fatalf("Audit.Retention = %+v, want FloorDays 0, Days 30", got)
 	}
 }
+
+// A secret under tools.observability is referenced by env var name, like every
+// other slot's.
+func TestLoad_ObservabilityInstanceEnvRefResolved(t *testing.T) {
+	t.Setenv("ACME_OBS_API_KEY", "obs-secret")
+	cfg := loadYAML(t, "tools:\n  observability:\n    default: acme\n    instances:\n      acme:\n        type: some_backend\n        api_key_env: ACME_OBS_API_KEY\n")
+	inst, ok := cfg.Tools.Observability.Instances["acme"]
+	if !ok {
+		t.Fatalf("Tools.Observability.Instances = %+v, want an acme instance", cfg.Tools.Observability.Instances)
+	}
+	if got := inst.OptString("api_key"); got != "obs-secret" {
+		t.Fatalf("api_key = %q, want %q", got, "obs-secret")
+	}
+}
+
+// default.yaml ships the tools.observability slot empty; the top-level
+// observability section is the telemetry exporters and is a different thing.
+func TestLoad_DefaultYAMLObservabilitySlotEmpty(t *testing.T) {
+	t.Setenv("GITHUB_TOKEN", "preexisting-token")
+	cfg, err := Load("default.yaml")
+	if err != nil {
+		t.Fatalf("Load default.yaml: %v", err)
+	}
+	got := cfg.Tools.Observability
+	if got.Default != "" || len(got.Instances) != 0 {
+		t.Fatalf("Tools.Observability = %+v, want default \"\" and no instances", got)
+	}
+	if len(cfg.Observability.Exporters) == 0 {
+		t.Fatalf("Observability.Exporters is empty, want the telemetry exporters untouched")
+	}
+}
