@@ -64,6 +64,16 @@ func (e *codebaseEnv) Observe(_ context.Context, _ environment.ObservationQuery)
 }
 
 func (e *codebaseEnv) Act(_ context.Context, a environment.Action) (environment.ActionResult, error) {
+	if a.CapabilityID == "software.observe.read_codebase" {
+		// The evidence Observe computes, asked for by name, and with the
+		// trust Observe gives it: none set, because the scan reports counts
+		// and paths from the operator's own tree.
+		state, err := e.scan()
+		if err != nil {
+			return environment.ActionResult{Success: false, Error: err.Error()}, nil
+		}
+		return environment.ActionResult{Success: true, StateDelta: state}, nil
+	}
 	if a.CapabilityID != CapAnalyseRepo {
 		return environment.ActionResult{
 			Success: false,

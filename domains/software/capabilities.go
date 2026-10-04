@@ -27,8 +27,33 @@ func softwareCapabilities() []capability.Capability {
 		return c
 	}
 	return []capability.Capability{
-		obs("software.observe.fetch_commits", "Fetch Commits", "Fetch recent commits from GitEnvironment"),
-		obs("software.observe.fetch_prs", "Fetch PRs", "Fetch pull requests awaiting review"),
+		// Inputs declared for the reason write_design_doc's are below. Neither
+		// read requires an input; both fail rather than return an empty list
+		// when the twin has no version control instance bound.
+		{
+			ID: "software.observe.fetch_commits", Name: "Fetch Commits", Domain: "software",
+			Description: "Fetch recent commits from the twin's bound version control instance. Optional params.repo and params.since_days (default 7, max 90). Fails when no version control instance is bound. Result includes commits and count.",
+			InputSchema: capability.Schema{
+				Type: "object",
+				Properties: map[string]capability.SchemaProperty{
+					"repo":       {Type: "string", Description: "Repository to read. Defaults to the bound instance's repository"},
+					"since_days": {Type: "integer", Description: "How far back to look, in days. Default 7, max 90"},
+				},
+			},
+			OutputSchema: capability.Schema{Type: "object"},
+		},
+		{
+			ID: "software.observe.fetch_prs", Name: "Fetch PRs", Domain: "software",
+			Description: "Fetch pull requests from the twin's bound version control instance. Optional params.repo and params.since_days (default 7, max 90). Fails when no version control instance is bound. Result includes prs and count.",
+			InputSchema: capability.Schema{
+				Type: "object",
+				Properties: map[string]capability.SchemaProperty{
+					"repo":       {Type: "string", Description: "Repository to read. Defaults to the bound instance's repository"},
+					"since_days": {Type: "integer", Description: "How far back to look, in days. Default 7, max 90"},
+				},
+			},
+			OutputSchema: capability.Schema{Type: "object"},
+		},
 		// Inputs declared for the same reason write_design_doc's are below: a
 		// capability whose inputs are undocumented is one models call with an
 		// empty payload, and both of these refuse an empty payload.
@@ -60,7 +85,7 @@ func softwareCapabilities() []capability.Capability {
 			},
 			OutputSchema: capability.Schema{Type: "object"},
 		},
-		obs("software.observe.read_codebase", "Read Codebase", "Read file tree, symbols, and dependencies"),
+		obs("software.observe.read_codebase", "Read Codebase", "Read the repository as evidence: the roadmap's deferred work, TODO density by package, packages with no tests, and where AGENTS.md rules live. Takes no params."),
 
 		act("software.reason.architecture_review", "Architecture Review", "Evaluate a design against architectural principles", false),
 		act("software.reason.research", "Research", "Research a topic across configured sources", false),
