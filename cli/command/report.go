@@ -165,7 +165,9 @@ func reportDeleteCmd() *cobra.Command {
 			if _, _, err := api.Delete("/reports/" + args[0]); err != nil {
 				return err
 			}
-			fmt.Fprintf(c.OutOrStdout(), "digest schedule %s deleted\n", args[0])
+			if output != "quiet" {
+				fmt.Fprintf(c.OutOrStdout(), "digest schedule %s deleted\n", args[0])
+			}
 			return nil
 		},
 	}

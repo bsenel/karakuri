@@ -104,7 +104,9 @@ this command.`,
 			if _, _, err := api.Delete("/quota/tiers/" + tier); err != nil {
 				return err
 			}
-			fmt.Fprintf(c.OutOrStdout(), "limit for tier %s is back to what configuration says\n", tier)
+			if output != "quiet" {
+				fmt.Fprintf(c.OutOrStdout(), "limit for tier %s is back to what configuration says\n", tier)
+			}
 			return nil
 		},
 	}
