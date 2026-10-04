@@ -278,7 +278,28 @@ Read with `gh pr list --state all --label karakuri:discovery` on 2026-10-04.
 
 ## Proposed phases
 
-_Not yet written._
+Written by part 4 on 2026-10-04. No new research was done in this part; everything below rests on sections above. One phase is proposed, of a possible two.
+
+**Gate, as checked by reading this file.** "What they ask for and complain about" has content with more than three distinct source URLs. "Feasibility" has content, and Candidate 1 has a "What Karakuri already has" entry naming Phase 28 and files under `internal/platform/tools/mcp/`. Each URL used in the phase appears under "Sources" (checked with `grep -c -F`). "Earlier discovery pull requests" lists no declined phase.
+
+### Proposed: Phase 33 — MCP After the Handshake (Planned)
+
+The protocol half of Feasibility Candidate 1: Karakuri's MCP client learns revision 2026-07-28 and keeps the older handshake as a fallback. OAuth for remote servers is left out, because Feasibility sizes it as a phase of its own.
+
+Evidence behind it, by section and source:
+
+- Trends, "Added by a later pass": MCP revision 2026-07-28 removes the `initialize` handshake and the `Mcp-Session-Id` header, requires `server/discover`, a per-request version in `_meta` and a `resultType` on every result. Observed, first-hand from the specification's own page. (https://modelcontextprotocol.io/specification/2026-07-28/changelog, read 2026-10-04)
+- Feasibility, Candidate 1: `internal/platform/tools/mcp/protocol.go` declares `ProtocolVersion = "2025-06-18"` and an `initialize` method, and `streamhttp.go` declares the `Mcp-Session-Id` header. Observed by reading the source; nothing was run.
+- "What they ask for and complain about": three n8n issues about an MCP client and server disagreeing (https://github.com/n8n-io/n8n/issues?q=is%3Aissue+agent+sort%3Areactions-desc, read 2026-10-04), and "Add MCP support" as the most-reacted issue listed in the OpenAI Agents SDK tracker (https://github.com/openai/openai-agents-python/issues?q=is%3Aissue+sort%3Areactions-desc, read 2026-10-04). Titles only, from other products.
+- Trends, Comparable products: LangSmith's recent MCP work (https://docs.langchain.com/langsmith/changelog, read 2026-10-04) shows a hosted runtime tracking the protocol; it is about authorization, which this phase does not cover.
+
+**How thin this is.** That the protocol changed is observed. That Karakuri's client would fail against a server speaking only the new revision is inferred from reading two documents side by side; no server was run. No Karakuri user is on record asking for this, and nothing in this report shows how many MCP servers have dropped the old handshake. The phase's first step is therefore to find out, and it may conclude that little is needed yet.
+
+### Not proposed
+
+- **OAuth for remote MCP servers** (the other half of Candidate 1). Feasibility sizes it as a separate phase touching `internal/api/` and the `auth` module; the evidence is one hosted competitor's changelog and a specification page. It depends on the revision work, and proposing both at once would be proposing more than the evidence carries.
+- **Candidate 2, read-only incident investigation.** Feasibility finds it is mostly what Phase 32 already lists as deferred, and three of its four sources sell or publish an AI SRE tool. No SRE team speaks for itself in this report. Evidence too thin for a phase.
+- **Candidate 3, pausing and surviving a restart.** The best-evidenced need, and Feasibility finds Phases 11 and 13.5 already delivered it. The named gap (two replicas re-launching one loop) could not be sized, because the reconcile lease code was not read.
 
 ## Sources
 
