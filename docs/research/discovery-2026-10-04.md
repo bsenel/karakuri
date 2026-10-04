@@ -84,7 +84,48 @@ Date read: 2026-10-04 (UTC).
 
 ## Trends
 
-_Not yet written in this pass._
+**Scope and limits of this section.** This is the first discovery report, so there is no previous one to compare against; the aim was the last six months (April to October 2026). It falls well short of that. Eight fetches were made and only five returned usable content; of the five, two changelogs (Claude Code, LangSmith) returned only their most recent weeks, so nothing below describes what those products shipped between April and mid-August 2026. Two fetches were answered with a redirect to another host and one with HTTP 404 (listed under Sources). **No page was read for:** durable-execution runtimes (Temporal, Inngest, Restate), OpenAI's Codex, any hosted agent platform other than LangSmith, any AI SRE or incident tool, any agent-to-agent protocol, or any practitioner write-up. Pages were read through a fetch tool that returns a model-written extract, so quotations are as that extract gave them and were not checked against the raw page. Nothing here was tested.
+
+### Comparable products
+
+Only two products were actually read. One line each.
+
+- **Claude Code** (Anthropic's coding-agent CLI, with background sessions and cloud-hosted scheduled "routines"). Observed, from its own changelog, versions 2.1.283 to 2.1.289, dated 25 September to 3 October 2026 (https://code.claude.com/docs/en/changelog, read 2026-10-04):
+  - 28 September 2026 (2.1.284): "Changed interactive terminal and VS Code sessions to start in auto mode when no permission mode is configured, on every plan and provider"; 25 September 2026 (2.1.283): the same default for `claude -p` and Python Agent SDK sessions on third-party providers or with telemetry off.
+  - 29 September 2026 (2.1.285): background shell commands now "stop after a time limit" (default 30 min, max 2 h); routine runs "whose cloud session never started" were "showing as Succeeded" and "now show as Failed". 30 September 2026 (2.1.286): fixed "background jobs showing done while waiting for your approval"; a late scheduled run now reads "Due".
+  - 1 October 2026 (2.1.287): PreToolUse and PermissionRequest hooks that were "skipped when matching them failed" now block the call; a count such as "2 of 5" was added when permission requests stack up.
+  - 28 September 2026 (2.1.284): MCP tool, WebFetch and WebSearch outputs added to the `tool.output` OpenTelemetry span event; 2 October 2026 (2.1.288): fixed permission asks that ended unanswered "emitting no `tool_decision` event".
+  - Inferred: a widely used coding CLI now runs scheduled, unattended work and defaults to a classifier-gated autonomous mode, so "an agent that runs on a schedule" is no longer something Karakuri offers alone. The fixes that week are about a run's reported state being wrong (succeeded when it never started, done when it was waiting for approval) and about approval decisions missing from telemetry. Inferred: Karakuri's own checkpoint, digest and audit paths are exposed to the same class of fault, and what it has that this changelog does not show is a recorded ladder of earned autonomy and an evidence export. Whether Claude Code has equivalents elsewhere was not checked; only ten days of its changelog were read.
+- **LangSmith Deployment / Managed Deep Agents** (LangChain's hosted runtime for LangGraph agents). Observed, from its changelog, entries for the weeks of 24 August to 21 September 2026 (https://docs.langchain.com/langsmith/changelog, read 2026-10-04):
+  - Week of 14 to 21 September 2026: "Managed Deep Agents can discover OAuth settings from an MCP server's authentication challenge"; "Scale-to-zero deployments reject rollbacks to revisions below LangGraph API 0.13.0".
+  - Week of 7 to 14 September 2026: "After a Managed Deep Agent run paused for credentials resumes, the Slack connect card is removed".
+  - Week of 31 August to 7 September 2026: "LangSmith MCP connectors use Client ID Metadata Documents when supported".
+  - Week of 24 to 31 August 2026: "Dedicated deployments now run at least two replicas".
+  - Inferred: the hosted competitor's recent work is on MCP authorization (OAuth discovery, client metadata documents) and on runs that pause for a credential and resume, delivered through Slack. Inferred: authenticated remote MCP servers are becoming the normal case, and Karakuri's MCP tool support should be checked against that; this report did not check what Karakuri's MCP client supports for OAuth.
+- **Not read:** OpenAI Codex (the changelog URL redirected to a different host, which was not followed), incident.io (HTTP 404), and every durable-execution runtime and AI SRE tool. No line is written for them rather than writing one from memory. Segment 4 of this report (platform and SRE teams) therefore still has no evidence.
+
+### Standards and protocols
+
+- **OpenTelemetry GenAI semantic conventions: still not stable, and they moved.** Observed, from a blog post by John Hodge dated 17 July 2026, a single individual's summary and not the OpenTelemetry project's own page (https://john-hodge.com/blog/opentelemetry-genai-semantic-conventions/, read 2026-10-04): "No GenAI-specific span, event, metric, or attribute in the dedicated repository is marked Stable"; the conventions moved to a dedicated repository, `open-telemetry/semantic-conventions-genai`, in June 2026, deprecated in the main repository at v1.42.0 and removed by v1.43.0; the new repository has no versioned releases yet; v1.41.0 (April 2026) restructured agent spans and added reasoning tokens; v1.40.0 (February 2026) added retrieval spans, cache attributes and agent versioning; no stabilization date is announced.
+  - Inferred: Karakuri's GenAI telemetry (Phase 29) targets a specification that changed shape in April 2026 and changed home in June 2026. Which convention version Karakuri emits was not checked in this pass. The state as of 17 July 2026 may have changed since; the repository itself was not fetched.
+- **MCP.** Observed: the draft specification changelog page contains only "Changes since the most recent release will accumulate here." (https://modelcontextprotocol.io/specification/draft/changelog, read 2026-10-04). Inferred, weakly: no changes are pending in the draft beyond the latest release, or the page is not kept current; the two cannot be told apart from this page, and the released revisions were not fetched. Observed indirectly: Claude Code on 1 October 2026 added "URL prompts from MCP servers on the 2025-11-25 protocol" (https://code.claude.com/docs/en/changelog, read 2026-10-04), which shows a client still adopting features of a revision named 2025-11-25. Whether a newer MCP revision was released in 2026 is **not established** here.
+- **Agent-to-agent protocols.** Nothing fetched. The only evidence in this report is part 1's observation that the OpenAI Agents SDK closed its "A2A (Agent2Agent) support" issue on 5 August 2026.
+
+### Governance and regulation
+
+- **EU AI Act: high-risk obligations postponed; transparency duties not.** Observed, from a Gibson Dunn client alert dated 27 May 2026, a law firm's summary and not the legal text (https://www.gibsondunn.com/eu-ai-act-omnibus-agreement-postponed-high-risk-deadlines-and-other-key-changes/, read 2026-10-04): a provisional political agreement on the Digital Omnibus was reached on 6 May 2026 and confirmed by the Council on 13 May 2026; obligations for stand-alone high-risk systems (Annex III) move from 2 August 2026 to 2 December 2027, and for systems embedded in regulated products (Annex I) from 2 August 2027 to 2 August 2028; Article 50 transparency obligations still apply from 2 August 2026, with a grace period to 2 December 2026 for the watermarking requirement on existing systems. The extract says the alert does not mention any change to the logging, human-oversight or record-keeping duties themselves.
+  - Not verified: the alert predates formal adoption, which it expected before 2 August 2026. A search-result snippet said the Council gave final approval on 29 June 2026; that page was not fetched, so adoption and entry into force are unconfirmed here.
+  - Inferred: the date by which a deployer of a high-risk system would need audit-ready records and human-oversight design moved about sixteen months out, to December 2027. Inferred: that weakens "a deadline is coming" as a reason to adopt Karakuri's audit log and evidence export in 2026, and leaves the requirement itself in place. Whether any Karakuri user operates a high-risk system at all is unknown; part 1 found no user naming a regulator.
+- No other jurisdiction or standard (US state laws, UK, ISO/IEC 42001, NIST) was read.
+
+### Practitioner sentiment
+
+- **Not sourced.** One search was run and no result page was fetched, because the fetch budget was spent. The snippets spoke of evaluation sets built before launch, a human on risky steps, tight permissions, retry loops burning token budgets, and moving from shadow mode to autonomy gradually; they come from vendor and consultancy blogs, were not read, and are recorded only as unverified leads. Part 1's pain-point section remains this report's only evidence of what people who run agents report.
+
+### What this section supports, and what it does not
+
+- Supported by something read: scheduled and background agent runs are shipping in a mainstream coding CLI, with visible trouble reporting run state truthfully (late September 2026); a hosted runtime is working on MCP OAuth and pause-for-credential flows (August to September 2026); the OpenTelemetry GenAI conventions are unstable and relocated (June 2026); EU high-risk deadlines are agreed to move to December 2027 (May 2026).
+- Not supported: any statement about the direction of the field as a whole, about durable-execution runtimes, about AI SRE tools, about agent-to-agent protocols, or about what practitioners now say. A later pass should fetch those first.
 
 ## Feasibility
 
@@ -112,3 +153,16 @@ Part 1 (segments and pain points). All eight fetches succeeded; none failed. Eac
 - https://github.com/openai/openai-agents-python/issues?q=is%3Aissue+sort%3Areactions-desc (read 2026-10-04): issue titles, numbers and dates; human-in-the-loop, MCP, A2A and tracing requests.
 
 Two web searches were also run to find these pages; search-result snippets are not cited as evidence.
+
+Part 2 (trends). Eight fetches were made: five returned content, two returned a redirect to another host, one returned HTTP 404. Each page was read as a model-written extract, not as raw HTML.
+
+- https://code.claude.com/docs/en/changelog (read 2026-10-04): Claude Code changelog; only versions 2.1.283 to 2.1.289 (25 September to 3 October 2026) were returned; background sessions, routines, permission defaults, MCP and OpenTelemetry entries.
+- https://docs.langchain.com/langsmith/changelog (read 2026-10-04): LangSmith changelog; only late August to September 2026 was returned; Managed Deep Agents, MCP OAuth, deployment entries. Reached by following the redirect below.
+- https://john-hodge.com/blog/opentelemetry-genai-semantic-conventions/ (read 2026-10-04): an individual's blog post of 17 July 2026; status, repository move and version history of the OpenTelemetry GenAI semantic conventions.
+- https://modelcontextprotocol.io/specification/draft/changelog (read 2026-10-04): MCP draft changelog; the page held one placeholder sentence and no changes.
+- https://www.gibsondunn.com/eu-ai-act-omnibus-agreement-postponed-high-risk-deadlines-and-other-key-changes/ (read 2026-10-04): law-firm alert of 27 May 2026; EU AI Act Digital Omnibus dates.
+- https://changelog.langchain.com/ (attempted 2026-10-04): returned a 301 redirect to docs.langchain.com, which was then fetched as above; no content read from this URL.
+- https://developers.openai.com/codex/changelog (attempted 2026-10-04): returned a 308 redirect to a different host, not followed; no content read, nothing cited.
+- https://incident.io/changelog (attempted 2026-10-04): HTTP 404; no content read, nothing cited.
+
+Four web searches were also run in part 2 (frameworks, standards, EU AI Act, practitioner lessons); their snippets are not cited as evidence, and where one is mentioned above it is marked as an unverified lead.
