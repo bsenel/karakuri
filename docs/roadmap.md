@@ -42,7 +42,7 @@ Phases 27–32 were proposed from two kinds of evidence: what this repository de
 | 29    | Telemetry Other Tools Already Understand   | **Completed** |
 | 30    | The Evaluation Set Karakuri Already Has    | **Completed** |
 | 31    | The Evidence Pack                          | **Completed** |
-| 32    | The SRE Path, Actually Wired               | Planned       |
+| 32    | The SRE Path, Actually Wired               | **Completed** |
 
 
 ---
@@ -2964,7 +2964,7 @@ UTC in the delete, with a test that fails without it.
 
 ---
 
-## Phase 32 — The SRE Path, Actually Wired (Planned)
+## Phase 32 — The SRE Path, Actually Wired (Completed)
 
 **Goal:** `software.objective.incident_response` can reach its criteria.
 
@@ -3040,6 +3040,139 @@ log and in the next digest. The template reaches its criteria on a deployment
 with a bound observability instance. On one without, it reports *blind* rather
 than healthy: an environment that cannot see must not return a still snapshot,
 because Phase 20 will read that as a quiet world and stop looking.
+
+**Shipped (step 1).** See
+[ADR 026](adr/026-an-environment-that-cannot-see-says-so.md).
+`tools.Registry.Observability` in `internal/platform/tools/registry.go` is a
+`SlotInstances[observability.ObservabilityAdapter]`, built by
+`buildObservabilitySlot` from the `tools.observability` config: a default, named
+instances, and `*_env` keys resolved to secrets from the environment.
+`AdapterStatuses` reports one row per configured instance and no row when there
+are none. A twin binds an instance through `AdapterBindings["observability"]`.
+`internal/platform/tools/observability/noop.go` and its hard-coded health row
+are deleted. `tools.observability` is not the top-level `observability:`
+section, which configures telemetry exporters; `config/default.yaml` says so
+beside the key.
+
+**Shipped (step 2).** `ObservabilityAdapter` in
+`internal/platform/tools/observability/adapter.go` has `GetAlerts`, `FetchLogs`
+and `FetchMetrics`. `Alert` gained a stable `ID` and a `State` normalised to
+firing, acknowledged or resolved. `ErrUnsupported` is what an adapter returns
+for a signal its backend does not have; it never returns an empty result for
+one. Four adapters sit beside it: `prometheus.go` (alerts, metrics), `loki.go`
+(logs), `datadog.go` (monitors as alerts, metrics, logs) and `pagerduty.go`
+(open incidents as alerts). Each reads at most 8 MiB of a response (`body.go`)
+and treats a larger body or a non-2xx status as an error. PagerDuty reads one
+page of 100 incidents and refuses the list when the API reports more.
+
+**Shipped (step 3).** `software.env.observability` is a real environment in
+`domains/software/observability_env.go`. It declares `Serves`, observes the open
+alert set, and serves `software.observe.fetch_logs` and
+`software.observe.fetch_metrics` with their params documented on the
+capabilities in `domains/software/capabilities.go`. Trust is set from what the
+payload holds (ADR 021): an observation carrying alerts and a result carrying
+log lines are third-party, and metric series are the operator's.
+
+With no instance bound, an inactive instance, or an adapter that cannot answer
+alerts, `Observe` returns an error, so the loop lists the environment in
+`WorldState.Blind`, and `Snapshot` returns an empty SHA, so reconcile lists it
+as blind. The `noopEnv` it replaces returned the constant SHA `noop-snapshot`.
+
+**Shipped (step 4).** The snapshot SHA is deliberately lossy.
+`observabilityFingerprint` hashes the open alert set exactly, as sorted IDs each
+with its state, and buckets the per-severity counts by order of magnitude.
+Messages, timestamps, values and raw counts are left out, so the same alerts
+still firing do not wake an objective and an alert starting, resolving or being
+acknowledged does.
+
+**Shipped (step 5).** `software.act.run_remediation` is served by
+`software.env.remediation` in `domains/software/remediation_env.go`. It runs a
+command through the shell executor's existing guardrails and refuses to run
+without `alert_id`, `rationale` and `cmd`. It contains no approval logic: the
+SRE agent in `domains/software/agents.go` lists it in `RequiresApprovalFor`,
+and that is the gate (ADR 015). `software.verify.alerts_resolved`, served by the
+observability environment, succeeds only when none of the named alerts is still
+open, and fails when it cannot look. The incident template in
+`domains/software/objectives.go` now verifies its remediation criterion with
+`alerts_resolved` and suggests `software.agent.sre`.
+
+An incident plan always escalates, for two independent reasons. An alert's text
+in the evidence is third-party material; provenance is checked first and is the
+reason the audit row records. And `run_remediation` is on the SRE agent's
+approval list. Earned autonomy therefore never applies to a remediation, which
+is what "this phase adds no new way to say yes" meant.
+
+**Shipped (step 6).** `TestEveryActAndObserveCapabilityIsServed` in
+`domains/software/routing_test.go` covers `software.observe.*` as well as
+`software.act.*`. `software.observe.fetch_commits` and
+`software.observe.fetch_prs` are now served by the git environment in
+`domains/software/environments.go`, and `software.observe.read_codebase` by
+`domains/software/codebase_env.go`, each from data the environment already held.
+
+**Shipped (acceptance).** `TestIncidentObservedEscalatedRemediatedRecorded` in
+`internal/feature/loop/incident_test.go` drives the loop's own steps with a
+scripted observability instance. The alert is observed with third-party trust.
+The plan escalates and nothing runs. An approval releases it, the remediation
+runs and the alert clears. `tool_events` holds the escalation, the approval
+with the approver, and the three execute rows. The digest lists the pending
+decision before the approval and counts the actions after it. The remediation
+criterion is met only when the alert actually cleared.
+`TestIncidentBlindWhenObservabilityUnbound` in the same file covers the unbound
+and inactive cases in the loop, and `TestBlindObservabilityYieldsNoFingerprint`
+in `internal/feature/reconcile/incident_blind_test.go` covers them in
+reconcile's fingerprint. Neither is ever reported as resolved.
+
+**Found while wiring it.** The slot could not be made multi-instance without
+deleting the no-op adapter. The no-op was what made an unconfigured deployment
+look healthy, so step 1 and the blind behaviour are one change.
+
+The incident template verified "Remediation applied" with
+`software.verify.run_tests`, which says nothing about whether the incident is
+over.
+
+Extending the served-capability check to `observe.*` found three more
+capabilities that were declared and served by nothing: `fetch_commits`,
+`fetch_prs` and `read_codebase`. They had been on two agents' lists since
+Phase 2.
+
+The first acceptance test asserted that the escalation reason names the
+requires-approval capability. It names the third-party source, because `Decide`
+reports one reason and provenance is checked first. The test was corrected to
+assert the two gates separately. The policy was not changed.
+
+**What this does not show.** Nothing here was run against a live Prometheus,
+Loki, Datadog or PagerDuty. The adapters are tested against `httptest` servers
+built from those APIs' documented shapes. The acceptance above says "observes
+real alerts"; what is shown is the whole path with a scripted instance.
+
+A twin binds one observability instance. Prometheus has no logs and Loki has no
+alerts or metrics, so a twin bound to Loki alone is blind, because it cannot
+answer alerts, and a twin bound to Prometheus cannot fetch logs. Datadog is the
+only shipped type that answers all three.
+
+`run_remediation` is a shell command on the machine the server runs on, behind
+the shell denylist, which `domains/software/shell_env.go` describes as a guard
+against accidental harm and not a security boundary. There is no Kubernetes,
+cloud or runbook adapter. The safety of a remediation rests on the human
+approval, which is why it is always escalated.
+
+The acceptance test scores the verifier-backed remediation criterion. The
+root-cause criterion is judged by a model, and no judge is wired into that
+harness.
+
+**What's deferred:**
+
+- Live validation against each backend: Prometheus, Loki, Datadog and
+  PagerDuty.
+- More than one observability instance per twin, so alerts can come from one
+  backend and logs from another.
+- An infrastructure adapter for remediation. Today it is a shell command.
+- Opsgenie, which the steps offered as an alternative to PagerDuty, and Datadog
+  events, which nothing in the interface carries.
+- The served-capability check for `reason.*`. It stays a test in the software
+  pack and is not a conformance check, because other packs' observe
+  capabilities are deliberately served by placeholder environments. `decide.*`
+  and `learn.*` are uncovered too, as Phase 25 recorded.
 
 ---
 
@@ -3442,7 +3575,7 @@ Checks (run via `krk domain test <id>`):
 | Core engine: DigitalTwin (person, team, org)                          | **Fully implemented**                                                                                                                                                                     |
 | Core engine: DomainRegistry                                           | **Fully implemented**                                                                                                                                                                     |
 | Software domain pack: all 20 capabilities                             | **Fully implemented**                                                                                                                                                                     |
-| Software domain pack: all 6 environment interfaces + no-op defaults   | **Fully implemented**                                                                                                                                                                     |
+| Software domain pack: all 6 environment interfaces + no-op defaults   | **Fully implemented** — `software.env.observability` is a real environment since Phase 32, see below                                                                                                                                                                     |
 | Software domain pack: all 7 agent definitions                         | **Fully implemented**                                                                                                                                                                     |
 | Software domain pack: all 7 objective templates                       | **Fully implemented**                                                                                                                                                                     |
 | Software domain pack: planner hints                                   | **Fully implemented**                                                                                                                                                                     |
@@ -3511,6 +3644,9 @@ Checks (run via `krk domain test <id>`):
 | Decision provenance on audit rows                                     | **Fully implemented** (Phase 31) for rows written after migration 000012 — `provider`, `model`, `template_id` and `autonomy_rung` as columns on escalation and execute rows, with the agent definition, strategy, bounds and `risk_class` in the payload. Earlier rows have none. The prompt behind a decision is not recorded |
 | Template risk classification                                          | **Fully implemented** (Phase 31) — `objective.Template.Risk`, logged per active template at boot by `conformance.CheckTemplateRisk`; all 13 shipped templates classified. The deployment's own words, not legal categories |
 | Audit export for a closed window                                      | **Fully implemented** (Phase 31, ADR 025) — `krk audit export --from --to` / `GET /api/v1/audit/export`, behind `audit:read`; a read, byte-identical while the rows are retained (1,682,039 bytes twice with one SHA-256 when measured on 2026-10-03). A record, not a certification; not signed, not tenant-scoped, not streamed |
+| Observability tool slot (`tools.observability`) and its four adapters | **Fully implemented** (Phase 32, ADR 026), not validated against a live backend — multi-instance and twin-bound (ADR 006); `prometheus` (alerts, metrics), `loki` (logs), `datadog` (alerts, metrics, logs), `pagerduty` (alerts); `ErrUnsupported` for a signal a backend lacks; tested against `httptest` servers. No no-op adapter. One instance per twin |
+| `software.env.observability`                                          | **Fully implemented** (Phase 32, ADR 026) — observes the open alert set, serves `fetch_logs`, `fetch_metrics` and `alerts_resolved`; blind (an `Observe` error and an empty snapshot SHA) when unbound, inactive or unable to answer alerts; the SHA hashes the open alert set, not the messages |
+| Incident response: `software.act.run_remediation` + `software.verify.alerts_resolved` | **Fully implemented** (Phase 32) — remediation is a shell command behind the shell denylist, requires `alert_id`, `rationale` and `cmd`, and always escalates; the remediation criterion is met only when the named alerts are no longer open. Shown end to end with a scripted instance in `internal/feature/loop/incident_test.go`; no infrastructure adapter |
 
 
 ---
