@@ -67,6 +67,26 @@ func planExecutable(id capability.CapabilityID) bool {
 		strings.HasPrefix(string(id), "software.observe.")
 }
 
+// The three reads are served by the environment that holds the data, which is
+// where Observe already got them from.
+func TestTheReadsAreServedWhereTheDataIs(t *testing.T) {
+	want := map[capability.CapabilityID]environment.EnvironmentID{
+		"software.observe.fetch_commits": EnvGit,
+		"software.observe.fetch_prs":     EnvGit,
+		"software.observe.read_codebase": "software.env.codebase",
+	}
+	for capID, env := range want {
+		got, ok := servedBy(capID)
+		if !ok {
+			t.Errorf("%s is served by nothing, want %s", capID, env)
+			continue
+		}
+		if got != env {
+			t.Errorf("%s is served by %s, want %s", capID, got, env)
+		}
+	}
+}
+
 // The reverse direction. A Serves entry naming a capability the pack does not
 // declare routes nothing anywhere and reads as though it does.
 func TestNothingIsServedThatIsNotDeclared(t *testing.T) {

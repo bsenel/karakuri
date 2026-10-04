@@ -16,6 +16,14 @@ import (
 type vcStub struct {
 	prs     []versioncontrol.PRSummary
 	commits []versioncontrol.Commit
+	// err, when set, is what both reads return instead of their list.
+	err error
+
+	// What the last read was asked for, so a test can tell a parameter that
+	// was passed through from one that was dropped.
+	gotRepo  string
+	gotSince time.Time
+	reads    int
 }
 
 func (s *vcStub) Name() string { return "stub" }
@@ -25,11 +33,21 @@ func (s *vcStub) CreatePR(context.Context, versioncontrol.PullRequest) (string, 
 	return "", nil
 }
 
-func (s *vcStub) ListPRs(context.Context, string, time.Time) ([]versioncontrol.PRSummary, error) {
+func (s *vcStub) ListPRs(_ context.Context, repo string, since time.Time) ([]versioncontrol.PRSummary, error) {
+	s.gotRepo, s.gotSince = repo, since
+	s.reads++
+	if s.err != nil {
+		return nil, s.err
+	}
 	return s.prs, nil
 }
 
-func (s *vcStub) GetCommits(context.Context, string, time.Time) ([]versioncontrol.Commit, error) {
+func (s *vcStub) GetCommits(_ context.Context, repo string, since time.Time) ([]versioncontrol.Commit, error) {
+	s.gotRepo, s.gotSince = repo, since
+	s.reads++
+	if s.err != nil {
+		return nil, s.err
+	}
 	return s.commits, nil
 }
 
