@@ -229,8 +229,8 @@ a human merges.
 
 - `software.objective.market_discovery` — research users, needs and the field; a dated report with sources, and roadmap phases only where the evidence supports them.
 - `software.objective.engineering_backlog` — read this deployment's telemetry and audit log and record technical enhancements in the roadmap's Engineering Backlog, each with its data.
-- `software.objective.ux_improvement` — one small, tested CLI or web UX improvement per pass.
-- `software.objective.roadmap_delivery` — implement the next roadmap item marked Planned on main, one verified slice per pass.
+- `software.objective.ux_improvement` — small, tested CLI or web UX improvements, as many per pass as fit.
+- `software.objective.roadmap_delivery` — implement the roadmap items marked Planned on main, as many verified slices per pass as fit.
 
 ```bash
 krk objective create --title "Engineering backlog" --domain software --twin twin_1 \

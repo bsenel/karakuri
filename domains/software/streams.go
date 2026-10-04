@@ -91,9 +91,9 @@ func streamTemplates() []objective.Template {
 			// It changes code and opens a pull request.
 			Risk:            objective.RiskConsequential,
 			SuggestedAgents: []agent.Definition{{ID: "software.agent.implementer"}},
-			Description:     "Use the CLI and the web interface as a new user would and make one small, tested improvement per pass.",
+			Description:     "Use the CLI and the web interface as a new user would and make as many small, tested improvements per pass as fit.",
 			SuccessCriteria: []objective.Criterion{
-				judged("improvement", "This pass's actions made one small user-experience improvement to the CLI or the web interface with a test, in an open pull request; or they state that the stream is waiting for a human to review the pull request already open", 0.6),
+				judged("improvement", "This pass's actions made one or more small user-experience improvements to the CLI or the web interface, each with a test, in an open pull request; or they state that they looked and found nothing worth changing", 0.6),
 				judged("verified", "The actions say exactly what was run to verify the change and what was not run", 0.4),
 			},
 			Constraints: []objective.Constraint{noMerge},
@@ -104,11 +104,11 @@ func streamTemplates() []objective.Template {
 			Domain:          "software",
 			Risk:            objective.RiskConsequential,
 			SuggestedAgents: []agent.Definition{{ID: "software.agent.implementer"}},
-			Description: "Implement the next roadmap phase or backlog entry marked Planned on main, one verified slice per pass, " +
-				"and open its pull request when the item is complete.",
+			Description: "Implement the roadmap phases and backlog entries marked Planned on main, as many verified slices per pass as fit, " +
+				"and open each item's pull request when it is complete.",
 			SuccessCriteria: []objective.Criterion{
-				judged("slice", "This pass's actions delivered one slice of the next Planned roadmap item to that item's branch with its tests, or opened or updated its pull request; or they state that nothing on main is Planned or that the open delivery pull request is waiting for review", 0.6),
-				judged("verified", "The slice's tests and lint were run against the branch tip and their results are in the actions; or no slice was delivered in this pass", 0.4),
+				judged("slice", "This pass's actions delivered one or more slices of Planned roadmap items to those items' branches with their tests, or opened or updated their pull requests; or they state that nothing on main is Planned and not yet delivered", 0.6),
+				judged("verified", "Tests and lint were run against the tip of every branch this pass pushed to and their results are in the actions; or no slice was delivered in this pass", 0.4),
 			},
 			Constraints: []objective.Constraint{noMerge},
 		},
