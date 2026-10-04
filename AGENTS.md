@@ -55,6 +55,7 @@ Add a new `AGENTS.md` in a subdirectory when that area has **distinct** conventi
 7. **Config** — Defaults in `config/default.yaml`; secrets via environment (e.g. `ANTHROPIC_API_KEY`), never committed.
 8. **Standing objectives** — The reasoning loop converges once and stops. Anything that must keep running belongs in `internal/feature/reconcile`, which *calls* the loop; do not teach the loop to not terminate. Authority for a run is expressed by writing `agent.AuthorityBounds` into the request, never by a second gate ([ADR 015](docs/adr/015-standing-objectives-and-reconciliation.md)).
 9. **Provenance** — An `environment.Observation` or `ActionResult` carrying text somebody outside the deployment wrote — a PR or issue title, a chat message, a scraped page, an MCP tool result — sets `Trust: environment.TrustThirdParty`. Set it from what the payload actually holds, not from the environment's identity, and never infer it in the loop ([ADR 021](docs/adr/021-observations-carry-provenance.md)).
+10. **Blind, not quiet** — An environment that cannot see returns an error from `Observe` and an empty SHA from `Snapshot`; an adapter returns `ErrUnsupported` for a signal its backend does not have, never an empty result ([ADR 026](docs/adr/026-an-environment-that-cannot-see-says-so.md)).
 
 ## Before finishing a change
 

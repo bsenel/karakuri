@@ -203,6 +203,23 @@ krk objective create --title "Watch the platform" --domain software --twin twin_
 krk objective standing <id> --sense 1h --autonomy sense --ceiling sense
 ```
 
+**Incident response** (Phase 32). Bind an observability instance to a twin with
+the `observability` binding key, then create an objective from
+`software.objective.incident_response`. The loop observes the open alert set,
+can fetch logs and metrics, and plans a remediation — and every remediation
+arrives as a checkpoint for a human to approve: `software.act.run_remediation`
+is on the SRE agent's approval list, and an alert's text is third-party
+material. The remediation criterion is met only when the named alerts are no
+longer open. A twin with no bound or active instance reports blind rather than
+healthy. See [`tools.observability`](#observability-tool-instances-toolsobservability)
+for the instance types.
+
+```bash
+krk twin bindings twin_1 --set observability=acme_datadog
+krk objective create --title "Checkout 5xx" --domain software --twin twin_1 \
+    --template software.objective.incident_response
+```
+
 Validate any pack with:
 ```bash
 krk domain test software
@@ -374,6 +391,30 @@ audit:
 memory:
   semantic_top_k: 5
 ```
+
+### Observability tool instances (`tools.observability`)
+
+The backends an agent reads alerts, logs and metrics *from* (Phase 32). This is **not** the top-level `observability:` section or the [Observability](#observability) section below — those configure where Karakuri sends its own telemetry.
+
+```yaml
+tools:
+  observability:
+    default: acme_prometheus   # resolved when a twin has no `observability` binding
+    instances:
+      acme_prometheus: { type: prometheus, url: https://prometheus.acme.com, bearer_token_env: ACME_PROMETHEUS_TOKEN }
+      acme_loki:       { type: loki, url: https://loki.acme.com, bearer_token_env: ACME_LOKI_TOKEN, tenant: acme }
+      acme_datadog:    { type: datadog, api_key_env: ACME_DATADOG_API_KEY, app_key_env: ACME_DATADOG_APP_KEY, site: datadoghq.eu }
+      acme_pagerduty:  { type: pagerduty, token_env: ACME_PAGERDUTY_TOKEN }
+```
+
+| Type | Options | Answers |
+|------|---------|---------|
+| `prometheus` | `url`, `bearer_token_env` | alerts, metrics |
+| `loki` | `url`, `bearer_token_env`, `tenant` (sent as `X-Scope-OrgID`) | logs |
+| `datadog` | `api_key_env`, `app_key_env`, `site` (optional, defaults to `datadoghq.com`) | alerts (monitors), metrics, logs |
+| `pagerduty` | `token_env` | alerts (open incidents) |
+
+A twin binds **one** instance (`krk twin bindings <id> --set observability=acme_datadog`), so a twin bound to `loki` alone cannot answer alerts and is blind, and a twin bound to `prometheus` cannot fetch logs; `datadog` is the only type that answers all three. An adapter asked for a signal its backend does not have returns `ErrUnsupported`, never an empty result. The slot has no no-op fallback: nothing configured means blind, not healthy ([ADR 026](docs/adr/026-an-environment-that-cannot-see-says-so.md)). The adapters are tested against HTTP test servers built from each API's documented shapes; they have not been run against live backends.
 
 ## Deployment
 
@@ -716,6 +757,7 @@ helm package deploy                                 # produce karakuri-0.1.0.tgz
 | Design | Figma | **Active** (Phase 6) |
 | Testing | Playwright, Go test runner | **Active** (Phase 6) |
 | Calendar / Email | Google Calendar, Gmail / Outlook / SMTP / Apple Mail | **Active** (Phase 6) |
+| Observability (read) | Prometheus, Loki, Datadog, PagerDuty (multi-instance, twin-bound; tested against HTTP test servers, not live backends) | **Active** (Phase 32) |
 | OTel Exporter | Local file (NDJSON / CSV / **Parquet**) with size+age rotation | **Active** (Phase 12) |
 | OTel Exporter | AWS (CloudWatch metrics + S3 NDJSON logs) | **Active** (Phase 12) |
 | OTel Exporter | Datadog (`/api/v1/series` + `/api/v2/logs`) | **Active** (Phase 12) |

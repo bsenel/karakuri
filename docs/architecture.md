@@ -118,6 +118,8 @@ DigitalTwin.AdapterBindings map[string]string   // slot → instance name (persi
 
 At loop start the runner fetches the assigned twin and passes `environment.BuildContext{TwinID, AdapterBindings}` to every env factory. Software envs (`gitEnv`, `ticketEnv`, `commsEnv`) capture the resolved adapter once at construction — `Act()` is a direct call with no per-action lookup. Twins without a binding fall back to the slot's `default` instance; missing default → no-op.
 
+The `observability` slot (Phase 32) is the exception to the no-op fallback. It is a `SlotInstances` slot like the others — named instances under `tools.observability`, with `prometheus`, `loki`, `datadog` and `pagerduty` adapters, bound per twin — but it has no no-op adapter: with no bound or active instance the observability environment returns an error from `Observe` and an empty SHA from `Snapshot`, so the twin is reported blind instead of healthy. See [ADR 026](adr/026-an-environment-that-cannot-see-says-so.md).
+
 Credentials are referenced from environment variables via `*_env` sibling keys (`token_env: ACME_GITHUB_TOKEN`); `resolveEnvRefs` substitutes the values at config load. Inline plaintext stays supported for local dev.
 
 `/api/v1/health` returns one row per `(slot, instance, type, active, is_default)` so operators see the full topology. See ADR 006 for the rationale.
@@ -151,7 +153,7 @@ LLM latency dominates; all other operations are sub-millisecond.
 
 **Async loop execution.** `Run()` returns a loop ID immediately; the loop runs in a background goroutine. `Resume()` unblocks via a buffered channel; `Status()` reads from a protected in-memory state map.
 
-**Interface-first, no-op by default.** Every tool slot ships with a no-op fallback. The loop runs to completion when no instances are configured; configured instances activate real-world side effects (PRs, tickets, messages, emails). LLM providers follow the same pattern (Gemini/Cursor/Copilot currently return `ErrNotImplemented`).
+**Interface-first, no-op by default.** Every tool slot except `observability` ships with a no-op fallback (a no-op there made an unconfigured deployment look healthy; see ADR 026). The loop runs to completion when no instances are configured; configured instances activate real-world side effects (PRs, tickets, messages, emails). LLM providers follow the same pattern (Gemini/Cursor/Copilot currently return `ErrNotImplemented`).
 
 **Multi-tenant by construction.** Tool adapters are multi-instance per slot and twin-bound at dispatch time. One server can host Acme's GitHub + Slack + Outlook alongside a personal GitHub + SMTP — each twin's loop resolves the right instance from its `AdapterBindings`. See the Tool Adapters section above and ADR 006.
 
