@@ -43,6 +43,7 @@ Phases 27–32 were proposed from two kinds of evidence: what this repository de
 | 30    | The Evaluation Set Karakuri Already Has    | **Completed** |
 | 31    | The Evidence Pack                          | **Completed** |
 | 32    | The SRE Path, Actually Wired               | **Completed** |
+| 33    | MCP After the Handshake                    | **Planned**   |
 
 
 ---
@@ -3176,6 +3177,92 @@ harness.
 - A verifier that knows which alerts it saw. `alerts_resolved` reports an ID
   resolved when it is not in the open set, so an ID that never named an alert
   counts as resolved; the IDs are in the plan a person approves.
+
+---
+
+## Phase 33 — MCP After the Handshake (Planned)
+
+**Goal:** Karakuri's MCP client can bind a server that speaks only revision
+2026-07-28, and still binds the servers it binds today.
+
+Proposed by [discovery 2026-10-04](research/discovery-2026-10-04.md), sections
+"Trends", "Feasibility" (Candidate 1) and "Proposed phases".
+
+MCP revision 2026-07-28 is a breaking one. The specification's own "Key
+Changes" page makes the protocol stateless: it removes the
+`initialize`/`notifications/initialized` handshake, has every request carry its
+protocol version and client capabilities in `_meta`, requires servers to
+implement a new `server/discover` RPC, removes protocol-level sessions and the
+`Mcp-Session-Id` header from Streamable HTTP, and puts a required `resultType`
+on every result
+(https://modelcontextprotocol.io/specification/2026-07-28/changelog, read
+2026-10-04).
+
+**Karakuri's client opens with the thing that revision removed.** Phase 28 built
+it under `internal/platform/tools/mcp/`. `protocol.go` declares
+`const ProtocolVersion = "2025-06-18"` and `MethodInitialize = "initialize"`;
+`client.go` sends that handshake and records the version the server answers
+with; `streamhttp.go` declares `const sessionHeader = "Mcp-Session-Id"`. That is
+two revisions behind, and the handshake and the header are both gone from the
+current one.
+
+The demand for this is indirect, and the phase should be read with that in
+mind. No Karakuri user has asked for it. What the discovery report holds is
+other products' trackers: three of the 25 n8n agent issues listed are an MCP
+client and server disagreeing about a request
+(https://github.com/n8n-io/n8n/issues?q=is%3Aissue+agent+sort%3Areactions-desc,
+read 2026-10-04), and "Add MCP support" is the most-reacted issue listed in the
+OpenAI Agents SDK tracker
+(https://github.com/openai/openai-agents-python/issues?q=is%3Aissue+sort%3Areactions-desc,
+read 2026-10-04). Titles only were read in both. Phase 28's argument was that
+MCP gives a deployment the tools nobody has to write; that holds only while the
+client can talk to the servers people run.
+
+**Steps:**
+
+1. **Find out first.** Run the client as it is against a server that speaks
+   only 2026-07-28 and record what happens. That it fails is inferred from
+   reading the specification beside the source; nobody has run it. Also read
+   what `client.go` does today when a server answers with a different version,
+   which the discovery pass did not read. If the old handshake is still widely
+   accepted, say so and shrink the rest of the phase.
+2. **A second protocol path in `internal/platform/tools/mcp/`** — `server/discover`
+   in place of `initialize`, the version and capabilities in `_meta` on every
+   request, no session header, `resultType` read on every result. The existing
+   path stays as the fallback for servers on 2025-06-18 or 2025-11-25, and the
+   instance records which one it negotiated.
+3. **Decide what `input_required` means, in an ADR.** The revision replaces
+   server-initiated requests with a result of `resultType: "input_required"`
+   that the client answers by retrying. The client never implemented sampling or
+   elicitation, so their deprecation costs nothing; but a tool that asks for
+   input mid-call is either an error returned to the planner or a checkpoint,
+   and the second reaches `internal/feature/`. Until decided, it is an error
+   that names the reason, never an empty result.
+4. **Re-issue, do not resume.** The revision says a broken response stream loses
+   the in-flight request and the client must send it again under a new request
+   ID. A re-issued tool call may run twice on the server; the ADR 022 bounds on
+   discovered tools apply to the retry as they do to the first call.
+5. **The server side.** Karakuri as an MCP server (Phase 28, step 5) needs the
+   same revision. The discovery pass did not locate or read that code, so this
+   step begins by reading it.
+
+**Acceptance:** Against an `httptest` server that implements only 2026-07-28 —
+no `initialize`, no session header — the client discovers the server's tools and
+calls one. Against a server that implements only 2025-06-18, it still does, by
+the old path. A result of `input_required` surfaces as the behaviour step 3's
+ADR chose, with a test, and a result with no `resultType` from a 2026-07-28
+server is an error. The four bounds of ADR 022 and the third-party trust of
+ADR 021 hold on both paths.
+
+**What this is not.** It is not OAuth for remote MCP servers. The same revision
+changes authorization — issuer validation, credentials keyed by issuer, Client
+ID Metadata Documents in place of Dynamic Client Registration — and a remote
+server is authenticated today by a static header. That is a token store, a
+consent step and a callback route, and the discovery report sizes it as a phase
+of its own. It is also not a claim of conformance to the revision: tasks, which
+moved to an extension, and trace-context propagation in `_meta` are outside
+this phase. And an `httptest` server built from the specification's text is not
+a real server; what the acceptance shows is the path, as Phase 32's did.
 
 ---
 
