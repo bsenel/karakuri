@@ -21,7 +21,7 @@ func artifactListCmd() *cobra.Command {
 		Short: "List artifacts",
 		Example: `  krk artifact list
   krk artifact list --objective <objective-id>`,
-		RunE: func(_ *cobra.Command, _ []string) error {
+		RunE: func(c *cobra.Command, _ []string) error {
 			path := "/artifacts"
 			sep := "?"
 			if objectiveID != "" {
@@ -35,7 +35,7 @@ func artifactListCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			client.PrintOutput(data, output)
+			printList(c, data, "artifacts")
 			return nil
 		},
 	}

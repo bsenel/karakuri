@@ -21,7 +21,7 @@ func checkpointListCmd() *cobra.Command {
 		Short: "List pending checkpoints",
 		Example: `  krk checkpoint list
   krk checkpoint list --twin t_7f2a`,
-		RunE: func(_ *cobra.Command, _ []string) error {
+		RunE: func(c *cobra.Command, _ []string) error {
 			path := "/checkpoints"
 			if twinID != "" {
 				path += "?twin_id=" + twinID
@@ -30,7 +30,7 @@ func checkpointListCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			client.PrintOutput(data, output)
+			printList(c, data, "pending checkpoints")
 			return nil
 		},
 	}

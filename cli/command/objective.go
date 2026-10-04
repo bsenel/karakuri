@@ -72,7 +72,7 @@ func objectiveListCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List objectives",
-		RunE: func(_ *cobra.Command, _ []string) error {
+		RunE: func(c *cobra.Command, _ []string) error {
 			path := "/objectives"
 			sep := "?"
 			if twinID != "" {
@@ -86,7 +86,7 @@ func objectiveListCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			client.PrintOutput(data, output)
+			printList(c, data, "objectives")
 			return nil
 		},
 	}

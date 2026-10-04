@@ -102,7 +102,7 @@ func twinListCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List digital twins",
-		RunE: func(_ *cobra.Command, _ []string) error {
+		RunE: func(c *cobra.Command, _ []string) error {
 			path := "/twins"
 			sep := "?"
 			if kind != "" {
@@ -116,7 +116,7 @@ func twinListCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			client.PrintOutput(data, output)
+			printList(c, data, "twins")
 			return nil
 		},
 	}
