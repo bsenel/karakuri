@@ -31,10 +31,20 @@ Date read: 2026-10-04 (UTC).
 ### Segment 4 — Platform and SRE teams
 
 - No evidence found in this session. No fetched page describes SRE or incident-response teams running agents. Not searched for specifically; part 2 or a later pass should.
+- Added by a later pass on 2026-10-04, which searched for this segment specifically. Evidence is still thin: one tool author and one vendor, no SRE team speaking for itself.
+  - Observed: a Show HN post, "Nightwatch, The open-source, read-only AI SRE" (7 June 2026, 33 points, 10 comments), describes a tool that groups alert storms into incidents, flags noisy checks and has an agent investigate live systems for a root cause; its author writes "read-only for now, i don't trust it near prod yet and honestly neither should you." (https://hn.algolia.com/api/v1/items/48438180, read 2026-10-04)
+  - Observed: Traversal, a vendor of an AI SRE product, writes on its blog (undated, titled for 2026) that "Speed to a wrong answer is negative value", that teams disabled AI runbooks which issued confident but incorrect commands during P1 incidents, and that high-impact changes should keep human approval. (https://www.traversal.com/blog/ai-in-incident-response-state-of-the-field-2026-sre, read 2026-10-04) Vendor claims; the post gives no sample and no named team for the disabled-runbook statement, and its adoption figures are other parties' (Gartner, Stanford HAI, Uptime Institute), not fetched here.
+  - Job to be done: get from an alert storm to a probable cause faster, with evidence the on-call engineer can check, without the agent changing production by itself.
+  - Inferred: both the open-source author and the vendor put the line in the same place, investigation yes, unattended remediation no. That is two sources with an interest in the answer, not a finding about SRE teams.
 
 ### Segment 5 — Solo developers and open-source self-hosters
 
 - No direct evidence found in this session. Inferred, weakly: the issue trackers read for the next section (LangGraph, OpenAI Agents SDK) are where such users would appear, but the listings read do not identify who filed the issues.
+- Added by a later pass on 2026-10-04. Still thin, and indirect: these are launch posts and bug titles, not self-hosters describing their work.
+  - Observed: a Hacker News search for stories since April 2026 on self-hosted agents in production returned mostly launches of infrastructure around agents: "Runtime (YC P26) – Sandboxed coding agents for everyone on a team" (21 May 2026, 103 points), "Torrix, self hosted, LLM Observability (no Postgres, no Redis)" (13 May 2026, 74 points), "Cordium – FOSS self-hosted sandbox platform" (7 June 2026, 2 points), "strangeClaw – a self-hosted agent running inside a Firecracker microVM" (10 June 2026, 1 point), "FlowLink: MCP proxy blocking destructive AI agent commands" (26 May 2026, 1 point). (https://hn.algolia.com/api/v1/search?query=self-hosted%20agents%20production&tags=story&numericFilters=created_at_i%3E1775000000, read 2026-10-04) Only titles, points and dates were read from this listing.
+  - Observed: n8n, a self-hostable workflow platform with an AI Agent node, has agent-related issues that read like those of people running it themselves against their own models: "Timeout setting does not work for Ollama node when it takes more than 5 minutes" (#25360, opened 5 February 2026, open) and "Custom OpenAI Endpoint does not work with non OpenAI models" (#9862, closed 17 March 2025). (https://github.com/n8n-io/n8n/issues?q=is%3Aissue+agent+sort%3Areactions-desc, read 2026-10-04) Titles only.
+  - Job to be done, inferred: run an agent on one's own machines and models, contained in a sandbox, with few moving parts.
+  - Inferred: the two best-received launches are about sandboxing and about observability that needs no extra database, which suggests containment and a small footprint matter to this audience. Points on a launch post measure interest in the post, not use.
 
 ## What they ask for and complain about
 
@@ -76,10 +86,24 @@ Date read: 2026-10-04 (UTC).
 - Observed: 89% of LangChain's respondents report having observability and 62% detailed tracing. (https://www.langchain.com/state-of-agent-engineering, read 2026-10-04; LangChain's figures, and LangChain sells an observability product)
 - Observed: "Enhance `on_tool_start` Hook to Include Tool Call Arguments" (#252, closed 4 March 2026) and "Agent.as_tool hides nested tool-call events" (#864, closed 29 January 2026) in the OpenAI Agents SDK tracker ask for visibility into tool calls. (https://github.com/openai/openai-agents-python/issues?q=is%3Aissue+sort%3Areactions-desc, read 2026-10-04)
 
+### Added by a later pass: forum threads and one self-hostable platform's tracker
+
+Six further pages were fetched on 2026-10-04 to cover gaps named under "Not found" below (forum threads, SRE, self-hosters). Same limits: model-written extracts, titles rather than threads for the tracker, and short comment threads.
+
+- **Timeouts on slow or local models.** Observed: three of the 25 n8n agent issues listed are the same complaint: "AI nodes timeout after 5m" (#11886, closed 15 January 2026), "Timeout setting does not work for Ollama node when it takes more than 5 minutes" (#25360, opened 5 February 2026, open) and "OpenAI Chat Model node hard-cuts at 300 s despite timeout settings" (#24496, closed 5 March 2026). (https://github.com/n8n-io/n8n/issues?q=is%3Aissue+agent+sort%3Areactions-desc, read 2026-10-04)
+- **A failing tool should be reported to the agent, not end the run.** Observed: "AI Agent node: Tool node errors fail workflow instead of returning error to agent" (#24042, opened 8 January 2026, open). (same URL, read 2026-10-04)
+- **MCP client and provider compatibility.** Observed: "MCP Client Tool sends additional parameter, that is not expected by MCP Server" (#21500, closed 16 March 2026), "MCP client does not support multi-parameter MCP server" (#21569, closed 9 December 2025), "AI Agent to MCP Client Node Invalid Request Issue" (#15603, closed 13 February 2026); and per-provider tool-calling breakage: "Google Gemini: Support for thought_signature missing in Tool Calls" (#22181, closed 5 December 2025), "DeepSeek AI Agent node fails with 400 error when using tools with thinking mode" (#29119, closed 17 August 2026), "Mistral Cloud Chat Model fails in AI Agent" (#37453, opened 31 August 2026, open). (same URL, read 2026-10-04) Inferred: by a count of the titles, roughly 12 of the 25 listed are a provider or MCP server behaving differently from what the client assumed.
+- **Tool calls missing from memory.** Observed: the first issue listed is "AI Agent doesn't store the Tool usages in memory" (#14361, opened 2 April 2025, open). (same URL, read 2026-10-04)
+- **Secrets, licence and policy checks for team coding agents.** Observed, in the Hacker News thread on Runtime (sandboxed coding agents for a team; 21 May 2026, 103 points, 30 comments): mritchie712, "Checked license it said copyrighted which makes this unsuable for me."; theahura, "keys are tricky...tools that do something like 'read a key from disk.'"; vorsken, "the generated code still needs to pass security policy checks before it merges."; cvolante, "If marketing sends me a pull request and I hate the code, what's the flow like for me to fix it?" (https://hn.algolia.com/api/v1/items/48225040, read 2026-10-04) Four individual comments, quoted as the extract gave them, ellipses included; not a count of opinion.
+- **An SRE agent lacks context about neighbouring services.** Observed, in the Nightwatch thread: tam159, "LLM may not have enough context about the related services to investigate the errors", who suggests feeding it each service's README. (https://hn.algolia.com/api/v1/items/48438180, read 2026-10-04) One commenter in a ten-comment thread.
+- **A confident wrong answer during an incident.** Observed: Traversal's claim, as under Segment 4, that teams turned off AI runbooks which issued confident but incorrect commands in P1 incidents, and that existing tools "stop at correlation". (https://www.traversal.com/blog/ai-in-incident-response-state-of-the-field-2026-sre, read 2026-10-04) Vendor claim with no named source.
+- **Narrow, short-lived credentials and a check before the action.** Observed: a Cloud Security Alliance research note of 20 July 2026 on an intrusion at Hugging Face (detected the week of 14 July 2026, disclosed 16 July 2026), in which, by the note's account, an autonomous agent run by the attacker performed "more than 17,000 logged attacker actions", recommends "short-lived, per-task credentials rather than long-lived service accounts" and runtime controls that "intercept an agent's proposed action before execution, evaluate it against context-aware policy". (https://labs.cloudsecurityalliance.org/research/csa-research-note-huggingface-autonomous-agent-breach-202607/, read 2026-10-04) This is advice from a security body after an attack that used an agent; it is not a complaint from someone operating one, and Hugging Face's own disclosure was not fetched.
+- Inferred: these additions repeat the earlier headings (approval before action, visibility into tool calls, integration) more than they add new ones. What is new is small and concrete: a fixed five-minute ceiling on model calls, a tool error ending the whole run, and the licence of the platform itself as a reason to reject it.
+
 ### Not found
 
 - Nothing fetched speaks to cost as a current complaint beyond The Agent Report's remark that cost worries have "dropped significantly" (same URL as above, read 2026-10-04); no figure was given.
-- No forum threads, changelogs or practitioner write-ups by non-vendors were read. No complaint here comes from an SRE team, a regulated organisation speaking for itself, or an identified self-hoster.
+- No forum threads, changelogs or practitioner write-ups by non-vendors were read. No complaint here comes from an SRE team, a regulated organisation speaking for itself, or an identified self-hoster. (The later pass above read two short forum threads; the rest of this sentence still holds: no SRE team, no regulated organisation and no postmortem by someone running agents was read.)
 - A search result claimed that 78% of enterprises have agent pilots and under 15% reach production scale; the page behind it was not fetched, so it is recorded here only as an unverified lead.
 
 ## Trends
@@ -139,6 +163,17 @@ _Not yet written in this pass._
 
 _Not yet written in this pass._
 
+### Earlier discovery pull requests
+
+Read with `gh pr list --state all --label karakuri:discovery` on 2026-10-04.
+
+- #148, OPEN, https://github.com/bsenel/karakuri/pull/148: "Discovery 2026-10-04: report in progress, no phase proposed yet". This is the pull request for this report, on this branch; it had no reviews and no comments when read.
+- No closed or merged discovery pull request was listed, so no proposed phase has been declined so far.
+
+## Proposed phases
+
+_Not yet written._
+
 ## Sources
 
 Part 1 (segments and pain points). All eight fetches succeeded; none failed. Each page was read as a model-written extract of the fetched page, not as raw HTML.
@@ -153,6 +188,17 @@ Part 1 (segments and pain points). All eight fetches succeeded; none failed. Eac
 - https://github.com/openai/openai-agents-python/issues?q=is%3Aissue+sort%3Areactions-desc (read 2026-10-04): issue titles, numbers and dates; human-in-the-loop, MCP, A2A and tracing requests.
 
 Two web searches were also run to find these pages; search-result snippets are not cited as evidence.
+
+Part 1, later pass (SRE teams, self-hosters, forum threads). Seven fetches were made: six are cited below; one Hacker News search for AI SRE stories was used only to find the Nightwatch thread. Each page was read as a model-written extract.
+
+- https://hn.algolia.com/api/v1/items/48438180 (read 2026-10-04): Hacker News thread, "Show HN: Nightwatch, The open-source, read-only AI SRE", 7 June 2026; the author's reason for read-only and one commenter's worry about context.
+- https://www.traversal.com/blog/ai-in-incident-response-state-of-the-field-2026-sre (read 2026-10-04): AI SRE vendor's blog post; its claims on wrong answers during incidents and on keeping humans on high-impact changes.
+- https://hn.algolia.com/api/v1/search?query=self-hosted%20agents%20production&tags=story&numericFilters=created_at_i%3E1775000000 (read 2026-10-04): Hacker News search listing; titles, points and dates of launches since April 2026.
+- https://hn.algolia.com/api/v1/items/48225040 (read 2026-10-04): Hacker News thread on Runtime (YC P26), 21 May 2026; four commenters on licence, secrets, policy checks and review flow.
+- https://github.com/n8n-io/n8n/issues?q=is%3Aissue+agent+sort%3Areactions-desc (read 2026-10-04): issue titles, numbers and dates; timeouts, tool errors, MCP client and provider compatibility.
+- https://labs.cloudsecurityalliance.org/research/csa-research-note-huggingface-autonomous-agent-breach-202607/ (read 2026-10-04): Cloud Security Alliance research note of 20 July 2026; recommended controls after an intrusion that used an autonomous agent.
+
+Two web searches were also run in this pass; their snippets (including figures attributed to Microsoft's Azure SRE Agent) are not cited, because the pages behind them were not fetched.
 
 Part 2 (trends). Eight fetches were made: five returned content, two returned a redirect to another host, one returned HTTP 404. Each page was read as a model-written extract, not as raw HTML.
 
