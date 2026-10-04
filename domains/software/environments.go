@@ -52,6 +52,10 @@ func softwareEnvironmentFactories(reg *tools.Registry) []environment.Factory {
 				CapProposeRoadmap,
 				CapDraftADR,
 				"software.act.write_design_doc",
+				// The reads gitEnv.Observe already makes, asked for by name:
+				// the adapter that holds the commits and PRs is bound here.
+				"software.observe.fetch_commits",
+				"software.observe.fetch_prs",
 			},
 			Build: func(ctx environment.BuildContext) (environment.Environment, error) {
 				var vc versioncontrol.VersionControlAdapter = versioncontrol.NewNoOp()
@@ -156,7 +160,7 @@ func softwareEnvironmentFactories(reg *tools.Registry) []environment.Factory {
 			EnvID:       "software.env.codebase",
 			Domain:      "software",
 			Description: "The repository as evidence: the roadmap's own deferred work, TODO density by package, packages with no tests, and where AGENTS.md rules live",
-			Serves:      []capability.CapabilityID{CapAnalyseRepo},
+			Serves:      []capability.CapabilityID{CapAnalyseRepo, "software.observe.read_codebase"},
 			Build: func(_ environment.BuildContext) (environment.Environment, error) {
 				// Root defaults to the server's working directory, like
 				// shellEnv. Declared since Phase 2 and a noop until Phase 25.
@@ -264,6 +268,24 @@ type gitEnv struct {
 // state.
 const gitObservationWindow = 7 * 24 * time.Hour
 
+// Bounds on params.since_days for the fetch_commits and fetch_prs reads. The
+// default is the observation window; the cap keeps one read from pulling a
+// quarter of history into a single result.
+const (
+	gitReadDefaultSinceDays = 7
+	gitReadMaxSinceDays     = 90
+)
+
+// gitReadParams turns params.repo and params.since_days into what the adapter
+// is asked for. An empty repo is the adapter's default, as in Observe.
+func gitReadParams(params map[string]any) (repo string, since time.Time) {
+	days := positiveIntParam(params, "since_days", gitReadDefaultSinceDays)
+	if days > gitReadMaxSinceDays {
+		days = gitReadMaxSinceDays
+	}
+	return asString(params, "repo"), time.Now().UTC().Add(-time.Duration(days) * 24 * time.Hour)
+}
+
 func (e *gitEnv) ID() environment.EnvironmentID { return e.id }
 func (e *gitEnv) Domain() string                { return "software" }
 
@@ -344,9 +366,42 @@ func (e *gitEnv) Act(ctx context.Context, a environment.Action) (environment.Act
 
 	adapter := e.vc
 	if adapter == nil || !adapter.Active() {
+		switch string(a.CapabilityID) {
+		case "software.observe.fetch_commits", "software.observe.fetch_prs":
+			// A read with nothing to read from is a failure, not an empty
+			// list: "no commits this week" and "no repository" are different
+			// facts, and noopAct would report the first.
+			return environment.ActionResult{Success: false,
+				Error: fmt.Sprintf("%s: no version control instance is bound", a.CapabilityID)}, nil
+		}
 		return noopAct(a), nil
 	}
 	switch string(a.CapabilityID) {
+	case "software.observe.fetch_commits":
+		repo, since := gitReadParams(a.Params)
+		commits, err := adapter.GetCommits(ctx, repo, since)
+		if err != nil {
+			return environment.ActionResult{Success: false, Error: err.Error(),
+				StateDelta: map[string]any{"adapter": adapter.Name()}}, nil
+		}
+		// Commits are the operator's own infrastructure, as in Observe.
+		return environment.ActionResult{Success: true, Trust: environment.TrustOperator,
+			StateDelta: map[string]any{"commits": commits, "count": len(commits)}}, nil
+	case "software.observe.fetch_prs":
+		repo, since := gitReadParams(a.Params)
+		prs, err := adapter.ListPRs(ctx, repo, since)
+		if err != nil {
+			return environment.ActionResult{Success: false, Error: err.Error(),
+				StateDelta: map[string]any{"adapter": adapter.Name()}}, nil
+		}
+		// Third party only when a pull request is actually carried, for the
+		// reason Observe gives: a PR title is typed by whoever opened it.
+		trust := environment.TrustOperator
+		if len(prs) > 0 {
+			trust = environment.TrustThirdParty
+		}
+		return environment.ActionResult{Success: true, Trust: trust,
+			StateDelta: map[string]any{"prs": prs, "count": len(prs)}}, nil
 	case "software.act.create_pr":
 		pr := versioncontrol.PullRequest{
 			Title:        asString(a.Params, "title"),
