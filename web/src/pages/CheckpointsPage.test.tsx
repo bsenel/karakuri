@@ -13,7 +13,11 @@ import { APIError } from '@/api/client';
 import { CheckpointsPage } from './CheckpointsPage';
 
 describe('CheckpointsPage', () => {
-  beforeEach(() => get.mockReset());
+  // Braces matter: mockReset returns the mock, and vitest runs a function
+  // returned from beforeEach as that test's cleanup — it would call get().
+  beforeEach(() => {
+    get.mockReset();
+  });
 
   it('says it is loading rather than that nothing is pending', () => {
     // Never resolves: the page is still waiting on its first answer.
