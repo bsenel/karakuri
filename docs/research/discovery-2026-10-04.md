@@ -178,7 +178,34 @@ A later session on 2026-10-04 fetched the pages the first pass could not, in the
 
 ## Feasibility
 
-_Not yet written in this pass._
+Written by part 3 on 2026-10-04. Candidates were chosen by how much sourced evidence this report holds for them, not by how attractive they are. The repository was read (files, roadmap, ADR titles) and searched with `grep`; **nothing was built, run or tested**, so every statement about what the code does is a reading of the source, not an observed behaviour. No candidate was skipped as declined: "Earlier discovery pull requests" below lists no closed or merged discovery pull request.
+
+### Candidate 1 — An MCP client that speaks revision 2026-07-28 and authenticated remote servers
+
+Evidence in this report: the breaking MCP revision 2026-07-28 (Trends, later pass); LangSmith's recent work on MCP OAuth discovery and Client ID Metadata Documents (Comparable products); n8n's MCP client compatibility issues and "Add MCP support" as the most-reacted OpenAI Agents SDK issue listed (pain points). The evidence that the protocol changed is first-hand (the specification's own page); the evidence that users are hurt by it is indirect (issue titles from other products).
+
+**What Karakuri already has.**
+
+- Phase 28 (Completed) in `docs/roadmap.md` delivered an MCP client under `internal/platform/tools/mcp/` with stdio and streamable-HTTP transports, a per-instance allowlist, and Karakuri as an MCP server (read and propose only). The files are `client.go`, `protocol.go`, `transport.go`, `stdio.go`, `streamhttp.go`, `instance.go`, `environment.go`.
+- Observed in the source: `internal/platform/tools/mcp/protocol.go` declares `const ProtocolVersion = "2025-06-18"` and a `MethodInitialize = "initialize"` method; `client.go` sends `protocolVersion` in that handshake and records the version the server answers with; `streamhttp.go` declares `const sessionHeader = "Mcp-Session-Id"`. Comments in `transport.go`, `streamhttp.go` and `client.go` say server-initiated requests (sampling, elicitation) are not implemented and that the client does not claim those capabilities.
+- Observed: `instance_test.go` configures an instance with `Headers: map[string]string{"Authorization": "Bearer t0k"}`, so a static header is how a remote server is authenticated. A `grep` for `oauth` and `OAuth` under `internal/platform/tools/mcp/` returned nothing.
+- Discovered tools are bounded by ADR 022 (`docs/adr/022-discovered-tools-are-bounded-four-ways.md`; title read, and its four bounds as Phase 28 states them) and their results are marked third-party per ADR 021.
+
+**What it would take.** Inferred from the above and from the 2026-07-28 change list as this report records it:
+
+- The client speaks a revision two behind the current one (2025-06-18, then 2025-11-25, then 2026-07-28). The 2026-07-28 revision removes the `initialize` handshake and the `Mcp-Session-Id` header that this client uses, and requires `server/discover`, a per-request version in `_meta`, and a `resultType` on every result. Supporting it is a second protocol path in `internal/platform/tools/mcp/` (`protocol.go`, `client.go`, `streamhttp.go`) with a fallback to the old handshake for older servers.
+- Layers touched: `internal/platform/` only for the protocol work. Because the client never implemented sampling or elicitation, their deprecation costs nothing; the new `input_required` round-trip would need a decision on whether a tool asking for input becomes a checkpoint, which reaches `internal/feature/` and wants an ADR.
+- OAuth for remote servers (issuer validation, credentials keyed by issuer, Client ID Metadata Documents) is larger and separate: a token store, a consent step a person completes, and configuration in `config/default.yaml`. It touches `internal/platform/`, `internal/api/` (a callback route, and `docs/openapi.yaml`) and probably the `auth` module.
+- Rough size (an estimate, not measured): the protocol revision is one phase-sized slice of adapter work comparable to a Phase 28 step; OAuth is a phase of its own.
+- The server side (Karakuri as an MCP server, Phase 28 step 5) would need the same revision work; it was not read in this pass.
+
+**What could not be verified.**
+
+- Whether a 2026-07-28-only server actually rejects this client: no server was run. The claim is a reading of two documents side by side.
+- Whether any MCP server Karakuri's users would bind has dropped the old handshake yet. The specification gives deprecated features a minimum twelve-month window, but as this report records it that window is stated for Roots, Sampling, Logging and HTTP+SSE, not for the handshake; how fast servers move is unknown.
+- Whether the client falls back when a server answers with a different version: `client.go` records the server's version, and the code that acts on a mismatch was not read.
+- Karakuri's outbound MCP server code was not located or read.
+- No user of Karakuri is on record asking for this; the demand evidence is from other products' trackers.
 
 ## Fit assessment
 
