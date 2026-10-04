@@ -325,6 +325,14 @@ func scratchRepo(t *testing.T) string {
 // adapters, so the only fake things are the CLI and the forge.
 func writePathContext(t *testing.T, repo string, cli cliagent.CLIAgentAdapter, vc versioncontrol.VersionControlAdapter) *stepContext {
 	t.Helper()
+	return packContext(t, repo, cli, vc, nil, nil)
+}
+
+// packContext is writePathContext with room for more: install sets further
+// stub adapters on the registry before the pack is built, and bindings are
+// added to the twin's AdapterBindings.
+func packContext(t *testing.T, repo string, cli cliagent.CLIAgentAdapter, vc versioncontrol.VersionControlAdapter, install func(*tools.Registry), bindings map[string]string) *stepContext {
+	t.Helper()
 
 	db, err := platformdb.Open("sqlite", filepath.Join(t.TempDir(), "writepath.db"))
 	if err != nil {
@@ -338,6 +346,13 @@ func writePathContext(t *testing.T, repo string, cli cliagent.CLIAgentAdapter, v
 	reg := &tools.Registry{}
 	reg.CLIAgents.Set("scripted", "stub", cli)
 	reg.VC.Set("recording", "stub", vc)
+	if install != nil {
+		install(reg)
+	}
+	adapterBindings := map[string]string{"cli_agents": "scripted", "versioncontrol": "recording"}
+	for k, v := range bindings {
+		adapterBindings[k] = v
+	}
 
 	pack := software.NewWithTools(reg)
 
@@ -355,7 +370,7 @@ func writePathContext(t *testing.T, repo string, cli cliagent.CLIAgentAdapter, v
 		}
 		env, err := f.Build(environment.BuildContext{
 			TwinID:          "twin-1",
-			AdapterBindings: map[string]string{"cli_agents": "scripted", "versioncontrol": "recording"},
+			AdapterBindings: adapterBindings,
 		})
 		if err != nil {
 			t.Fatalf("build %q: %v", f.EnvID, err)
