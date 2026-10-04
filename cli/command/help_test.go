@@ -1,6 +1,7 @@
 package command
 
 import (
+	"io"
 	"strings"
 	"testing"
 
@@ -27,6 +28,39 @@ func TestCreateHelp(t *testing.T) {
 	}
 	if usage := flags.Lookup("description").Usage; usage == "Description" {
 		t.Errorf("--description usage %q only repeats the flag name", usage)
+	}
+}
+
+// A wrong argument count has to show what the command expects: with
+// SilenceUsage set, cobra's "accepts 1 arg(s), received 0" is all the user gets.
+func TestMissingArgumentShowsUsage(t *testing.T) {
+	for _, tc := range []struct {
+		args  []string
+		usage string
+	}{
+		{[]string{"objective", "get"}, "Usage: krk objective get"},
+		{[]string{"twin", "get"}, "Usage: krk twin get"},
+		{[]string{"loop", "start"}, "Usage: krk loop start"},
+	} {
+		name := strings.Join(tc.args, " ")
+		root := NewRoot()
+		root.SetArgs(tc.args)
+		root.SetOut(io.Discard)
+		root.SetErr(io.Discard)
+		err := root.Execute()
+		if err == nil {
+			t.Fatalf("krk %s: no error for a missing argument", name)
+		}
+		msg := err.Error()
+		if !strings.Contains(msg, "accepts 1 arg(s), received 0") {
+			t.Errorf("krk %s: %q lost cobra's reason", name, msg)
+		}
+		if !strings.Contains(msg, tc.usage) {
+			t.Errorf("krk %s: %q does not show %q", name, msg, tc.usage)
+		}
+		if want := "Run 'krk " + name + " --help'"; !strings.Contains(msg, want) {
+			t.Errorf("krk %s: %q does not point at %q", name, msg, want)
+		}
 	}
 }
 
