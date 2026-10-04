@@ -207,6 +207,52 @@ Evidence in this report: the breaking MCP revision 2026-07-28 (Trends, later pas
 - Karakuri's outbound MCP server code was not located or read.
 - No user of Karakuri is on record asking for this; the demand evidence is from other products' trackers.
 
+### Candidate 2 — An incident investigation that starts at the alert, stays read-only, and posts its findings where the on-call engineer is
+
+Evidence in this report: Nightwatch (read-only by its author's choice), Traversal (keep humans on high-impact changes), Better Stack (investigate at incident start, post to the timeline and Slack, 1 October 2026), and one commenter on missing context about neighbouring services. Three of the four sources sell or publish an AI SRE tool; no SRE team speaks for itself in this report.
+
+**What Karakuri already has.**
+
+- Phase 32 (Completed) in `docs/roadmap.md`: `software.env.observability` is a real environment (`domains/software/observability_env.go`) over four adapters in `internal/platform/tools/observability/` (Prometheus, Loki, Datadog, PagerDuty); it serves `software.observe.fetch_logs` and `software.observe.fetch_metrics`; its snapshot wakes an incident objective when an alert starts, resolves or is acknowledged. These are the roadmap's statements; the adapter files themselves were not opened in this pass.
+- The same phase states that an incident plan **always escalates**, because alert text is third-party material (ADR 021) and because `software.act.run_remediation` is on the SRE agent's approval list. So the "human approves the fix" line that all three sources draw is already where Karakuri puts it.
+- A Slack adapter exists at `internal/platform/tools/messaging/slack.go` (found by `grep`; not opened).
+- Standing objectives and reconciliation (Phase 20, ADR 015) are what would start the investigation without a person asking.
+
+**What it would take.** Inferred:
+
+- Phase 32's incident template couples investigation to a remediation that escalates. The comparable products deliver a finding first and leave the fix to a person. A read-only investigation objective (observe, fetch logs and metrics, write a root-cause summary, stop) is a new objective template and criteria in `domains/software/`, which is a pack change and touches no layer in `internal/`.
+- Posting the summary to chat or to the incident itself: chat may be configuration only if the Slack adapter is reachable from the SRE agent, which was not checked. Writing to a PagerDuty or Datadog incident timeline is new adapter work in `internal/platform/tools/observability/` (the roadmap describes these adapters as reading only) plus a new capability, which would be on the approval list by default.
+- The largest gap is one Phase 32 names itself as deferred: a twin binds one observability instance, so alerts from Prometheus and logs from Loki cannot be combined; and nothing was run against a live backend. Both are `internal/platform/` and pack work.
+- Rough size (an estimate): the read-only template is small, days; multi-instance binding and live validation are the bulk and are already on Phase 32's deferred list, so this candidate is mostly "finish what Phase 32 deferred" and not a new capability.
+
+**What could not be verified.**
+
+- Whether the root-cause summary is any good. Phase 32 says the root-cause criterion is judged by a model and no judge is wired into its acceptance harness; Traversal's point in this report is that a fast wrong answer has negative value.
+- Whether the Slack adapter can post from an incident objective today.
+- Whether anyone wants this from a self-hosted Go server and not from the incident vendor they already pay; see Fit assessment.
+
+### Candidate 3 — Pausing for a person and surviving a restart (already delivered; one named gap)
+
+Evidence in this report: the heaviest of the three. Four human-in-the-loop issues in the OpenAI Agents SDK tracker, LangChain's post and survey figure on human review, LangGraph's interrupt, checkpoint and resume bugs, and Inngest's post. It is listed because it is the best-evidenced need, and the finding is that the roadmap already delivered it.
+
+**What Karakuri already has.**
+
+- Phase 11 (Completed), `docs/roadmap.md`: loop state persisted at iteration boundaries, `ResumeStoredLoops` called at boot, paused loops waiting for a fresh decision after a restart, with Restate and Celery executors in `internal/platform/executor/`. The phase states that a crash loses at most one iteration.
+- Phase 13.5 (Completed): a checkpoint carries the planner's draft actions; a person can approve, reject or modify; each decision writes an audit row (`internal/feature/checkpoint/service.go`, `internal/core/checkpoint/checkpoint.go`).
+- Phase 20 and ADR 016 (earned autonomy and digests, title read) and Phase 31 (the evidence pack, heading read) build on those.
+- `grep` finds resume tests in `internal/feature/loop/resume_test.go` and `resume_stored_test.go`. They were not run.
+
+**What it would take.** The capability exists, so the remaining work is narrow:
+
+- Phase 11 defers active-active coordination: two replicas on one database could both re-launch the same loop, and leader election is left to the operator. LangSmith's "dedicated deployments now run at least two replicas" (this report, Trends) is the comparison. Closing it touches `internal/feature/loop/` and `internal/platform/storage/`. `grep` finds `lease` in `internal/feature/reconcile/`, so reconcile may already coordinate; that code was not read, and the size cannot be estimated until it is.
+- Phase 11's "at most one iteration re-executes" means an action in that iteration can run twice after a crash, and the model call is paid for again. That is the "re-paying for tokens" and "resume value reused" class of complaint in this report. Whether Karakuri's actions are idempotent on re-execution was not checked.
+
+**What could not be verified.**
+
+- Any of the restart behaviour: no server was started or killed in this pass. The claims are the roadmap's own acceptance notes.
+- Whether Phase 20 or later changed what Phase 11 deferred.
+- The smaller complaints (a fixed five-minute model timeout, a tool error ending the run) were not checked against Karakuri's loop at all.
+
 ## Fit assessment
 
 _Not yet written in this pass._
