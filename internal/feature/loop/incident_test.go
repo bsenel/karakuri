@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"github.com/bsenel/karakuri/domains/software"
+	coreagent "github.com/bsenel/karakuri/internal/core/agent"
+	"github.com/bsenel/karakuri/internal/core/capability"
 	corecheckpoint "github.com/bsenel/karakuri/internal/core/checkpoint"
 	"github.com/bsenel/karakuri/internal/core/environment"
 	"github.com/bsenel/karakuri/internal/core/objective"
@@ -177,9 +179,9 @@ func listed(list []string, want string) bool {
 // The Phase 32 acceptance sentence, stage by stage: an incident is observed,
 // its remediation is escalated to a human, approved, run, and recorded.
 //
-// NOT YET WRITTEN in this file: A5 (the digest includes the objective and the
-// decision) and A6 (the incident template's criteria settle from the
-// alerts_resolved outcome, and do not when the command clears nothing).
+// The stages, in the order they run: A1 observe, A2 propose and escalate, A2b
+// the approval list alone is enough, A5 digest before, A3 approve and act, A4
+// audit, A5b digest after, A6 verify.
 func TestIncidentObservedEscalatedRemediatedRecorded(t *testing.T) {
 	ctx := context.Background()
 	marker := filepath.Join(t.TempDir(), "remediated")
@@ -227,8 +229,11 @@ func TestIncidentObservedEscalatedRemediatedRecorded(t *testing.T) {
 		}
 		cpID = *sc.state.result.CheckpointID
 
-		// Why, not merely that: the gate that must hold for a remediation is
-		// RequiresApprovalFor, and the audit row has to say so.
+		// Why, not merely that: an incident plan is always drafted with an
+		// alert in evidence, so it escalates on provenance before the approval
+		// list is ever consulted. That is the stronger gate, and it holds
+		// whatever the agent's bounds say. Decide reports one reason, the most
+		// specific, so the audit row names the third-party source.
 		rows, err := sc.svc.store.ListToolEvents(ctx, storage.ToolEventFilter{ObjectiveID: string(sc.obj.ID)})
 		if err != nil {
 			t.Fatalf("list tool events: %v", err)
@@ -239,20 +244,44 @@ func TestIncidentObservedEscalatedRemediatedRecorded(t *testing.T) {
 				reason = r.EscalationReason
 			}
 		}
-		if !strings.Contains(reason, software.CapRunRemediation) {
-			t.Errorf("escalation reason %q does not name the requires-approval capability %s", reason, software.CapRunRemediation)
+		if !strings.Contains(reason, incidentObsEnv) {
+			t.Errorf("escalation reason %q does not name the third-party source %s", reason, incidentObsEnv)
+		}
+	})
+
+	// Two independent gates, either one sufficient. This one is the gate that
+	// still holds for a remediation proposed with no alert text in evidence:
+	// the same agent, the same planned capabilities, nothing third-party, and
+	// a confidence its own threshold would let through.
+	t.Run("A2b the approval list alone is enough", func(t *testing.T) {
+		b := sc.agentDef.Authority
+		if b.ConfidenceThreshold >= 0.99 {
+			t.Fatalf("the SRE's confidence threshold is %.2f: a 0.99 plan would escalate for confidence and this stage would prove nothing",
+				b.ConfidenceThreshold)
+		}
+		planned := make([]capability.CapabilityID, 0, len(p.Actions))
+		for _, a := range p.Actions {
+			planned = append(planned, capability.CapabilityID(a.CapabilityID))
+		}
+		v := b.Decide(0.99, b.ConfidenceThreshold, planned, coreagent.Evidence{})
+		if !v.Escalate {
+			t.Fatalf("the SRE planned %s with nothing third-party in evidence and ran it without asking", software.CapRunRemediation)
+		}
+		if !strings.Contains(v.Reason, software.CapRunRemediation) {
+			t.Errorf("escalation reason %q does not name the requires-approval capability %s", v.Reason, software.CapRunRemediation)
 		}
 	})
 
 	// A5 runs while the checkpoint is still pending: a digest lists what the
 	// reader owes an answer on, and once ada answers it is no longer owed.
-	t.Run("A5 digest", func(t *testing.T) {
+	// A5b assembles the same window again after she has.
+	digestSince := time.Now().UTC().Add(-time.Hour)
+	t.Run("A5 digest, before: the decision is owed", func(t *testing.T) {
 		if cpID == "" {
 			t.Fatal("no checkpoint to report: stage A2 did not escalate")
 		}
-		now := time.Now().UTC()
 		d, err := report.NewService(sc.svc.store, nil, nil, karakuriquota.Deps{}, report.Config{}).
-			Assemble(ctx, sc.twinID, now.Add(-time.Hour), now.Add(time.Hour))
+			Assemble(ctx, sc.twinID, digestSince, digestSince.Add(2*time.Hour))
 		if err != nil {
 			t.Fatalf("assemble: %v", err)
 		}
@@ -351,8 +380,44 @@ func TestIncidentObservedEscalatedRemediatedRecorded(t *testing.T) {
 		}
 	})
 
-	// Only the verifier-backed criterion is scored: root-cause is judged by a
-	// model, and no judge is wired into this harness.
+	// "Once approved, records the action in the audit log and in the next
+	// digest": A4 was the audit log, this is the digest. Three, because the
+	// plan has three actions and A4 found an execute row for each; the digest
+	// counts execute rows, so looking and checking count beside the
+	// remediation itself.
+	t.Run("A5b digest, after: the action is recorded", func(t *testing.T) {
+		if len(acted) == 0 {
+			t.Fatal("no actions to report: stage A3 did not act")
+		}
+		d, err := report.NewService(sc.svc.store, nil, nil, karakuriquota.Deps{}, report.Config{}).
+			Assemble(ctx, sc.twinID, digestSince, digestSince.Add(2*time.Hour))
+		if err != nil {
+			t.Fatalf("assemble: %v", err)
+		}
+		var found bool
+		for _, o := range d.Objectives {
+			if o.ID != sc.obj.ID {
+				continue
+			}
+			found = true
+			if o.Actions != 3 {
+				t.Errorf("the digest counts %d actions for objective %s, want the 3 the audit log holds", o.Actions, sc.obj.ID)
+			}
+		}
+		if !found {
+			t.Errorf("the digest does not include objective %s: %+v", sc.obj.ID, d.Objectives)
+		}
+		for _, dec := range d.Decisions {
+			if dec.CheckpointID == cpID {
+				t.Errorf("the digest still lists checkpoint %s as owed after ada answered it: %+v", cpID, dec)
+			}
+		}
+	})
+
+	// What A6 shows and does not: it scores the verifier-backed remediation
+	// criterion only. Root-cause is judged by a model, and no judge is wired
+	// into this harness, so "the template reaches its criteria" is shown for
+	// the criterion a capability settles.
 	t.Run("A6 verify", func(t *testing.T) {
 		if len(acted) == 0 {
 			t.Fatal("no outcomes to verify: stage A3 did not act")
@@ -404,9 +469,8 @@ func remediationCriterion(t *testing.T, all []objective.Criterion) []objective.C
 // active, cannot see. Blind is never quiet and never resolved.
 //
 // B2 (reconcile's sensing lists the environment as blind and produces NO SHA
-// for it) is NOT in this file: reconcile's sensing function is unexported and
-// cannot be reached from package loop, so it belongs in
-// internal/feature/reconcile with a name containing Blind.
+// for it) is in internal/feature/reconcile/incident_blind_test.go: reconcile's
+// sensing function is unexported and cannot be reached from package loop.
 func TestIncidentBlindWhenObservabilityUnbound(t *testing.T) {
 	cases := map[string]struct {
 		obs  *scriptedObservability
