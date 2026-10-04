@@ -143,6 +143,15 @@ passing test run says nothing about whether the incident is over.
   first and is the reason the audit row records. And `run_remediation` is on
   the SRE agent's approval list. So earned autonomy never applies to a
   remediation. This is a property: the phase adds no new way to say yes.
+- **`alerts_resolved` trusts the IDs it is given.** It reports an alert
+  resolved when its ID is not in the open set, and it cannot tell an alert that
+  cleared from an ID that never named one. A plan that passes the wrong ID
+  meets the criterion. The IDs are in the plan a person approves, and the
+  verifier keeps no history to check them against.
+- **A verification in the same plan as its remediation looks immediately.** A
+  backend that takes an evaluation interval to clear an alert will still show
+  it open, the criterion is not met in that iteration, and a later iteration
+  has to look again.
 - **The acceptance test scores the verifier-backed criterion only.** The
   root-cause criterion is judged by a model, and no judge is wired into that
   harness.

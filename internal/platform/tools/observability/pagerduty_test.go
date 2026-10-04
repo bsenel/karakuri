@@ -139,15 +139,24 @@ func TestPagerDuty_GetAlerts_SinceParameter(t *testing.T) {
 	if !since.Equal(pdT0) {
 		t.Errorf("since = %v, want %v", since, pdT0)
 	}
+	if got, ok := ds.only(t).Query["date_range"]; ok {
+		t.Errorf("date_range = %v, want none when since bounds the search", got)
+	}
 }
 
-func TestPagerDuty_GetAlerts_ZeroSinceSendsNoSince(t *testing.T) {
+// Without a date range PagerDuty searches the last month only. "Every open
+// incident" must include one that has been open for longer, so the zero time
+// asks for all dates rather than sending nothing.
+func TestPagerDuty_GetAlerts_ZeroSinceAsksForAllDates(t *testing.T) {
 	ds := newDDServer(t, http.StatusOK, incidentsBody(t, false))
 	if _, err := pdAt(ds.URL).GetAlerts(context.Background(), "", "", time.Time{}, ""); err != nil {
 		t.Fatalf("GetAlerts: %v", err)
 	}
 	if got, ok := ds.only(t).Query["since"]; ok {
 		t.Errorf("since = %v, want no since parameter for the zero time", got)
+	}
+	if got := ds.only(t).Query.Get("date_range"); got != "all" {
+		t.Errorf("date_range = %q, want all: the default window hides incidents open for more than a month", got)
 	}
 }
 

@@ -45,7 +45,9 @@ func (p *PagerDuty) Active() bool { return p.token != "" }
 //  2. service: when non-empty it must equal the alert's Service (the
 //     incident's service.summary).
 //  3. since: when non-zero it is sent to PagerDuty, which drops incidents
-//     created before it.
+//     created before it. When zero, date_range=all is sent instead: without
+//     it PagerDuty searches the last month only, and an incident open for
+//     longer would be missing from a list that claims to be every open one.
 //  4. threshold: a minimum severity in the order info < warning < error <
 //     critical, case-insensitive. Empty means no filter. Severity comes from
 //     the incident's urgency: high is critical, low is warning. A non-empty
@@ -69,7 +71,9 @@ func (p *PagerDuty) GetAlerts(ctx context.Context, env, service string, since ti
 		"statuses[]": {"triggered", "acknowledged"},
 		"limit":      {strconv.Itoa(pagerDutyLimit)},
 	}
-	if !since.IsZero() {
+	if since.IsZero() {
+		params.Set("date_range", "all")
+	} else {
 		params.Set("since", since.Format(time.RFC3339))
 	}
 

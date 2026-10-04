@@ -3173,6 +3173,9 @@ harness.
   pack and is not a conformance check, because other packs' observe
   capabilities are deliberately served by placeholder environments. `decide.*`
   and `learn.*` are uncovered too, as Phase 25 recorded.
+- A verifier that knows which alerts it saw. `alerts_resolved` reports an ID
+  resolved when it is not in the open set, so an ID that never named an alert
+  counts as resolved; the IDs are in the plan a person approves.
 
 ---
 
