@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '@/api/client';
+import { describe } from '@/api/useApi';
 import type { Objective, ObjectiveTemplate, Twin } from '@/api/types';
 
 export function ObjectivesPage() {
@@ -8,6 +9,9 @@ export function ObjectivesPage() {
   const [templates, setTemplates] = useState<ObjectiveTemplate[]>([]);
   const [twins, setTwins] = useState<Twin[]>([]);
   const [err, setErr] = useState<string | null>(null);
+  // Whether the list has been read at least once. `err` alone cannot say:
+  // a failed create sets it too, and the list is still known then.
+  const [loaded, setLoaded] = useState(false);
 
   // Create form
   const [title, setTitle] = useState('');
@@ -27,8 +31,9 @@ export function ObjectivesPage() {
       setTemplates(tpl ?? []);
       setTwins(tw ?? []);
       setErr(null);
+      setLoaded(true);
     } catch (e) {
-      setErr(String(e));
+      setErr(describe(e));
     }
   };
 
@@ -47,7 +52,7 @@ export function ObjectivesPage() {
       setTitle('');
       await load();
     } catch (e) {
-      setErr(String(e));
+      setErr(describe(e));
     }
   };
 
@@ -92,7 +97,12 @@ export function ObjectivesPage() {
         </form>
       </div>
 
-      {err && <p className="pill red">{err}</p>}
+      {err && (
+        <p>
+          <span className="pill red">{err}</span>{' '}
+          {!loaded && <button onClick={() => void load()}>Retry</button>}
+        </p>
+      )}
       <table>
         <thead><tr><th>Title</th><th>Domain</th><th>Status</th><th>Twin</th><th>Created</th></tr></thead>
         <tbody>
@@ -105,8 +115,16 @@ export function ObjectivesPage() {
               <td className="muted small">{new Date(o.created_at).toLocaleString()}</td>
             </tr>
           ))}
-          {items.length === 0 && (
-            <tr><td colSpan={5} className="muted">No objectives yet.</td></tr>
+          {/* Neither "not loaded yet" nor "could not load" is "no objectives". */}
+          {!loaded && !err && (
+            <tr><td colSpan={5} className="muted">Loading…</td></tr>
+          )}
+          {loaded && items.length === 0 && (
+            <tr>
+              <td colSpan={5} className="muted">
+                No objectives yet. Create one above, or run <code>krk objective create</code>.
+              </td>
+            </tr>
           )}
         </tbody>
       </table>
