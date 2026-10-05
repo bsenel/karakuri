@@ -51,6 +51,9 @@ type Instance struct {
 	failure  string
 	server   Info
 	protocol string
+	// path is how the connection was opened, PathDiscover or PathInitialize.
+	// Empty when discovery failed.
+	path string
 
 	// tools are the ones both discovered and allowed, sorted by name so
 	// /health, the planner's catalog and Serves all read the same across boots.
@@ -66,8 +69,9 @@ type Instance struct {
 // InstanceHealth is the /health-shaped view of one instance: which transport,
 // what state the connection is in, and the tools discovered and allowed.
 //
-// The same three things every Phase 6 slot reports, plus the two MCP adds: a
-// server names itself, and an allowlist has a visible other side.
+// The same three things every Phase 6 slot reports, plus what MCP adds: a
+// server names itself and the revision it speaks, the connection was opened by
+// one of two paths, and an allowlist has a visible other side.
 type InstanceHealth struct {
 	Name            string `json:"name"`
 	Transport       string `json:"transport"`
@@ -76,7 +80,7 @@ type InstanceHealth struct {
 	Server          string `json:"server,omitempty"`
 	ProtocolVersion string `json:"protocol_version,omitempty"`
 	// ProtocolPath is how the connection was opened: PathDiscover or
-	// PathInitialize. Not recorded yet: modern_instance_test.go describes it.
+	// PathInitialize. Empty when the instance is unreachable.
 	ProtocolPath string   `json:"protocol_path,omitempty"`
 	Tools        []string `json:"tools"`
 	Filtered     []string `json:"filtered,omitempty"`
@@ -106,11 +110,12 @@ func NewInstance(ctx context.Context, name string, cfg Config) *Instance {
 	return inst
 }
 
-// discover runs the handshake and the one tools/list, and records what came back.
+// discover opens the connection by whichever path the server has, runs the one
+// tools/list, and records what came back.
 func (i *Instance) discover(ctx context.Context) {
-	init, err := i.client.Initialize(ctx)
+	negotiated, err := i.client.Negotiate(ctx)
 	if err != nil {
-		i.fail(fmt.Errorf("initialize: %w", err))
+		i.fail(fmt.Errorf("negotiate: %w", err))
 		return
 	}
 
@@ -138,8 +143,9 @@ func (i *Instance) discover(ctx context.Context) {
 	i.mu.Lock()
 	defer i.mu.Unlock()
 	i.state = StateConnected
-	i.server = init.ServerInfo
-	i.protocol = init.ProtocolVersion
+	i.server = negotiated.ServerInfo
+	i.protocol = negotiated.ProtocolVersion
+	i.path = negotiated.Path
 	i.tools = allowed
 	i.filtered = filtered
 }
@@ -236,6 +242,7 @@ func (i *Instance) Health(isDefault bool) InstanceHealth {
 		IsDefault:       isDefault,
 		Server:          i.server.Name,
 		ProtocolVersion: i.protocol,
+		ProtocolPath:    i.path,
 		Tools:           names,
 		Filtered:        append([]string(nil), i.filtered...),
 		Error:           i.failure,

@@ -3,7 +3,6 @@ package mcp
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"strconv"
 	"sync"
@@ -60,8 +59,8 @@ type Config struct {
 
 // Client is one connection to one MCP server.
 //
-// It speaks the three methods this deployment needs — initialize, tools/list,
-// tools/call — over either transport. What it deliberately does not do is
+// It speaks the methods this deployment needs — server/discover or initialize
+// to open, then tools/list and tools/call — over either transport. What it deliberately does not do is
 // reconnect: an instance discovers at boot and reports what it found, and a
 // client that silently re-established a session would make /health describe a
 // server it is no longer talking to.
@@ -79,6 +78,11 @@ type Client struct {
 
 	server   Info
 	protocol string
+
+	// modern is set once Negotiate has reached the server by server/discover.
+	// From then on every request carries _meta and every result must carry a
+	// resultType; a connection opened by the handshake does neither.
+	modern bool
 }
 
 // NewClient dials the server a Config names. The transport is established here,
@@ -162,9 +166,28 @@ type Negotiation struct {
 
 // Negotiate opens the connection by whichever path the server has.
 //
-// Not implemented yet: the tests in modern_test.go describe it.
-func (c *Client) Negotiate(_ context.Context) (Negotiation, error) {
-	return Negotiation{}, errors.New("negotiate: not implemented")
+// server/discover is tried first and the handshake second, in that order
+// because a 2026-07-28 server refuses initialize outright while an older one
+// answers an unknown method with an ordinary error and is still there to be
+// initialized. When both fail the error names both: either alone sends an
+// operator to the wrong half of the problem.
+func (c *Client) Negotiate(ctx context.Context) (Negotiation, error) {
+	var found discoverResult
+	discoverErr := c.exchange(ctx, MethodServerDiscover, nil, &found, true)
+	if discoverErr == nil {
+		c.mu.Lock()
+		c.modern = true
+		c.server = found.ServerInfo
+		c.protocol = ModernProtocolVersion
+		c.mu.Unlock()
+		return Negotiation{ProtocolVersion: ModernProtocolVersion, ServerInfo: found.ServerInfo, Path: PathDiscover}, nil
+	}
+
+	init, err := c.Initialize(ctx)
+	if err != nil {
+		return Negotiation{}, fmt.Errorf("%w; then %w", discoverErr, err)
+	}
+	return Negotiation{ProtocolVersion: init.ProtocolVersion, ServerInfo: init.ServerInfo, Path: PathInitialize}, nil
 }
 
 // ListTools asks the server what it offers.
@@ -209,6 +232,22 @@ func (c *Client) Close() error { return c.transport.Close() }
 // direction, and two calls interleaved on it would return each other's replies.
 func (c *Client) call(ctx context.Context, method string, params json.RawMessage, out any) error {
 	c.mu.Lock()
+	modern := c.modern
+	c.mu.Unlock()
+	return c.exchange(ctx, method, params, out, modern)
+}
+
+// exchange is call with the path stated, because server/discover has to be sent
+// the modern way before anything has been negotiated.
+func (c *Client) exchange(ctx context.Context, method string, params json.RawMessage, out any, modern bool) error {
+	if modern {
+		var err error
+		if params, err = withMeta(params); err != nil {
+			return fmt.Errorf("%s: %w", method, err)
+		}
+	}
+
+	c.mu.Lock()
 	c.nextID++
 	id := json.RawMessage(strconv.FormatInt(c.nextID, 10))
 	c.mu.Unlock()
@@ -230,6 +269,11 @@ func (c *Client) call(ctx context.Context, method string, params json.RawMessage
 	if resp.Error != nil {
 		return fmt.Errorf("%s: server error %d: %s", method, resp.Error.Code, resp.Error.Message)
 	}
+	if modern {
+		if err := checkResultType(resp.Result); err != nil {
+			return fmt.Errorf("%s: %w", method, err)
+		}
+	}
 	if out == nil || len(resp.Result) == 0 {
 		return nil
 	}
@@ -237,6 +281,49 @@ func (c *Client) call(ctx context.Context, method string, params json.RawMessage
 		return fmt.Errorf("%s: decode result: %w", method, err)
 	}
 	return nil
+}
+
+// withMeta adds the _meta every 2026-07-28 request carries in place of the
+// handshake: the revision spoken and what this client can do.
+func withMeta(params json.RawMessage) (json.RawMessage, error) {
+	fields := map[string]any{}
+	if len(params) > 0 {
+		if err := json.Unmarshal(params, &fields); err != nil {
+			return nil, fmt.Errorf("params are not an object: %w", err)
+		}
+	}
+	fields["_meta"] = map[string]any{
+		metaKeyProtocolVersion: ModernProtocolVersion,
+		// Empty for the reason Initialize declares none: nothing is implemented.
+		metaKeyClientCapabilities: map[string]any{},
+	}
+	return json.Marshal(fields)
+}
+
+// checkResultType refuses a 2026-07-28 result that is not a complete answer.
+//
+// A missing resultType is an error rather than assumed complete, and so is
+// input_required: read as an answer, either one is a tool that returned
+// nothing.
+func checkResultType(result json.RawMessage) error {
+	var head struct {
+		ResultType string `json:"resultType"`
+	}
+	if len(result) > 0 {
+		if err := json.Unmarshal(result, &head); err != nil {
+			return fmt.Errorf("decode result: %w", err)
+		}
+	}
+	switch head.ResultType {
+	case resultTypeComplete:
+		return nil
+	case "":
+		return fmt.Errorf("result carried no resultType, which revision %s requires", ModernProtocolVersion)
+	case ResultTypeInputRequired:
+		return fmt.Errorf("server answered with resultType %q: it wants input this client cannot give", ResultTypeInputRequired)
+	default:
+		return fmt.Errorf("unknown resultType %q", head.ResultType)
+	}
 }
 
 // withTimeout applies the per-call bound, leaving a caller's shorter deadline

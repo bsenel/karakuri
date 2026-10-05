@@ -69,8 +69,10 @@ func (t *httpTransport) Send(ctx context.Context, req Request) (*Response, error
 	defer func() { _ = resp.Body.Close() }()
 
 	// A session id arrives on the initialize reply and is echoed on everything
-	// after it.
-	if sid := resp.Header.Get(sessionHeader); sid != "" {
+	// after it. One offered on any other reply is not kept: revision 2026-07-28
+	// has no sessions, and a connection opened by server/discover never sends
+	// initialize.
+	if sid := resp.Header.Get(sessionHeader); sid != "" && req.Method == MethodInitialize {
 		t.mu.Lock()
 		t.session = sid
 		t.mu.Unlock()

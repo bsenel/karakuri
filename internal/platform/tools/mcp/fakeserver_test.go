@@ -123,9 +123,13 @@ func stdioConfig(allowed ...string) Config {
 type httpFake struct {
 	sse bool
 
-	mu       sync.Mutex
-	sessions []string // Mcp-Session-Id seen on each request after initialize
-	auth     []string
+	mu sync.Mutex
+	// initialized is set by the first initialize. The server/discover probe
+	// Negotiate sends ahead of it is before any session exists, so it is not
+	// recorded below.
+	initialized bool
+	sessions    []string // Mcp-Session-Id seen on each request after initialize
+	auth        []string
 }
 
 func (f *httpFake) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -136,7 +140,9 @@ func (f *httpFake) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	f.mu.Lock()
 	f.auth = append(f.auth, r.Header.Get("Authorization"))
-	if req.Method != MethodInitialize {
+	if req.Method == MethodInitialize {
+		f.initialized = true
+	} else if f.initialized {
 		f.sessions = append(f.sessions, r.Header.Get(sessionHeader))
 	}
 	f.mu.Unlock()
