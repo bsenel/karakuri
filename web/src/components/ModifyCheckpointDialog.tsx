@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { Checkpoint, CheckpointAction, CheckpointModifications } from '@/api/types';
 
 // ModifyCheckpointDialog collects the structured edits an operator
@@ -24,6 +24,15 @@ export function ModifyCheckpointDialog({ checkpoint, onClose, onSubmit }: Modify
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+
+  // Escape closes the dialog, the same as Cancel and a click on the backdrop.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
 
   const toggle = (i: number) => {
     setDropped((arr) => arr.map((v, idx) => (idx === i ? !v : v)));
@@ -53,8 +62,14 @@ export function ModifyCheckpointDialog({ checkpoint, onClose, onSubmit }: Modify
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <h2>Modify checkpoint</h2>
+      <div
+        className="modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="modify-checkpoint-title"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2 id="modify-checkpoint-title">Modify checkpoint</h2>
         <p className="muted small">
           The agent will re-plan using your feedback as critique, then re-enter the bounds check.
           A second escalation auto-rejects.
@@ -83,6 +98,7 @@ export function ModifyCheckpointDialog({ checkpoint, onClose, onSubmit }: Modify
 
         <h3 style={{ marginTop: 16 }}>Constraints</h3>
         <textarea
+          aria-label="Constraints"
           value={constraintsText}
           onChange={(e) => setConstraintsText(e.target.value)}
           rows={3}
@@ -92,6 +108,7 @@ export function ModifyCheckpointDialog({ checkpoint, onClose, onSubmit }: Modify
         <h3 style={{ marginTop: 16 }}>Confidence floor (optional)</h3>
         <input
           type="number"
+          aria-label="Confidence floor (optional)"
           min={0}
           max={1}
           step={0.05}
@@ -102,13 +119,14 @@ export function ModifyCheckpointDialog({ checkpoint, onClose, onSubmit }: Modify
 
         <h3 style={{ marginTop: 16 }}>Note</h3>
         <textarea
+          aria-label="Note"
           value={note}
           onChange={(e) => setNote(e.target.value)}
           rows={2}
           placeholder="free-form rationale — recorded on the audit row"
         />
 
-        {err && <p className="pill red" style={{ marginTop: 12 }}>{err}</p>}
+        {err && <p className="pill red" role="alert" style={{ marginTop: 12 }}>{err}</p>}
 
         <div className="row" style={{ marginTop: 16, justifyContent: 'flex-end' }}>
           <button onClick={onClose} disabled={busy}>Cancel</button>

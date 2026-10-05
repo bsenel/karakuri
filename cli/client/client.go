@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -63,11 +64,22 @@ func (c *Client) do(method, path string, body any) ([]byte, int, error) {
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := c.HTTP.Do(req)
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, c.unreachable(err)
 	}
 	defer resp.Body.Close()
 	data, err := io.ReadAll(resp.Body)
 	return data, resp.StatusCode, err
+}
+
+// unreachable explains a request that never got an answer. The transport's
+// own "dial tcp ...: connection refused" does not say that it is the Karakuri
+// server that is missing, nor which flag points the CLI somewhere else. A
+// request the caller cancelled is left as it is: nothing was unreachable.
+func (c *Client) unreachable(err error) error {
+	if errors.Is(err, context.Canceled) {
+		return err
+	}
+	return fmt.Errorf("cannot reach the Karakuri API at %s: %w\nIs the server running? Point the CLI at another one with --api-url", c.BaseURL, err)
 }
 
 // doAuth issues an authenticated request, attaching a valid access token.
@@ -98,7 +110,7 @@ func (c *Client) doAuthContext(ctx context.Context, method, path string, body an
 	req.Header.Set("Authorization", "Bearer "+token)
 	resp, err := c.HTTP.Do(req)
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, c.unreachable(err)
 	}
 	defer resp.Body.Close()
 	data, err := io.ReadAll(resp.Body)

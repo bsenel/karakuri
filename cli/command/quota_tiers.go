@@ -99,11 +99,14 @@ the next resolution — under a minute, and immediately on the server that handl
 this command.`,
 		Example: `  krk quota unset llm-tokens`,
 		Args:    cobra.ExactArgs(1),
-		RunE: func(_ *cobra.Command, args []string) error {
-			if _, _, err := api.Delete("/quota/tiers/" + strings.TrimSpace(args[0])); err != nil {
+		RunE: func(c *cobra.Command, args []string) error {
+			tier := strings.TrimSpace(args[0])
+			if _, _, err := api.Delete("/quota/tiers/" + tier); err != nil {
 				return err
 			}
-			fmt.Printf("%s is back to what configuration says\n", args[0])
+			if output != "quiet" {
+				fmt.Fprintf(c.OutOrStdout(), "limit for tier %s is back to what configuration says\n", tier)
+			}
 			return nil
 		},
 	}

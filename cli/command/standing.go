@@ -158,11 +158,13 @@ func objectiveUnstandingCmd() *cobra.Command {
 The objective and its history survive. Only the supervision stops: its control
 loop is dropped, and nothing runs again unless somebody starts a loop.`,
 		Args: cobra.ExactArgs(1),
-		RunE: func(_ *cobra.Command, args []string) error {
+		RunE: func(c *cobra.Command, args []string) error {
 			if _, _, err := api.Delete("/objectives/" + args[0] + "/standing"); err != nil {
 				return err
 			}
-			fmt.Printf("objective %s is no longer standing\n", args[0])
+			if output != "quiet" {
+				fmt.Fprintf(c.OutOrStdout(), "objective %s is no longer standing\n", args[0])
+			}
 			return nil
 		},
 	}

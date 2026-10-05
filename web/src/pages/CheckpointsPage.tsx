@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '@/api/client';
+import { describe } from '@/api/useApi';
 import type { Checkpoint, CheckpointModifications } from '@/api/types';
 import { ModifyCheckpointDialog } from '@/components/ModifyCheckpointDialog';
 
 export function CheckpointsPage() {
   const [items, setItems] = useState<Checkpoint[]>([]);
   const [err, setErr] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
   const [modifying, setModifying] = useState<Checkpoint | null>(null);
 
@@ -15,7 +17,8 @@ export function CheckpointsPage() {
       const list = await api.get<Checkpoint[]>('/checkpoints');
       setItems(list ?? []);
       setErr(null);
-    } catch (e) { setErr(String(e)); }
+    } catch (e) { setErr(describe(e)); }
+    finally { setLoading(false); }
   };
   useEffect(() => { void load(); }, []);
 
@@ -24,7 +27,7 @@ export function CheckpointsPage() {
     try {
       await api.post(`/checkpoints/${id}/resolve`, { decision });
       await load();
-    } catch (e) { setErr(String(e)); }
+    } catch (e) { setErr(describe(e)); }
     finally { setBusy(null); }
   };
 
@@ -44,7 +47,15 @@ export function CheckpointsPage() {
       {err && <p className="pill red">{err}</p>}
 
       <div className="col" style={{ marginTop: 16 }}>
-        {items.length === 0 && <p className="muted">No pending checkpoints.</p>}
+        {/* Neither "not loaded yet" nor "could not load" is "nothing pending":
+            saying so would tell an operator no loop is waiting on them. */}
+        {loading && <p className="muted">Loading…</p>}
+        {!loading && !err && items.length === 0 && (
+          <p className="muted">
+            No pending checkpoints. One appears here when a running loop
+            escalates for approval.
+          </p>
+        )}
         {items.map((c) => (
           <div key={c.id} className="card">
             <div className="row">

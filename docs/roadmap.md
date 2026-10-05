@@ -3266,6 +3266,16 @@ a real server; what the acceptance shows is the path, as Phase 32's did.
 
 ---
 
+## Engineering Backlog
+
+These are enhancements found in this deployment's own telemetry and audit log, each recorded with the data that shows the problem. A human approves an entry by merging the pull request that adds it; the delivery stream implements entries whose status is Planned.
+
+| ID | Title | Evidence | Proposed change | Size | Status |
+|----|-------|----------|-----------------|------|--------|
+| EB-001 | The git environment's provenance escalation fires on almost every plan | Read 2026-10-04. `krk --output json audit --limit 300 --kind escalation` returned 85 escalation events (2026-09-26 to 2026-10-04, local +02:00 timestamps); `grep -o` on `escalation_reason` counted 83 of them as `plan drew on material written outside this deployment: software.env.git`, and the other 2 as confidence below threshold. `krk audit export --from 2026-10-03T00:00:00Z --to 2026-10-04T00:00:00Z` held 28 `kind: escalation` events, 27 with that same reason and `bounds_violation: true`. Code read: `domains/software/environments.go` sets `TrustThirdParty` whenever the 7-day window (`gitObservationWindow`) holds any pull request. `gh pr list --state all --limit 15` showed 11 pull requests by the repository owner and 4 by dependabot. Inferred, not verified: the escalations come from the deployment's own pull requests, so the reason no longer tells a reviewer anything. Not measured: how many of the 83 were approved unchanged. | In `domains/software/environments.go` (git environment `Observe`), mark the observation third party only when the window carries a pull request whose author is not in an operator-configured list of the deployment's own logins (default empty, so today's behaviour is kept until configured); still computed from the payload, per ADR 021. No change to `internal/core/agent/decide.go`. Unverified: whether the git adapter's pull request type carries the author; if not, add it in the adapter under `internal/platform/`. Verify with a table test in `domains/software` (own-author PRs only gives operator trust; one outside author gives third party; empty list gives third party) and by re-running the escalation count over a later day. | M | Planned |
+
+---
+
 ## Phase Ordering Rationale
 
 Phases 7–13 are **independent except where noted** and can be reordered to match priority. The dependencies that DO exist:
@@ -3737,6 +3747,7 @@ Checks (run via `krk domain test <id>`):
 | Observability tool slot (`tools.observability`) and its four adapters | **Fully implemented** (Phase 32, ADR 026), not validated against a live backend — multi-instance and twin-bound (ADR 006); `prometheus` (alerts, metrics), `loki` (logs), `datadog` (alerts, metrics, logs), `pagerduty` (alerts); `ErrUnsupported` for a signal a backend lacks; tested against `httptest` servers. No no-op adapter. One instance per twin |
 | `software.env.observability`                                          | **Fully implemented** (Phase 32, ADR 026) — observes the open alert set, serves `fetch_logs`, `fetch_metrics` and `alerts_resolved`; blind (an `Observe` error and an empty snapshot SHA) when unbound, inactive or unable to answer alerts; the SHA hashes the open alert set, not the messages |
 | Incident response: `software.act.run_remediation` + `software.verify.alerts_resolved` | **Fully implemented** (Phase 32) — remediation is a shell command behind the shell denylist, requires `alert_id`, `rationale` and `cmd`, and always escalates; the remediation criterion is met only when the named alerts are no longer open. Shown end to end with a scripted instance in `internal/feature/loop/incident_test.go`; no infrastructure adapter |
+| Standing stream templates                                             | **Declared, not yet run** — `software.objective.market_discovery`, `engineering_backlog`, `ux_improvement` and `roadmap_delivery` in `domains/software/streams.go`, for a deployment that improves itself on a cadence. Their criteria describe the state a correct pass leaves behind, so a pass that looked and found nothing to do does not count against the circuit breaker; every criterion is judged, and each carries a hard `no-merge` constraint. No standing objective has run under them yet |
 
 
 ---

@@ -83,10 +83,10 @@ it is how an administrator gets in when the identity provider is down.`,
 				return nil
 			}
 			if id == "" {
-				return fmt.Errorf("--id is required (or use --refresh-token)")
+				return fmt.Errorf("--id is required: name the principal to log in as, e.g. `krk auth login --id admin --password-stdin < password.txt`\nWithout a password, use --sso (browser) or --refresh-token (service account)")
 			}
 			if !passwordStdin {
-				return fmt.Errorf("--password-stdin is required: passing a password as a flag would put it in your shell history")
+				return fmt.Errorf("--password-stdin is required: passing a password as a flag would put it in your shell history\nPipe it in instead, e.g. `krk auth login --id %s --password-stdin < password.txt`", id)
 			}
 			password, err := readSecret(c.InOrStdin())
 			if err != nil {

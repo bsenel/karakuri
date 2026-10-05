@@ -8,7 +8,7 @@ import (
 func checkpointCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "checkpoint",
-		Short: "Manage checkpoints",
+		Short: "Review and resolve checkpoints: the points where a loop stops for a human decision",
 	}
 	cmd.AddCommand(checkpointListCmd(), checkpointGetCmd(), checkpointResolveCmd())
 	return cmd
@@ -19,7 +19,9 @@ func checkpointListCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List pending checkpoints",
-		RunE: func(_ *cobra.Command, _ []string) error {
+		Example: `  krk checkpoint list
+  krk checkpoint list --twin t_7f2a`,
+		RunE: func(c *cobra.Command, _ []string) error {
 			path := "/checkpoints"
 			if twinID != "" {
 				path += "?twin_id=" + twinID
@@ -28,7 +30,7 @@ func checkpointListCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			client.PrintOutput(data, output)
+			printList(c, data, "pending checkpoints")
 			return nil
 		},
 	}
@@ -38,9 +40,10 @@ func checkpointListCmd() *cobra.Command {
 
 func checkpointGetCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "get <id>",
-		Short: "Get a checkpoint",
-		Args:  cobra.ExactArgs(1),
+		Use:     "get <id>",
+		Short:   "Get a checkpoint by ID",
+		Example: `  krk checkpoint get cp_123`,
+		Args:    cobra.ExactArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
 			data, _, err := api.Get("/checkpoints/" + args[0])
 			if err != nil {
@@ -59,7 +62,15 @@ func checkpointResolveCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "resolve <id>",
 		Short: "Resolve a checkpoint with a decision",
-		Args:  cobra.ExactArgs(1),
+		Example: `  # Let the plan go ahead as drafted
+  krk checkpoint resolve cp_123 --decision approve --note "plan looks right"
+
+  # Stop it
+  krk checkpoint resolve cp_123 --decision reject --note "wrong repository"
+
+  # Send it back for revision with an added constraint
+  krk checkpoint resolve cp_123 --decision modify --constraint "open a draft PR only"`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(c *cobra.Command, args []string) error {
 			body := buildResolveBody(c, decision, note, approver, removeActions, constraints, revisedConfidence)
 			data, _, err := api.Post("/checkpoints/"+args[0]+"/resolve", body)
@@ -70,7 +81,7 @@ func checkpointResolveCmd() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&decision, "decision", "", "Decision choice (required)")
+	cmd.Flags().StringVar(&decision, "decision", "", "Decision: approve|reject|modify (required)")
 	cmd.Flags().StringVar(&note, "note", "", "Free-form rationale stored on the audit row")
 	cmd.Flags().StringVar(&approver, "approver", "", "Identifier of the operator approving/rejecting (audit attribution)")
 	cmd.Flags().StringSliceVar(&removeActions, "remove-action", nil, "Capability ID to drop from the draft (repeatable; only valid with --decision modify)")
