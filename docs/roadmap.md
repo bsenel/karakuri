@@ -3226,6 +3226,29 @@ client can talk to the servers people run.
    what `client.go` does today when a server answers with a different version,
    which the discovery pass did not read. If the old handshake is still widely
    accepted, say so and shrink the rest of the phase.
+
+   **Result (run 2026-10-05).** The client as it is, against real servers built
+   on the official SDKs:
+
+   | Server | Speaks | Today's client |
+   |---|---|---|
+   | Python SDK `mcp` 2.3.0, stdio, default | dual-era | connects, lists tools, calls one |
+   | Python SDK 2.3.0, streamable HTTP, default | dual-era | connects, lists tools, calls one |
+   | TypeScript SDK `@modelcontextprotocol/sdk` 1.32.1, stdio | up to 2025-11-25 | connects, lists tools, calls one |
+   | Python SDK 2.3.0, stdio, forced to its 2026-07-28-only path | 2026-07-28 only | `initialize` refused with `-32022`, `supported: ["2026-07-28"]`; `/health` shows the instance unreachable with that message |
+
+   The failure is real and happens only against a server that refuses the
+   handshake. Both official SDKs' default servers still accept it: the Python
+   SDK's server serves both eras on one endpoint and has no setting that turns
+   the old one off, and the TypeScript SDK's newest release does not implement
+   2026-07-28 at all. This matches the specification's compatibility matrix
+   (legacy client against a dual-era server works; against a modern-only server
+   it fails), at
+   https://modelcontextprotocol.io/specification/2026-07-28/basic/lifecycle.
+   `client.go` records whatever version the server answers with and does not
+   check it; every server above answered `2025-06-18`, the version the client
+   asked for. The modern-only server was the SDK's own `_serve_modern_stream`
+   driven directly, which is a private function: no SDK ships that mode.
 2. **A second protocol path in `internal/platform/tools/mcp/`** — `server/discover`
    in place of `initialize`, the version and capabilities in `_meta` on every
    request, no session header, `resultType` read on every result. The existing
