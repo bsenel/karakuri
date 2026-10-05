@@ -21,6 +21,11 @@ func objectiveCreateCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "create",
 		Short: "Create an objective",
+		Example: `  krk objective create --title "Fix the flaky login test" --twin t_7f2a
+
+  # From a template (see: krk objective templates)
+  krk objective create --title "Ship the export endpoint" --twin t_7f2a \
+      --template software.objective.delivery --priority 2`,
 		RunE: func(_ *cobra.Command, _ []string) error {
 			data, _, err := api.Post("/objectives", map[string]any{
 				"title": title, "description": description, "domain": domain,
@@ -36,9 +41,9 @@ func objectiveCreateCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&title, "title", "", "Objective title (required)")
-	cmd.Flags().StringVar(&description, "description", "", "Description")
+	cmd.Flags().StringVar(&description, "description", "", "What the objective should achieve, in more detail than the title")
 	cmd.Flags().StringVar(&domain, "domain", "software", "Domain")
-	cmd.Flags().StringVar(&twinID, "twin", "", "Twin ID")
+	cmd.Flags().StringVar(&twinID, "twin", "", "ID of the twin the objective belongs to (see: krk twin list)")
 	cmd.Flags().StringVar(&templateID, "template", "", "Template ID (e.g. software.objective.delivery)")
 	cmd.Flags().IntVar(&priority, "priority", 0, "Priority (0=low, higher=more urgent)")
 	cmd.Flags().IntVar(&maxIter, "max-iter", 0, "Max loop iterations baked into the objective (0 = use the loop-start default)")
@@ -67,7 +72,7 @@ func objectiveListCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List objectives",
-		RunE: func(_ *cobra.Command, _ []string) error {
+		RunE: func(c *cobra.Command, _ []string) error {
 			path := "/objectives"
 			sep := "?"
 			if twinID != "" {
@@ -81,7 +86,7 @@ func objectiveListCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			client.PrintOutput(data, output)
+			printList(c, data, "objectives")
 			return nil
 		},
 	}
