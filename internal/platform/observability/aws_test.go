@@ -69,8 +69,13 @@ func (rec *recorder) handler() http.Handler {
 			return
 		}
 		// CloudWatch speaks Smithy's RPC v2 CBOR protocol; an empty CBOR map is
-		// the smallest well-formed success body it will deserialize. S3 ignores
-		// this and is happy with the 200 alone.
+		// the smallest well-formed success body it will deserialize. S3 answers
+		// PutObject with an empty 200, and the SDK reads a 200 body for an
+		// embedded error since aws-sdk-go-v2 v1.47.1 — so it gets exactly that.
+		if r.Header.Get("Smithy-Protocol") != "rpc-v2-cbor" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
 		w.Header().Set("Content-Type", "application/cbor")
 		w.Header().Set("smithy-protocol", "rpc-v2-cbor")
 		_, _ = w.Write([]byte{0xa0})
