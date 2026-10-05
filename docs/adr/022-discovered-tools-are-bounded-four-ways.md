@@ -1,6 +1,6 @@
 # ADR 022 — A tool discovered from an MCP server is bounded four ways, and Karakuri serves MCP read-only
 
-**Status:** Proposed
+**Status:** Accepted
 **Date:** 2026-09-26
 **Relates to:** [ADR 006](006-multi-instance-tool-adapters.md) (named instances, a default, twin bindings), [ADR 010](010-scope-sets.md) (scope sets), [ADR 015](015-standing-objectives-and-reconciliation.md) (authority is written into the bounds, never a second gate), [ADR 019](019-capabilities-declare-what-they-need.md) (capabilities declare what they need), [ADR 021](021-observations-carry-provenance.md) (a payload says who wrote it)
 
