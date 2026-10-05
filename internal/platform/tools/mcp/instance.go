@@ -267,6 +267,8 @@ func (i *Instance) Call(ctx context.Context, tool string, args map[string]any) (
 	if !i.allow[tool] {
 		return ToolResult{}, fmt.Errorf("tool %q is not on instance %q's allowlist", tool, i.name)
 	}
+	// Returned as it is, not wrapped in a sentence of this instance's: the
+	// environment matches *InputRequiredError on it (ADR 027).
 	return client.CallTool(ctx, tool, args)
 }
 

@@ -3,8 +3,11 @@ package mcp
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -218,6 +221,12 @@ func (c *Client) CallTool(ctx context.Context, name string, args map[string]any)
 	}
 	var out ToolResult
 	if err := c.call(ctx, MethodToolsCall, params, &out); err != nil {
+		// Only here is it known which tool asked. The call is not sent again:
+		// the result arrived whole, and there is no answer to send with it.
+		var asked *InputRequiredError
+		if errors.As(err, &asked) {
+			return ToolResult{}, &InputRequiredError{Tool: name, Request: asked.Request}
+		}
 		return ToolResult{}, err
 	}
 	return out, nil
@@ -304,7 +313,8 @@ func withMeta(params json.RawMessage) (json.RawMessage, error) {
 //
 // A missing resultType is an error rather than assumed complete, and so is
 // input_required: read as an answer, either one is a tool that returned
-// nothing.
+// nothing. This is the only place a resultType is read, so it is the only
+// place an InputRequiredError is made.
 func checkResultType(result json.RawMessage) error {
 	var head struct {
 		ResultType string `json:"resultType"`
@@ -320,7 +330,7 @@ func checkResultType(result json.RawMessage) error {
 	case "":
 		return fmt.Errorf("result carried no resultType, which revision %s requires", ModernProtocolVersion)
 	case ResultTypeInputRequired:
-		return fmt.Errorf("server answered with resultType %q: it wants input this client cannot give", ResultTypeInputRequired)
+		return &InputRequiredError{Request: inputRequestText(result)}
 	default:
 		return fmt.Errorf("unknown resultType %q", head.ResultType)
 	}
@@ -332,7 +342,8 @@ func checkResultType(result json.RawMessage) error {
 // It is an error and not a result because this client answers no requests for
 // input: read as a result it is a tool that returned nothing. Request is the
 // server's own text about what it wants, capped in length, and is somebody
-// else's writing wherever it travels.
+// else's writing wherever it travels. Tool is empty when the result came from
+// a method other than tools/call. See ADR 027.
 type InputRequiredError struct {
 	Tool    string
 	Request string
@@ -341,6 +352,54 @@ type InputRequiredError struct {
 func (e *InputRequiredError) Error() string {
 	return fmt.Sprintf("tool %q answered with resultType %q: this client does not answer requests for input; the server asked: %s",
 		e.Tool, ResultTypeInputRequired, e.Request)
+}
+
+// maxInputRequestText caps the server's request inside an InputRequiredError.
+//
+// The error's text reaches a planner prompt, and the only other bound on it is
+// the transport's 8 MiB. A question a planner can act on fits in a paragraph;
+// the value is a choice, not a measurement.
+const maxInputRequestText = 1024
+
+// inputRequestText is what the server asked for, as text.
+//
+// It reads the message of each request under inputRequestsField, in key order.
+// That shape is assumed (see protocol.go), so a field that does not have it is
+// carried as its raw JSON rather than dropped.
+func inputRequestText(result json.RawMessage) string {
+	var body map[string]json.RawMessage
+	_ = json.Unmarshal(result, &body)
+	raw := body[inputRequestsField]
+	if len(raw) == 0 {
+		return "(the server gave no request)"
+	}
+
+	var requests map[string]struct {
+		Params struct {
+			Message string `json:"message"`
+		} `json:"params"`
+	}
+	_ = json.Unmarshal(raw, &requests)
+	keys := make([]string, 0, len(requests))
+	for k := range requests {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	var messages []string
+	for _, k := range keys {
+		if m := strings.TrimSpace(requests[k].Params.Message); m != "" {
+			messages = append(messages, m)
+		}
+	}
+	text := strings.Join(messages, "; ")
+	if text == "" {
+		text = string(raw)
+	}
+	if len(text) > maxInputRequestText {
+		// Cut on bytes, then drop the rune the cut may have split.
+		text = strings.ToValidUTF8(text[:maxInputRequestText], "") + " [truncated]"
+	}
+	return text
 }
 
 // withTimeout applies the per-call bound, leaving a caller's shorter deadline

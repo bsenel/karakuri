@@ -2,6 +2,7 @@ package mcp
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -131,6 +132,24 @@ func (e *Environment) Act(ctx context.Context, a environment.Action) (environmen
 
 	res, err := e.inst.Call(ctx, tool, a.Params)
 	if err != nil {
+		// A tool that asked for input instead of answering is told apart from
+		// a call that did not get through: the delta names it and carries what
+		// the server asked, with no output, because there was none (ADR 027).
+		var asked *InputRequiredError
+		if errors.As(err, &asked) {
+			return environment.ActionResult{
+				Success: false,
+				Error:   asked.Error(),
+				Trust:   environment.TrustThirdParty,
+				StateDelta: map[string]any{
+					"capability":  string(a.CapabilityID),
+					"instance":    e.inst.Name(),
+					"tool":        tool,
+					"result_type": ResultTypeInputRequired,
+					"request":     asked.Request,
+				},
+			}, nil
+		}
 		return fail("%s", err.Error())
 	}
 
