@@ -345,6 +345,12 @@ memory:
 #       instances:
 #         acme_github:    { type: github, repo: acme/api, token_env: ACME_GITHUB_TOKEN }
 #         personal_github: { type: github, repo: bsenel/sideproj, token_env: BSENEL_GITHUB_TOKEN }
+#       # own_authors (optional): logins whose pull requests are this deployment's
+#       # own writing — its bot, its operator, dependabot. A pull request by anyone
+#       # else marks the git observation third party and escalates the plan built on
+#       # it (ADR 021). Unset, every pull request counts as somebody else's.
+#       #   acme_github: { type: github, repo: acme/api, token_env: ACME_GITHUB_TOKEN,
+#       #                  own_authors: [acme-karakuri-bot, "dependabot[bot]"] }
 #     email:
 #       default: acme_outlook
 #       instances:

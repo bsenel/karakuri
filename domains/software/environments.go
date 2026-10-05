@@ -286,6 +286,21 @@ func gitReadParams(params map[string]any) (repo string, since time.Time) {
 	return asString(params, "repo"), time.Now().UTC().Add(-time.Duration(days) * 24 * time.Hour)
 }
 
+// prTrust is the provenance of a list of pull requests: third party when any
+// of them was opened by a login the operator has not listed as the
+// deployment's own (EB-001). With no list configured nothing is the
+// deployment's own, so any pull request makes the payload third party — the
+// behaviour before the list existed. The deployment's own pull requests were
+// escalating almost every plan, which made the reason say nothing.
+func prTrust(prs []versioncontrol.PRSummary) environment.Trust {
+	for _, pr := range prs {
+		if !pr.OwnAuthor {
+			return environment.TrustThirdParty
+		}
+	}
+	return environment.TrustOperator
+}
+
 func (e *gitEnv) ID() environment.EnvironmentID { return e.id }
 func (e *gitEnv) Domain() string                { return "software" }
 
@@ -302,9 +317,10 @@ func (e *gitEnv) Observe(ctx context.Context, q environment.ObservationQuery) (e
 	// grows with nothing the operator can see.
 	since := time.Now().UTC().Add(-gitObservationWindow)
 	state := map[string]any{"adapter": adapter.Name(), "window": gitObservationWindow.String()}
-	// Third party only when a pull request is actually carried. Commits and an
-	// adapter name are the operator's own infrastructure; a PR title is typed
-	// by whoever opened it, which on a public repository is anybody. Computed
+	// Third party only when a pull request by somebody other than the
+	// deployment's own logins is carried (prTrust). Commits and an adapter name
+	// are the operator's own infrastructure; a PR title is typed by whoever
+	// opened it, which on a public repository is anybody. Computed
 	// from what the payload ends up holding rather than fixed on the
 	// environment, because a repository with no open PRs should not escalate
 	// every plan in the deployment for the rest of the run.
@@ -320,9 +336,7 @@ func (e *gitEnv) Observe(ctx context.Context, q environment.ObservationQuery) (e
 		state["prs_error"] = err.Error()
 	} else {
 		state["prs"] = prs
-		if len(prs) > 0 {
-			trust = environment.TrustThirdParty
-		}
+		trust = prTrust(prs)
 		// What is currently broken, pulled out of the list rather than left
 		// for a reader to derive. Deferred from Phase 22, where "an operator
 		// relays it" was the plan; a pack proposing work from evidence should
@@ -394,13 +408,8 @@ func (e *gitEnv) Act(ctx context.Context, a environment.Action) (environment.Act
 			return environment.ActionResult{Success: false, Error: err.Error(),
 				StateDelta: map[string]any{"adapter": adapter.Name()}}, nil
 		}
-		// Third party only when a pull request is actually carried, for the
-		// reason Observe gives: a PR title is typed by whoever opened it.
-		trust := environment.TrustOperator
-		if len(prs) > 0 {
-			trust = environment.TrustThirdParty
-		}
-		return environment.ActionResult{Success: true, Trust: trust,
+		// Same rule as Observe: a PR title is typed by whoever opened it.
+		return environment.ActionResult{Success: true, Trust: prTrust(prs),
 			StateDelta: map[string]any{"prs": prs, "count": len(prs)}}, nil
 	case "software.act.create_pr":
 		pr := versioncontrol.PullRequest{

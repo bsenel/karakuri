@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/bsenel/karakuri/internal/platform/procenv"
 )
@@ -33,7 +34,17 @@ type stdioTransport struct {
 
 	mu     sync.Mutex
 	broken error
+
+	// exited is closed once the subprocess has been reaped. Nil until the
+	// transport is shut down, which is when the reaping goroutine starts.
+	exited chan struct{}
 }
+
+// closeGrace is how long Close gives a server to exit on its own once its
+// stdin is closed, and then again after it is killed. The MCP stdio transport
+// asks clients to close the input stream first so a server can finish what it
+// is writing; one that ignores that is killed.
+const closeGrace = 2 * time.Second
 
 func newStdioTransport(cfg Config) (*stdioTransport, error) {
 	cmd := exec.Command(cfg.Command, cfg.Args...) // #nosec G204 -- operator-configured command, argv form with no shell; never from a request or a server
@@ -85,10 +96,54 @@ func (t *stdioTransport) Notify(_ context.Context, req Request) error {
 	return t.write(req)
 }
 
+// Close stops the server and returns once it has exited, so a process that
+// is shutting down leaves no subprocess, or unreaped zombie, behind it.
 func (t *stdioTransport) Close() error {
 	t.mu.Lock()
-	defer t.mu.Unlock()
-	return t.shutdown(nil)
+	if t.broken != nil {
+		exited := t.exited
+		t.mu.Unlock()
+		waitExit(exited, closeGrace)
+		return nil
+	}
+	t.broken = fmt.Errorf("transport closed")
+	_ = t.stdin.Close()
+	exited := t.reap()
+	t.mu.Unlock()
+
+	if waitExit(exited, closeGrace) {
+		return nil
+	}
+	if t.cmd.Process != nil {
+		_ = t.cmd.Process.Kill()
+	}
+	waitExit(exited, closeGrace)
+	return nil
+}
+
+// reap starts the one goroutine that waits on the subprocess. Called with
+// t.mu held, once.
+func (t *stdioTransport) reap() chan struct{} {
+	t.exited = make(chan struct{})
+	exited := t.exited
+	go func() {
+		_ = t.cmd.Wait()
+		close(exited)
+	}()
+	return exited
+}
+
+// waitExit reports whether the subprocess exited within d.
+func waitExit(exited chan struct{}, d time.Duration) bool {
+	if exited == nil {
+		return true
+	}
+	select {
+	case <-exited:
+		return true
+	case <-time.After(d):
+		return false
+	}
 }
 
 func (t *stdioTransport) write(req Request) error {
@@ -182,7 +237,7 @@ func (t *stdioTransport) read(ctx context.Context, id json.RawMessage) (*Respons
 }
 
 // shutdown kills the subprocess and records why the transport is unusable.
-// Called with t.mu held. A nil cause means an ordinary Close.
+// Called with t.mu held, on a failure; Close has its own, gentler path.
 func (t *stdioTransport) shutdown(cause error) error {
 	if t.broken == nil {
 		t.broken = cause
@@ -193,7 +248,7 @@ func (t *stdioTransport) shutdown(cause error) error {
 		if t.cmd.Process != nil {
 			_ = t.cmd.Process.Kill()
 		}
-		go func() { _ = t.cmd.Wait() }()
+		t.reap()
 	}
 	return cause
 }

@@ -3226,6 +3226,29 @@ client can talk to the servers people run.
    what `client.go` does today when a server answers with a different version,
    which the discovery pass did not read. If the old handshake is still widely
    accepted, say so and shrink the rest of the phase.
+
+   **Result (run 2026-10-05).** The client as it is, against real servers built
+   on the official SDKs:
+
+   | Server | Speaks | Today's client |
+   |---|---|---|
+   | Python SDK `mcp` 2.3.0, stdio, default | dual-era | connects, lists tools, calls one |
+   | Python SDK 2.3.0, streamable HTTP, default | dual-era | connects, lists tools, calls one |
+   | TypeScript SDK `@modelcontextprotocol/sdk` 1.32.1, stdio | up to 2025-11-25 | connects, lists tools, calls one |
+   | Python SDK 2.3.0, stdio, forced to its 2026-07-28-only path | 2026-07-28 only | `initialize` refused with `-32022`, `supported: ["2026-07-28"]`; `/health` shows the instance unreachable with that message |
+
+   The failure is real and happens only against a server that refuses the
+   handshake. Both official SDKs' default servers still accept it: the Python
+   SDK's server serves both eras on one endpoint and has no setting that turns
+   the old one off, and the TypeScript SDK's newest release does not implement
+   2026-07-28 at all. This matches the specification's compatibility matrix
+   (legacy client against a dual-era server works; against a modern-only server
+   it fails), at
+   https://modelcontextprotocol.io/specification/2026-07-28/basic/lifecycle.
+   `client.go` records whatever version the server answers with and does not
+   check it; every server above answered `2025-06-18`, the version the client
+   asked for. The modern-only server was the SDK's own `_serve_modern_stream`
+   driven directly, which is a private function: no SDK ships that mode.
 2. **A second protocol path in `internal/platform/tools/mcp/`** — `server/discover`
    in place of `initialize`, the version and capabilities in `_meta` on every
    request, no session header, `resultType` read on every result. The existing
@@ -3272,7 +3295,7 @@ These are enhancements found in this deployment's own telemetry and audit log, e
 
 | ID | Title | Evidence | Proposed change | Size | Status |
 |----|-------|----------|-----------------|------|--------|
-| EB-001 | The git environment's provenance escalation fires on almost every plan | Read 2026-10-04. `krk --output json audit --limit 300 --kind escalation` returned 85 escalation events (2026-09-26 to 2026-10-04, local +02:00 timestamps); `grep -o` on `escalation_reason` counted 83 of them as `plan drew on material written outside this deployment: software.env.git`, and the other 2 as confidence below threshold. `krk audit export --from 2026-10-03T00:00:00Z --to 2026-10-04T00:00:00Z` held 28 `kind: escalation` events, 27 with that same reason and `bounds_violation: true`. Code read: `domains/software/environments.go` sets `TrustThirdParty` whenever the 7-day window (`gitObservationWindow`) holds any pull request. `gh pr list --state all --limit 15` showed 11 pull requests by the repository owner and 4 by dependabot. Inferred, not verified: the escalations come from the deployment's own pull requests, so the reason no longer tells a reviewer anything. Not measured: how many of the 83 were approved unchanged. | In `domains/software/environments.go` (git environment `Observe`), mark the observation third party only when the window carries a pull request whose author is not in an operator-configured list of the deployment's own logins (default empty, so today's behaviour is kept until configured); still computed from the payload, per ADR 021. No change to `internal/core/agent/decide.go`. Unverified: whether the git adapter's pull request type carries the author; if not, add it in the adapter under `internal/platform/`. Verify with a table test in `domains/software` (own-author PRs only gives operator trust; one outside author gives third party; empty list gives third party) and by re-running the escalation count over a later day. | M | Planned |
+| EB-001 | The git environment's provenance escalation fires on almost every plan | Read 2026-10-04. `krk --output json audit --limit 300 --kind escalation` returned 85 escalation events (2026-09-26 to 2026-10-04, local +02:00 timestamps); `grep -o` on `escalation_reason` counted 83 of them as `plan drew on material written outside this deployment: software.env.git`, and the other 2 as confidence below threshold. `krk audit export --from 2026-10-03T00:00:00Z --to 2026-10-04T00:00:00Z` held 28 `kind: escalation` events, 27 with that same reason and `bounds_violation: true`. Code read: `domains/software/environments.go` sets `TrustThirdParty` whenever the 7-day window (`gitObservationWindow`) holds any pull request. `gh pr list --state all --limit 15` showed 11 pull requests by the repository owner and 4 by dependabot. Inferred, not verified: the escalations come from the deployment's own pull requests, so the reason no longer tells a reviewer anything. Not measured: how many of the 83 were approved unchanged. | In `domains/software/environments.go` (git environment `Observe`), mark the observation third party only when the window carries a pull request whose author is not in an operator-configured list of the deployment's own logins (default empty, so today's behaviour is kept until configured); still computed from the payload, per ADR 021. No change to `internal/core/agent/decide.go`. Unverified: whether the git adapter's pull request type carries the author; if not, add it in the adapter under `internal/platform/`. Verify with a table test in `domains/software` (own-author PRs only gives operator trust; one outside author gives third party; empty list gives third party) and by re-running the escalation count over a later day. Delivered: the `own_authors` option on a `github` versioncontrol instance; the escalation count over a later day has not been re-run yet. | M | Completed |
 
 ---
 

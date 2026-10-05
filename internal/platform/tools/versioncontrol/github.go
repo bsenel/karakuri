@@ -17,13 +17,27 @@ type GitHub struct {
 	token  string
 	repo   string // "owner/name" — used when caller does not pass an explicit repo
 	client *http.Client
+
+	// ownAuthors holds the logins, lower-cased, whose pull requests are the
+	// deployment's own writing. GitHub logins are case-insensitive.
+	ownAuthors map[string]bool
 }
 
-func NewGitHub(token, defaultRepo string) *GitHub {
+// NewGitHub builds the adapter. ownAuthors names the logins this deployment
+// opens pull requests as — its bot account, its operator, dependabot — and may
+// be empty, in which case no pull request is marked as the deployment's own.
+func NewGitHub(token, defaultRepo string, ownAuthors ...string) *GitHub {
+	own := make(map[string]bool, len(ownAuthors))
+	for _, a := range ownAuthors {
+		if a = strings.ToLower(strings.TrimSpace(a)); a != "" {
+			own[a] = true
+		}
+	}
 	return &GitHub{
-		token:  token,
-		repo:   defaultRepo,
-		client: &http.Client{Timeout: 30 * time.Second},
+		token:      token,
+		repo:       defaultRepo,
+		client:     &http.Client{Timeout: 30 * time.Second},
+		ownAuthors: own,
 	}
 }
 
@@ -70,6 +84,9 @@ func (g *GitHub) ListPRs(ctx context.Context, repo string, since time.Time) ([]P
 		Head      struct {
 			SHA string `json:"sha"`
 		} `json:"head"`
+		User struct {
+			Login string `json:"login"`
+		} `json:"user"`
 	}
 	if err := g.do(ctx, "GET", fmt.Sprintf("/repos/%s/pulls?state=open&per_page=50", repo), nil, &raw); err != nil {
 		return nil, err
@@ -79,7 +96,11 @@ func (g *GitHub) ListPRs(ctx context.Context, repo string, since time.Time) ([]P
 		if !since.IsZero() && r.UpdatedAt.Before(since) {
 			continue
 		}
-		s := PRSummary{ID: fmt.Sprintf("%d", r.Number), Title: r.Title, URL: r.HTMLURL}
+		s := PRSummary{
+			ID: fmt.Sprintf("%d", r.Number), Title: r.Title, URL: r.HTMLURL,
+			Author:    r.User.Login,
+			OwnAuthor: g.ownAuthors[strings.ToLower(r.User.Login)],
+		}
 		s.CheckState, s.FailingChecks = g.checkState(ctx, repo, r.Head.SHA)
 		out = append(out, s)
 	}

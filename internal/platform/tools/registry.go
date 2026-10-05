@@ -328,7 +328,8 @@ func buildVCSlot(cfg config.SlotConfig) SlotInstances[versioncontrol.VersionCont
 		case "github":
 			s.instances[name] = instanceEntry[versioncontrol.VersionControlAdapter]{
 				typeName: "github",
-				adapter:  versioncontrol.NewGitHub(inst.OptString("token"), inst.OptString("repo")),
+				adapter: versioncontrol.NewGitHub(inst.OptString("token"), inst.OptString("repo"),
+					inst.OptStrings("own_authors")...),
 			}
 		default:
 			slog.Warn("unknown versioncontrol adapter type", "instance", name, "type", inst.Type)
