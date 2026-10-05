@@ -123,6 +123,10 @@ func stdioConfig(allowed ...string) Config {
 type httpFake struct {
 	sse bool
 
+	// breakStream, in sse mode, ends the stream answering a tools/call after
+	// the progress notification and before the result.
+	breakStream bool
+
 	mu sync.Mutex
 	// initialized is set by the first initialize. The server/discover probe
 	// Negotiate sends ahead of it is before any session exists, so it is not
@@ -169,7 +173,9 @@ func (f *httpFake) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	var b strings.Builder
 	b.WriteString("event: message\n")
 	b.WriteString(`data: {"jsonrpc":"2.0","method":"notifications/progress","params":{"progress":1}}` + "\n\n")
-	b.WriteString("event: message\n")
-	b.WriteString("data: " + string(body) + "\n\n")
+	if !f.breakStream || req.Method != MethodToolsCall {
+		b.WriteString("event: message\n")
+		b.WriteString("data: " + string(body) + "\n\n")
+	}
 	_, _ = w.Write([]byte(b.String()))
 }

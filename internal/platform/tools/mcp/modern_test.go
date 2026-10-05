@@ -10,11 +10,14 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 // modernRequest is one request as the modern-only fake saw it.
 type modernRequest struct {
 	method  string
+	id      string          // the JSON-RPC id, as it was sent
+	tool    string          // params.name, for a tools/call
 	meta    json.RawMessage // params._meta, nil when the request carried none
 	session string          // the Mcp-Session-Id request header
 }
@@ -28,6 +31,19 @@ type modernFake struct {
 	// the field. Discovery keeps it, so the connection still opens.
 	omitResultType bool
 
+	// sse answers with an event stream: a progress notification, then the
+	// result.
+	sse bool
+
+	// breakMethod names the method whose reply is a broken stream: an event
+	// stream that sends a progress notification and ends without the result.
+	// breakTimes is how many times it does so before answering normally, and a
+	// negative count never answers. breakAfter is how long the stream stays
+	// open before it ends.
+	breakMethod string
+	breakTimes  int
+	breakAfter  time.Duration
+
 	mu   sync.Mutex
 	seen []modernRequest
 }
@@ -40,15 +56,36 @@ func (f *modernFake) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	var params struct {
 		Meta json.RawMessage `json:"_meta"`
+		Name string          `json:"name"`
 	}
 	_ = json.Unmarshal(req.Params, &params)
 	f.mu.Lock()
-	f.seen = append(f.seen, modernRequest{method: req.Method, meta: params.Meta, session: r.Header.Get(sessionHeader)})
+	f.seen = append(f.seen, modernRequest{
+		method: req.Method, id: string(req.ID), tool: params.Name,
+		meta: params.Meta, session: r.Header.Get(sessionHeader),
+	})
+	breaks := f.breakMethod != "" && req.Method == f.breakMethod && f.breakTimes != 0
+	if breaks && f.breakTimes > 0 {
+		f.breakTimes--
+	}
+	breakAfter := f.breakAfter
 	f.mu.Unlock()
 
 	w.Header().Set(sessionHeader, "bait")
 	if req.IsNotification() {
 		w.WriteHeader(http.StatusAccepted)
+		return
+	}
+	if breaks {
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte(progressEvent))
+		if fl, ok := w.(http.Flusher); ok {
+			fl.Flush()
+		}
+		select {
+		case <-time.After(breakAfter):
+		case <-r.Context().Done():
+		}
 		return
 	}
 
@@ -85,9 +122,18 @@ func (f *modernFake) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	body, _ := json.Marshal(resp)
+	if f.sse {
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte(progressEvent + "event: message\ndata: " + string(body) + "\n\n"))
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
 	_, _ = w.Write(body)
 }
+
+// progressEvent is what a server sends on a stream ahead of its result.
+const progressEvent = "event: message\n" +
+	`data: {"jsonrpc":"2.0","method":"notifications/progress","params":{"progress":1}}` + "\n\n"
 
 func (f *modernFake) requests() []modernRequest {
 	f.mu.Lock()
