@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -79,7 +80,7 @@ func (t *httpTransport) Send(ctx context.Context, req Request) (*Response, error
 	}
 
 	if strings.HasPrefix(resp.Header.Get("Content-Type"), "text/event-stream") {
-		return t.readSSE(body, req.ID)
+		return t.readSSE(ctx, body, req.ID)
 	}
 
 	raw, err := io.ReadAll(io.LimitReader(body, maxHTTPBody))
@@ -151,13 +152,21 @@ func (t *httpTransport) post(ctx context.Context, req Request) (*http.Response, 
 	return resp, resp.Body, nil
 }
 
+// errStreamBroken is a stream that ended, or failed mid-read, before the reply
+// to this request arrived: the request is lost, as opposed to refused or
+// answered badly. The client tests for it to decide whether to re-issue.
+var errStreamBroken = errors.New("event stream closed before answering the request")
+
 // readSSE pulls JSON-RPC responses out of an event stream and returns the one
 // matching this request, ignoring everything else on it.
 //
 // Ignoring is the point: the reason a server chooses a stream is to send
 // progress notifications before the result, and a reader that took the first
 // event would report progress as a tool result.
-func (t *httpTransport) readSSE(body io.Reader, id json.RawMessage) (*Response, error) {
+//
+// A read that fails because the context ended is not a broken stream: the
+// caller ran out of time, and sending the request again would not give it more.
+func (t *httpTransport) readSSE(ctx context.Context, body io.Reader, id json.RawMessage) (*Response, error) {
 	scanner := bufio.NewScanner(io.LimitReader(body, maxHTTPBody))
 	scanner.Buffer(make([]byte, 0, 64*1024), maxHTTPBody)
 
@@ -198,12 +207,18 @@ func (t *httpTransport) readSSE(body io.Reader, id json.RawMessage) (*Response, 
 		}
 	}
 	if err := scanner.Err(); err != nil {
-		return nil, fmt.Errorf("read event stream: %w", err)
+		if ctx.Err() != nil {
+			return nil, fmt.Errorf("read event stream: %w", err)
+		}
+		return nil, fmt.Errorf("%w: read event stream: %v", errStreamBroken, err)
 	}
 	// A stream that ended without a blank line after its last event is still
 	// carrying a result.
 	if resp, ok := flush(); ok {
 		return resp, nil
 	}
-	return nil, fmt.Errorf("event stream closed before answering the request")
+	if err := ctx.Err(); err != nil {
+		return nil, fmt.Errorf("read event stream: %w", err)
+	}
+	return nil, errStreamBroken
 }

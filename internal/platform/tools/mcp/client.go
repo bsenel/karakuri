@@ -256,22 +256,43 @@ func (c *Client) exchange(ctx context.Context, method string, params json.RawMes
 		}
 	}
 
-	c.mu.Lock()
-	c.nextID++
-	id := json.RawMessage(strconv.FormatInt(c.nextID, 10))
-	c.mu.Unlock()
-
 	ctx, cancel := c.withTimeout(ctx)
 	defer cancel()
 
 	c.sendMu.Lock()
 	defer c.sendMu.Unlock()
-	resp, err := c.transport.Send(ctx, Request{
-		JSONRPC: "2.0",
-		ID:      id,
-		Method:  method,
-		Params:  params,
-	})
+	send := func() (*Response, error) {
+		c.mu.Lock()
+		c.nextID++
+		id := json.RawMessage(strconv.FormatInt(c.nextID, 10))
+		c.mu.Unlock()
+		return c.transport.Send(ctx, Request{
+			JSONRPC: "2.0",
+			ID:      id,
+			Method:  method,
+			Params:  params,
+		})
+	}
+
+	resp, err := send()
+	if modern && errors.Is(err, errStreamBroken) {
+		// Revision 2026-07-28 has no resumption: a stream that breaks before the
+		// reply has lost the request, and the rule is to send it again as a new
+		// one. The server may already have run the tool, so it may run twice;
+		// that is the revision's rule, not an oversight. Once, under the same
+		// context and the same hold on sendMu, so the per-call bound covers the
+		// pair and nothing interleaves between them: one re-issue is what the
+		// rule needs, and a second would be a retry policy. The ADR 022 bounds
+		// sit above this point or are applied per Send, so the second request
+		// is inside them as the first was.
+		//
+		// Only streamable HTTP reports a broken stream. On stdio a failed read
+		// shuts the transport down and kills the subprocess, so there is nothing
+		// left to re-issue against.
+		if resp, err = send(); errors.Is(err, errStreamBroken) {
+			return fmt.Errorf("%s: %w; the request was re-issued once and that stream broke too", method, err)
+		}
+	}
 	if err != nil {
 		return fmt.Errorf("%s: %w", method, err)
 	}
