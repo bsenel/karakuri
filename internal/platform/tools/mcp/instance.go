@@ -69,15 +69,18 @@ type Instance struct {
 // The same three things every Phase 6 slot reports, plus the two MCP adds: a
 // server names itself, and an allowlist has a visible other side.
 type InstanceHealth struct {
-	Name            string   `json:"name"`
-	Transport       string   `json:"transport"`
-	State           string   `json:"state"`
-	IsDefault       bool     `json:"is_default"`
-	Server          string   `json:"server,omitempty"`
-	ProtocolVersion string   `json:"protocol_version,omitempty"`
-	Tools           []string `json:"tools"`
-	Filtered        []string `json:"filtered,omitempty"`
-	Error           string   `json:"error,omitempty"`
+	Name            string `json:"name"`
+	Transport       string `json:"transport"`
+	State           string `json:"state"`
+	IsDefault       bool   `json:"is_default"`
+	Server          string `json:"server,omitempty"`
+	ProtocolVersion string `json:"protocol_version,omitempty"`
+	// ProtocolPath is how the connection was opened: PathDiscover or
+	// PathInitialize. Not recorded yet: modern_instance_test.go describes it.
+	ProtocolPath string   `json:"protocol_path,omitempty"`
+	Tools        []string `json:"tools"`
+	Filtered     []string `json:"filtered,omitempty"`
+	Error        string   `json:"error,omitempty"`
 }
 
 // NewInstance builds an instance and completes discovery against its server.

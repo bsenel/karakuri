@@ -86,6 +86,7 @@ func (e *Environment) Observe(_ context.Context, _ environment.ObservationQuery)
 			"state":            health.State,
 			"server":           health.Server,
 			"protocol_version": health.ProtocolVersion,
+			"protocol_path":    health.ProtocolPath,
 			"tools":            advertised,
 			"filtered":         health.Filtered,
 		},
