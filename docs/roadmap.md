@@ -3289,6 +3289,132 @@ a real server; what the acceptance shows is the path, as Phase 32's did.
 
 ---
 
+## Phase 34 — Karakuri's Own Tools in Its Agents' Hands (Planned)
+
+**Goal:** A coding agent Karakuri delegates to can call Karakuri's own MCP tools
+under a credential scoped to that one delegation, and the tool surface covers
+what the deployment's own streams actually need.
+
+Requested by the operator on 2026-10-05, in these words: "we should develop our
+tools in our MCP and when karakuri delegated to claude code, it should add its
+own tools to be used." The steps below are the whole reading of that sentence;
+nothing in this phase exists yet.
+
+**Karakuri is an MCP server, and it delegates to coding agents; the two do not
+meet.** Phase 28 step 5 made Karakuri an MCP server at `POST /api/v1/mcp`
+(`internal/api/handler/mcp.go`). It serves five tools, all read-only:
+`objectives_list`, `objective_read`, `digest_read`, `reconcile_status` and
+`telemetry_read`. When the loop delegates to a coding-agent CLI,
+`internal/platform/tools/cliagent/claude.go` builds the command line from
+`--print --output-format=stream-json --verbose`, an optional `--allowed-tools=`
+and the prompt. It passes no MCP configuration, so a delegated Claude Code
+session cannot call any of the five.
+
+What that costs, as reported by the operator from this deployment (not read from
+any file in this pass): the standing "engineering backlog" stream needs the
+audit log, the cost report and reconcile status. Its coding agent gets them by
+shelling out to the `krk` binary, which uses the operator's cached admin
+session, held back only by an allow-list of command prefixes written into a
+prompt. An agent that reads logs and audit rows — text somebody outside the
+deployment may have written — holds an administrator's credential while it does
+so. And the audit log, checkpoints, cost and evaluation data are not MCP tools
+at all, so attaching the server as it stands would not replace `krk`.
+
+This phase depends on Karakuri's server speaking a protocol revision the
+installed coding-agent CLI speaks. Phase 33 step 5 moves the server to revision
+2026-07-28; that work stays there and is not repeated here. Step 1 below finds
+out which revisions the CLIs speak, and if the server's current revision is one
+of them this phase does not wait for Phase 33.
+
+**Steps:**
+
+1. **Find out first.** What each installed coding-agent CLI needs in order to
+   attach an MCP server for one headless run.
+
+   **Read so far (2026-10-05, `claude --help` and `claude mcp --help` on the
+   machine that wrote this phase; the documentation was not read).**
+
+   | Question | What the help output says |
+   |---|---|
+   | How a server is passed for one run | `--mcp-config <configs...>`: "Load MCP servers from JSON files or strings (space-separated)" |
+   | Whether other configured servers can be excluded | `--strict-mcp-config`: "Only use MCP servers from --mcp-config, ignoring all other MCP configurations" |
+   | The allow-list | `--allowedTools, --allowed-tools <tools...>`: "Comma or space-separated list of tool names to allow"; `--disallowed-tools` is its counterpart |
+   | Transports | `claude mcp add --transport http <name> <url>`, with `--header "Authorization: Bearer ..."` in an example; `claude mcp add-json` names "stdio, SSE, HTTP, or WebSocket" |
+
+   **To find out**, none of it read in that pass:
+   - The JSON shape `--mcp-config` expects, and whether an HTTP server entry in
+     it carries a header the way `claude mcp add --header` does.
+   - How an attached server's tools are named in the allow-list. The help
+     output gives only built-in examples (`"Bash(git *) Edit"`).
+   - Which MCP protocol revisions Claude Code speaks, and so whether it can
+     talk to Karakuri's server before or only after Phase 33 step 5.
+   - Whether `--strict-mcp-config` also keeps out servers brought by plugins or
+     managed settings. The help text for `--restricted` says "add
+     --strict-mcp-config to skip MCP servers too", which suggests it is the
+     switch, but nobody has run it.
+   - The other adapters in `internal/platform/tools/cliagent/`: `cursor.go`,
+     `gemini.go` and `copilot.go`. None of their CLIs' help output was read.
+     `cursor.go` passes `--allowed-tools=` today and `gemini.go` passes
+     `--prompt`; whether any of the three can attach a server for one run is
+     unknown.
+
+   An adapter whose CLI cannot attach a server says so with an error when an
+   action asks for Karakuri tools. It never delegates silently without them.
+2. **Grow the read surface from what the streams use today.** New tools in
+   `internal/api/handler/mcp.go`, each mapped onto an existing auth action
+   exactly as the five existing tools are, with tests in the style of
+   `internal/api/handler/mcp_test.go`: the audit log (list with the existing
+   filters, and the closed-window export), checkpoints (list, read), the cost
+   report, evaluation results, and standing objectives' reconcile outcomes
+   where `reconcile_status` does not already cover them. No new permission: a
+   tool is reachable exactly when its REST route would be.
+3. **A credential for one delegation.** When the loop delegates to a CLI agent
+   it mints a short-lived token for a principal that holds read-only bindings
+   scoped to the objective's twin, valid no longer than the action's timeout
+   and revoked when the action ends. Never the operator's session, never a
+   long-lived token on disk. The audit row for the delegated action records
+   that a delegation credential was issued and its scope, not the token.
+   Service accounts and twin-scoped role bindings are the existing pieces this
+   starts from; this step begins by reading how they issue and revoke tokens.
+4. **Attach on delegation, declared rather than assumed (ADR 019).** The action
+   says which Karakuri tools it needs, in a documented params field. The CLI
+   adapter writes a per-run MCP configuration (mode `0o600`, outside the
+   worktree, removed afterwards) pointing at this deployment's own MCP endpoint
+   with the delegation credential, excludes the servers the operator's own CLI
+   configuration would otherwise bring along, and adds only the requested tools
+   to the allow-list. An instance option turns attachment on; it defaults to
+   off, so today's behaviour is unchanged until configured. An action that
+   names no Karakuri tool gets none.
+5. **Results are data.** What these tools return can carry text somebody
+   outside the deployment wrote: a pull-request title in an audit payload, a
+   checkpoint note. Decide and record how the delegated action's result is
+   labelled so that ADR 021 holds: the loop must still see third-party material
+   as third-party when it arrived through Karakuri's own tools.
+6. **Use it.** A planner hint in `domains/software/hints.go`: an action that
+   needs the deployment's own data asks for the Karakuri tools instead of
+   shelling out to `krk`. The standing streams' briefs should then drop the
+   `krk` allow-list.
+
+**Acceptance:** With attachment on, a delegated run against a scripted CLI
+receives an MCP configuration naming this deployment's endpoint and a token.
+That token can list the audit rows of its own twin and cannot read another
+twin's objective. After the action ends the token is refused. With attachment
+off, or with no tool requested, the command line and environment are
+byte-for-byte what they are today. No file under the operator's home directory
+is read to produce the credential. A tool whose REST route the principal could
+not call is absent from its tool list.
+
+**What this is not.** The delegated agent gets no mutating tool in this phase.
+It cannot resolve a checkpoint, change an objective, an autonomy level or a
+budget, or approve its own plan: those stay with a person, and a later phase
+that wants any of them must route the call through `AuthorityBounds` like every
+other action (ADR 015), not through a tool. It is not a general way to hand a
+coding agent the operator's identity. And it does not attach the third-party
+MCP servers of the `tools.mcp` slot to the coding agent; that is a different
+question with ADR 022's bounds on it.
+
+---
+
 ## Engineering Backlog
 
 These are enhancements found in this deployment's own telemetry and audit log, each recorded with the data that shows the problem. A human approves an entry by merging the pull request that adds it; the delivery stream implements entries whose status is Planned.
