@@ -3,6 +3,7 @@ package mcp
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strconv"
 	"sync"
@@ -142,6 +143,28 @@ func (c *Client) Initialize(ctx context.Context) (InitializeResult, error) {
 		return out, fmt.Errorf("initialized notification: %w", err)
 	}
 	return out, nil
+}
+
+// How a connection was opened, for /health: a server reached by discovery and
+// one reached by the handshake are spoken to differently from then on.
+const (
+	PathDiscover   = "discover"
+	PathInitialize = "initialize"
+)
+
+// Negotiation is what opening a connection settled: the revision in use, what
+// the server called itself, and which of the two paths got there.
+type Negotiation struct {
+	ProtocolVersion string
+	ServerInfo      Info
+	Path            string
+}
+
+// Negotiate opens the connection by whichever path the server has.
+//
+// Not implemented yet: the tests in modern_test.go describe it.
+func (c *Client) Negotiate(_ context.Context) (Negotiation, error) {
+	return Negotiation{}, errors.New("negotiate: not implemented")
 }
 
 // ListTools asks the server what it offers.

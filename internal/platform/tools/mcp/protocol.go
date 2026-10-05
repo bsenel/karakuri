@@ -26,6 +26,50 @@ import "encoding/json"
 // the truth rather than this constant.
 const ProtocolVersion = "2025-06-18"
 
+// ModernProtocolVersion is the stateless revision: no handshake, no session,
+// the version and the client's capabilities on every request instead. It is a
+// second constant rather than a new value for the first because the two are
+// different conversations, and the older one stays as the fallback.
+const ModernProtocolVersion = "2026-07-28"
+
+// MethodServerDiscover is what a 2026-07-28 server answers in place of the
+// handshake.
+const MethodServerDiscover = "server/discover"
+
+// ResultTypeInputRequired is the resultType of a result that is a question
+// rather than an answer: the server wants something from the client before it
+// will finish.
+const ResultTypeInputRequired = "input_required"
+
+// CodeUnsupportedProtocol is what a 2026-07-28-only server answers `initialize`
+// with, carrying the versions it does speak in the error's data. Observed
+// against the Python SDK in Phase 33 step 1.
+const CodeUnsupportedProtocol = -32022
+
+// The names below were taken from the roadmap's description of revision
+// 2026-07-28 ("every request carries its protocol version and client
+// capabilities in `_meta`", "a required `resultType` on every result") and were
+// NOT checked against the specification text. The roadmap states that the
+// version and the capabilities travel in `_meta`; it does not state the keys
+// they travel under, the resultType of an ordinary result, or the shape of a
+// server/discover result. They are declared once here so that correcting one is
+// a one-line change that the tests follow.
+const (
+	metaKeyProtocolVersion    = "protocolVersion"
+	metaKeyClientCapabilities = "clientCapabilities"
+
+	resultTypeComplete = "complete"
+)
+
+// discoverResult is what a server returns from server/discover. Its field names
+// carry the same caveat as the constants above: assumed, not read from the
+// specification.
+type discoverResult struct {
+	ResultType        string   `json:"resultType"`
+	SupportedVersions []string `json:"supportedVersions"`
+	ServerInfo        Info     `json:"serverInfo"`
+}
+
 // Method names. Constants because they are matched in two places — the client
 // sends them, the server dispatches on them — and a typo in either is a
 // silently unreachable method.
