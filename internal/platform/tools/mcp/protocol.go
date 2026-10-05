@@ -59,6 +59,12 @@ const (
 	metaKeyClientCapabilities = "clientCapabilities"
 
 	resultTypeComplete = "complete"
+
+	// inputRequestsField is where an input_required result carries what the
+	// server is asking for. The discovery pass names the client's half
+	// (inputResponses) and not this one: it was not checked against the
+	// specification text.
+	inputRequestsField = "inputRequests"
 )
 
 // discoverResult is what a server returns from server/discover. Its field names

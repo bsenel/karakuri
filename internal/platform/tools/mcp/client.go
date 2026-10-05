@@ -326,6 +326,23 @@ func checkResultType(result json.RawMessage) error {
 	}
 }
 
+// InputRequiredError is a tool call the server answered by asking for input
+// instead of answering.
+//
+// It is an error and not a result because this client answers no requests for
+// input: read as a result it is a tool that returned nothing. Request is the
+// server's own text about what it wants, capped in length, and is somebody
+// else's writing wherever it travels.
+type InputRequiredError struct {
+	Tool    string
+	Request string
+}
+
+func (e *InputRequiredError) Error() string {
+	return fmt.Sprintf("tool %q answered with resultType %q: this client does not answer requests for input; the server asked: %s",
+		e.Tool, ResultTypeInputRequired, e.Request)
+}
+
 // withTimeout applies the per-call bound, leaving a caller's shorter deadline
 // alone.
 func (c *Client) withTimeout(ctx context.Context) (context.Context, context.CancelFunc) {

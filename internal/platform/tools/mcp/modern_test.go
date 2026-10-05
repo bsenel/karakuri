@@ -67,6 +67,10 @@ func (f *modernFake) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			ServerInfo:        Info{Name: "modern-fs", Version: "1"},
 		})
 	default:
+		if result, asks := inputRequiredResult(req); asks {
+			resp.Result = result
+			break
+		}
 		var ok bool
 		resp, ok = fakeHandle(req)
 		if !ok {
