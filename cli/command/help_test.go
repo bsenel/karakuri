@@ -82,6 +82,13 @@ func TestCheckpointHelp(t *testing.T) {
 	}
 }
 
+// The create examples and flag usages point at IDs that come from get and list.
+func TestGetAndListHelp(t *testing.T) {
+	for _, cmd := range []*cobra.Command{objectiveGetCmd(), objectiveListCmd(), twinGetCmd(), twinListCmd()} {
+		requireExample(t, cmd)
+	}
+}
+
 func TestLoopHelp(t *testing.T) {
 	for _, cmd := range []*cobra.Command{loopStartCmd(), loopStatusCmd(), loopResumeCmd()} {
 		requireExample(t, cmd)
