@@ -48,7 +48,7 @@ func (p *Pack) AgentDefinitions() []agent.Definition {
 }
 
 func (p *Pack) ObjectiveTemplates() []objective.Template {
-	return append(softwareObjectiveTemplates(), selfImproveTemplates()...)
+	return append(append(softwareObjectiveTemplates(), selfImproveTemplates()...), streamTemplates()...)
 }
 
 func (p *Pack) PlannerHints() []domain.PlannerHint {
