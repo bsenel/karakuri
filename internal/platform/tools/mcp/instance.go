@@ -16,7 +16,8 @@ const SlotName = "mcp"
 
 // Connection states reported in /health.
 const (
-	// StateConnected means the handshake succeeded and tools/list answered.
+	// StateConnected means the connection opened, by either path, and
+	// tools/list answered.
 	StateConnected = "connected"
 	// StateUnreachable means it did not. The instance still exists, still
 	// appears in /health, and registers no tools — see the note on Discover.

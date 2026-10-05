@@ -305,7 +305,7 @@ func BootstrapServer(cfgPath string) (*Bootstrap, error) {
 	}
 	for _, h := range toolReg.MCPHealth() {
 		slog.Info("MCP instance", "instance", h.Name, "transport", h.Transport, "state", h.State,
-			"server", h.Server, "protocol", h.ProtocolVersion,
+			"server", h.Server, "protocol", h.ProtocolVersion, "path", h.ProtocolPath,
 			"tools", h.Tools, "filtered", h.Filtered, "err", h.Error)
 	}
 
