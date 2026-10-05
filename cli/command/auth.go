@@ -173,7 +173,7 @@ expressible without granting operator everywhere.`,
   echo "$PW" | krk auth users add --id bob --roles viewer --scope twin:abc --password-stdin`,
 		RunE: func(c *cobra.Command, _ []string) error {
 			if id == "" {
-				return fmt.Errorf("--id is required")
+				return fmt.Errorf("--id is required: name the principal to create, e.g. `echo \"$PW\" | krk auth users add --id alice --roles operator --password-stdin`\nFor a service account, use `krk auth users add --id ci --roles operator --service-account`")
 			}
 			body := map[string]any{"id": id, "name": name, "roles": roles}
 			if scope != "" {
@@ -183,7 +183,7 @@ expressible without granting operator everywhere.`,
 				body["service_account"] = true
 			} else {
 				if !passwordStdin {
-					return fmt.Errorf("--password-stdin is required for a user (or use --service-account)")
+					return fmt.Errorf("--password-stdin is required for a user: passing a password as a flag would put it in your shell history\nPipe it in instead, e.g. `echo \"$PW\" | krk auth users add --id %s --password-stdin`, or create a service account with --service-account", id)
 				}
 				password, err := readSecret(c.InOrStdin())
 				if err != nil {
@@ -272,7 +272,7 @@ func authBindingsCmd() *cobra.Command {
   krk auth bindings add --principal oidc:bob --role viewer --project delta`,
 		RunE: func(_ *cobra.Command, _ []string) error {
 			if principal == "" || role == "" {
-				return fmt.Errorf("--principal and --role are required")
+				return fmt.Errorf("--principal and --role are required: name who gets which role, e.g. `krk auth bindings add --principal alice --role operator --scope twin:abc`\nList the principals with `krk auth users list`")
 			}
 			// A container named on the command line becomes the scope. It is
 			// resolved to an ID here, so what reaches the binding is
