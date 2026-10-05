@@ -1,13 +1,22 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"log/slog"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/bsenel/karakuri/internal/app"
 )
+
+// shutdownGrace bounds how long a stopping server waits for requests in
+// flight. The SSE streams never finish on their own, so without a bound a
+// shutdown would wait on them forever.
+const shutdownGrace = 10 * time.Second
 
 func main() {
 	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stdout, nil)))
@@ -31,8 +40,28 @@ func main() {
 		IdleTimeout:       120 * time.Second,
 		MaxHeaderBytes:    1 << 20,
 	}
-	if err := srv.ListenAndServe(); err != nil {
+
+	stop, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer cancel()
+	served := make(chan error, 1)
+	go func() { served <- srv.ListenAndServe() }()
+
+	select {
+	case err := <-served:
 		slog.Error("server failed", "err", err)
+		boot.Close()
 		os.Exit(1)
+	case <-stop.Done():
 	}
+
+	// Stop taking requests first, then release the MCP servers, so no tool
+	// call is cut off halfway through by its subprocess going away.
+	slog.Info("karakuri server stopping")
+	ctx, done := context.WithTimeout(context.Background(), shutdownGrace)
+	defer done()
+	if err := srv.Shutdown(ctx); err != nil && !errors.Is(err, context.DeadlineExceeded) {
+		slog.Warn("server shutdown", "err", err)
+	}
+	boot.Close()
+	slog.Info("karakuri server stopped")
 }

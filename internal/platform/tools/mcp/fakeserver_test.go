@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 // fakeServerEnv switches the test binary into a stdio MCP server. The stdio
@@ -17,9 +18,16 @@ import (
 // re-executed with the variable set.
 const fakeServerEnv = "KARAKURI_MCP_FAKE_SERVER"
 
+// fakeStubbornEnv makes the fake keep running after its stdin closes.
+const fakeStubbornEnv = "KARAKURI_MCP_FAKE_STUBBORN"
+
 func TestMain(m *testing.M) {
 	if os.Getenv(fakeServerEnv) == "1" {
 		serveStdio(os.Stdin, os.Stdout)
+		if os.Getenv(fakeStubbornEnv) == "1" {
+			// A server that ignores its input closing, so Close has to kill it.
+			time.Sleep(time.Hour)
+		}
 		os.Exit(0)
 	}
 	os.Exit(m.Run())
@@ -101,9 +109,11 @@ func serveStdio(in io.Reader, out io.Writer) {
 // stdioConfig launches this test binary as the fake server.
 func stdioConfig(allowed ...string) Config {
 	return Config{
-		Transport:    TransportStdio,
-		Command:      os.Args[0],
-		Env:          map[string]string{fakeServerEnv: "1"},
+		Transport: TransportStdio,
+		Command:   os.Args[0],
+		// atexit_sleep_ms=0: a race-built binary otherwise sleeps a second on
+		// exit, which Close now waits out for every instance a test closes.
+		Env:          map[string]string{fakeServerEnv: "1", "GORACE": "atexit_sleep_ms=0"},
 		AllowedTools: allowed,
 	}
 }

@@ -250,3 +250,42 @@ func TestHTTPInstanceSpeaksJSONAndSSE(t *testing.T) {
 		})
 	}
 }
+
+// Close returns only once the server has exited and been reaped, so a
+// stopping Karakuri leaves no subprocess or zombie behind. A server that exits
+// when its stdin closes goes at once; one that ignores it is killed.
+func TestCloseReapsTheServer(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		stubborn bool
+	}{
+		{"exits on stdin close", false},
+		{"ignores stdin close", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := stdioConfig("read_file")
+			if tc.stubborn {
+				cfg.Env[fakeStubbornEnv] = "1"
+			}
+			inst := NewInstance(context.Background(), "acme_files", cfg)
+			if inst.State() != StateConnected {
+				t.Fatalf("state = %q", inst.State())
+			}
+			st := inst.client.transport.(*stdioTransport)
+
+			start := time.Now()
+			if err := inst.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if st.cmd.ProcessState == nil {
+				t.Fatal("Close returned before the server was reaped")
+			}
+			if took := time.Since(start); !tc.stubborn && took >= closeGrace {
+				t.Errorf("a server that exits on stdin close took %v to stop, want under %v", took, closeGrace)
+			}
+			if err := inst.Close(); err != nil {
+				t.Errorf("a second Close: %v", err)
+			}
+		})
+	}
+}

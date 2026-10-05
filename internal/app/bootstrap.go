@@ -46,6 +46,17 @@ type Bootstrap struct {
 	App       *api.App
 	Store     storage.StorageAdapter
 	Worktrees git.WorktreeManager
+
+	tools *tools.Registry
+}
+
+// Close releases what the server started outside its own goroutines: the MCP
+// servers launched as subprocesses. Called once the HTTP server has stopped
+// taking requests, so no tool call is in flight when they go.
+func (b *Bootstrap) Close() {
+	if b.tools != nil {
+		b.tools.CloseMCP()
+	}
 }
 
 func BootstrapServer(cfgPath string) (*Bootstrap, error) {
@@ -382,7 +393,7 @@ func BootstrapServer(cfgPath string) (*Bootstrap, error) {
 	// own refusal when disabled, which it is by default.
 	apiApp.Reports.Start(ctx)
 
-	return &Bootstrap{Config: cfg, App: apiApp, Store: store, Worktrees: wt}, nil
+	return &Bootstrap{Config: cfg, App: apiApp, Store: store, Worktrees: wt, tools: toolReg}, nil
 }
 
 // startCostRetention prunes raw cost events on a daily tick.
