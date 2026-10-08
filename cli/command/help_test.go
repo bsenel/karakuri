@@ -89,6 +89,24 @@ func TestGetAndListHelp(t *testing.T) {
 	}
 }
 
+func TestResearchHelp(t *testing.T) {
+	cmd := researchCmd()
+	requireExample(t, cmd)
+
+	if !strings.Contains(cmd.Short, "artifact") {
+		t.Errorf("research Short %q does not say where the findings go", cmd.Short)
+	}
+	// A bare "Twin ID" / "Objective ID" / "Agent ID" repeats the flag name and says nothing.
+	for _, name := range []string{"twin", "objective", "agent"} {
+		if usage := cmd.Flags().Lookup(name).Usage; strings.HasSuffix(usage, " ID") {
+			t.Errorf("--%s usage %q only repeats the flag name", name, usage)
+		}
+	}
+	if usage := cmd.Flags().Lookup("sources").Usage; !strings.Contains(usage, "http-scraper") {
+		t.Errorf("--sources usage %q does not name the default source", usage)
+	}
+}
+
 func TestLoopHelp(t *testing.T) {
 	for _, cmd := range []*cobra.Command{loopStartCmd(), loopStatusCmd(), loopResumeCmd()} {
 		requireExample(t, cmd)
