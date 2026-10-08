@@ -107,6 +107,19 @@ func TestResearchHelp(t *testing.T) {
 	}
 }
 
+func TestMemoryRecallHelp(t *testing.T) {
+	cmd := memoryRecallCmd()
+	requireExample(t, cmd)
+
+	// An empty --tier falls back to episodic; the usage has to say so.
+	if usage := cmd.Flags().Lookup("tier").Usage; !strings.Contains(usage, `default "episodic"`) {
+		t.Errorf("--tier usage %q does not name the default tier", usage)
+	}
+	if usage := cmd.Flags().Lookup("agent").Usage; usage == "Agent ID" {
+		t.Errorf("--agent usage %q only repeats the flag name", usage)
+	}
+}
+
 func TestLoopHelp(t *testing.T) {
 	for _, cmd := range []*cobra.Command{loopStartCmd(), loopStatusCmd(), loopResumeCmd()} {
 		requireExample(t, cmd)

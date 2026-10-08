@@ -19,7 +19,9 @@ func memoryRecallCmd() *cobra.Command {
 	var topK int
 	cmd := &cobra.Command{
 		Use:   "recall",
-		Short: "Recall memory entries",
+		Short: "Search an agent's memory for entries matching a query",
+		Example: `  krk memory recall --agent agent_42 --query "login test flakiness"
+  krk memory recall --agent agent_42 --query "deploy steps" --tier procedural --top-k 10`,
 		RunE: func(_ *cobra.Command, _ []string) error {
 			tiers := []string{"episodic"}
 			if tier != "" {
@@ -38,9 +40,9 @@ func memoryRecallCmd() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&agentID, "agent", "", "Agent ID")
-	cmd.Flags().StringVar(&query, "query", "", "Search query")
-	cmd.Flags().StringVar(&tier, "tier", "", "Memory tier: working|episodic|semantic|procedural")
+	cmd.Flags().StringVar(&agentID, "agent", "", "ID of the agent whose memory is searched")
+	cmd.Flags().StringVar(&query, "query", "", "Text to search memory for")
+	cmd.Flags().StringVar(&tier, "tier", "", "Memory tier: working|episodic|semantic|procedural (default \"episodic\")")
 	cmd.Flags().IntVar(&topK, "top-k", 5, "Maximum results")
 	return cmd
 }
