@@ -83,9 +83,10 @@ func twinCreateCmd() *cobra.Command {
 
 func twinGetCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "get <id>",
-		Short: "Get a twin by ID",
-		Args:  cobra.ExactArgs(1),
+		Use:     "get <id>",
+		Short:   "Get a twin by ID",
+		Example: `  krk twin get t_7f2a`,
+		Args:    cobra.ExactArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
 			data, _, err := api.Get("/twins/" + args[0])
 			if err != nil {
@@ -102,6 +103,8 @@ func twinListCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List digital twins",
+		Example: `  krk twin list
+  krk twin list --kind person`,
 		RunE: func(c *cobra.Command, _ []string) error {
 			path := "/twins"
 			sep := "?"

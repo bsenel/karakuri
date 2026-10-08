@@ -53,9 +53,10 @@ func objectiveCreateCmd() *cobra.Command {
 
 func objectiveGetCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "get <id>",
-		Short: "Get an objective by ID",
-		Args:  cobra.ExactArgs(1),
+		Use:     "get <id>",
+		Short:   "Get an objective by ID",
+		Example: `  krk objective get obj_123`,
+		Args:    cobra.ExactArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
 			data, _, err := api.Get("/objectives/" + args[0])
 			if err != nil {
@@ -72,6 +73,8 @@ func objectiveListCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List objectives",
+		Example: `  krk objective list
+  krk objective list --twin t_7f2a --status active`,
 		RunE: func(c *cobra.Command, _ []string) error {
 			path := "/objectives"
 			sep := "?"
