@@ -43,7 +43,7 @@ Phases 27–32 were proposed from two kinds of evidence: what this repository de
 | 30    | The Evaluation Set Karakuri Already Has    | **Completed** |
 | 31    | The Evidence Pack                          | **Completed** |
 | 32    | The SRE Path, Actually Wired               | **Completed** |
-| 33    | MCP After the Handshake                    | **Planned**   |
+| 33    | MCP After the Handshake                    | **Completed** |
 
 
 ---
@@ -3180,7 +3180,7 @@ harness.
 
 ---
 
-## Phase 33 — MCP After the Handshake (Planned)
+## Phase 33 — MCP After the Handshake (Completed)
 
 **Goal:** Karakuri's MCP client can bind a server that speaks only revision
 2026-07-28, and still binds the servers it binds today.
@@ -3286,6 +3286,125 @@ of its own. It is also not a claim of conformance to the revision: tasks, which
 moved to an extension, and trace-context propagation in `_meta` are outside
 this phase. And an `httptest` server built from the specification's text is not
 a real server; what the acceptance shows is the path, as Phase 32's did.
+
+**Shipped (step 1).** The result table under step 1 above, run 2026-10-05. It
+is the only part of this phase that touched a real server, and it ran the client
+as it was before steps 2 to 5.
+
+**Shipped (step 2).** `internal/platform/tools/mcp/protocol.go` declares
+`ModernProtocolVersion = "2026-07-28"`, `MethodServerDiscover` and the names the
+second path reads and writes. `Client.Negotiate` in `client.go` tries
+`server/discover` first and falls back to `initialize`; when both fail the error
+names both. On the discover path every request carries the version and the
+client's capabilities in `_meta`, and a result without a `resultType` is an
+error. `streamhttp.go` keeps a session ID only from the reply to `initialize`,
+so a connection opened by discovery never sends the header. `instance.go`
+records the path in `Health.ProtocolPath` (`protocol_path` in JSON),
+`environment.go` puts it in the observation, and `internal/app/bootstrap.go`
+adds `path` to the boot log line.
+
+**Shipped (step 3).** See
+[ADR 027](adr/027-a-tool-that-asks-for-input-is-an-error-the-planner-sees.md).
+A result of `resultType: "input_required"` is an `*InputRequiredError` from
+`Client.CallTool`, passed through `Instance.Call` unwrapped. `Environment.Act`
+in `environment.go` reports it as a failed, third-party `ActionResult` whose
+`StateDelta` carries `result_type` and what the server asked, with no output.
+It is not answered and not retried. It is not a checkpoint; nothing in
+`internal/feature/` changed.
+
+**Shipped (step 4).** `readSSE` in `streamhttp.go` returns `errStreamBroken`
+when a stream ends or fails before the reply arrives, and not when the context
+ended. `Client.exchange` in `client.go` sends the request again once, on the
+discover path only, under the deadline of the first attempt. The old path does
+not re-issue. The allowlist is checked before either attempt.
+
+**Shipped (step 5).** `internal/api/handler/mcp.go`, Karakuri as an MCP server,
+answers `server/discover` with both revisions it speaks, reads the version from
+a request's `_meta`, adds `resultType` to every result of a request that named
+2026-07-28, and refuses any other named version with `-32022` and the supported
+list. A request that names no version is answered as before, `initialize`
+included. Both revisions go through one `answer` function, so authorization,
+the withheld tools and the audit hook have one route. No `Mcp-Session-Id` is
+set under either revision.
+
+**Shipped (acceptance).** Clause by clause, the test that shows each. All are
+in `internal/platform/tools/mcp/` unless a path is given, and all run against
+`httptest` servers written in this repository.
+
+- *A 2026-07-28-only server, no `initialize`, no session header: the client
+  discovers its tools and calls one.* `TestAcceptance_ModernOnlyServer` in
+  `modern_instance_test.go`; also `TestNegotiateDiscoversAModernOnlyServer`,
+  `TestModernPathListsAndCallsTools` and
+  `TestModernRequestsCarryMetaAndNoSession` in `modern_test.go`.
+- *A 2025-06-18-only server, by the old path.*
+  `TestAcceptance_LegacyOnlyServer` in `modern_instance_test.go` and
+  `TestNegotiateFallsBackToInitialize` in `modern_test.go`.
+- *`input_required` surfaces as ADR 027 chose, with a test.*
+  `TestInputRequiredIsANamedErrorFromCallTool`,
+  `TestActReportsInputRequiredAsANamedFailure`, `TestInputRequiredIsNotRetried`
+  and `TestLegacyPathNeverReportsInputRequired` in `input_required_test.go`.
+- *A result with no `resultType` from a 2026-07-28 server is an error.*
+  `TestModernResultWithoutResultTypeIsAnError` in `modern_test.go`.
+- *The third-party trust of ADR 021 holds on both paths.*
+  `TestThirdPartyTrustHoldsOnBothPaths` in `modern_instance_test.go`.
+- *The four bounds of ADR 022 hold on both paths.* **Shown for one of the four
+  only.** ADR 022's bounds are: never `NeedsWorkspace`, never a criterion's
+  verifier, approval by default, outside pack conformance.
+  `TestDiscoveredToolsStayInTheReservedNamespaceOnBothPaths` asserts on both
+  paths that every discovered capability is in the reserved namespace and
+  grants no workspace, and `TestReissuedCallKeepsTheADR022Bounds` in
+  `reissue_test.go` asserts the same after a re-issue. No test in this phase
+  runs the verifier, approval or conformance bound per path. Those three are
+  decided from the capability ID's namespace outside this package, so that they
+  hold on the new path is inferred from the namespace test and Phase 28's
+  existing tests, not shown here. What the both-paths tests do also cover is
+  the allowlist (`TestAllowlistHoldsOnBothPaths`,
+  `TestEmptyAllowlistAllowsNothingOnBothPaths`) and the call timeout
+  (`TestCallThatHangsHitsTheTimeoutOnBothPaths`), which are Phase 28 bounds but
+  not the four ADR 022 numbers.
+
+Step 4 has no acceptance clause; its tests are in `reissue_test.go`
+(`TestBrokenStreamReissuesAToolCallOnce`, `TestBrokenStreamIsReissuedOnlyOnce`,
+`TestReissueSharesOneDeadline`, `TestAllowlistIsCheckedBeforeEitherAttempt`,
+`TestOnlyABrokenStreamIsReissued`, `TestLegacyPathDoesNotReissueABrokenStream`,
+`TestBrokenStreamReissuesToolsListDuringDiscovery`). Step 5 has none either; its
+tests are in `internal/api/handler/mcp_modern_test.go`
+(`TestMCPServerAnswersDiscover`, `TestMCPServerModernResultsCarryResultType`,
+`TestMCPServerOldPathIsUnchanged`,
+`TestMCPServerRefusesAnUnknownProtocolVersion`,
+`TestMCPServerSetsNoSessionHeader`, `TestMCPServerSpeaksToTheRepositoryClient`,
+`TestMCPServerModernPathAuthorizesAndAuditsRefusals`).
+
+**Not verified.** This is not a claim of conformance to revision 2026-07-28.
+
+The 2026-07-28 field names were taken from this roadmap's description of the
+revision and were not checked against the specification text, as `protocol.go`
+itself says: the `_meta` keys (`protocolVersion`, `clientCapabilities`), the
+`resultType` value `complete` for an ordinary result, the shape of a
+`server/discover` result (`supportedVersions`, `serverInfo`, `capabilities`,
+`instructions`), and `inputRequests`. Any of them may be wrong.
+
+Nothing in steps 2 to 5 was run against a real 2026-07-28 server or client. The
+client was tested against `httptest` servers written here from the same
+assumed names, and the server against those tests and this repository's own
+client (`TestMCPServerSpeaksToTheRepositoryClient`). Client and server agreeing
+with each other does not show that either agrees with the specification. Step
+1's run against the Python SDK's modern-only path was made before the second
+path existed and has not been repeated with it.
+
+A re-issued tool call may run twice on the server. The client cannot tell a
+request that was lost from one that ran and whose answer was lost, and sends no
+idempotency key. A tool with side effects can therefore act twice.
+
+OAuth for remote MCP servers, tasks, and trace-context propagation in `_meta`
+are outside the phase and were not built.
+
+Also not verified: three of ADR 022's four bounds on the new path, as said
+under acceptance above. Re-issue was exercised over streamable HTTP only; what
+a broken stdio pipe does on the discover path was not tested. The `path` field
+in the boot log line was added in `bootstrap.go` and no test was found that
+reads the log line. `-32022` as the code for an unsupported version comes from
+one observation of the Python SDK in step 1, not from the specification text.
 
 ---
 
@@ -3770,6 +3889,7 @@ Checks (run via `krk domain test <id>`):
 | Observability tool slot (`tools.observability`) and its four adapters | **Fully implemented** (Phase 32, ADR 026), not validated against a live backend — multi-instance and twin-bound (ADR 006); `prometheus` (alerts, metrics), `loki` (logs), `datadog` (alerts, metrics, logs), `pagerduty` (alerts); `ErrUnsupported` for a signal a backend lacks; tested against `httptest` servers. No no-op adapter. One instance per twin |
 | `software.env.observability`                                          | **Fully implemented** (Phase 32, ADR 026) — observes the open alert set, serves `fetch_logs`, `fetch_metrics` and `alerts_resolved`; blind (an `Observe` error and an empty snapshot SHA) when unbound, inactive or unable to answer alerts; the SHA hashes the open alert set, not the messages |
 | Incident response: `software.act.run_remediation` + `software.verify.alerts_resolved` | **Fully implemented** (Phase 32) — remediation is a shell command behind the shell denylist, requires `alert_id`, `rationale` and `cmd`, and always escalates; the remediation criterion is met only when the named alerts are no longer open. Shown end to end with a scripted instance in `internal/feature/loop/incident_test.go`; no infrastructure adapter |
+| MCP revision 2026-07-28, client and server                            | **Implemented** (Phase 33, ADR 027), not checked against the specification text or a real 2026-07-28 peer — the client opens by `server/discover` and falls back to `initialize`, records the path in `protocol_path`, reports `input_required` as a named error, and re-issues once after a broken stream (a tool call may run twice); `internal/api/handler/mcp.go` answers both revisions. Field names are assumed from the roadmap's description; tested against `httptest` servers and the repository's own client only. No OAuth, tasks or trace context |
 | Standing stream templates                                             | **Declared, not yet run** — `software.objective.market_discovery`, `engineering_backlog`, `ux_improvement` and `roadmap_delivery` in `domains/software/streams.go`, for a deployment that improves itself on a cadence. Their criteria describe the state a correct pass leaves behind, so a pass that looked and found nothing to do does not count against the circuit breaker; every criterion is judged, and each carries a hard `no-merge` constraint. No standing objective has run under them yet |
 
 
