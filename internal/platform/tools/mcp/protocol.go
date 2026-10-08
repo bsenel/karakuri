@@ -74,6 +74,63 @@ type discoverResult struct {
 	ResultType        string   `json:"resultType"`
 	SupportedVersions []string `json:"supportedVersions"`
 	ServerInfo        Info     `json:"serverInfo"`
+
+	// Capabilities and Instructions are what InitializeResult carries, under
+	// the names it carries them. That a server/discover result has a place for
+	// them at all is assumed twice over: the client in this package reads
+	// neither, and only the server in internal/api/handler sets them.
+	Capabilities map[string]any `json:"capabilities,omitempty"`
+	Instructions string         `json:"instructions,omitempty"`
+}
+
+// Discovery builds the server/discover result for a server that speaks
+// versions and describes itself as server does in the handshake. It lives here
+// rather than in the handler so the server answers in the shape the client
+// decodes, from one declaration of it.
+func Discovery(server InitializeResult, versions []string) any {
+	return discoverResult{
+		ResultType:        resultTypeComplete,
+		SupportedVersions: versions,
+		ServerInfo:        server.ServerInfo,
+		Capabilities:      server.Capabilities,
+		Instructions:      server.Instructions,
+	}
+}
+
+// RequestVersion reads the protocol version a request states in its params'
+// `_meta`, the way withMeta writes it. Empty means the request states none,
+// which is a 2025-06-18 client: that revision settles the version once in the
+// handshake. A version that is there and is not a string comes back as its raw
+// JSON, so a server comparing it to what it speaks refuses it rather than
+// mistaking it for absent.
+func RequestVersion(params json.RawMessage) string {
+	var body struct {
+		Meta map[string]json.RawMessage `json:"_meta"`
+	}
+	if len(params) == 0 || json.Unmarshal(params, &body) != nil {
+		return ""
+	}
+	raw, ok := body.Meta[metaKeyProtocolVersion]
+	if !ok {
+		return ""
+	}
+	var version string
+	if err := json.Unmarshal(raw, &version); err != nil {
+		return string(raw)
+	}
+	return version
+}
+
+// CompleteResult marks a result as a finished answer, which revision 2026-07-28
+// requires of every result and checkResultType refuses to go without. The
+// result's own fields are carried through as they were encoded.
+func CompleteResult(result json.RawMessage) (json.RawMessage, error) {
+	fields := map[string]json.RawMessage{}
+	if err := json.Unmarshal(result, &fields); err != nil {
+		return nil, err
+	}
+	fields["resultType"], _ = json.Marshal(resultTypeComplete)
+	return json.Marshal(fields)
 }
 
 // Method names. Constants because they are matched in two places — the client
