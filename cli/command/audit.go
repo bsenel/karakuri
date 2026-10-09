@@ -8,7 +8,6 @@ import (
 	"os"
 	"strings"
 
-	"github.com/bsenel/karakuri/cli/client"
 	"github.com/spf13/cobra"
 )
 
@@ -81,7 +80,7 @@ most recent entries across all kinds.`,
 			if err != nil {
 				return err
 			}
-			client.PrintOutput(data, output)
+			printList(c, data, "audit entries")
 			return nil
 		},
 	}

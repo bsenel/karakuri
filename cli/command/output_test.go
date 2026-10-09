@@ -15,6 +15,8 @@ func TestLaterEmptyListsSaySo(t *testing.T) {
 		{[]string{"report", "list"}, "No digest schedules.\n"},
 		{[]string{"quota", "requests", "list"}, "No quota requests.\n"},
 		{[]string{"domain", "list"}, "No domain packs.\n"},
+		{[]string{"audit"}, "No audit entries.\n"},
+		{[]string{"audit", "--violations-only"}, "No audit entries.\n"},
 	} {
 		for _, body := range []string{"null", "[]\n"} {
 			apiURL := startListServer(t, body)
