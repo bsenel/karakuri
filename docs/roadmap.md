@@ -44,6 +44,10 @@ Phases 27–32 were proposed from two kinds of evidence: what this repository de
 | 31    | The Evidence Pack                          | **Completed** |
 | 32    | The SRE Path, Actually Wired               | **Completed** |
 | 33    | MCP After the Handshake                    | **Planned**   |
+| 35    | An Unanswered Checkpoint Ends              | **Planned**   |
+| 36    | A Provider's Refusal Is Not a Plan         | **Planned**   |
+| 37    | A Stop That Reaches the Running Pass       | **Planned**   |
+| 38    | What Was Required and Not Done             | **Planned**   |
 
 
 ---
@@ -3412,6 +3416,306 @@ other action (ADR 015), not through a tool. It is not a general way to hand a
 coding agent the operator's identity. And it does not attach the third-party
 MCP servers of the `tools.mcp` slot to the coding agent; that is a different
 question with ADR 022's bounds on it.
+
+---
+
+## Phase 35 — An Unanswered Checkpoint Ends (Planned)
+
+This is a **demand phase**, proposed by the discovery cycle of 2026-10-08
+(`docs/research/discovery-2026-10-08.md`, 'Fit and bets', rank 1). The demand
+rests on one issue tracker, which is thin; the phase is sized to match.
+
+**Goal:** An operator can set a time after which a checkpoint nobody answered
+is rejected, on the record, by `system:timeout`. Expiry never approves.
+
+**A paused loop waits with no limit, and users of other runtimes ask what
+happens then.** Two authors on the openai/openai-agents-python tracker asked
+for it in their own words: "Developers should be able to set timeouts or
+fallback behaviors in case human input is not received within a window."
+(https://api.github.com/repos/openai/openai-agents-python/issues/636, read
+2026-10-08) and "How should we handle timeouts if a human doesn't respond
+promptly?" (https://github.com/openai/openai-agents-python/issues/378, read
+2026-10-08). Both are one population on one tracker; no Karakuri user asked.
+
+What the report's feasibility reading observed in this repository
+(`internal/core/checkpoint/checkpoint.go`, `internal/feature/checkpoint/service.go`
+lines 20 to 199, `internal/feature/loop/runner.go` lines 236 to 293):
+`Checkpoint` has the statuses `pending` and `resolved` and no deadline or
+expiry field; the paused loop waits in a `select` on `ctx.Done()` and
+`state.decisionCh` with no timer case. Inferred from those lines, not from the
+whole repository: a pending checkpoint waits until a person answers or the
+process ends. Nothing was built or run.
+
+**Steps:**
+
+1. **Expiry as a rejection.** Add an optional `ExpiresAt *time.Time` to
+   `checkpoint.Checkpoint` (`internal/core/checkpoint/checkpoint.go`, no vendor
+   import) and to `CreateOptions`. Add `Service.ExpireDue(ctx, now)` in
+   `internal/feature/checkpoint/service.go`: it lists pending checkpoints past
+   their time and calls the existing `Resolve` with
+   `Decision{Choice: "reject", Approver: "system:timeout", Note: ...}`, so the
+   audit row, the loop's reject path and the terminal record are the ones that
+   already exist. Before writing it, read what the feasibility pass could not
+   verify: how `storage.StorageAdapter` stores a checkpoint and whether the
+   column needs a migration, and whether pending checkpoints can be listed
+   without a twin id.
+2. **The sweep is called from reconcile.** The caller belongs in
+   `internal/feature/reconcile`, on the tick the supervisor already has; the
+   loop is not taught a new way to wait or to continue (AGENTS.md rule 8). The
+   duration comes from `config/default.yaml` and defaults to off, so today's
+   behaviour is unchanged until configured.
+3. **Restart.** Read what `ResumeStoredLoops` does with a checkpoint whose time
+   passed while the server was down, and make the first sweep after boot expire
+   it through the same path.
+4. **Contract.** The storage column and the `expires_at` field in
+   `docs/openapi.yaml`, so a reviewer sees when a checkpoint will lapse.
+
+**Acceptance:** With the duration unset, no checkpoint carries an expiry and
+none is ever expired. With it set, a test with a fake clock shows a pending
+checkpoint past its time resolved as a rejection whose approver is
+`system:timeout`, one audit row of kind rejection, and the loop ended as
+`rejected_at_checkpoint`. A checkpoint a person answered before its time is
+untouched. A checkpoint that lapsed while the server was down is expired by the
+first sweep after boot. No code path turns an expiry into an approval.
+
+**What this is not.** It is not a default-approve, an escalation chain, a
+reminder or a notification: an unanswered checkpoint must not become authority,
+which is only ever what is written into `agent.AuthorityBounds` (ADR 015). It
+adds no fallback behaviour other than rejection, and no per-checkpoint policy
+language.
+
+---
+
+## Phase 36 — A Provider's Refusal Is Not a Plan (Planned)
+
+This is a **demand phase**, proposed by the discovery cycle of 2026-10-08
+(`docs/research/discovery-2026-10-08.md`, 'Fit and bets', rank 2). It has two
+sources from two populations; one is a vendor's figure about its own customers
+and the other the report itself calls weak evidence about builders.
+
+**Goal:** When the model provider answers a call with a rate limit, the loop
+says so and ends the iteration with that reason, instead of handing a reviewer
+a placeholder plan to approve.
+
+**Rate limits are a leading cause of failed model calls, by a vendor's own
+count.** Datadog reports of its customers' LLM call errors in February 2026
+that "60% of those errors were caused by exceeded rate limits."; for March it
+reports "2% of all LLM spans in our dataset returned an error." and that "rate
+limit errors accounted for almost a third of them,"
+(https://www.datadoghq.com/state-of-ai-engineering/, read 2026-10-08). These
+are Datadog's figures for its own dataset, not a measurement made here. A
+second source, anthropics/claude-code issue #16157
+(https://github.com/anthropics/claude-code/issues/16157, read 2026-10-08),
+is a user of a coding agent reporting a quota that ran out without an
+explanation; the report grades it weak evidence about people who build agents.
+
+What the feasibility reading observed (`internal/feature/loop/reason.go` lines
+60 to 165, `internal/feature/loop/budget.go` lines 74 to 123,
+`internal/platform/llm/claude.go` lines 64 to 103): when the agent call returns
+any error, `stepReason` builds a plan of one `reason.plan` action holding the
+error text at confidence 0.3; it retries once, and only on a reply that did not
+parse; `ClaudeProvider.Complete` returns the langchaingo error unchanged and
+without the provider name. Inferred, not observed: that the placeholder plan
+reaches a person as a confidence checkpoint (`stepDecide` was not read).
+Karakuri's own token budget (`budgetedAgent.Run`, Phases 15, 18 and 23) is a
+different ceiling and is not changed here.
+
+**Steps:**
+
+1. **Name the error, classify it at the edge, stop building a plan from it.**
+   First read what the feasibility pass could not verify: what langchaingo's
+   Anthropic client returns for an HTTP 429 and whether the status or a
+   Retry-After value survives into it, and what `stepDecide` does with a
+   0.3-confidence `reason.plan`. Then define a domain error
+   `ErrProviderRateLimited`, with an optional retry-after duration, in
+   `internal/core/agent` or the core errors package (no vendor import);
+   classify the langchaingo error into it inside
+   `internal/platform/llm/claude.go`, wrapped with the provider name as
+   `internal/platform/llm/AGENTS.md` rule 3 asks (the classification stays
+   under `internal/platform/`, AGENTS.md rule 1); in `stepReason`
+   (`internal/feature/loop/reason.go`), on that error only, wait once within a
+   small cap and retry, and if it fails again end the iteration with a reason
+   that names the provider limit. Tests for both files. If the 429 cannot be
+   told apart from other failures in what langchaingo returns, stop and record
+   that in this section before writing anything else.
+2. **The other providers.** Apply the same classification to the remaining
+   providers under `internal/platform/llm/`, after reading whether
+   `internal/platform/agent/factory.go` or the CLI-fallback providers already
+   retry; neither was opened by the feasibility pass.
+3. **Reconcile decides whether to try again.** Read whether the reconcile
+   circuit breaker counts such a pass as a failure, and make a rate-limited
+   pass visible as that in the reconcile history. Whether and when the next
+   pass runs stays the supervisor's decision on its cadence (AGENTS.md rule 8).
+
+**Acceptance:** A test with a scripted provider that returns a rate-limit
+answer twice shows: one bounded wait, one retry, no `reason.plan` placeholder
+action, no checkpoint raised from it, and an iteration ended with a reason
+naming the provider and the limit. A provider that fails once and then succeeds
+yields the normal plan. Any other provider error behaves exactly as today. No
+file outside `internal/platform/` imports langchaingo
+(`scripts/check_langchaingo_imports.sh` passes).
+
+**What this is not.** It is not a retry policy with backoff tables, a
+provider failover, a queue, or a change to Karakuri's own quotas and budgets.
+The loop does not learn to keep trying: one bounded retry, then it ends. It
+does not charge for failed calls, and it does not explain a provider's quota
+to the user beyond passing on what the provider's answer said.
+
+---
+
+## Phase 37 — A Stop That Reaches the Running Pass (Planned)
+
+This is a **frontier bet**, proposed by the discovery cycle of 2026-10-08
+(`docs/research/discovery-2026-10-08.md`, 'Fit and bets', rank 3). Nobody asked
+for it. **The bet:** a buyer preparing for the EU AI Act's high-risk
+obligations will ask to see a stop that works while a pass is running and that
+leaves a record of who stopped it.
+
+**Goal:** Pausing a standing objective cancels the pass in flight, and the
+evidence export shows that a person paused and resumed, and when.
+
+**The evidence, and how thin it is.** The one primary page read is the
+European Commission's overview of the regulation, which asks of high-risk
+systems "appropriate human oversight measures." and says "deployers ensure
+human oversight and monitoring."
+(https://digital-strategy.ec.europa.eu/en/policies/regulatory-framework-ai,
+read 2026-10-09); the same page puts those obligations at 2 December 2027.
+That is a general sentence. The specific wording about a person being able to
+stop the system is Article 14(4), which the report knows only from a secondary
+mirror (https://artificialintelligenceact.eu/article/14/, read 2026-10-09);
+the legal text was not read by anyone. No regulated organisation speaking for
+itself was found.
+
+What the feasibility reading observed (`internal/feature/reconcile/service.go`
+lines 225 to 286 and 396 to 460, `internal/api/handler/reconcile.go` lines 170
+to 209, `internal/api/server.go` lines 366 to 394): `POST /{id}/pause` and
+`/resume` exist behind `karakuriauth.ActionObjectivePause`; `Service.Pause`
+writes `Paused`, `PausedReason` and `PhasePaused` to the stored state and holds
+no handle on a pass `dispatch` already started; no audit row is written in the
+lines read. Inferred: a pause prevents the next pass and does not interrupt the
+running one, and the export may not show the stop.
+
+**What would prove the bet wrong:** the legal text of Article 14(4), once
+read, does not ask for a stop of this kind; Pause is already audited elsewhere
+(middleware and the store were not read); or cancelling a pass leaves a
+worktree or an external action half done, so the stop is not a safe state.
+
+**Steps:**
+
+1. **Find out, then prototype, in one slice (time-boxed to that slice).** Read
+   the `pass` function in `internal/feature/reconcile/service.go` to learn
+   whether the loop's context derives from the one `dispatch` holds; read
+   whether Pause is audited elsewhere; read Article 14(4) in the legal text if
+   it can be fetched. Then prototype the feasibility slice: (a) in
+   `Service.Pause` and `Service.Resume`, write a tool event of a new kind (for
+   example `pause`) with the reason and the principal, plus a storage constant
+   for the kind; (b) keep a `context.CancelFunc` per running objective beside
+   `s.running` in `dispatch` and have `Pause` call it (the runner already
+   finalises on `ctx.Done()`, observed at `internal/feature/loop/runner.go`
+   line 274). **Kill criterion:** if a test shows a cancelled pass leaving a
+   delivery worktree or an external action half done with no way to tell from
+   the record, ship only (a), record the finding here, and close the phase; if
+   Pause turns out to be audited already, drop (a) as well.
+2. **The export shows it.** List pause and resume events under oversight in
+   `internal/feature/audit/export.go`, with `docs/openapi.yaml` updated if the
+   export shape changes. An export over a window with no such events says none
+   were recorded; it does not say the system was never stopped.
+3. **Only if step 1 survived:** a cancel for a one-shot loop on the loops
+   route, and a single control that pauses every standing objective. These are
+   the feasibility pass's 'second slice' and are not started before step 1's
+   result is written down.
+
+**Acceptance:** A test starts a pass that blocks, calls `Pause`, and observes
+the pass's context cancelled and the loop finalised; the stored state reads
+paused and `Trigger` still refuses. Pause and resume each leave one audit event
+carrying the principal and the reason, and the export lists both. Pausing an
+objective with no pass running behaves as today plus the audit event. The
+loop's own termination logic is unchanged (AGENTS.md rule 8): the diff touches
+`internal/feature/reconcile` and the export, not how the loop decides to stop.
+
+**What this is not.** It is not a claim of compliance with Article 14 or with
+anything else: no legal text was read. It is not a rollback: a cancelled pass
+is stopped, not undone. It adds no kill switch outside the API, no new role,
+and no second gate on authority.
+
+---
+
+## Phase 38 — What Was Required and Not Done (Planned)
+
+This is a **frontier bet**, proposed by the discovery cycle of 2026-10-08
+(`docs/research/discovery-2026-10-08.md`, 'Fit and bets', rank 4). Nobody asked
+for it. **The bet:** reviewers of unattended agents will come to ask what a run
+was required to do and did not, and not only which forbidden actions it
+avoided.
+
+**Goal:** The record of a finished run says, for each success criterion, how
+it was settled, and the evidence export lists the criteria that ended unmet and
+the ones whose declared verifier never ran.
+
+**The evidence.** One preprint, arXiv 2610.11773, read as fragments of its
+abstract, method and experiments (the formal task definition was not returned):
+"identifying forbidden actions alone is insufficient to ensure agent safety."
+and "we argue that agent safety also depends on identifying required yet
+unperformed safety-critical actions" (https://arxiv.org/html/2610.11773, read
+2026-10-09). By the authors' own numbers the technique is early: their guard
+model's best exact-match is 21.67%. Indirect support, inferred and not a
+request for this feature: Spotify names "a PR that passes CI but is
+functionally incorrect." as the failure of its background coding agents and
+answers with independent verifiers
+(https://engineering.atspotify.com/2025/12/feedback-loops-background-coding-agents-part-3,
+read 2026-10-08). No buyer or user source in the report asks for this.
+
+What the feasibility reading observed (`internal/core/objective/objective.go`
+lines 30 to 55 and 150 to 189, `internal/feature/loop/verify.go` lines 10 to
+159, `internal/feature/eval/eval.go` lines 1 to 110): objectives already state
+what must be true, as `SuccessCriteria`, each with an optional `Verifier`;
+`stepVerify` sends a criterion whose declared verifier never ran down the same
+branch as one with no verifier, to the model's judgement; the step event
+carries counts and scores, not which criteria were unmet or how each was
+settled. Inferred: the record cannot tell 'the required check ran and failed'
+from 'the required check never ran and a model vouched for it'.
+
+**What would prove the bet wrong:** `finalizeLoop` already records
+per-criterion results (it was not read); objectives in practice declare no
+verifiers, so every entry reads `no_verifier` and the list says nothing; or no
+reviewer ever asks.
+
+**Steps:**
+
+1. **Find out, then prototype, in one slice (time-boxed to that slice).** Read
+   `finalizeLoop` in `internal/feature/loop/runner.go` and what the loop writes
+   to `tool_events` at finalisation; count, over this deployment's stored
+   objectives, how many criteria declare a verifier. **Kill criterion:** if
+   per-criterion results are already recorded, or no stored objective declares
+   a verifier, write the finding here and close the phase. Otherwise prototype
+   the feasibility slice: in `stepVerify` (`internal/feature/loop/verify.go`),
+   record for each criterion its id, `met`, and how it was settled, one of
+   `verifier_ran`, `verifier_never_ran`, `no_verifier`, `reserved_verifier`;
+   add the list to the step-completed payload and to the audit event written
+   on the finalise path in `internal/feature/loop/runner.go`. No model call is
+   added and no judgement changes.
+2. **The export lists them.** An `unmet_obligations` section in
+   `internal/feature/audit/export.go`: per finished run in the window, the
+   criteria that ended unmet and the ones whose declared verifier never ran;
+   `docs/openapi.yaml` updated; tests. A run with no recorded settlement (rows
+   written before this phase) is reported as unknown, not as zero misses
+   (AGENTS.md rule 10). Criterion text an outside party wrote keeps its trust
+   marking (rule 9, ADR 021).
+
+**Acceptance:** A loop test with three criteria (one whose verifier ran and
+failed, one whose declared verifier never ran, one with no verifier) produces a
+finalisation event naming each id with its settlement, and the same `met`
+values and score as before the change. The export for that window lists the
+first two under `unmet_obligations` with their settlement, and lists a run from
+before the change as unknown. The loop's termination and the verify decision
+are unchanged (rule 8).
+
+**What this is not.** It is not the paper's guard model, and it reproduces
+nothing from the paper: no model is asked to infer obligations nobody declared.
+It reports what the loop already decided. It does not make a never-run verifier
+fail the criterion; whether it should is a separate decision for a person,
+informed by what this record shows. It does not enforce `Constraints`, whose
+use was not searched.
 
 ---
 
