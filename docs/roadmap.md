@@ -44,6 +44,7 @@ Phases 27–32 were proposed from two kinds of evidence: what this repository de
 | 31    | The Evidence Pack                          | **Completed** |
 | 32    | The SRE Path, Actually Wired               | **Completed** |
 | 33    | MCP After the Handshake                    | **Planned**   |
+| 35    | An Unanswered Checkpoint Ends              | **Planned**   |
 
 
 ---
@@ -3412,6 +3413,73 @@ other action (ADR 015), not through a tool. It is not a general way to hand a
 coding agent the operator's identity. And it does not attach the third-party
 MCP servers of the `tools.mcp` slot to the coding agent; that is a different
 question with ADR 022's bounds on it.
+
+---
+
+## Phase 35 — An Unanswered Checkpoint Ends (Planned)
+
+This is a **demand phase**, proposed by the discovery cycle of 2026-10-08
+(`docs/research/discovery-2026-10-08.md`, 'Fit and bets', rank 1). The demand
+rests on one issue tracker, which is thin; the phase is sized to match.
+
+**Goal:** An operator can set a time after which a checkpoint nobody answered
+is rejected, on the record, by `system:timeout`. Expiry never approves.
+
+**A paused loop waits with no limit, and users of other runtimes ask what
+happens then.** Two authors on the openai/openai-agents-python tracker asked
+for it in their own words: "Developers should be able to set timeouts or
+fallback behaviors in case human input is not received within a window."
+(https://api.github.com/repos/openai/openai-agents-python/issues/636, read
+2026-10-08) and "How should we handle timeouts if a human doesn't respond
+promptly?" (https://github.com/openai/openai-agents-python/issues/378, read
+2026-10-08). Both are one population on one tracker; no Karakuri user asked.
+
+What the report's feasibility reading observed in this repository
+(`internal/core/checkpoint/checkpoint.go`, `internal/feature/checkpoint/service.go`
+lines 20 to 199, `internal/feature/loop/runner.go` lines 236 to 293):
+`Checkpoint` has the statuses `pending` and `resolved` and no deadline or
+expiry field; the paused loop waits in a `select` on `ctx.Done()` and
+`state.decisionCh` with no timer case. Inferred from those lines, not from the
+whole repository: a pending checkpoint waits until a person answers or the
+process ends. Nothing was built or run.
+
+**Steps:**
+
+1. **Expiry as a rejection.** Add an optional `ExpiresAt *time.Time` to
+   `checkpoint.Checkpoint` (`internal/core/checkpoint/checkpoint.go`, no vendor
+   import) and to `CreateOptions`. Add `Service.ExpireDue(ctx, now)` in
+   `internal/feature/checkpoint/service.go`: it lists pending checkpoints past
+   their time and calls the existing `Resolve` with
+   `Decision{Choice: "reject", Approver: "system:timeout", Note: ...}`, so the
+   audit row, the loop's reject path and the terminal record are the ones that
+   already exist. Before writing it, read what the feasibility pass could not
+   verify: how `storage.StorageAdapter` stores a checkpoint and whether the
+   column needs a migration, and whether pending checkpoints can be listed
+   without a twin id.
+2. **The sweep is called from reconcile.** The caller belongs in
+   `internal/feature/reconcile`, on the tick the supervisor already has; the
+   loop is not taught a new way to wait or to continue (AGENTS.md rule 8). The
+   duration comes from `config/default.yaml` and defaults to off, so today's
+   behaviour is unchanged until configured.
+3. **Restart.** Read what `ResumeStoredLoops` does with a checkpoint whose time
+   passed while the server was down, and make the first sweep after boot expire
+   it through the same path.
+4. **Contract.** The storage column and the `expires_at` field in
+   `docs/openapi.yaml`, so a reviewer sees when a checkpoint will lapse.
+
+**Acceptance:** With the duration unset, no checkpoint carries an expiry and
+none is ever expired. With it set, a test with a fake clock shows a pending
+checkpoint past its time resolved as a rejection whose approver is
+`system:timeout`, one audit row of kind rejection, and the loop ended as
+`rejected_at_checkpoint`. A checkpoint a person answered before its time is
+untouched. A checkpoint that lapsed while the server was down is expired by the
+first sweep after boot. No code path turns an expiry into an approval.
+
+**What this is not.** It is not a default-approve, an escalation chain, a
+reminder or a notification: an unanswered checkpoint must not become authority,
+which is only ever what is written into `agent.AuthorityBounds` (ADR 015). It
+adds no fallback behaviour other than rejection, and no per-checkpoint policy
+language.
 
 ---
 
