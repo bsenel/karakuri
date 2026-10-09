@@ -240,7 +240,8 @@ func NewApp(
 		Scopes:     authDeps.Authorizer,
 		Containers: containerSvc,
 	}
-	audH := &handler.AuditHandler{Store: store, Export: audit.NewExporter(store, auditKeep, templates)}
+	auditExport := audit.NewExporter(store, auditKeep, templates)
+	audH := &handler.AuditHandler{Store: store, Export: auditExport}
 	evalH := &handler.EvalHandler{Scopes: authDeps.Authorizer}
 	// Calibration judges each objective with the agent the loop would use, and
 	// records what it spends. The probe below only decides availability: with
@@ -264,9 +265,12 @@ func NewApp(
 		Reports:    reportSvc,
 		Reconcile:  reconcileSvc,
 		Telemetry:  envReg.Telemetry(),
-		Enforcer:   authDeps.Enforcer,
-		Scopes:     authDeps.Authorizer,
-		Containers: containerSvc,
+		// The audit tools read through what the audit routes read through.
+		Audit:       store,
+		AuditExport: auditExport,
+		Enforcer:    authDeps.Enforcer,
+		Scopes:      authDeps.Authorizer,
+		Containers:  containerSvc,
 	}
 	contH := &handler.ContainerHandler{Containers: containerSvc, Authorizer: authDeps.Authorizer}
 	quotaH := &handler.QuotaHandler{
