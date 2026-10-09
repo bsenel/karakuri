@@ -393,7 +393,54 @@ Candidates from C: none, because both pages are release notes; they say what a p
 
 ## Governance and buying criteria
 
-Not yet written (part 6).
+Written by part 6a on 2026-10-09. 'Part N run:' lines found at the start: parts 1, 2, 3, 4 and 5 all said 'finished'; this section does not depend on parts 4 and 5. Nothing was built, run or tested. This part read the Method paragraph and the roadmap phase headings; it did not re-read the 2026-10-04 report's 'Governance and regulation' subsection (the command that would have printed it was refused and the clock did not allow a second try), so overlap with it is possible. Every mapping from a requirement to a Karakuri file below is an inference made here, not a compliance finding.
+
+### (a) EU AI Act, Regulation (EU) 2024/1689
+
+**The legal text was not read.** Two attempts at EUR-Lex returned an empty page (https://eur-lex.europa.eu/eli/reg/2024/1689/oj and https://eur-lex.europa.eu/legal-content/EN/TXT/HTML/?uri=OJ:L_202401689, both 2026-10-09) [N]. Articles 12, 14 and 26 are therefore described only from a non-official mirror, marked SECONDARY, as the fetch tool's paraphrase; nothing below is the wording of the Regulation. Article 113 was not read anywhere.
+
+**Dates, from the Commission's own page** (https://digital-strategy.ec.europa.eu/en/policies/regulatory-framework-ai, read 2026-10-09, primary, fragments as the fetch returned them) [Q]. Observed: "The AI Act entered into force on 1 August 2024 and became applicable on 2 August 2026, with some exceptions:"; "Starting on 2 December 2027, high-risk AI systems will be subject to strict obligations"; the Omnibus was "adopted on 19 November 2025" and "entered into force on 27 July 2026."; certain high-risk areas "will apply from 2 December 2027." and products such as lifts or toys "will apply from 2 August 2028."; "The transparency rules of the AI Act will come into effect in August 2026." The page lists among high-risk obligations "logging of activity to ensure traceability of results." and "appropriate human oversight measures.", and says "deployers ensure human oversight and monitoring." The fetch reported that the page does not state what the high-risk date was before the Omnibus.
+
+Inferred: `docs/roadmap.md` Phase 31 (lines 2762 to 2790, opened) says the high-risk obligations "became enforceable on 2 August 2026". The Commission page read today gives 2 December 2027 for those obligations. The two do not agree; on this reading the roadmap sentence is out of date, and the buyer's deadline for the evidence Phase 31 produces is later than the roadmap states. This rests on one Commission page and not on Article 113 or the Omnibus text, neither of which was read.
+
+### (b) A framework an auditor uses: NIST AI RMF
+
+Observed (https://www.nist.gov/itl/ai-risk-management-framework, read 2026-10-09, primary, fragments) [Q]: the framework is "intended for voluntary use and to improve the ability to incorporate trustworthiness considerations"; "Released on January 26, 2023"; the fetch reports the page as saying AI RMF 1.0 "is being revised as part of the White House AI Action Plan."; of the Generative AI Profile (NIST AI 600-1): "The profile can help organizations identify unique risks posed by generative AI". The fetch reported that the page does not mention AI agents, agent identity or agent hijacking. The Profile itself (https://nvlpubs.nist.gov/nistpubs/ai/NIST.AI.600-1.pdf, 2026-10-09) came back as undecoded PDF bytes [N], so **no individual NIST control or suggested action was read**, and no row below cites one. ISO/IEC 42001 was not attempted.
+
+### (c) A security body's list for agents: OWASP Top 10 for Agentic Applications for 2026
+
+Observed: the landing page gives the publication date as December 9, 2025 and calls it a "globally peer-reviewed framework that identifies the most critical security risks facing autonomous and agentic AI systems" (https://genai.owasp.org/resource/owasp-top-10-for-agentic-applications-for-2026/, read 2026-10-09, primary) [Q]. The PDF (https://genai.owasp.org/download/52117/, 2026-10-09) could not be read by the fetch tool, but the saved file's pages 4 to 8 (end of contents, the leaders' letter, 'Agentic Top 10 At A Glance') were opened and read directly, so the following are verbatim from those pages [Q]: "ASI01: Agent Goal Hijack", "ASI02: Tool Misuse & Exploitation", "ASI03: Identity & Privilege Abuse", "ASI04: Agentic Supply Chain Vulnerabilities", "ASI05: Unexpected Code Execution (RCE)", "ASI06: Memory & Context Poisoning", "ASI07: Insecure Inter-Agent Communication", "ASI08: Cascading Failures", "ASI09: Human-Agent Trust Exploitation", "ASI10: Rogue Agents". From the letter: "This captures our advice to organizations to avoid unnecessary autonomy; deploying agentic behavior where it is not needed expands the attack surface without adding value." and "strong observability becomes non-negotiable: without clear visibility into what agents are doing, why they are doing it, and which tools they are invoking, unnecessary autonomy can quietly expand the attack surface and turn minor issues into system-wide failures." The 'Prevention and Mitigation Guidelines' of each entry (PDF pages 9 onward) were **not read**; this is a risk list, not a procurement questionnaire, and no buyer's questionnaire was found.
+
+**A regulated organisation speaking for itself: none found.** The OWASP letter says agents are "moving quickly from pilots to production across finance, healthcare, defense, critical infrastructure, and the public sector", which is OWASP's statement, not a regulated organisation's. That thin spot is still thin.
+
+### Requirements against what the repository holds
+
+Repository evidence comes from two files opened in this pass: `internal/feature/audit/export.go` (read in full) and `internal/feature/audit/retention.go` (first 60 lines), plus root `AGENTS.md` and the Phase 31 opening in `docs/roadmap.md`. Everything in the right-hand column is "Inferred:".
+
+| # | Requirement | Source and exact article or control | What Karakuri can already evidence (Inferred) |
+|---|-------------|--------------------------------------|-----------------------------------------------|
+| 1 | Events are recorded automatically over the system's lifetime, for traceability | AI Act Art. 12(1) to (2), SECONDARY paraphrase from https://artificialintelligenceact.eu/article/12/ (2026-10-09) [E]; legal text [N]. Commission page lists "logging of activity to ensure traceability of results." [Q] | `internal/feature/audit/export.go`: `Exporter.Export` reads `tool_events` for a closed window and emits each row with kind, objective, agent, capability, adapter, success, confidence, provider, model, template and payload. Whether every action writes a row was not checked (the loop's writers were not opened). |
+| 2 | Deployer keeps the automatically generated logs for at least six months | AI Act Art. 26(6), SECONDARY paraphrase from https://artificialintelligenceact.eu/article/26/ (2026-10-09) [E]; legal text [N] | `internal/feature/audit/retention.go`: `FloorDays = 183`, `CheckRetention` refuses a lower floor or a shorter retention, and `Prune` re-checks it. `export.go` `retentionSection` writes the floor and a pruning note into every export. Note: the code comment attributes the six months to Article 12; the mirror places it in Article 26(6). Not settled here, legal text unread. |
+| 3 | A person can override, disregard or reverse the system's output | AI Act Art. 14(4), SECONDARY paraphrase from https://artificialintelligenceact.eu/article/14/ (2026-10-09) [E]; legal text [N]. Commission page: "appropriate human oversight measures." [Q] | `export.go`: `ExportOversight` lists approvals, rejections and modifications with the approver account, counts checkpoints raised and resolved, and `ExportBounds` records `requires_approval_for` and `max_autonomous` per decision. Its own statement says the record "cannot show who was operating that account". |
+| 4 | A person can intervene in or stop the system so it reaches a safe state ('stop' button) | AI Act Art. 14(4), same SECONDARY page [E]; legal text [N] | nothing found in the files opened (a stop or pause control was not searched for; root `AGENTS.md` rule 8 says standing work lives in `internal/feature/reconcile`, not opened). |
+| 5 | Oversight is assigned to people with the competence, training and authority to do it | AI Act Art. 26(2), same SECONDARY page as row 2 [E]; legal text [N] | nothing found. Phases 14, 16 and 17 (RBAC, federated identity, org units) exist per the roadmap, file not opened; they could show who was allowed to approve, not that the person was competent. |
+| 6 | Deployer monitors operation and notifies the provider and the authority of a risk or a serious incident, and suspends use | AI Act Art. 26(5), same SECONDARY page [E]; legal text [N]. Commission page: "Providers and deployers will also report serious incidents and malfunctioning." [Q] | Monitoring: Phase 21 digests, per the roadmap, file not opened. Incident notification record: nothing found. |
+| 7 | The record states what it is and is not, for an assessor | No article read; Inferred from the buyer's side | `export.go`: `not_a_certification` field ("It is not a compliance certification."), `schema_version`, and a closed-window rule so the same window gives the same bytes. |
+| 8 | Visibility into "what agents are doing, why they are doing it, and which tools they are invoking" | OWASP Agentic Top 10 2026, leaders' letter, PDF page 7 [Q] | `export.go` rows carry `capability`, `adapter`, `escalation_reason`, `confidence`, `reasoning_strategy` and the stored payload. Phase 29 (telemetry) per the roadmap, file not opened. |
+| 9 | Avoid unnecessary autonomy (Least-Agency) | OWASP Agentic Top 10 2026, leaders' letter, PDF page 7 [Q] | `export.go`: `autonomy_changes` (promotions and demotions), `autonomy_rung` and `bounds` on each decision row; root `AGENTS.md` rule 8 (authority is written into the request as `agent.AuthorityBounds`). |
+| 10 | Identity and privilege abuse by agents is addressed | OWASP ASI03, title only [Q]; mitigations not read | Phases 14 and 16, per the roadmap, file not opened. Export rows carry `agent_id` and `approver`. |
+| 11 | Memory and context poisoning, and goal hijack through injected content, are addressed | OWASP ASI06 and ASI01, titles only [Q]; mitigations not read | Root `AGENTS.md` rule 9 (`Trust: environment.TrustThirdParty` on third-party text) and Phase 27, per the roadmap; code not opened. The export row has no trust field, so the record does not show which decisions rested on third-party text. |
+| 12 | Agentic supply chain (third-party tools, MCP servers) is addressed | OWASP ASI04, title only [Q]; mitigations not read | nothing found in the files opened. Phase 28 (MCP) exists per the roadmap, file not opened; the export records `adapter` per row but no inventory or version of the tools behind it. |
+| 13 | A named audit framework's controls are mapped | NIST AI RMF and AI 600-1; landing page only [Q], no control read [N] | nothing found: no control was read, so no mapping can be claimed. |
+
+Governance gap G1: a person can stop the system and bring it to a safe state (row 4, AI Act Art. 14(4) per a secondary page); nothing found in the files opened, and not searched beyond them.
+Governance gap G2: evidence that oversight is assigned to competent, trained, authorised people (row 5, Art. 26(2) per a secondary page); nothing found, and the export says it cannot show who operated an approver account.
+Governance gap G3: a record of serious-incident or risk notification to the provider and the authority (row 6, Art. 26(5) per a secondary page); nothing found.
+Governance gap G4: an inventory of third-party tools and MCP servers an agent used, with versions, in the evidence record (row 12, OWASP ASI04, title only); nothing found.
+Governance gap G5: a mapping of the export to any auditor's framework (row 13, NIST AI RMF); nothing found, and no NIST control was read in this pass.
+Also for the next part, not a 'nothing found' but a disagreement: the roadmap's Phase 31 date (2 August 2026) against the Commission page's 2 December 2027 for high-risk obligations, and the Article 12 against Article 26(6) attribution of the six-month minimum in `retention.go`.
+
+**Still thin:** the AI Act's legal text was not read at all (EUR-Lex returned empty pages twice), so rows 1 to 6 rest on a secondary mirror's paraphrase plus one Commission overview page; Article 113 and the Omnibus text are unread and the date rests on that one page. No NIST or ISO/IEC 42001 control was read. Only the contents, letter and at-a-glance pages of the OWASP document were read, not its mitigations. No procurement questionnaire and no regulated organisation speaking for itself was found. On the repository side only two source files were opened; the handler `internal/api/handler/audit.go`, the checkpoint service, RBAC, reconcile and the loop's audit writers were not, so 'nothing found' means not found in those two files.
 
 ## Feasibility
 
@@ -537,7 +584,22 @@ Part 5 run: finished; fetches attempted 15; [Q] 7; [E] 6; [N] 2. All read 2026-1
 
 ### Sources, part 6a
 
-Part 6a run: started 2026-10-09; not finished
+Part 6a run: finished; fetches attempted 10; files read 4
+
+All read 2026-10-09. No web search was run. Pull request #158 already existed for this branch and was left as it is.
+
+- https://eur-lex.europa.eu/eli/reg/2024/1689/oj, primary, empty page [N]
+- https://eur-lex.europa.eu/legal-content/EN/TXT/HTML/?uri=OJ:L_202401689, primary, empty page [N]
+- https://digital-strategy.ec.europa.eu/en/policies/regulatory-framework-ai, primary (European Commission), fragments [Q]
+- https://artificialintelligenceact.eu/article/12/, SECONDARY mirror, paraphrase [E]
+- https://artificialintelligenceact.eu/article/14/, SECONDARY mirror, paraphrase [E]
+- https://artificialintelligenceact.eu/article/26/, SECONDARY mirror, paraphrase [E]
+- https://www.nist.gov/itl/ai-risk-management-framework, primary, fragments [Q]
+- https://nvlpubs.nist.gov/nistpubs/ai/NIST.AI.600-1.pdf, primary, undecoded PDF [N]
+- https://genai.owasp.org/resource/owasp-top-10-for-agentic-applications-for-2026/, primary, fragments [Q]
+- https://genai.owasp.org/download/52117/, primary, PDF; fetch tool could not read it, pages 4 to 8 of the saved file were read directly [Q] for those pages only
+
+Repository files opened: `internal/feature/audit/export.go` (in full); `internal/feature/audit/retention.go` (lines 1 to 60); `docs/roadmap.md` (phase headings and lines 2762 to 2790); `AGENTS.md`. `internal/api/handler/audit.go` was grepped, not read.
 
 ### Sources, part 7
 
