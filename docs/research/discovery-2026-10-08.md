@@ -275,6 +275,27 @@ Written by part 4 in place of part 3's interim heading. The matrix is two tables
 | Sandboxed execution | observed, narrow: per-task git worktree for delegated CLIs (roadmap Phase 7, "Sandbox + worktree contract"; ADR 003); no OS-level sandbox found in README |
 | Evaluation built in | observed: roadmap Phase 30, "The Evaluation Set Karakuri Already Has (Completed)"; heading only |
 
+The products part 4 added (read 2026-10-09; Langfuse from seventeen days of releases and one thread, Restate from release notes of 18 June to 8 October and one thread, so "unknown" there means not read far enough, not absent):
+
+| Capability | HolmesGPT | Langfuse (23 September to 9 October only) | Restate |
+|---|---|---|---|
+| Standing or scheduled objectives | observed: scheduled prompts (0.27.0), operator HealthChecks and event-driven triggers (0.34.0); scheduled, not standing | unknown | unknown (delayed invocations seen in v1.7.8; open issue #12 asks for cron-like scheduling, title only) |
+| Human approval checkpoints | observed: edit tool arguments before execution (0.27.0), signed approval tickets (0.34.0), remote tool-call approval (0.38.0) | unknown | unknown |
+| Earned or graduated autonomy | unknown | unknown | unknown |
+| Durable resume after a crash | unknown (a tool-approval resume fix seen; crash durability not stated) | unknown | unknown: the release notes read do not state it, and no documentation page was opened |
+| Audit log and evidence export | unknown | observed, narrow: "audit logs with actor info" (v4.51.0, extract); export unknown | unknown |
+| Spend ceilings | unknown (token usage logged and tracked; no ceiling seen) | unknown ("spend alerts" in v4.56.0; an alert, not a ceiling, and its scope not read) | unknown (v1.7.0 limits concurrency, not spend) |
+| MCP client | observed: OAuth MCP servers (0.25.0), several servers per tool name (0.36.0) | observed, narrow: MCP support for decision-model evaluators (v4.51.0) | unknown |
+| MCP server | unknown (a Kubernetes MCP addon and a remediation MCP ship beside it; Holmes itself served over MCP not read) | observed: the body of #12738 describes its MCP server and its Basic authentication | unknown |
+| OpenTelemetry GenAI telemetry | observed for OpenTelemetry tracing and metrics (0.24.4); GenAI conventions unknown | observed for OpenTelemetry ingestion (replay harness v4.44.0, metadata decoding v4.55.0); GenAI conventions unknown | unknown (Prometheus metrics seen) |
+| Incident remediation | observed: "approval-based Kubernetes remediation MCP" (0.34.0, extract) | unknown | unknown |
+| Self-hostable open source | observed for a public repository with Helm values; licence not read | observed for self-hosted Docker images in release notes; licence not read | observed for self-run installs (Docker, Homebrew, npm, binaries); licence not read |
+| Agent-to-agent protocol | unknown | unknown | unknown |
+| Sandboxed execution | unknown | unknown | unknown |
+| Evaluation built in | observed, narrow: the project's own weekly evals and benchmarks in release notes; a user-facing evaluation feature not read | observed | unknown |
+
+Inferred from the two tables, not observed: earned or graduated autonomy and an agent-to-agent protocol are "unknown" for all six products, and Karakuri's column shows the first as observed in its own repository. That is an absence of reading, not a reading of absence: no page opened in parts 3 or 4 says any product lacks graduated autonomy, and part 7 should not call it a differentiator on this evidence alone.
+
 Part 3's three products, as part 3 graded them:
 
 | Capability | LangGraph + LangSmith Deployment | Temporal | Claude Code (2.1.285 to 2.1.294 only) |
@@ -295,6 +316,8 @@ Part 3's three products, as part 3 graded them:
 | Evaluation built in | observed | unknown | unknown |
 
 **Still thin:** (1) LangGraph releases for 8 to 30 April 2026 were not reached (page 6 unopened); the LangSmith changelog extract has nothing for April and May 2026 and skips the weeks of 22 June, and the last 31,000 characters of that page, with Fleet before 31 August, were not read. (2) Every release-note line is [E], a model's summary of the page; no release note was read verbatim and no pull request behind one was opened. (3) LangGraph #7345 was read for its body only, not its 12 comments; Temporal #1507's comments came back as fragments capped at about 200 characters. (4) Temporal: no SDK repository, no Cloud changelog, no blog post before 9 September 2026, no page stating its licence, and nothing on its Schedules feature was read; the OpenAI Agents SDK and other integrations are known only from cookbook recipe titles. (5) Claude Code: April to September 2026 not reached at all; only 2.1.285 to 2.1.294 were read, and sections (iii) and (iv) are unwritten. (6) No second durable-execution runtime (Restate, DBOS, Inngest) was opened. (7) Karakuri's README and roadmap were not re-read in this part, so (ii) and (iii) compare against the description in the pass brief; part 4 or part 7 should check them against the repository.
+
+**Still thin (part 4):** The cycle now has **six products** across the five categories, but two are partial: Claude Code as part 3 left it, and Langfuse. (1) Langfuse: April to 22 September 2026 not reached; its changelog page returned 404 twice and was not read; the last 51,000 characters of the releases response unread. (2) HolmesGPT: 15 May to 14 June 2026 not reached; the body of #2403 came as an extract from the search response, not from the issue endpoint; its documentation, operator and licence were not read. (3) Restate: April to 17 June 2026 not reached; four releases show no notes; no documentation, SDK or blog page was opened, so its "unknown" cells for durable resume, MCP and telemetry reflect what was opened, not the product. DBOS and Inngest were not opened. (4) Every release-note line in part 4 is [E]; quotations from threads are fragments of at most about 120 characters chosen by the fetch, and no thread was read as raw text (two attempts to read threads raw through the `gh` command were refused by the shell and never ran). (5) The Claude Code gap is unchanged: April to September 2026 unread, (iii) and (iv) unwritten; the OpenAI Agents SDK was not opened. (6) Matrix: the row "earned or graduated autonomy" and the row "agent-to-agent protocol" are unknown for all six products; "sandboxed execution" is unknown for the three part 4 added; no licence file of any product was read. (7) The KARAKURI column rests on roadmap headings, the README and LICENSE; for durable resume, GenAI telemetry and evaluation only the heading was read; its MCP-server and agent-to-agent cells are unknown because the roadmap text was not read, not because the repository is silent. (8) No governance-only product (policy or guardrail platform as distinct from observability) has an entry.
 
 ## Technical frontier
 
@@ -403,7 +426,25 @@ Part 3 run: finished; products written 3 (two in full, Claude Code partial); fet
 
 ### Sources, part 4
 
-Part 4 run: started 2026-10-09; not finished
+Part 4 run: finished; products written 3 (HolmesGPT and Restate in full, Langfuse partial); fetches attempted 17; [Q] 5; [E] 10; [N] 2. Nine of the 17 were api.github.com requests. All read 2026-10-09.
+
+- https://api.github.com/repos/HolmesGPT/holmesgpt/releases?per_page=30 (primary; characters 0 to 200,000 of 252,544 in two reads, counted as two fetches) [E]
+- https://api.github.com/repos/HolmesGPT/holmesgpt/releases?per_page=30&page=2 (primary; first 100,000 of 270,801 characters) [E]
+- https://api.github.com/search/issues?q=repo:HolmesGPT/holmesgpt+is:issue+is:open&sort=reactions-%2B1&order=desc&per_page=10 (primary; list, and the body of #2403 as an extract with one fragment) [E]
+- https://api.github.com/repos/HolmesGPT/holmesgpt/issues/2403/comments?per_page=100 (primary; all 3 comments) [Q, fragments]
+- https://api.github.com/repos/langfuse/langfuse/releases?per_page=30 (primary; first 100,000 of 151,221 characters) [E]
+- https://langfuse.com/changelog (HTTP 404; not read) [N]
+- https://langfuse.com/changelog.md (HTTP 404; not read) [N]
+- https://api.github.com/search/issues?q=repo:langfuse/langfuse+is:issue+is:open&sort=reactions-%2B1&order=desc&per_page=10 (primary; list) [E]
+- https://api.github.com/repos/langfuse/langfuse/issues/12738 (primary) [Q, fragments]
+- https://api.github.com/repos/langfuse/langfuse/issues/12738/comments?per_page=100 (primary; 44 comments, returned as a summary with fragments) [Q, fragments]
+- https://api.github.com/repos/restatedev/restate/releases?per_page=30 (primary; first 100,000 of 1,787,652 characters, two release candidates only) [E]
+- https://github.com/restatedev/restate/releases (primary) [E]
+- https://github.com/restatedev/restate/releases?page=2 (primary) [E]
+- https://api.github.com/search/issues?q=repo:restatedev/restate+is:issue+is:open&sort=reactions-%2B1&order=desc&per_page=10 (primary; list) [E]
+- https://api.github.com/repos/restatedev/restate/issues/3291 (primary) [Q, fragments]
+- https://api.github.com/repos/restatedev/restate/issues/3291/comments?per_page=100 (primary; all 7 comments) [Q, fragments]
+- Repository files read for the KARAKURI column: README.md (matching lines only), LICENSE (first lines), docs/roadmap.md (phase headings and matching lines; Phase 34 heading from origin/main).
 
 ### Sources, part 5
 
