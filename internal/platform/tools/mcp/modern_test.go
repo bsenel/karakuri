@@ -3,6 +3,7 @@ package mcp
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -20,9 +21,13 @@ type modernRequest struct {
 	tool    string          // params.name, for a tools/call
 	meta    json.RawMessage // params._meta, nil when the request carried none
 	session string          // the Mcp-Session-Id request header
+
+	// The three routing headers, as they arrived.
+	versionHeader, methodHeader, nameHeader string
 }
 
-// modernFake implements only revision 2026-07-28, as the roadmap describes it:
+// modernFake implements only revision 2026-07-28, in the shapes the official
+// Python SDK (mcp 2.3.0) has and refusing what its server refuses (sdkLadder):
 // no handshake, server/discover instead, a resultType on every result. It
 // offers a session id on every reply although the revision has none, so a
 // client that still echoes sessions is caught doing it.
@@ -63,7 +68,35 @@ func (f *modernFake) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	f.seen = append(f.seen, modernRequest{
 		method: req.Method, id: string(req.ID), tool: params.Name,
 		meta: params.Meta, session: r.Header.Get(sessionHeader),
+		versionHeader: r.Header.Get(sdkHeaderProtocolVersion),
+		methodHeader:  r.Header.Get(sdkHeaderMethod),
+		nameHeader:    r.Header.Get(sdkHeaderName),
 	})
+	f.mu.Unlock()
+
+	// Without the version header the SDK's server takes the request for a
+	// 2025-06-18 one, and one that is not initialize has no session to belong
+	// to. Observed against mcp 2.3.0 on 2026-10-09.
+	if r.Header.Get(sdkHeaderProtocolVersion) == "" && req.Method != MethodInitialize && !req.IsNotification() {
+		body, _ := json.Marshal(Response{JSONRPC: "2.0", ID: req.ID, Error: &Error{Code: CodeInvalidRequest, Message: "Bad Request: Missing session ID"}})
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write(body)
+		return
+	}
+	// A request the ladder refuses is refused before anything else happens to
+	// it, a broken stream included.
+	if req.Method != MethodInitialize && !req.IsNotification() {
+		if refused := sdkLadder(req, r.Header); refused != nil {
+			body, _ := json.Marshal(Response{JSONRPC: "2.0", ID: req.ID, Error: refused})
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write(body)
+			return
+		}
+	}
+
+	f.mu.Lock()
 	breaks := f.breakMethod != "" && req.Method == f.breakMethod && f.breakTimes != 0
 	if breaks && f.breakTimes > 0 {
 		f.breakTimes--
@@ -89,39 +122,19 @@ func (f *modernFake) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp := Response{JSONRPC: "2.0", ID: req.ID}
-	switch req.Method {
-	case MethodInitialize:
-		resp.Error = &Error{
-			Code:    CodeUnsupportedProtocol,
-			Message: "unsupported protocol version",
-			Data:    map[string]any{"supported": []string{ModernProtocolVersion}},
-		}
-	case MethodServerDiscover:
-		resp.Result, _ = json.Marshal(discoverResult{
-			ResultType:        resultTypeComplete,
-			SupportedVersions: []string{ModernProtocolVersion},
-			ServerInfo:        Info{Name: "modern-fs", Version: "1"},
-		})
-	default:
-		if result, asks := inputRequiredResult(req); asks {
-			resp.Result = result
-			break
-		}
-		var ok bool
-		resp, ok = fakeHandle(req)
-		if !ok {
-			<-r.Context().Done()
-			return
-		}
-		if resp.Error == nil && !f.omitResultType {
-			var result map[string]json.RawMessage
-			_ = json.Unmarshal(resp.Result, &result)
-			result["resultType"], _ = json.Marshal(resultTypeComplete)
-			resp.Result, _ = json.Marshal(result)
-		}
+	resp, ok := modernHandle(req, r.Header, f.omitResultType)
+	if !ok {
+		<-r.Context().Done()
+		return
 	}
 	body, _ := json.Marshal(resp)
+	if resp.Error != nil && resp.Error.Code != CodeMethodNotFound && req.Method != MethodInitialize {
+		// The SDK answers every rung of its ladder with a 400.
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write(body)
+		return
+	}
 	if f.sse {
 		w.Header().Set("Content-Type", "text/event-stream")
 		_, _ = w.Write([]byte(progressEvent + "event: message\ndata: " + string(body) + "\n\n"))
@@ -299,14 +312,153 @@ func TestModernRequestsCarryMetaAndNoSession(t *testing.T) {
 			continue
 		}
 		var version string
-		_ = json.Unmarshal(meta[metaKeyProtocolVersion], &version)
+		_ = json.Unmarshal(meta[sdkMetaProtocolVersion], &version)
 		if version != ModernProtocolVersion {
-			t.Errorf("%s _meta.%s = %q, want %q", r.method, metaKeyProtocolVersion, version, ModernProtocolVersion)
+			t.Errorf("%s _meta[%s] = %q, want %q", r.method, sdkMetaProtocolVersion, version, ModernProtocolVersion)
 		}
 		var capabilities map[string]any
-		if err := json.Unmarshal(meta[metaKeyClientCapabilities], &capabilities); err != nil || capabilities == nil {
-			t.Errorf("%s _meta.%s = %s, want an object", r.method, metaKeyClientCapabilities, meta[metaKeyClientCapabilities])
+		if err := json.Unmarshal(meta[sdkMetaClientCapabilities], &capabilities); err != nil || capabilities == nil {
+			t.Errorf("%s _meta[%s] = %s, want an object", r.method, sdkMetaClientCapabilities, meta[sdkMetaClientCapabilities])
 		}
+		// The server's ladder lets a request through without clientInfo; the
+		// SDK's own client sends it on every request, and so must this one.
+		var client Info
+		_ = json.Unmarshal(meta[sdkMetaClientInfo], &client)
+		if client.Name != ClientInfo.Name {
+			t.Errorf("%s _meta[%s] = %s, want name %q", r.method, sdkMetaClientInfo, meta[sdkMetaClientInfo], ClientInfo.Name)
+		}
+		// The assumed names are not sent alongside the real ones.
+		for _, bare := range []string{"protocolVersion", "clientCapabilities", "clientInfo"} {
+			if _, ok := meta[bare]; ok {
+				t.Errorf("%s _meta carries the bare key %q", r.method, bare)
+			}
+		}
+
+		if r.versionHeader != ModernProtocolVersion {
+			t.Errorf("%s %s = %q, want %q", r.method, sdkHeaderProtocolVersion, r.versionHeader, ModernProtocolVersion)
+		}
+		if r.methodHeader != r.method {
+			t.Errorf("%s %s = %q, want the method", r.method, sdkHeaderMethod, r.methodHeader)
+		}
+		wantName := ""
+		if r.method == MethodToolsCall {
+			wantName = "read_file"
+		}
+		if r.nameHeader != wantName {
+			t.Errorf("%s %s = %q, want %q", r.method, sdkHeaderName, r.nameHeader, wantName)
+		}
+	}
+}
+
+// A tool name that would not survive as a header value travels wrapped, the way
+// the SDK's encode_header_value wraps it; the fake unwraps it and refuses a
+// mismatch, so reaching the tool lookup is the header having been right.
+func TestModernNameHeaderIsEncodedWhenItMustBe(t *testing.T) {
+	fake := &modernFake{}
+	c := negotiatedModern(t, fake)
+	const name = "läs_fil"
+	_, err := c.CallTool(context.Background(), name, nil)
+	if err == nil || !strings.Contains(err.Error(), "no such tool") {
+		t.Errorf("CallTool error = %v, want the server's own \"no such tool\"", err)
+	}
+	want := "=?base64?" + base64.StdEncoding.EncodeToString([]byte(name)) + "?="
+	for _, r := range fake.requests() {
+		if r.method == MethodToolsCall && r.nameHeader != want {
+			t.Errorf("%s = %q, want %q", sdkHeaderName, r.nameHeader, want)
+		}
+	}
+}
+
+// stdio has no headers: the envelope alone carries the version, and a
+// modern-only server over stdio is reached with the same three keys.
+func TestModernStdioCarriesTheEnvelopeAndNoHeaders(t *testing.T) {
+	cfg := stdioConfig()
+	cfg.Env[fakeModernEnv] = "1"
+	c := dial(t, cfg)
+	ctx := context.Background()
+
+	got, err := c.Negotiate(ctx)
+	if err != nil {
+		t.Fatalf("Negotiate against a 2026-07-28-only stdio server: %v", err)
+	}
+	if got.Path != PathDiscover || got.ProtocolVersion != ModernProtocolVersion || got.ServerInfo.Name != "modern-fs" {
+		t.Errorf("negotiated %+v, want %s at %s with modern-fs", got, PathDiscover, ModernProtocolVersion)
+	}
+	if tools, err := c.ListTools(ctx); err != nil || len(tools) != len(fakeTools) {
+		t.Fatalf("ListTools = %d tools, %v", len(tools), err)
+	}
+	// The stdio fake answers read_file only when the request's _meta carried
+	// clientInfo, which it cannot be asked about afterwards.
+	res, err := c.CallTool(ctx, "read_file", map[string]any{"path": "go.mod"})
+	if err != nil || res.Text() != "contents of go.mod" {
+		t.Fatalf("CallTool = %q, %v", res.Text(), err)
+	}
+}
+
+// The fake refuses what the SDK's server refuses, with the SDK's codes. This is
+// the fake held to the observations of 2026-10-09, not the client.
+func TestModernFakeRefusesLikeTheSDK(t *testing.T) {
+	srv := httptest.NewServer(&modernFake{})
+	t.Cleanup(srv.Close)
+
+	good := map[string]any{sdkMetaProtocolVersion: ModernProtocolVersion, sdkMetaClientCapabilities: map[string]any{}}
+	cases := []struct {
+		name    string
+		method  string
+		params  map[string]any
+		headers map[string]string
+		code    int
+		message string
+	}{
+		{"no version header", MethodServerDiscover, map[string]any{"_meta": good}, nil, CodeInvalidRequest, "Missing session ID"},
+		{"bare envelope keys", MethodServerDiscover,
+			map[string]any{"_meta": map[string]any{"protocolVersion": ModernProtocolVersion, "clientCapabilities": map[string]any{}}},
+			map[string]string{sdkHeaderProtocolVersion: ModernProtocolVersion, sdkHeaderMethod: MethodServerDiscover},
+			CodeInvalidParams, sdkMetaProtocolVersion + ", " + sdkMetaClientCapabilities},
+		{"method header disagrees", MethodToolsList, map[string]any{"_meta": good},
+			map[string]string{sdkHeaderProtocolVersion: ModernProtocolVersion, sdkHeaderMethod: MethodServerDiscover},
+			sdkCodeHeaderMismatch, "mcp-method"},
+		{"name header disagrees", MethodToolsCall, map[string]any{"_meta": good, "name": "read_file"},
+			map[string]string{sdkHeaderProtocolVersion: ModernProtocolVersion, sdkHeaderMethod: MethodToolsCall, sdkHeaderName: "delete_repo"},
+			sdkCodeHeaderMismatch, "mcp-name"},
+		{"version header disagrees", MethodServerDiscover, map[string]any{"_meta": good},
+			map[string]string{sdkHeaderProtocolVersion: "2025-06-18", sdkHeaderMethod: MethodServerDiscover},
+			sdkCodeHeaderMismatch, "mcp-protocol-version"},
+		{"unsupported version", MethodServerDiscover,
+			map[string]any{"_meta": map[string]any{sdkMetaProtocolVersion: "2031-01-01", sdkMetaClientCapabilities: map[string]any{}}},
+			map[string]string{sdkHeaderProtocolVersion: "2031-01-01", sdkHeaderMethod: MethodServerDiscover},
+			CodeUnsupportedProtocol, "Unsupported protocol version"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			params, _ := json.Marshal(tc.params)
+			body, _ := json.Marshal(Request{JSONRPC: "2.0", ID: json.RawMessage(`1`), Method: tc.method, Params: params})
+			req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, srv.URL, bytes.NewReader(body))
+			if err != nil {
+				t.Fatal(err)
+			}
+			for k, v := range tc.headers {
+				req.Header.Set(k, v)
+			}
+			res, err := srv.Client().Do(req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() { _ = res.Body.Close() }()
+			var out Response
+			if err := json.NewDecoder(res.Body).Decode(&out); err != nil || out.Error == nil {
+				t.Fatalf("status %d, decode %v, error %v: want a JSON-RPC error", res.StatusCode, err, out.Error)
+			}
+			if res.StatusCode != http.StatusBadRequest || out.Error.Code != tc.code || !strings.Contains(out.Error.Message, tc.message) {
+				t.Errorf("got %d %d %q, want 400 %d mentioning %q", res.StatusCode, out.Error.Code, out.Error.Message, tc.code, tc.message)
+			}
+			if tc.code == CodeUnsupportedProtocol {
+				data, _ := json.Marshal(out.Error.Data)
+				if string(data) != `{"requested":"2031-01-01","supported":["2026-07-28"]}` {
+					t.Errorf("error data = %s, want the supported list and what was requested", data)
+				}
+			}
+		})
 	}
 }
 
