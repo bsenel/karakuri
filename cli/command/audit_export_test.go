@@ -80,7 +80,7 @@ func exportDigest() string {
 
 // Without --out the server's bytes are stdout, whatever the output format.
 func TestAuditExportWritesTheServersBytesToStdout(t *testing.T) {
-	for _, format := range []string{"json", "table", "quiet"} {
+	for _, format := range []string{"json", "pretty", "quiet"} {
 		t.Run(format, func(t *testing.T) {
 			_, apiURL := startExportServer(t, http.StatusOK)
 

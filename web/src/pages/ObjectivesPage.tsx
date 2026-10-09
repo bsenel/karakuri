@@ -65,29 +65,29 @@ export function ObjectivesPage() {
         <form onSubmit={create} className="col">
           <div className="row">
             <div className="grow">
-              <label>Title</label>
-              <input value={title} onChange={(e) => setTitle(e.target.value)} required />
+              <label htmlFor="objective-title">Title</label>
+              <input id="objective-title" value={title} onChange={(e) => setTitle(e.target.value)} required />
             </div>
             <div>
-              <label>Max iterations</label>
-              <input type="number" min={1} value={maxIter} onChange={(e) => setMaxIter(Number(e.target.value))} />
+              <label htmlFor="objective-max-iterations">Max iterations</label>
+              <input id="objective-max-iterations" type="number" min={1} value={maxIter} onChange={(e) => setMaxIter(Number(e.target.value))} />
             </div>
           </div>
           <div className="row">
             <div className="grow">
-              <label>Twin</label>
-              <select value={twinID} onChange={(e) => setTwinID(e.target.value)}>
+              <label htmlFor="objective-twin">Twin</label>
+              <select id="objective-twin" value={twinID} onChange={(e) => setTwinID(e.target.value)}>
                 <option value="">(none)</option>
                 {twins.map((t) => <option key={t.id} value={t.id}>{t.name} ({t.kind})</option>)}
               </select>
             </div>
             <div className="grow">
-              <label>Domain</label>
-              <input value={domain} onChange={(e) => setDomain(e.target.value)} />
+              <label htmlFor="objective-domain">Domain</label>
+              <input id="objective-domain" value={domain} onChange={(e) => setDomain(e.target.value)} />
             </div>
             <div className="grow">
-              <label>Template</label>
-              <select value={templateID} onChange={(e) => setTemplateID(e.target.value)}>
+              <label htmlFor="objective-template">Template</label>
+              <select id="objective-template" value={templateID} onChange={(e) => setTemplateID(e.target.value)}>
                 <option value="">(none)</option>
                 {templates.map((t) => <option key={t.id} value={t.id}>{t.title}</option>)}
               </select>
