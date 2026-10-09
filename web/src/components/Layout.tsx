@@ -11,7 +11,7 @@ export function Layout() {
 
   return (
     <div className="layout">
-      <nav className="topnav">
+      <nav className="topnav" aria-label="Main">
         <span className="brand">⌬ Karakuri</span>
         {links.map((entry) => (
           <NavLink

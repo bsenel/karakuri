@@ -97,7 +97,7 @@ func quotaRequestsListCmd() *cobra.Command {
 		Short: "List quota requests",
 		Example: `  krk quota requests list --status pending
   krk quota requests list --mine`,
-		RunE: func(_ *cobra.Command, _ []string) error {
+		RunE: func(c *cobra.Command, _ []string) error {
 			q := url.Values{}
 			if status != "" {
 				q.Set("status", status)
@@ -116,7 +116,7 @@ func quotaRequestsListCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			client.PrintOutput(data, output)
+			printList(c, data, "quota requests")
 			return nil
 		},
 	}

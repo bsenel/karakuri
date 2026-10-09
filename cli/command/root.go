@@ -28,8 +28,16 @@ func NewRoot() *cobra.Command {
 		// after "forbidden: no policy grants twin:bind" buries the one line
 		// that explains what happened.
 		SilenceUsage: true,
-		PersistentPreRun: func(_ *cobra.Command, _ []string) {
+		PersistentPreRunE: func(_ *cobra.Command, _ []string) error {
+			// An unknown format used to fall through to pretty, so a typo
+			// such as "--output jsno" fed indented JSON to a script.
+			switch output {
+			case "json", "pretty", "quiet":
+			default:
+				return fmt.Errorf("invalid --output %q: use json, pretty or quiet", output)
+			}
 			api = client.New(apiURL)
+			return nil
 		},
 	}
 	root.PersistentFlags().StringVar(&apiURL, "api-url", "http://localhost:8080/api/v1", "API base URL")

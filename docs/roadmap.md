@@ -44,6 +44,10 @@ Phases 27–32 were proposed from two kinds of evidence: what this repository de
 | 31    | The Evidence Pack                          | **Completed** |
 | 32    | The SRE Path, Actually Wired               | **Completed** |
 | 33    | MCP After the Handshake                    | **Completed** |
+| 35    | An Unanswered Checkpoint Ends              | **Planned**   |
+| 36    | A Provider's Refusal Is Not a Plan         | **Planned**   |
+| 37    | A Stop That Reaches the Running Pass       | **Planned**   |
+| 38    | What Was Required and Not Done             | **Planned**   |
 
 
 ---
@@ -3559,6 +3563,306 @@ question with ADR 022's bounds on it.
 
 ---
 
+## Phase 35 — An Unanswered Checkpoint Ends (Planned)
+
+This is a **demand phase**, proposed by the discovery cycle of 2026-10-08
+(`docs/research/discovery-2026-10-08.md`, 'Fit and bets', rank 1). The demand
+rests on one issue tracker, which is thin; the phase is sized to match.
+
+**Goal:** An operator can set a time after which a checkpoint nobody answered
+is rejected, on the record, by `system:timeout`. Expiry never approves.
+
+**A paused loop waits with no limit, and users of other runtimes ask what
+happens then.** Two authors on the openai/openai-agents-python tracker asked
+for it in their own words: "Developers should be able to set timeouts or
+fallback behaviors in case human input is not received within a window."
+(https://api.github.com/repos/openai/openai-agents-python/issues/636, read
+2026-10-08) and "How should we handle timeouts if a human doesn't respond
+promptly?" (https://github.com/openai/openai-agents-python/issues/378, read
+2026-10-08). Both are one population on one tracker; no Karakuri user asked.
+
+What the report's feasibility reading observed in this repository
+(`internal/core/checkpoint/checkpoint.go`, `internal/feature/checkpoint/service.go`
+lines 20 to 199, `internal/feature/loop/runner.go` lines 236 to 293):
+`Checkpoint` has the statuses `pending` and `resolved` and no deadline or
+expiry field; the paused loop waits in a `select` on `ctx.Done()` and
+`state.decisionCh` with no timer case. Inferred from those lines, not from the
+whole repository: a pending checkpoint waits until a person answers or the
+process ends. Nothing was built or run.
+
+**Steps:**
+
+1. **Expiry as a rejection.** Add an optional `ExpiresAt *time.Time` to
+   `checkpoint.Checkpoint` (`internal/core/checkpoint/checkpoint.go`, no vendor
+   import) and to `CreateOptions`. Add `Service.ExpireDue(ctx, now)` in
+   `internal/feature/checkpoint/service.go`: it lists pending checkpoints past
+   their time and calls the existing `Resolve` with
+   `Decision{Choice: "reject", Approver: "system:timeout", Note: ...}`, so the
+   audit row, the loop's reject path and the terminal record are the ones that
+   already exist. Before writing it, read what the feasibility pass could not
+   verify: how `storage.StorageAdapter` stores a checkpoint and whether the
+   column needs a migration, and whether pending checkpoints can be listed
+   without a twin id.
+2. **The sweep is called from reconcile.** The caller belongs in
+   `internal/feature/reconcile`, on the tick the supervisor already has; the
+   loop is not taught a new way to wait or to continue (AGENTS.md rule 8). The
+   duration comes from `config/default.yaml` and defaults to off, so today's
+   behaviour is unchanged until configured.
+3. **Restart.** Read what `ResumeStoredLoops` does with a checkpoint whose time
+   passed while the server was down, and make the first sweep after boot expire
+   it through the same path.
+4. **Contract.** The storage column and the `expires_at` field in
+   `docs/openapi.yaml`, so a reviewer sees when a checkpoint will lapse.
+
+**Acceptance:** With the duration unset, no checkpoint carries an expiry and
+none is ever expired. With it set, a test with a fake clock shows a pending
+checkpoint past its time resolved as a rejection whose approver is
+`system:timeout`, one audit row of kind rejection, and the loop ended as
+`rejected_at_checkpoint`. A checkpoint a person answered before its time is
+untouched. A checkpoint that lapsed while the server was down is expired by the
+first sweep after boot. No code path turns an expiry into an approval.
+
+**What this is not.** It is not a default-approve, an escalation chain, a
+reminder or a notification: an unanswered checkpoint must not become authority,
+which is only ever what is written into `agent.AuthorityBounds` (ADR 015). It
+adds no fallback behaviour other than rejection, and no per-checkpoint policy
+language.
+
+---
+
+## Phase 36 — A Provider's Refusal Is Not a Plan (Planned)
+
+This is a **demand phase**, proposed by the discovery cycle of 2026-10-08
+(`docs/research/discovery-2026-10-08.md`, 'Fit and bets', rank 2). It has two
+sources from two populations; one is a vendor's figure about its own customers
+and the other the report itself calls weak evidence about builders.
+
+**Goal:** When the model provider answers a call with a rate limit, the loop
+says so and ends the iteration with that reason, instead of handing a reviewer
+a placeholder plan to approve.
+
+**Rate limits are a leading cause of failed model calls, by a vendor's own
+count.** Datadog reports of its customers' LLM call errors in February 2026
+that "60% of those errors were caused by exceeded rate limits."; for March it
+reports "2% of all LLM spans in our dataset returned an error." and that "rate
+limit errors accounted for almost a third of them,"
+(https://www.datadoghq.com/state-of-ai-engineering/, read 2026-10-08). These
+are Datadog's figures for its own dataset, not a measurement made here. A
+second source, anthropics/claude-code issue #16157
+(https://github.com/anthropics/claude-code/issues/16157, read 2026-10-08),
+is a user of a coding agent reporting a quota that ran out without an
+explanation; the report grades it weak evidence about people who build agents.
+
+What the feasibility reading observed (`internal/feature/loop/reason.go` lines
+60 to 165, `internal/feature/loop/budget.go` lines 74 to 123,
+`internal/platform/llm/claude.go` lines 64 to 103): when the agent call returns
+any error, `stepReason` builds a plan of one `reason.plan` action holding the
+error text at confidence 0.3; it retries once, and only on a reply that did not
+parse; `ClaudeProvider.Complete` returns the langchaingo error unchanged and
+without the provider name. Inferred, not observed: that the placeholder plan
+reaches a person as a confidence checkpoint (`stepDecide` was not read).
+Karakuri's own token budget (`budgetedAgent.Run`, Phases 15, 18 and 23) is a
+different ceiling and is not changed here.
+
+**Steps:**
+
+1. **Name the error, classify it at the edge, stop building a plan from it.**
+   First read what the feasibility pass could not verify: what langchaingo's
+   Anthropic client returns for an HTTP 429 and whether the status or a
+   Retry-After value survives into it, and what `stepDecide` does with a
+   0.3-confidence `reason.plan`. Then define a domain error
+   `ErrProviderRateLimited`, with an optional retry-after duration, in
+   `internal/core/agent` or the core errors package (no vendor import);
+   classify the langchaingo error into it inside
+   `internal/platform/llm/claude.go`, wrapped with the provider name as
+   `internal/platform/llm/AGENTS.md` rule 3 asks (the classification stays
+   under `internal/platform/`, AGENTS.md rule 1); in `stepReason`
+   (`internal/feature/loop/reason.go`), on that error only, wait once within a
+   small cap and retry, and if it fails again end the iteration with a reason
+   that names the provider limit. Tests for both files. If the 429 cannot be
+   told apart from other failures in what langchaingo returns, stop and record
+   that in this section before writing anything else.
+2. **The other providers.** Apply the same classification to the remaining
+   providers under `internal/platform/llm/`, after reading whether
+   `internal/platform/agent/factory.go` or the CLI-fallback providers already
+   retry; neither was opened by the feasibility pass.
+3. **Reconcile decides whether to try again.** Read whether the reconcile
+   circuit breaker counts such a pass as a failure, and make a rate-limited
+   pass visible as that in the reconcile history. Whether and when the next
+   pass runs stays the supervisor's decision on its cadence (AGENTS.md rule 8).
+
+**Acceptance:** A test with a scripted provider that returns a rate-limit
+answer twice shows: one bounded wait, one retry, no `reason.plan` placeholder
+action, no checkpoint raised from it, and an iteration ended with a reason
+naming the provider and the limit. A provider that fails once and then succeeds
+yields the normal plan. Any other provider error behaves exactly as today. No
+file outside `internal/platform/` imports langchaingo
+(`scripts/check_langchaingo_imports.sh` passes).
+
+**What this is not.** It is not a retry policy with backoff tables, a
+provider failover, a queue, or a change to Karakuri's own quotas and budgets.
+The loop does not learn to keep trying: one bounded retry, then it ends. It
+does not charge for failed calls, and it does not explain a provider's quota
+to the user beyond passing on what the provider's answer said.
+
+---
+
+## Phase 37 — A Stop That Reaches the Running Pass (Planned)
+
+This is a **frontier bet**, proposed by the discovery cycle of 2026-10-08
+(`docs/research/discovery-2026-10-08.md`, 'Fit and bets', rank 3). Nobody asked
+for it. **The bet:** a buyer preparing for the EU AI Act's high-risk
+obligations will ask to see a stop that works while a pass is running and that
+leaves a record of who stopped it.
+
+**Goal:** Pausing a standing objective cancels the pass in flight, and the
+evidence export shows that a person paused and resumed, and when.
+
+**The evidence, and how thin it is.** The one primary page read is the
+European Commission's overview of the regulation, which asks of high-risk
+systems "appropriate human oversight measures." and says "deployers ensure
+human oversight and monitoring."
+(https://digital-strategy.ec.europa.eu/en/policies/regulatory-framework-ai,
+read 2026-10-09); the same page puts those obligations at 2 December 2027.
+That is a general sentence. The specific wording about a person being able to
+stop the system is Article 14(4), which the report knows only from a secondary
+mirror (https://artificialintelligenceact.eu/article/14/, read 2026-10-09);
+the legal text was not read by anyone. No regulated organisation speaking for
+itself was found.
+
+What the feasibility reading observed (`internal/feature/reconcile/service.go`
+lines 225 to 286 and 396 to 460, `internal/api/handler/reconcile.go` lines 170
+to 209, `internal/api/server.go` lines 366 to 394): `POST /{id}/pause` and
+`/resume` exist behind `karakuriauth.ActionObjectivePause`; `Service.Pause`
+writes `Paused`, `PausedReason` and `PhasePaused` to the stored state and holds
+no handle on a pass `dispatch` already started; no audit row is written in the
+lines read. Inferred: a pause prevents the next pass and does not interrupt the
+running one, and the export may not show the stop.
+
+**What would prove the bet wrong:** the legal text of Article 14(4), once
+read, does not ask for a stop of this kind; Pause is already audited elsewhere
+(middleware and the store were not read); or cancelling a pass leaves a
+worktree or an external action half done, so the stop is not a safe state.
+
+**Steps:**
+
+1. **Find out, then prototype, in one slice (time-boxed to that slice).** Read
+   the `pass` function in `internal/feature/reconcile/service.go` to learn
+   whether the loop's context derives from the one `dispatch` holds; read
+   whether Pause is audited elsewhere; read Article 14(4) in the legal text if
+   it can be fetched. Then prototype the feasibility slice: (a) in
+   `Service.Pause` and `Service.Resume`, write a tool event of a new kind (for
+   example `pause`) with the reason and the principal, plus a storage constant
+   for the kind; (b) keep a `context.CancelFunc` per running objective beside
+   `s.running` in `dispatch` and have `Pause` call it (the runner already
+   finalises on `ctx.Done()`, observed at `internal/feature/loop/runner.go`
+   line 274). **Kill criterion:** if a test shows a cancelled pass leaving a
+   delivery worktree or an external action half done with no way to tell from
+   the record, ship only (a), record the finding here, and close the phase; if
+   Pause turns out to be audited already, drop (a) as well.
+2. **The export shows it.** List pause and resume events under oversight in
+   `internal/feature/audit/export.go`, with `docs/openapi.yaml` updated if the
+   export shape changes. An export over a window with no such events says none
+   were recorded; it does not say the system was never stopped.
+3. **Only if step 1 survived:** a cancel for a one-shot loop on the loops
+   route, and a single control that pauses every standing objective. These are
+   the feasibility pass's 'second slice' and are not started before step 1's
+   result is written down.
+
+**Acceptance:** A test starts a pass that blocks, calls `Pause`, and observes
+the pass's context cancelled and the loop finalised; the stored state reads
+paused and `Trigger` still refuses. Pause and resume each leave one audit event
+carrying the principal and the reason, and the export lists both. Pausing an
+objective with no pass running behaves as today plus the audit event. The
+loop's own termination logic is unchanged (AGENTS.md rule 8): the diff touches
+`internal/feature/reconcile` and the export, not how the loop decides to stop.
+
+**What this is not.** It is not a claim of compliance with Article 14 or with
+anything else: no legal text was read. It is not a rollback: a cancelled pass
+is stopped, not undone. It adds no kill switch outside the API, no new role,
+and no second gate on authority.
+
+---
+
+## Phase 38 — What Was Required and Not Done (Planned)
+
+This is a **frontier bet**, proposed by the discovery cycle of 2026-10-08
+(`docs/research/discovery-2026-10-08.md`, 'Fit and bets', rank 4). Nobody asked
+for it. **The bet:** reviewers of unattended agents will come to ask what a run
+was required to do and did not, and not only which forbidden actions it
+avoided.
+
+**Goal:** The record of a finished run says, for each success criterion, how
+it was settled, and the evidence export lists the criteria that ended unmet and
+the ones whose declared verifier never ran.
+
+**The evidence.** One preprint, arXiv 2610.11773, read as fragments of its
+abstract, method and experiments (the formal task definition was not returned):
+"identifying forbidden actions alone is insufficient to ensure agent safety."
+and "we argue that agent safety also depends on identifying required yet
+unperformed safety-critical actions" (https://arxiv.org/html/2610.11773, read
+2026-10-09). By the authors' own numbers the technique is early: their guard
+model's best exact-match is 21.67%. Indirect support, inferred and not a
+request for this feature: Spotify names "a PR that passes CI but is
+functionally incorrect." as the failure of its background coding agents and
+answers with independent verifiers
+(https://engineering.atspotify.com/2025/12/feedback-loops-background-coding-agents-part-3,
+read 2026-10-08). No buyer or user source in the report asks for this.
+
+What the feasibility reading observed (`internal/core/objective/objective.go`
+lines 30 to 55 and 150 to 189, `internal/feature/loop/verify.go` lines 10 to
+159, `internal/feature/eval/eval.go` lines 1 to 110): objectives already state
+what must be true, as `SuccessCriteria`, each with an optional `Verifier`;
+`stepVerify` sends a criterion whose declared verifier never ran down the same
+branch as one with no verifier, to the model's judgement; the step event
+carries counts and scores, not which criteria were unmet or how each was
+settled. Inferred: the record cannot tell 'the required check ran and failed'
+from 'the required check never ran and a model vouched for it'.
+
+**What would prove the bet wrong:** `finalizeLoop` already records
+per-criterion results (it was not read); objectives in practice declare no
+verifiers, so every entry reads `no_verifier` and the list says nothing; or no
+reviewer ever asks.
+
+**Steps:**
+
+1. **Find out, then prototype, in one slice (time-boxed to that slice).** Read
+   `finalizeLoop` in `internal/feature/loop/runner.go` and what the loop writes
+   to `tool_events` at finalisation; count, over this deployment's stored
+   objectives, how many criteria declare a verifier. **Kill criterion:** if
+   per-criterion results are already recorded, or no stored objective declares
+   a verifier, write the finding here and close the phase. Otherwise prototype
+   the feasibility slice: in `stepVerify` (`internal/feature/loop/verify.go`),
+   record for each criterion its id, `met`, and how it was settled, one of
+   `verifier_ran`, `verifier_never_ran`, `no_verifier`, `reserved_verifier`;
+   add the list to the step-completed payload and to the audit event written
+   on the finalise path in `internal/feature/loop/runner.go`. No model call is
+   added and no judgement changes.
+2. **The export lists them.** An `unmet_obligations` section in
+   `internal/feature/audit/export.go`: per finished run in the window, the
+   criteria that ended unmet and the ones whose declared verifier never ran;
+   `docs/openapi.yaml` updated; tests. A run with no recorded settlement (rows
+   written before this phase) is reported as unknown, not as zero misses
+   (AGENTS.md rule 10). Criterion text an outside party wrote keeps its trust
+   marking (rule 9, ADR 021).
+
+**Acceptance:** A loop test with three criteria (one whose verifier ran and
+failed, one whose declared verifier never ran, one with no verifier) produces a
+finalisation event naming each id with its settlement, and the same `met`
+values and score as before the change. The export for that window lists the
+first two under `unmet_obligations` with their settlement, and lists a run from
+before the change as unknown. The loop's termination and the verify decision
+are unchanged (rule 8).
+
+**What this is not.** It is not the paper's guard model, and it reproduces
+nothing from the paper: no model is asked to infer obligations nobody declared.
+It reports what the loop already decided. It does not make a never-run verifier
+fail the criterion; whether it should is a separate decision for a person,
+informed by what this record shows. It does not enforce `Constraints`, whose
+use was not searched.
+
+---
+
 ## Engineering Backlog
 
 These are enhancements found in this deployment's own telemetry and audit log, each recorded with the data that shows the problem. A human approves an entry by merging the pull request that adds it; the delivery stream implements entries whose status is Planned.
@@ -3568,6 +3872,7 @@ These are enhancements found in this deployment's own telemetry and audit log, e
 | EB-001 | The git environment's provenance escalation fires on almost every plan | Read 2026-10-04. `krk --output json audit --limit 300 --kind escalation` returned 85 escalation events (2026-09-26 to 2026-10-04, local +02:00 timestamps); `grep -o` on `escalation_reason` counted 83 of them as `plan drew on material written outside this deployment: software.env.git`, and the other 2 as confidence below threshold. `krk audit export --from 2026-10-03T00:00:00Z --to 2026-10-04T00:00:00Z` held 28 `kind: escalation` events, 27 with that same reason and `bounds_violation: true`. Code read: `domains/software/environments.go` sets `TrustThirdParty` whenever the 7-day window (`gitObservationWindow`) holds any pull request. `gh pr list --state all --limit 15` showed 11 pull requests by the repository owner and 4 by dependabot. Inferred, not verified: the escalations come from the deployment's own pull requests, so the reason no longer tells a reviewer anything. Not measured: how many of the 83 were approved unchanged. | In `domains/software/environments.go` (git environment `Observe`), mark the observation third party only when the window carries a pull request whose author is not in an operator-configured list of the deployment's own logins (default empty, so today's behaviour is kept until configured); still computed from the payload, per ADR 021. No change to `internal/core/agent/decide.go`. Unverified: whether the git adapter's pull request type carries the author; if not, add it in the adapter under `internal/platform/`. Verify with a table test in `domains/software` (own-author PRs only gives operator trust; one outside author gives third party; empty list gives third party) and by re-running the escalation count over a later day. Delivered: the `own_authors` option on a `github` versioncontrol instance; the escalation count over a later day has not been re-run yet. | M | Completed |
 | EB-002 | Objectives whose work is already delivered end by a human rejecting a checkpoint | Read 2026-10-05. `krk audit export --from 2026-10-04T00:00:00Z --to 2026-10-05T00:00:00Z`, counted with `grep -o`: 24 `kind: rejection` events over 12 distinct `objective_id` values, two per objective (one carrying the `checkpoint_id`, one with `escalation_reason: rejected_at_checkpoint`), all with approver `admin`. Of the 12 distinct rejection notes, 9 say the slice or template is already delivered (a commit or pull request is named) and that "this plan would redo it"; 2 name a failed planner call (one on the usage limit); 1 replaces an objective whose brief was too broad. Same export: 68 `execute` events (5 with `success: false`: 4 `software.act.write_code`, 1 `software.verify.run_tests`), 29 `escalation` strings (28 with the reason EB-001 covers), 18 `approval`. Inferred, not verified: after a delivery has been pushed the loop proposes a further plan instead of converging, and the operator's only way to end the objective is to reject it, which records a completed delivery as a rejection and a failed loop. Not measured: what those 9 plans proposed, how long each checkpoint waited, whether the objectives were re-run by hand rather than by the loop, and any day other than 2026-10-04. | First reproduce, then fix. Unverified in code beyond `internal/feature/loop/runner.go`, where a rejected checkpoint is recorded as `rejected_at_checkpoint` and the loop is finalized with an error: find why a plan is raised for an objective whose success criteria already hold, and have the loop evaluate the criteria before planning so that it converges without a checkpoint. If the reproduction shows the plans were legitimate re-plans and the operator was closing objectives by hand, propose instead a distinct terminal reason for "already delivered" so the audit log does not count it as a rejection. Verify with a test in `internal/feature/loop` (an objective whose criteria are met on the first observation finishes with no checkpoint and no rejection event) and by re-running the count of rejection notes containing "would redo it" over a later day. | S | Planned |
 | EB-003 | `krk audit export` returns a window two hours earlier than the one asked for | Read 2026-10-05, about 20:36Z, against the server started 2026-10-05T21:29:19+02:00 (`karakuri-obs/server.log` line 8703), which is after the newest commit on main (3f14f83, 21:18:33+02:00). `krk audit export --from 2026-10-04T00:00:00Z --to 2026-10-05T00:00:00Z`, counted with `grep -o '"created_at":"..."'`: 131 `created_at` values, of which 51 are dated 2026-10-03T22 or 2026-10-03T23 (before the window start) and 80 are dated 2026-10-04; the first is 2026-10-03T22:29:34Z, the last 2026-10-04T20:07:23Z, and none falls between 2026-10-04T21:00Z and the window end. `krk audit export --from 2026-10-05T19:30:00Z --to 2026-10-05T20:36:00Z` returned `"rows":[]`, while `krk --output json audit --limit 300` listed 26 distinct event timestamps between 21:30 and 22:36 at +02:00, which is that same hour. Both observations fit a window read two hours early, the host's offset. Inferred, not verified: the stored `created_at` text carries the local offset and SQLite compares it as text against the UTC bounds that `ListToolEvents` passes (`internal/platform/storage/gorm_storage.go`, whose comment says SQLite compares datetimes as text). Also inferred: the counts in EB-001 and EB-002 that name a UTC day describe 2026-10-03T22:00Z to 2026-10-04T22:00Z instead. Thin in one respect: one host, one offset, two windows, read in one pass; not measured on PostgreSQL, and the 131 values may include rows that are not tool events. No commit on main in the last 15 addresses this. | In `internal/platform/storage` make the window filter of `ListToolEvents` (and `ListResolvedCheckpoints`, which the export also uses) independent of the host's zone: store `created_at` in UTC at write and compare existing rows by instant, not by text; decide in the slice whether old rows are rewritten, since the export promises the same bytes for a past window. Verify with a storage test that writes an event stamped in a non-UTC zone just inside and just outside a UTC window and expects only the inside one, and by re-running the two exports above: no value before the window start, and a non-empty result for an hour the audit list shows events in. | S | Planned |
+| EB-004 | A coding agent that exits 1 leaves no reason in the audit log, and the failure is repeated seconds apart | Read 2026-10-09, about 06:41Z. `krk --output json audit --limit 300 --kind execute`, counted with `grep -o`: 220 `created_at` values dated 2026-09-26 to 2026-10-08 (local +02:00 timestamps; 13 days, not one day), of which 22 carry the error `claude_code: exit 1 (stderr: )`, that is, with nothing after `stderr:`; it is the most frequent error string in that listing (next: `command exited with code 1`, 3). Not counted: how the 22 are spread over those days, except for 2026-10-08. `krk audit export --from 2026-10-08T00:00:00Z --to 2026-10-09T00:00:00Z` held 31 `created_at` values, all between 2026-10-08T18:56Z and 2026-10-08T19:16Z (about 20 minutes, not a full day), 23 of them `kind: execute`; 6 `software.act.write_code` events have `success: false`, and 5 of those are on one objective (`7e8a1db9dbc08bde`) at 19:16:27, 19:16:31, 19:16:33, 19:16:37 and 19:16:40Z, 13 seconds from first to last. `krk --output json audit --limit 40 --kind execute --objective 7e8a1db9dbc08bde --since 2026-10-08T21:16:00+02:00` shows all 5 with `claude_code: exit 1 (stderr: )`, after 3 successful `write_code` events on the same objective at 21:01, 21:06 and 21:11 (+02:00). Inferred, not verified: the CLI wrote its reason to stdout (or nowhere), so the adapter's message drops it; and the 5 are the same action tried again at once, each failing within about 3 seconds, on a cause a retry could not clear. Not measured: what the cause was (a usage limit is one guess, with no data behind it), whether the 5 came from one plan or from several loop iterations, and what the sixth failure (objective `9c995331b5156493`, 19:15:17Z) recorded. | In `internal/platform/tools/cliagent` (`claude.go`, where the message `claude_code: exit %d (stderr: %s)` is built, and the sibling adapters with the same message), when the process exits non-zero with an empty stderr, put the tail of what it wrote to stdout (bounded, for example the last 2000 bytes) into the error, so the audit row says why. Reproduce first: run the adapter against a stub binary that prints a reason to stdout and exits 1. Only after the reason is visible, decide in a second slice whether an immediate identical failure should stop the action instead of being tried again; that part is not proposed here because the caller of the 5 attempts was not identified. Verify with a test in `internal/platform/tools/cliagent` (stub exits 1 with empty stderr and a stdout line; the error contains that line) and by re-running the count of `claude_code: exit 1 (stderr: )` over a later listing: it should be 0. | S | Planned |
 
 ---
 

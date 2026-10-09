@@ -50,4 +50,19 @@ describe('ObjectivesPage', () => {
     expect(screen.queryByText(/No objectives yet/)).not.toBeInTheDocument();
     expect(screen.queryByText('Loading…')).not.toBeInTheDocument();
   });
+
+  it('ties every label of the create form to its field', async () => {
+    get.mockResolvedValue([]);
+
+    render(<ObjectivesPage />);
+    await waitFor(() => expect(screen.getByText(/No objectives yet/)).toBeInTheDocument());
+
+    // A <label> beside a field names nothing until htmlFor points at it: a
+    // screen reader announced five unnamed text fields and combo boxes.
+    expect(screen.getByRole('textbox', { name: 'Title' })).toBeRequired();
+    expect(screen.getByRole('spinbutton', { name: 'Max iterations' })).toHaveValue(20);
+    expect(screen.getByRole('combobox', { name: 'Twin' })).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: 'Domain' })).toHaveValue('software');
+    expect(screen.getByRole('combobox', { name: 'Template' })).toBeInTheDocument();
+  });
 });
