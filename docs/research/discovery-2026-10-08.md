@@ -840,3 +840,5 @@ Part 7 run: finished; synthesis of the parts listed above
 No pages fetched. Commands run: `gh pr list --state open --label karakuri:discovery` and `gh pr list --state all --label karakuri:discovery` (2026-10-09). Repository files read: this report (the 'Competitive teardown' product sections 1 to 6 only through the capability matrix and the two 'Still thin' paragraphs), parts of `docs/research/discovery-2026-10-04.md` ('Fit assessment', 'Not found', the Trends limits paragraph, 'What this section supports', headings of the rest), and the last phase headings of `docs/roadmap.md`. README.md was not read. Nothing was built, run or tested.
 
 ### Sources, part 8
+
+Part 8 run: started 2026-10-09; not finished
