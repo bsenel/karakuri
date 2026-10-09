@@ -46,6 +46,11 @@ type MCPHandler struct {
 	// deployment that wired none, which the tool reports rather than hiding.
 	Telemetry coretelemetry.Reader
 
+	// Audit and AuditExport are what AuditHandler reads the audit log and its
+	// export through: the same store and the same exporter.
+	Audit       storage.StorageAdapter
+	AuditExport auditExporter
+
 	// Enforcer is used for its Authorizer and its OnDeny hook rather than as
 	// middleware: the subject of an MCP call arrives inside a JSON-RPC body,
 	// which no route-shaped check can see. The hook is what keeps a refusal

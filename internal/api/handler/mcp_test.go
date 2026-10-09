@@ -13,6 +13,7 @@ import (
 	"github.com/bsenel/karakuri/internal/api/handler"
 	karakuriauth "github.com/bsenel/karakuri/internal/auth"
 	"github.com/bsenel/karakuri/internal/core/twin"
+	"github.com/bsenel/karakuri/internal/feature/audit"
 	featureobjective "github.com/bsenel/karakuri/internal/feature/objective"
 	featurereport "github.com/bsenel/karakuri/internal/feature/report"
 	platformdb "github.com/bsenel/karakuri/internal/platform/db"
@@ -35,6 +36,7 @@ func (a actionAuthorizer) Authorize(_ context.Context, p auth.Principal, action 
 
 type mcpFixture struct {
 	h      *handler.MCPHandler
+	store  storage.StorageAdapter
 	denied []string // paths the OnDeny hook saw
 }
 
@@ -61,13 +63,15 @@ func newMCPFixture(t *testing.T, allowed ...auth.Action) *mcpFixture {
 	for _, a := range allowed {
 		authz[a] = true
 	}
-	f := &mcpFixture{}
+	f := &mcpFixture{store: store}
 	enf := auth.NewEnforcer(authz)
 	enf.OnDeny = func(r *http.Request, _ auth.Principal, _ auth.Decision) { f.denied = append(f.denied, r.URL.Path) }
 	f.h = &handler.MCPHandler{
-		Objectives: objSvc,
-		Reports:    featurereport.NewService(store, nil, nil, karakuriquota.Deps{}, featurereport.Config{}),
-		Enforcer:   enf,
+		Objectives:  objSvc,
+		Reports:     featurereport.NewService(store, nil, nil, karakuriquota.Deps{}, featurereport.Config{}),
+		Enforcer:    enf,
+		Audit:       store,
+		AuditExport: audit.NewExporter(store, audit.Retention{FloorDays: audit.FloorDays}, nil),
 	}
 	return f
 }
