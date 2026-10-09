@@ -353,6 +353,44 @@ Candidate F1: Expose a standing objective as an A2A 1.0 task, so that an outside
 
 Candidate F2: Carry the authority for a run (objective, bounds, approving checkpoint) outward on MCP calls so a tool server's log can be joined to Karakuri's audit trail. Source: https://modelcontextprotocol.io/specification/draft/basic/authorization [Q], an inference from what the page does not require. Proved wrong if: the `modelcontextprotocol/ext-auth` extensions or the unread WIMSE sections already define such a claim; or Phase 33 or 34 already plans it; or MCP servers ignore unknown metadata so nothing downstream records it.
 
+### B. Research
+
+How the papers were found: the arXiv API query URL returned HTTP 503 twice and was not read, so no abstract search was possible. Papers were picked by TITLE from the arXiv cs.AI recent listing, which shows no abstracts (https://arxiv.org/list/cs.AI/recent?skip=0&show=100, read 2026-10-09) [E]. That is a sample of one day's listing, not a survey of 2026. No major-lab page was read. Two papers were opened in full-text HTML; in both, the fetch returned short quoted fragments, not whole sentences, and no figure in them was checked here. All figures are the authors' own.
+
+**B1. "Safe Actions Alone Do Not Ensure Safe Agents: Identifying Unfulfilled Obligations with Guard Models" (arXiv 2610.11773).** Parts read: abstract, the benchmark and method sections (3 and 4) and the experiments (5 and 6), as fragments returned by the fetch; the formal task definition was not returned.
+- What it is. Observed: "identifying forbidden actions alone is insufficient to ensure agent safety."; "we argue that agent safety also depends on identifying required yet unperformed safety-critical actions"; "We refer to such required yet unperformed safety-critical actions as obligations." The authors build a benchmark (ObligationBench) and a guard model (ObligationGuard). Authors' results: "Across all 14 existing models, the highest Recall and EM are only 48.97% and 10.00%, respectively."; "ObligationGuard improves Recall from 15.34% to 57.52% and EM from 0.83% to 21.67% over its Qwen3-8B backbone." (https://arxiv.org/html/2610.11773, read 2026-10-09) [Q, fragments]
+- Maturity: one preprint, not peer-reviewed as far as the page shows; by the authors' own numbers the best exact-match is low, so the technique is early.
+- Inferred: Karakuri's checkpoints and authority bounds gate what an agent DOES. Nothing read in this part suggests any platform audits what a run was obliged to do and did not (for example: opened a pull request without running the tests the objective requires). Karakuri's audit trail and evidence pack (Phase 31) record the actions of a run, which is the input such a check needs.
+
+**B2. "OnTrack: Real-Time Monitoring and Intervention in LLM Agent Trajectories via Streaming Structure-Aware Optimal Transport" (arXiv 2610.12375).** Parts read: abstract, problem formulation, method, and experiments 6.1 to part of 6.4; the first 100,000 of about 127,000 characters, so the end of the experiments, Limitations and Conclusion were NOT read.
+- What it is. Observed: the problem is "cost and safety issues due to irreversible actions taken by agents"; the proposal is "a streaming monitoring mechanism"; "the monitor compares this growing graph against reference solutions using optimal transport"; "It instead outputs an action: continue, warn, or halt." Authors' results: "better than content similarity-based approaches (+0.057 AUROC)" (the extract says on SWE-bench trajectories, first 8 steps); "we save ∼18% of the compute that would have been burned on agents heading to failure"; "5 out of every 6 aborts were correct". (https://arxiv.org/html/2610.12375, read 2026-10-09) [Q, fragments]
+- Maturity: one preprint; results on a coding benchmark only, in the parts read; limitations unread.
+- Inferred: the method needs reference solutions. A standing objective reconciles the same goal repeatedly, so Karakuri accumulates its own reference runs (the Phase 30 evaluation set is built from that history). A run that drifts from its own past successful runs could raise a checkpoint mid-run instead of at a fixed step, which is a way to decide WHEN to ask a human that depends on evidence rather than on a static rule.
+
+Not reached: long-horizon memory papers (three titles seen in the listing, 2610.12124, 2610.11573, 2610.11732, none opened) and multi-agent failure attribution (2610.11600, title only). These are 'title only' and carry nothing.
+
+Candidate F3: Audit each finished run for obligations it did not meet (required but unperformed actions), not only for forbidden actions it avoided, and show the misses in the evidence pack. Source: https://arxiv.org/html/2610.11773 [Q, fragments; abstract, method and results read]. Proved wrong if: the objective definitions in the code carry no statement of required actions to check against; or the authors' low exact-match (their best is 21.67%) means the check would mostly produce noise; or Phase 30 or 31 already scores omissions.
+
+Candidate F4: Use a standing objective's own past successful runs as reference trajectories and raise a checkpoint (warn or halt) when a live run diverges from them. Source: https://arxiv.org/html/2610.12375 [Q, fragments; abstract, method and most of the results read, limitations unread]. Proved wrong if: Karakuri's stored history does not keep step-level trajectories; or successive runs of one objective differ too much for a reference to mean anything; or the unread limitations section says the method fails outside coding benchmarks.
+
+### C. Model and provider capabilities
+
+**C1. Anthropic, Claude Platform release notes.** (https://platform.claude.com/docs/en/release-notes/overview, read 2026-10-09; first 100,000 of about 123,000 characters, so the oldest entries were not read) [Q, entries shortened by the fetch]
+- Observed, a provider-hosted agent runtime: 8 April 2026, "We've launched **Claude Managed Agents** in public beta, a fully managed agent harness for running Claude as an autonomous agent with secure sandboxing, built-in tools, and server-sent event streaming." 9 June 2026: "Claude Managed Agents now supports [scheduled deployments]" on a cron schedule. 7 August 2026: "You can now set a budget on a Claude Managed Agents session: a hard cap on the session's spend" and "A session that reaches its budget pauses with the `budget_reached` stop reason instead of starting new model requests; changing or removing the budget resumes it." 10 September 2026: "Claude Managed Agents permission policies now include `auto`: the server evaluates each agent or MCP tool call and runs it, denies it, or pauses for your approval." 19 May 2026: "Self-hosted sandboxes are now available for Claude Managed Agents".
+- Observed, memory and context: 23 April 2026, "Memory for Claude Managed Agents is now in public beta"; 6 May 2026, Dreams as a research preview, "A dream reads an existing memory store alongside past session transcripts and produces a reorganized output memory store"; 14 September 2026, "The Messages API can now [compact a conversation on demand]" in beta.
+- Observed, caching and tools: 23 September 2026, cache diagnostics "is out of beta"; 22 September 2026, tools can be defined in a mid-conversation system message "without editing `tools` or invalidating the prompt cache"; 19 August 2026, the computer use tool "is out of beta on the Claude API as the `computer_toolset_20260801` toolset".
+- Maturity: shipped by one vendor; most agent-runtime items are labelled public beta or research preview by the vendor.
+- Inferred: scheduled sessions, a spend cap that pauses and resumes, and a per-tool-call run/deny/pause policy are the provider's versions of things Karakuri has (standing objectives, Phase 23 spend ceilings, checkpoints). What the entries read do not describe is authority that is earned from a run's history, or one audit trail across providers. That is where Karakuri still differs; it is also a warning that the basic pause-and-approve loop is becoming a provider feature.
+
+**C2. OpenAI, API changelog.** (https://developers.openai.com/api/docs/changelog, read 2026-10-09) [E; the fetch paraphrased most entries, so only the marked words are quotations]
+- Observed (extract): 10 September 2026, an Agents API entered public beta with managed sessions that handle orchestration and context compaction; 3 September 2026, asynchronous tool calling lets the model keep working while the application runs tools, and "Tool calling requires the Responses API."; 29 September 2026, "Agents can complete tasks in an OpenAI-hosted browser."; 26 August 2026, the Assistants API was shut down; 10 February 2026, server-side compaction and a hosted shell tool; 29 May 2026, `prompt_cache_retention` defaults to `24h` for organisations without zero data retention; 8 September 2026, prompt cache diagnostics generally available; 19 May 2026, a Secure MCP Tunnel for private MCP servers. The extract found no 2026 entry on background mode or webhooks.
+- Maturity: shipped by one vendor; the Agents API is the vendor's public beta.
+- Inferred: two providers now each ship a managed agent session, compaction, cache diagnostics and hosted computer or browser use. For a platform that calls models through an adapter, the things worth a code check are: whether the LLM adapter can use asynchronous tool results (a tool that waits on a human need not block the turn), and whether Karakuri's telemetry records cache hits, since both providers now report why a cache missed.
+
+Candidates from C: none, because both pages are release notes; they say what a provider shipped, not what users lack, and the two inferences above are code checks for a later part rather than bets.
+
+**Still thin:** the A2A specification was read only to character 100,000, so its authentication and Agent Card signing sections were not read, and no page on who has implemented A2A was read. The OTel GenAI agent-spans page was truncated: only the create-agent span's status was seen, and no release or version of the new repository was found. No IETF draft specifically on OAuth for AI agents was read; the WIMSE draft was read as an extract of its datatracker page, not its text; `modelcontextprotocol/ext-auth` was not read. The MCP draft was not compared with revision 2026-07-28. The arXiv search API failed (503 twice), so papers were chosen by title from one day's listing; no paper on long-horizon memory, on when to ask a human, or on multi-agent coordination was read, and no major-lab page was read. Both papers were read as fragments returned by a model-mediated fetch, and OnTrack's limitations were not read. The Anthropic notes were read to character 100,000; the OpenAI changelog only as a paraphrase; no provider documentation page behind either changelog was opened. The 2026-10-04 report's 'Standards and protocols' subsection and the bodies of Phases 28, 29 and 33 were not read by this part, and Phase 34 does not appear in the roadmap on this branch, so the 'proved wrong if' lines about existing phases are unchecked. Requests to api.github.com and a direct request to the arXiv API were not permitted in this session and were not made.
+
 ## Governance and buying criteria
 
 Not yet written (part 6).
@@ -478,7 +516,22 @@ Part 4 run: finished; products written 3 (HolmesGPT and Restate in full, Langfus
 
 ### Sources, part 5
 
-Part 5 run: started 2026-10-09; not finished
+Part 5 run: finished; fetches attempted 15; [Q] 7; [E] 6; [N] 2. All read 2026-10-09. No web search was run.
+
+- https://a2a-protocol.org/latest/specification/ : primary, [Q], first 100,000 of about 255,000 characters
+- https://github.com/a2aproject/A2A/releases : primary, [E]
+- https://github.com/open-telemetry/semantic-conventions/blob/main/docs/gen-ai/gen-ai-agent-spans.md : primary, [Q], moved notice only
+- https://github.com/open-telemetry/semantic-conventions-genai : primary, [E]
+- https://github.com/open-telemetry/semantic-conventions-genai/blob/main/docs/gen-ai/gen-ai-agent-spans.md : primary, [Q] for two quotations, truncated
+- https://modelcontextprotocol.io/specification/draft/basic/authorization : primary, [Q]
+- https://github.com/modelcontextprotocol/modelcontextprotocol/releases : primary, [E]
+- https://datatracker.ietf.org/doc/draft-ietf-wimse-arch/ : primary, [E] with two quoted sentences
+- https://export.arxiv.org/api/query (two different queries) : [N], HTTP 503 both times, counted as two fetches
+- https://arxiv.org/list/cs.AI/recent?skip=0&show=100 : primary listing, [E], titles only
+- https://arxiv.org/html/2610.11773 : primary, [Q] fragments; abstract, method, results
+- https://arxiv.org/html/2610.12375 : primary, [Q] fragments; first 100,000 of about 127,000 characters
+- https://platform.claude.com/docs/en/release-notes/overview : primary (vendor), [Q] with entries shortened, first 100,000 of about 123,000 characters
+- https://developers.openai.com/api/docs/changelog : primary (vendor), [E]
 
 ### Sources, part 6
 
