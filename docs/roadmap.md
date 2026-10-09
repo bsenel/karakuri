@@ -47,6 +47,7 @@ Phases 27–32 were proposed from two kinds of evidence: what this repository de
 | 35    | An Unanswered Checkpoint Ends              | **Planned**   |
 | 36    | A Provider's Refusal Is Not a Plan         | **Planned**   |
 | 37    | A Stop That Reaches the Running Pass       | **Planned**   |
+| 38    | What Was Required and Not Done             | **Planned**   |
 
 
 ---
@@ -3636,6 +3637,85 @@ loop's own termination logic is unchanged (AGENTS.md rule 8): the diff touches
 anything else: no legal text was read. It is not a rollback: a cancelled pass
 is stopped, not undone. It adds no kill switch outside the API, no new role,
 and no second gate on authority.
+
+---
+
+## Phase 38 — What Was Required and Not Done (Planned)
+
+This is a **frontier bet**, proposed by the discovery cycle of 2026-10-08
+(`docs/research/discovery-2026-10-08.md`, 'Fit and bets', rank 4). Nobody asked
+for it. **The bet:** reviewers of unattended agents will come to ask what a run
+was required to do and did not, and not only which forbidden actions it
+avoided.
+
+**Goal:** The record of a finished run says, for each success criterion, how
+it was settled, and the evidence export lists the criteria that ended unmet and
+the ones whose declared verifier never ran.
+
+**The evidence.** One preprint, arXiv 2610.11773, read as fragments of its
+abstract, method and experiments (the formal task definition was not returned):
+"identifying forbidden actions alone is insufficient to ensure agent safety."
+and "we argue that agent safety also depends on identifying required yet
+unperformed safety-critical actions" (https://arxiv.org/html/2610.11773, read
+2026-10-09). By the authors' own numbers the technique is early: their guard
+model's best exact-match is 21.67%. Indirect support, inferred and not a
+request for this feature: Spotify names "a PR that passes CI but is
+functionally incorrect." as the failure of its background coding agents and
+answers with independent verifiers
+(https://engineering.atspotify.com/2025/12/feedback-loops-background-coding-agents-part-3,
+read 2026-10-08). No buyer or user source in the report asks for this.
+
+What the feasibility reading observed (`internal/core/objective/objective.go`
+lines 30 to 55 and 150 to 189, `internal/feature/loop/verify.go` lines 10 to
+159, `internal/feature/eval/eval.go` lines 1 to 110): objectives already state
+what must be true, as `SuccessCriteria`, each with an optional `Verifier`;
+`stepVerify` sends a criterion whose declared verifier never ran down the same
+branch as one with no verifier, to the model's judgement; the step event
+carries counts and scores, not which criteria were unmet or how each was
+settled. Inferred: the record cannot tell 'the required check ran and failed'
+from 'the required check never ran and a model vouched for it'.
+
+**What would prove the bet wrong:** `finalizeLoop` already records
+per-criterion results (it was not read); objectives in practice declare no
+verifiers, so every entry reads `no_verifier` and the list says nothing; or no
+reviewer ever asks.
+
+**Steps:**
+
+1. **Find out, then prototype, in one slice (time-boxed to that slice).** Read
+   `finalizeLoop` in `internal/feature/loop/runner.go` and what the loop writes
+   to `tool_events` at finalisation; count, over this deployment's stored
+   objectives, how many criteria declare a verifier. **Kill criterion:** if
+   per-criterion results are already recorded, or no stored objective declares
+   a verifier, write the finding here and close the phase. Otherwise prototype
+   the feasibility slice: in `stepVerify` (`internal/feature/loop/verify.go`),
+   record for each criterion its id, `met`, and how it was settled, one of
+   `verifier_ran`, `verifier_never_ran`, `no_verifier`, `reserved_verifier`;
+   add the list to the step-completed payload and to the audit event written
+   on the finalise path in `internal/feature/loop/runner.go`. No model call is
+   added and no judgement changes.
+2. **The export lists them.** An `unmet_obligations` section in
+   `internal/feature/audit/export.go`: per finished run in the window, the
+   criteria that ended unmet and the ones whose declared verifier never ran;
+   `docs/openapi.yaml` updated; tests. A run with no recorded settlement (rows
+   written before this phase) is reported as unknown, not as zero misses
+   (AGENTS.md rule 10). Criterion text an outside party wrote keeps its trust
+   marking (rule 9, ADR 021).
+
+**Acceptance:** A loop test with three criteria (one whose verifier ran and
+failed, one whose declared verifier never ran, one with no verifier) produces a
+finalisation event naming each id with its settlement, and the same `met`
+values and score as before the change. The export for that window lists the
+first two under `unmet_obligations` with their settlement, and lists a run from
+before the change as unknown. The loop's termination and the verify decision
+are unchanged (rule 8).
+
+**What this is not.** It is not the paper's guard model, and it reproduces
+nothing from the paper: no model is asked to infer obligations nobody declared.
+It reports what the loop already decided. It does not make a never-run verifier
+fail the criterion; whether it should is a separate decision for a person,
+informed by what this record shows. It does not enforce `Constraints`, whose
+use was not searched.
 
 ---
 
