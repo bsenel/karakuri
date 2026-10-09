@@ -268,6 +268,9 @@ func NewApp(
 		// The audit tools read through what the audit routes read through.
 		Audit:       store,
 		AuditExport: auditExport,
+		// And the checkpoint and cost tools through what cpH and quotaH do.
+		Checkpoints: cpSvc,
+		Quota:       quotaDeps,
 		Enforcer:    authDeps.Enforcer,
 		Scopes:      authDeps.Authorizer,
 		Containers:  containerSvc,

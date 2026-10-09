@@ -14,6 +14,7 @@ import (
 
 	"github.com/bsenel/karakuri/auth"
 	karakuriauth "github.com/bsenel/karakuri/internal/auth"
+	corecheckpoint "github.com/bsenel/karakuri/internal/core/checkpoint"
 	coreobjective "github.com/bsenel/karakuri/internal/core/objective"
 	"github.com/bsenel/karakuri/internal/core/reconcile"
 	coretelemetry "github.com/bsenel/karakuri/internal/core/telemetry"
@@ -24,6 +25,7 @@ import (
 	"github.com/bsenel/karakuri/internal/platform/storage"
 	"github.com/bsenel/karakuri/internal/platform/tools/mcp"
 	karakuriquota "github.com/bsenel/karakuri/internal/quota"
+	"github.com/bsenel/karakuri/quota/cost"
 )
 
 // MCPHandler serves Karakuri itself as an MCP server over streamable HTTP, so a
@@ -360,6 +362,96 @@ func (h *MCPHandler) tools() []mcpTool {
 					return nil, err
 				}
 				return mcpVerbatim(data), nil
+			},
+		},
+		{
+			def: mcp.Tool{
+				Name:        "checkpoints_list",
+				Description: "List the checkpoints waiting on a person: each decision an agent escalated and has not yet had answered. Optionally narrowed to one twin.",
+				InputSchema: objectSchema(map[string]any{
+					"twin_id": stringProperty("Only checkpoints raised for this digital twin."),
+				}),
+			},
+			action: karakuriauth.ActionCheckpointRead,
+			resource: func(context.Context, *MCPHandler, auth.Principal, mcpArgs) auth.ResourceRef {
+				// The reference GET /checkpoints is gated on: the route names no
+				// resource, so the enforcer decides against the collection.
+				return auth.Collection("checkpoint")
+			},
+			read: func(ctx context.Context, h *MCPHandler, _ auth.Principal, args mcpArgs) (any, error) {
+				if h.Checkpoints == nil {
+					return nil, errors.New("no checkpoint service is wired into this deployment")
+				}
+				cps, err := h.Checkpoints.ListPending(ctx, args.str("twin_id"))
+				if err != nil {
+					return nil, err
+				}
+				if cps == nil {
+					// Nothing pending is an answer, as it is for audit_list.
+					cps = []corecheckpoint.Checkpoint{}
+				}
+				return cps, nil
+			},
+		},
+		{
+			def: mcp.Tool{
+				Name:        "checkpoint_read",
+				Description: "Read one checkpoint: what was escalated, for which objective, the options offered and whether it is still pending. Reading it decides nothing.",
+				InputSchema: objectSchema(map[string]any{
+					"checkpoint_id": stringProperty("The checkpoint to read."),
+				}, "checkpoint_id"),
+			},
+			action: karakuriauth.ActionCheckpointRead,
+			resource: func(_ context.Context, _ *MCPHandler, _ auth.Principal, args mcpArgs) auth.ResourceRef {
+				// As karakuriauth.CheckpointResource builds it for GET
+				// /checkpoints/{id}: the checkpoint by id, no containers attached.
+				return auth.Resource("checkpoint", args.str("checkpoint_id"))
+			},
+			read: func(ctx context.Context, h *MCPHandler, _ auth.Principal, args mcpArgs) (any, error) {
+				if h.Checkpoints == nil {
+					return nil, errors.New("no checkpoint service is wired into this deployment")
+				}
+				id, err := args.required("checkpoint_id")
+				if err != nil {
+					return nil, err
+				}
+				cp, err := h.Checkpoints.Get(ctx, id)
+				if err != nil {
+					return nil, fmt.Errorf("checkpoint %s not found: %w", id, err)
+				}
+				return cp, nil
+			},
+		},
+		{
+			def: mcp.Tool{
+				Name:        "cost_report",
+				Description: "Report what was spent, in the buckets GET /cost returns, limited to the twins the caller may see. Every argument narrows or regroups the report; with none it is one total.",
+				InputSchema: objectSchema(map[string]any{
+					"since":    stringProperty("Only spend at or after this RFC3339 timestamp."),
+					"until":    stringProperty("Only spend before this RFC3339 timestamp."),
+					"group_by": stringProperty("Comma-separated dimensions to bucket by, e.g. provider,day."),
+					"twin":     stringProperty("Only spend by this digital twin."),
+					"provider": stringProperty("Only spend with these LLM providers, comma-separated."),
+					"label":    stringProperty("Only spend attributed to these containers, comma-separated, e.g. org:o_1."),
+					"limit":    integerProperty("How many buckets to return. Omit for all of them."),
+				}),
+			},
+			action: karakuriauth.ActionCostRead,
+			resource: func(ctx context.Context, h *MCPHandler, p auth.Principal, _ mcpArgs) auth.ResourceRef {
+				// As GET /cost: the collection carrying the caller's own
+				// containers, with the report itself narrowed in the read.
+				return karakuriauth.ScopedCollectionRef(ctx, h.Scopes, p.ID,
+					karakuriauth.ActionCostRead, auth.Collection("cost"))
+			},
+			read: func(ctx context.Context, h *MCPHandler, p auth.Principal, args mcpArgs) (any, error) {
+				buckets, err := costReport(ctx, h.Quota, h.Scopes, p.ID, args.text)
+				if err != nil {
+					return nil, err
+				}
+				if buckets == nil {
+					buckets = []cost.Bucket{}
+				}
+				return buckets, nil
 			},
 		},
 	}
