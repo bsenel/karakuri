@@ -3249,6 +3249,31 @@ client can talk to the servers people run.
    check it; every server above answered `2025-06-18`, the version the client
    asked for. The modern-only server was the SDK's own `_serve_modern_stream`
    driven directly, which is a private function: no SDK ships that mode.
+
+   **Result with the second path (run 2026-10-09).** The client after the
+   review of pull request #159, against the official Python SDK's server
+   (`mcp` 2.3.0, default settings, server name `probe`), by
+   `go test -run SDKInterop ./internal/platform/tools/mcp/` with
+   `KARAKURI_MCP_SDK_PYTHON` and `KARAKURI_MCP_SDK_PROBE` set (the tests skip
+   without them), and Karakuri's own server by its handler tests:
+
+   | Peer | What was run | Result |
+   |---|---|---|
+   | Python SDK 2.3.0, streamable HTTP, default | `Negotiate` (`TestSDKInteropHTTPNegotiatesDiscover`) | passed: the discover path at `2026-07-28`, server name `probe` read from `_meta` |
+   | Python SDK 2.3.0, streamable HTTP, default | the legacy handshake, `Initialize` called directly (`TestSDKInteropHTTPLegacyHandshakeStillConnects`) | passed: connects at `2025-06-18`, server name `probe` |
+   | Python SDK 2.3.0, stdio, default | `Negotiate` (`TestSDKInteropStdio`) | passed: the discover path at `2026-07-28`, server name `probe` |
+   | All three of the above | list tools, call `echo` | passed: one tool, `echo`, and it returned the text sent |
+   | Karakuri's own server, `internal/api/handler/mcp.go` | routing by the `MCP-Protocol-Version` header; the namespaced envelope keys required; `-32020` when header and envelope disagree, before the version is judged; `-32022` for an unsupported version; `404` for an unknown method on the modern path (the six `TestMCPServer...` tests named in the review's step 3) | passed, against `httptest` and this repository's client, not against an SDK client |
+   | Not run | the specification text itself, a 2026-07-28-only server, the TypeScript or any other SDK, an SDK client against Karakuri's server, a real third-party deployment | not verified |
+
+   The wire names are now the SDK's, read from its source and confirmed by
+   these runs; where the "Not verified" entry below says the names are assumed
+   or that no real 2026-07-28 peer was used, this table replaces it for the
+   Python SDK only. The SDK is one implementation, not the specification. The
+   legacy row calls `Initialize` directly because `Negotiate` always tries
+   `server/discover` first and the SDK's default server answers it; the
+   fallback from a refused discover to the handshake was not exercised against
+   the SDK.
 2. **A second protocol path in `internal/platform/tools/mcp/`** — `server/discover`
    in place of `initialize`, the version and capabilities in `_meta` on every
    request, no session header, `resultType` read on every result. The existing
