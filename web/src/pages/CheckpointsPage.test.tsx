@@ -47,4 +47,20 @@ describe('CheckpointsPage', () => {
     expect(screen.queryByText(/No pending checkpoints/)).not.toBeInTheDocument();
     expect(screen.queryByText('Loading…')).not.toBeInTheDocument();
   });
+
+  it('tells a screen reader that it is loading, and then what went wrong', async () => {
+    // Text that appears on its own is silent unless it sits in a live region.
+    let fail: (e: unknown) => void = () => {};
+    get.mockReturnValue(new Promise((_, reject) => { fail = reject; }));
+
+    render(<CheckpointsPage />);
+    expect(screen.getByRole('status')).toHaveTextContent('Loading…');
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+
+    fail(new APIError(403, '{"message":"checkpoint:read is not granted"}'));
+    await waitFor(() =>
+      expect(screen.getByRole('alert')).toHaveTextContent('checkpoint:read is not granted'),
+    );
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+  });
 });
