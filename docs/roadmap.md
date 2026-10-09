@@ -46,6 +46,7 @@ Phases 27–32 were proposed from two kinds of evidence: what this repository de
 | 33    | MCP After the Handshake                    | **Planned**   |
 | 35    | An Unanswered Checkpoint Ends              | **Planned**   |
 | 36    | A Provider's Refusal Is Not a Plan         | **Planned**   |
+| 37    | A Stop That Reaches the Running Pass       | **Planned**   |
 
 
 ---
@@ -3558,6 +3559,83 @@ provider failover, a queue, or a change to Karakuri's own quotas and budgets.
 The loop does not learn to keep trying: one bounded retry, then it ends. It
 does not charge for failed calls, and it does not explain a provider's quota
 to the user beyond passing on what the provider's answer said.
+
+---
+
+## Phase 37 — A Stop That Reaches the Running Pass (Planned)
+
+This is a **frontier bet**, proposed by the discovery cycle of 2026-10-08
+(`docs/research/discovery-2026-10-08.md`, 'Fit and bets', rank 3). Nobody asked
+for it. **The bet:** a buyer preparing for the EU AI Act's high-risk
+obligations will ask to see a stop that works while a pass is running and that
+leaves a record of who stopped it.
+
+**Goal:** Pausing a standing objective cancels the pass in flight, and the
+evidence export shows that a person paused and resumed, and when.
+
+**The evidence, and how thin it is.** The one primary page read is the
+European Commission's overview of the regulation, which asks of high-risk
+systems "appropriate human oversight measures." and says "deployers ensure
+human oversight and monitoring."
+(https://digital-strategy.ec.europa.eu/en/policies/regulatory-framework-ai,
+read 2026-10-09); the same page puts those obligations at 2 December 2027.
+That is a general sentence. The specific wording about a person being able to
+stop the system is Article 14(4), which the report knows only from a secondary
+mirror (https://artificialintelligenceact.eu/article/14/, read 2026-10-09);
+the legal text was not read by anyone. No regulated organisation speaking for
+itself was found.
+
+What the feasibility reading observed (`internal/feature/reconcile/service.go`
+lines 225 to 286 and 396 to 460, `internal/api/handler/reconcile.go` lines 170
+to 209, `internal/api/server.go` lines 366 to 394): `POST /{id}/pause` and
+`/resume` exist behind `karakuriauth.ActionObjectivePause`; `Service.Pause`
+writes `Paused`, `PausedReason` and `PhasePaused` to the stored state and holds
+no handle on a pass `dispatch` already started; no audit row is written in the
+lines read. Inferred: a pause prevents the next pass and does not interrupt the
+running one, and the export may not show the stop.
+
+**What would prove the bet wrong:** the legal text of Article 14(4), once
+read, does not ask for a stop of this kind; Pause is already audited elsewhere
+(middleware and the store were not read); or cancelling a pass leaves a
+worktree or an external action half done, so the stop is not a safe state.
+
+**Steps:**
+
+1. **Find out, then prototype, in one slice (time-boxed to that slice).** Read
+   the `pass` function in `internal/feature/reconcile/service.go` to learn
+   whether the loop's context derives from the one `dispatch` holds; read
+   whether Pause is audited elsewhere; read Article 14(4) in the legal text if
+   it can be fetched. Then prototype the feasibility slice: (a) in
+   `Service.Pause` and `Service.Resume`, write a tool event of a new kind (for
+   example `pause`) with the reason and the principal, plus a storage constant
+   for the kind; (b) keep a `context.CancelFunc` per running objective beside
+   `s.running` in `dispatch` and have `Pause` call it (the runner already
+   finalises on `ctx.Done()`, observed at `internal/feature/loop/runner.go`
+   line 274). **Kill criterion:** if a test shows a cancelled pass leaving a
+   delivery worktree or an external action half done with no way to tell from
+   the record, ship only (a), record the finding here, and close the phase; if
+   Pause turns out to be audited already, drop (a) as well.
+2. **The export shows it.** List pause and resume events under oversight in
+   `internal/feature/audit/export.go`, with `docs/openapi.yaml` updated if the
+   export shape changes. An export over a window with no such events says none
+   were recorded; it does not say the system was never stopped.
+3. **Only if step 1 survived:** a cancel for a one-shot loop on the loops
+   route, and a single control that pauses every standing objective. These are
+   the feasibility pass's 'second slice' and are not started before step 1's
+   result is written down.
+
+**Acceptance:** A test starts a pass that blocks, calls `Pause`, and observes
+the pass's context cancelled and the loop finalised; the stored state reads
+paused and `Trigger` still refuses. Pause and resume each leave one audit event
+carrying the principal and the reason, and the export lists both. Pausing an
+objective with no pass running behaves as today plus the audit event. The
+loop's own termination logic is unchanged (AGENTS.md rule 8): the diff touches
+`internal/feature/reconcile` and the export, not how the loop decides to stop.
+
+**What this is not.** It is not a claim of compliance with Article 14 or with
+anything else: no legal text was read. It is not a rollback: a cancelled pass
+is stopped, not undone. It adds no kill switch outside the API, no new role,
+and no second gate on authority.
 
 ---
 
