@@ -143,7 +143,22 @@ function AuditEventRow({ ev, expanded, onToggle }: RowProps) {
 
   return (
     <div className="card">
-      <div className="row" style={{ cursor: 'pointer' }} onClick={onToggle}>
+      {/* A row of spans rather than a <button>, to keep the layout — so it
+          carries the role, the focus stop and the keys a button would have. */}
+      <div
+        className="row"
+        style={{ cursor: 'pointer' }}
+        role="button"
+        tabIndex={0}
+        aria-expanded={expanded}
+        onClick={onToggle}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            onToggle();
+          }
+        }}
+      >
         <KindPill kind={ev.kind} bounds={ev.bounds_violation} />
         <span className="muted small">{new Date(ev.created_at).toLocaleString()}</span>
         {ev.escalation_reason && <span className="small">{ev.escalation_reason}</span>}
