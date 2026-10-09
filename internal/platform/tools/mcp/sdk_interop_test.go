@@ -144,9 +144,11 @@ func TestSDKInteropHTTPLegacyHandshakeStillConnects(t *testing.T) {
 	sdkListAndEcho(ctx, t, c)
 }
 
-// The probe as a child process through the real stdio transport. Which path the
-// SDK's stdio server settles on is logged rather than asserted: step 2 pins
-// what is observed here.
+// The probe as a child process through the real stdio transport. The asserted
+// path is an observation of mcp 2.3.0, made on 2026-10-09: its stdio server
+// answers server/discover at 2026-07-28 and names itself under `_meta`, as its
+// HTTP server does. A later SDK that negotiates differently fails here, which
+// is the point.
 func TestSDKInteropStdio(t *testing.T) {
 	python, probe := sdkProbe(t)
 	// Close, which dial registers with t.Cleanup, ends the child process.
@@ -158,5 +160,9 @@ func TestSDKInteropStdio(t *testing.T) {
 		t.Fatalf("Negotiate against the SDK's stdio server: %v", err)
 	}
 	t.Logf("stdio negotiated path %q at %q with server %q", got.Path, got.ProtocolVersion, got.ServerInfo.Name)
+	if got.Path != PathDiscover || got.ProtocolVersion != ModernProtocolVersion || got.ServerInfo.Name != "probe" {
+		t.Errorf("stdio negotiated %q at %q with server %q, want %q at %s with server probe",
+			got.Path, got.ProtocolVersion, got.ServerInfo.Name, PathDiscover, ModernProtocolVersion)
+	}
 	sdkListAndEcho(ctx, t, c)
 }

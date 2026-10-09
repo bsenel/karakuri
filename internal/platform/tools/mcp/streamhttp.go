@@ -66,6 +66,10 @@ func (t *httpTransport) Kind() string { return TransportHTTP }
 func (t *httpTransport) Send(ctx context.Context, req Request) (*Response, error) {
 	resp, body, err := t.post(ctx, req)
 	if err != nil {
+		var refused *Error
+		if errors.As(err, &refused) {
+			return &Response{JSONRPC: "2.0", ID: req.ID, Error: refused}, nil
+		}
 		return nil, err
 	}
 	defer func() { _ = resp.Body.Close() }()
@@ -145,6 +149,14 @@ func (t *httpTransport) post(ctx context.Context, req Request) (*http.Response, 
 		// missing token — and a bare status code sends an operator guessing.
 		detail, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
 		_ = resp.Body.Close()
+		// A 2026-07-28 server refuses with a status and a JSON-RPC error
+		// together (ERROR_CODE_HTTP_STATUS in the SDK's mcp/shared/inbound.py
+		// maps -32602 to 400 and -32601 to 404), so a body that is one is the
+		// server's answer rather than a transport failure.
+		var refused Response
+		if json.Unmarshal(bytes.TrimSpace(detail), &refused) == nil && refused.Error != nil {
+			return nil, nil, refused.Error
+		}
 		msg := strings.TrimSpace(string(detail))
 		if msg != "" {
 			msg = ": " + msg
