@@ -18,6 +18,8 @@ func domainListCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "list",
 		Short: "List registered domain packs",
+		Example: `  krk domain list
+  krk domain list --output json`,
 		RunE: func(_ *cobra.Command, _ []string) error {
 			data, _, err := api.Get("/domains")
 			if err != nil {
@@ -33,7 +35,9 @@ func domainTestCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "test <domain-id>",
 		Short: "Run conformance suite against a registered domain pack",
-		Args:  cobra.ExactArgs(1),
+		Example: `  krk domain list            # find the domain ID
+  krk domain test software`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
 			data, _, err := api.Get("/domains/" + args[0] + "/conformance")
 			if err != nil {
@@ -49,7 +53,9 @@ func domainCapabilitiesCmd() *cobra.Command {
 	var domain string
 	cmd := &cobra.Command{
 		Use:   "capabilities",
-		Short: "List capabilities",
+		Short: "List the capabilities domain packs provide",
+		Example: `  krk domain capabilities
+  krk domain capabilities --domain software`,
 		RunE: func(_ *cobra.Command, _ []string) error {
 			path := "/domains/capabilities"
 			if domain != "" {
@@ -63,6 +69,6 @@ func domainCapabilitiesCmd() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&domain, "domain", "", "Filter by domain")
+	cmd.Flags().StringVar(&domain, "domain", "", "Only show capabilities of this domain ID (see: krk domain list); default: all domains")
 	return cmd
 }
