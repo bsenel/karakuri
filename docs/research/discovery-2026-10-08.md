@@ -535,6 +535,10 @@ Part 5 run: finished; fetches attempted 15; [Q] 7; [E] 6; [N] 2. All read 2026-1
 
 ### Sources, part 6
 
+### Sources, part 6a
+
+Part 6a run: started 2026-10-09; not finished
+
 ### Sources, part 7
 
 ### Sources, part 8
