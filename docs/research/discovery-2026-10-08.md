@@ -444,7 +444,7 @@ Also for the next part, not a 'nothing found' but a disagreement: the roadmap's 
 
 ## Feasibility
 
-Not yet written (part 6).
+Upstream state found by part 6b: 'What they ask for and complain about' is written (six ranked pain points and a Summary table), and its line reads 'Part 2 run: finished'. The 'Capability matrix' is written (two tables, fourteen rows), and its line reads 'Part 4 run: finished' (part 3's line also reads finished). '## Technical frontier' is written with Candidates F1 to F4, and its line reads 'Part 5 run: finished'. '## Governance and buying criteria' is written with Governance gaps G1 to G5, and its line reads 'Part 6a run: finished'. No upstream section is missing. Part 6b read no web page, ran no test and built nothing; everything below comes from this report and from repository files opened on 2026-10-09.
 
 ## Fit and bets
 
@@ -600,6 +600,10 @@ All read 2026-10-09. No web search was run. Pull request #158 already existed fo
 - https://genai.owasp.org/download/52117/, primary, PDF; fetch tool could not read it, pages 4 to 8 of the saved file were read directly [Q] for those pages only
 
 Repository files opened: `internal/feature/audit/export.go` (in full); `internal/feature/audit/retention.go` (lines 1 to 60); `docs/roadmap.md` (phase headings and lines 2762 to 2790); `AGENTS.md`. `internal/api/handler/audit.go` was grepped, not read.
+
+### Sources, part 6b
+
+Part 6b run: started 2026-10-09; not finished
 
 ### Sources, part 7
 
