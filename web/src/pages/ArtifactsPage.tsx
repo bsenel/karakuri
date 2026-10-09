@@ -6,6 +6,8 @@ export function ArtifactsPage() {
   const [items, setItems] = useState<Artifact[]>([]);
   const [filter, setFilter] = useState('');
   const [err, setErr] = useState<string | null>(null);
+  // null until the first answer, so "not loaded" never reads as "none exist".
+  const [loaded, setLoaded] = useState<'ok' | 'failed' | null>(null);
 
   // Diff state
   const [sha1, setSha1] = useState('');
@@ -18,7 +20,12 @@ export function ArtifactsPage() {
       const list = await api.get<Artifact[]>(`/artifacts${q}`);
       setItems(list ?? []);
       setErr(null);
-    } catch (e) { setErr(String(e)); }
+      setLoaded('ok');
+    } catch (e) {
+      setItems([]);
+      setErr(String(e));
+      setLoaded('failed');
+    }
   };
 
   useEffect(() => { void load(); }, []);
@@ -46,7 +53,7 @@ export function ArtifactsPage() {
         </div>
       </div>
 
-      {err && <p className="pill red">{err}</p>}
+      {err && <p className="pill red" role="alert">{err}</p>}
 
       <table>
         <thead><tr><th>SHA</th><th>Objective</th><th>Agent</th><th>Kind</th><th>Size</th><th>Created</th></tr></thead>
@@ -65,8 +72,14 @@ export function ArtifactsPage() {
               <td className="muted small">{new Date(a.created_at).toLocaleString()}</td>
             </tr>
           ))}
-          {items.length === 0 && (
-            <tr><td colSpan={6} className="muted">No artifacts.</td></tr>
+          {loaded === null && (
+            <tr><td colSpan={6} className="muted" role="status">Loading…</td></tr>
+          )}
+          {loaded === 'failed' && (
+            <tr><td colSpan={6} className="muted">Could not load artifacts.</td></tr>
+          )}
+          {loaded === 'ok' && items.length === 0 && (
+            <tr><td colSpan={6} className="muted">No artifacts yet. Agents store them as objectives run.</td></tr>
           )}
         </tbody>
       </table>
