@@ -34,6 +34,10 @@ decision: the provider and model that drafted the plan, and the template
 the objective was created from. Each row lists its provider, model,
 template_id and autonomy_rung where one was recorded. Default is the 50
 most recent entries across all kinds.`,
+		Example: `  krk audit
+  krk audit --violations-only --limit 20
+  krk audit --kind escalation --since 2026-10-01T00:00:00Z
+  krk audit --objective <objective-id> --output json`,
 		RunE: func(c *cobra.Command, _ []string) error {
 			q := url.Values{}
 			if objectiveID != "" {
@@ -104,6 +108,8 @@ func auditExportCmd() *cobra.Command {
 server's bytes exactly as received: to stdout, or to the file --out names.
 The SHA-256 of those bytes is printed to stderr, so two exports of one
 window can be compared. The global --output format does not apply.`,
+		Example: `  krk audit export --from 2026-09-01T00:00:00Z --to 2026-10-01T00:00:00Z
+  krk audit export --from 2026-09-01T00:00:00Z --to 2026-10-01T00:00:00Z --out audit-2026-09.json`,
 		RunE: func(c *cobra.Command, _ []string) error {
 			q := url.Values{}
 			q.Set("from", from)

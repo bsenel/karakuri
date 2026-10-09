@@ -5,6 +5,18 @@ import (
 	"testing"
 )
 
+func TestAuditHelp(t *testing.T) {
+	requireExample(t, auditCmd())
+	requireExample(t, auditExportCmd())
+
+	// export refuses to run without --from and --to, so its example must
+	// show both.
+	example := auditExportCmd().Example
+	if !strings.Contains(example, "--from") || !strings.Contains(example, "--to") {
+		t.Errorf("audit export Example %q does not show the required --from and --to", example)
+	}
+}
+
 func TestDomainHelp(t *testing.T) {
 	requireExample(t, domainListCmd())
 	requireExample(t, domainTestCmd())
