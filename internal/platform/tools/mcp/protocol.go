@@ -42,45 +42,72 @@ const MethodServerDiscover = "server/discover"
 const ResultTypeInputRequired = "input_required"
 
 // CodeUnsupportedProtocol is what a 2026-07-28-only server answers `initialize`
-// with, carrying the versions it does speak in the error's data. Observed
-// against the Python SDK in Phase 33 step 1.
+// with, carrying the versions it does speak in the error's data
+// (UNSUPPORTED_PROTOCOL_VERSION in mcp_types/jsonrpc.py).
 const CodeUnsupportedProtocol = -32022
 
-// The names below were taken from the roadmap's description of revision
-// 2026-07-28 ("every request carries its protocol version and client
-// capabilities in `_meta`", "a required `resultType` on every result") and were
-// NOT checked against the specification text. The roadmap states that the
-// version and the capabilities travel in `_meta`; it does not state the keys
-// they travel under, the resultType of an ordinary result, or the shape of a
-// server/discover result. They are declared once here so that correcting one is
-// a one-line change that the tests follow.
+// The names below were read from the official Python SDK, mcp 2.3.0, on
+// 2026-10-09, and each says where. The specification text was not read: where
+// the SDK and the specification page could differ, the name here is the SDK's.
 const (
-	metaKeyProtocolVersion    = "protocolVersion"
-	metaKeyClientCapabilities = "clientCapabilities"
+	// PROTOCOL_VERSION_META_KEY, CLIENT_CAPABILITIES_META_KEY and
+	// CLIENT_INFO_META_KEY in mcp_types/_types.py. classify_inbound_request in
+	// mcp/shared/inbound.py requires the first two on every request and reads
+	// the third as optional (SHOULD-include).
+	metaKeyProtocolVersion    = "io.modelcontextprotocol/protocolVersion"
+	metaKeyClientCapabilities = "io.modelcontextprotocol/clientCapabilities"
+	metaKeyClientInfo         = "io.modelcontextprotocol/clientInfo"
 
+	// SERVER_INFO_META_KEY in mcp_types/_types.py: where a result names the
+	// server that produced it. A server/discover result has no top-level
+	// serverInfo.
+	metaKeyServerInfo = "io.modelcontextprotocol/serverInfo"
+
+	// MCP_PROTOCOL_VERSION_HEADER, MCP_METHOD_HEADER and MCP_NAME_HEADER in
+	// mcp/shared/inbound.py, which declares them lowercase; HTTP field names
+	// are case-insensitive. Streamable HTTP only: stdio has no headers.
+	headerProtocolVersion = "MCP-Protocol-Version"
+	headerMethod          = "Mcp-Method"
+	headerName            = "Mcp-Name"
+
+	// "complete" and "input_required" (ResultTypeInputRequired above) are the
+	// resultType values in mcp_types/_v2026_07_28/__init__.py;
+	// is_input_required in mcp_types/methods.py compares against the second.
 	resultTypeComplete = "complete"
 
-	// inputRequestsField is where an input_required result carries what the
-	// server is asking for. The discovery pass names the client's half
-	// (inputResponses) and not this one: it was not checked against the
-	// specification text.
+	// InputRequiredResult.input_requests, alias inputRequests, in
+	// mcp_types/_v2026_07_28/__init__.py: a map from the server's own key to a
+	// request (CreateMessageRequest, ListRootsRequest or ElicitRequest), each
+	// with `method` and `params`. Its sibling requestState and the client's
+	// inputResponses are not modelled: this client answers no requests for
+	// input (ADR 027).
 	inputRequestsField = "inputRequests"
 )
 
-// discoverResult is what a server returns from server/discover. Its field names
-// carry the same caveat as the constants above: assumed, not read from the
-// specification.
-type discoverResult struct {
-	ResultType        string   `json:"resultType"`
-	SupportedVersions []string `json:"supportedVersions"`
-	ServerInfo        Info     `json:"serverInfo"`
+// nameBearingMethods is NAME_BEARING_METHODS in mcp/shared/inbound.py: the
+// methods whose request repeats one of its params in the Mcp-Name header, and
+// which param. Only tools/call is sent by this client; the other two are here
+// so the table is the SDK's and not a subset that looks complete.
+var nameBearingMethods = map[string]string{
+	MethodToolsCall:  "name",
+	"prompts/get":    "name",
+	"resources/read": "uri",
+}
 
-	// Capabilities and Instructions are what InitializeResult carries, under
-	// the names it carries them. That a server/discover result has a place for
-	// them at all is assumed twice over: the client in this package reads
-	// neither, and only the server in internal/api/handler sets them.
-	Capabilities map[string]any `json:"capabilities,omitempty"`
-	Instructions string         `json:"instructions,omitempty"`
+// discoverResult is what a server returns from server/discover: DiscoverResult
+// in mcp_types/_v2026_07_28/__init__.py. The server names itself under
+// `_meta`, not at the top level.
+type discoverResult struct {
+	ResultType        string          `json:"resultType"`
+	SupportedVersions []string        `json:"supportedVersions"`
+	Capabilities      map[string]any  `json:"capabilities"`
+	Instructions      string          `json:"instructions,omitempty"`
+	Meta              map[string]Info `json:"_meta,omitempty"`
+
+	// The SDK's model requires both and this client caches nothing, so they are
+	// read tolerantly: absent is fine, and neither is acted on.
+	CacheScope string `json:"cacheScope"`
+	TTLMs      int64  `json:"ttlMs"`
 }
 
 // Discovery builds the server/discover result for a server that speaks
@@ -88,12 +115,19 @@ type discoverResult struct {
 // rather than in the handler so the server answers in the shape the client
 // decodes, from one declaration of it.
 func Discovery(server InitializeResult, versions []string) any {
+	capabilities := server.Capabilities
+	if capabilities == nil {
+		capabilities = map[string]any{}
+	}
 	return discoverResult{
 		ResultType:        resultTypeComplete,
 		SupportedVersions: versions,
-		ServerInfo:        server.ServerInfo,
-		Capabilities:      server.Capabilities,
+		Capabilities:      capabilities,
 		Instructions:      server.Instructions,
+		Meta:              map[string]Info{metaKeyServerInfo: server.ServerInfo},
+		// "private" and zero: not to be shared across callers and not to be
+		// reused, which is what a server that caches nothing should say.
+		CacheScope: "private",
 	}
 }
 

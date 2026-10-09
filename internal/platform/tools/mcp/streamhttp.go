@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -133,6 +134,7 @@ func (t *httpTransport) post(ctx context.Context, req Request) (*http.Response, 
 	if session != "" {
 		httpReq.Header.Set(sessionHeader, session)
 	}
+	setModernHeaders(httpReq.Header, req)
 
 	resp, err := t.client.Do(httpReq)
 	if err != nil {
@@ -150,6 +152,46 @@ func (t *httpTransport) post(ctx context.Context, req Request) (*http.Response, 
 		return nil, nil, fmt.Errorf("%s returned %s%s", req.Method, resp.Status, msg)
 	}
 	return resp, resp.Body, nil
+}
+
+// setModernHeaders repeats a 2026-07-28 request's envelope in the headers the
+// SDK's server checks it against (classify_inbound_request in
+// mcp/shared/inbound.py): the version, the method and, for a name-bearing
+// method, the name. A request with no version in its `_meta` is a handshake-era
+// one and gets none.
+func setModernHeaders(h http.Header, req Request) {
+	version := RequestVersion(req.Params)
+	if version == "" {
+		return
+	}
+	h.Set(headerProtocolVersion, version)
+	h.Set(headerMethod, req.Method)
+	key, ok := nameBearingMethods[req.Method]
+	if !ok {
+		return
+	}
+	var params map[string]json.RawMessage
+	var name string
+	if json.Unmarshal(req.Params, &params) == nil && len(params[key]) > 0 && json.Unmarshal(params[key], &name) == nil {
+		h.Set(headerName, encodeHeaderValue(name))
+	}
+}
+
+// encodeHeaderValue is encode_header_value in mcp/shared/inbound.py: printable
+// ASCII with no whitespace at either end travels as it is, and anything else —
+// or a value that already looks wrapped — travels as `=?base64?...?=` so the
+// server recovers the exact bytes.
+func encodeHeaderValue(v string) string {
+	const prefix, suffix = "=?base64?", "?="
+	wrapped := len(v) >= len(prefix)+len(suffix) && strings.HasPrefix(v, prefix) && strings.HasSuffix(v, suffix)
+	safe := !wrapped && v == strings.TrimSpace(v)
+	for i := 0; safe && i < len(v); i++ {
+		safe = v[i] >= 0x20 && v[i] <= 0x7E
+	}
+	if safe {
+		return v
+	}
+	return prefix + base64.StdEncoding.EncodeToString([]byte(v)) + suffix
 }
 
 // errStreamBroken is a stream that ended, or failed mid-read, before the reply

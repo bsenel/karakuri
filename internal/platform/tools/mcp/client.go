@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -177,13 +178,20 @@ type Negotiation struct {
 func (c *Client) Negotiate(ctx context.Context) (Negotiation, error) {
 	var found discoverResult
 	discoverErr := c.exchange(ctx, MethodServerDiscover, nil, &found, true)
+	if discoverErr == nil && !slices.Contains(found.SupportedVersions, ModernProtocolVersion) {
+		// A server that answers discovery and lists no revision this client
+		// speaks that way is advertising the handshake: negotiate_auto in the
+		// SDK's mcp/client/_probe.py falls back here too.
+		discoverErr = fmt.Errorf("%s: server supports %v, not %s", MethodServerDiscover, found.SupportedVersions, ModernProtocolVersion)
+	}
 	if discoverErr == nil {
+		server := found.Meta[metaKeyServerInfo]
 		c.mu.Lock()
 		c.modern = true
-		c.server = found.ServerInfo
+		c.server = server
 		c.protocol = ModernProtocolVersion
 		c.mu.Unlock()
-		return Negotiation{ProtocolVersion: ModernProtocolVersion, ServerInfo: found.ServerInfo, Path: PathDiscover}, nil
+		return Negotiation{ProtocolVersion: ModernProtocolVersion, ServerInfo: server, Path: PathDiscover}, nil
 	}
 
 	init, err := c.Initialize(ctx)
@@ -326,6 +334,7 @@ func withMeta(params json.RawMessage) (json.RawMessage, error) {
 		metaKeyProtocolVersion: ModernProtocolVersion,
 		// Empty for the reason Initialize declares none: nothing is implemented.
 		metaKeyClientCapabilities: map[string]any{},
+		metaKeyClientInfo:         ClientInfo,
 	}
 	return json.Marshal(fields)
 }
@@ -385,8 +394,9 @@ const maxInputRequestText = 1024
 // inputRequestText is what the server asked for, as text.
 //
 // It reads the message of each request under inputRequestsField, in key order.
-// That shape is assumed (see protocol.go), so a field that does not have it is
-// carried as its raw JSON rather than dropped.
+// That is the shape of an ElicitRequest, the one request kind with a message
+// (see protocol.go); a sampling or roots request, or anything else, is carried
+// as its raw JSON rather than dropped.
 func inputRequestText(result json.RawMessage) string {
 	var body map[string]json.RawMessage
 	_ = json.Unmarshal(result, &body)
