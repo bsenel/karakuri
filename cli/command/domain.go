@@ -20,12 +20,12 @@ func domainListCmd() *cobra.Command {
 		Short: "List registered domain packs",
 		Example: `  krk domain list
   krk domain list --output json`,
-		RunE: func(_ *cobra.Command, _ []string) error {
+		RunE: func(c *cobra.Command, _ []string) error {
 			data, _, err := api.Get("/domains")
 			if err != nil {
 				return err
 			}
-			client.PrintOutput(data, output)
+			printList(c, data, "domain packs")
 			return nil
 		},
 	}

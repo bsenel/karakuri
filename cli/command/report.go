@@ -94,7 +94,7 @@ func reportListCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List digest schedules",
-		RunE: func(_ *cobra.Command, _ []string) error {
+		RunE: func(c *cobra.Command, _ []string) error {
 			path := "/reports"
 			if twinID != "" {
 				path += "?twin_id=" + url.QueryEscape(twinID)
@@ -103,7 +103,7 @@ func reportListCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			client.PrintOutput(data, output)
+			printList(c, data, "digest schedules")
 			return nil
 		},
 	}

@@ -110,7 +110,7 @@ func containerListCmd(kind, short string) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: short,
-		RunE: func(_ *cobra.Command, _ []string) error {
+		RunE: func(c *cobra.Command, _ []string) error {
 			q := url.Values{"kind": {kind}}
 			if org != "" {
 				parent, err := resolveContainer("org", org, "")
@@ -123,7 +123,7 @@ func containerListCmd(kind, short string) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			client.PrintOutput(data, output)
+			printList(c, data, kind+"s")
 			return nil
 		},
 	}
