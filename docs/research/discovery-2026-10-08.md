@@ -446,6 +446,32 @@ Also for the next part, not a 'nothing found' but a disagreement: the roadmap's 
 
 Upstream state found by part 6b: 'What they ask for and complain about' is written (six ranked pain points and a Summary table), and its line reads 'Part 2 run: finished'. The 'Capability matrix' is written (two tables, fourteen rows), and its line reads 'Part 4 run: finished' (part 3's line also reads finished). '## Technical frontier' is written with Candidates F1 to F4, and its line reads 'Part 5 run: finished'. '## Governance and buying criteria' is written with Governance gaps G1 to G5, and its line reads 'Part 6a run: finished'. No upstream section is missing. Part 6b read no web page, ran no test and built nothing; everything below comes from this report and from repository files opened on 2026-10-09.
 
+### Candidates considered
+
+Checked against `docs/roadmap.md` on this branch (phase headings; the Phase 33 text by grep for the candidate's keywords, not a full reading; the Engineering Backlog row EB-001) and against the headings and backlog rows of `origin/main`'s roadmap (Phase 34 heading, EB-002, EB-003). This branch's roadmap does not yet hold Phase 34 or EB-002 and EB-003; Phase 34's text was not read. Grades are the ones the source section gave. Kept candidates are ordered strongest first by the count of independent primary sources the source section states; from rank 3 down every candidate has one source or none read in full, so the order there is a judgement, not a count.
+
+| # | Candidate | From | Primary sources as graded there | Kept or dropped |
+|---|---|---|---|---|
+| 1 | Checkpoint timeout: say what happens when nobody answers an approval | 'What they ask for and complain about', item 1 | [Q]; 1 source this cycle (4 threads, one tracker), 2 with the 2026-10-04 vendor sources | kept |
+| 2 | Provider rate-limit errors and unexplained quota exhaustion | same, item 3 | [Q]; 2 sources | kept (Phase 15, Completed, limits Karakuri's own API and raises a checkpoint on LLM-budget exhaustion per its acceptance line; a provider's 429 is not named there) |
+| 3 | G1: a person can stop the system and bring it to a safe state | 'Governance and buying criteria', row 4 | Commission overview page [Q]; Art. 14(4) from a secondary mirror [E]; legal text [N] | kept |
+| 4 | G4: inventory of the MCP servers and tools an agent used, with versions, in the evidence record | same, row 12 | OWASP ASI04, title only [Q] | kept (Phase 33, Planned, concerns the protocol version after the handshake; an inventory in the export was not found in it by grep) |
+| 5 | F3: audit a finished run for obligations it did not meet | 'Technical frontier' | https://arxiv.org/html/2610.11773 [Q, fragments] | kept |
+| 6 | F4: past successful runs as reference trajectories; checkpoint on divergence | 'Technical frontier' | https://arxiv.org/html/2610.12375 [Q, fragments; limitations unread] | kept |
+| 7 | F2: carry a run's authority outward on MCP calls | 'Technical frontier' | https://modelcontextprotocol.io/specification/draft/basic/authorization [Q], an inference | kept, unverified against Phase 34 (text not read); no match for it in Phase 33 by grep |
+| 8 | F1: expose a standing objective as an A2A 1.0 task | 'Technical frontier' | https://a2a-protocol.org/latest/specification/ [Q], first 100,000 characters | kept (the roadmap names A2A once, at line 2356 in Phase 28's text, as a direction; no phase plans it) |
+| 9 | MCP client sends arguments the server never declared | 'What they ask for', item 4 | [Q]; 1 source | kept |
+| 10 | Durable state matches what the user saw | same, item 2 | [Q]; 1 source (2 threads, one tracker) | kept (Phase 11, Completed, covers durability in general; this specific mismatch was not checked) |
+| 11 | Provider changes its tool-calling contract | same, item 5 | [Q]; 1 source | kept |
+| 12 | Fixed five-minute ceiling on a slow local model | same, item 6 | [Q]; 1 source | kept |
+| 13 | G3: record of serious-incident notification | 'Governance', row 6 | Commission page [Q]; Art. 26(5) secondary [E] | kept |
+| 14 | G2: evidence that overseers are competent and authorised | 'Governance', row 5 | Art. 26(2) secondary [E] | kept |
+| 15 | G5: mapping of the export to an auditor's framework | 'Governance', row 13 | NIST landing page [Q]; no control read [N] | kept |
+| 16 | OS-level sandboxed execution | 'Capability matrix' (LangGraph and Claude Code observed; Karakuri observed, narrow) | release notes, [E] | kept |
+| 17 | MCP server | 'Capability matrix' (LangGraph and Langfuse observed; Karakuri unknown) | release notes [E]; Langfuse #12738 body | dropped: Phase 34, 'Karakuri's Own Tools in Its Agents' Hands' (Planned), per its heading on `origin/main` and the matrix cell |
+
+Kept: 16. Dropped: 1. No kept candidate is listed in the Engineering Backlog (EB-001 provenance escalation, EB-002 delivered objectives ending as rejections, EB-003 export window offset). Code is read for at most the first five.
+
 ## Fit and bets
 
 Not yet written (part 7).
