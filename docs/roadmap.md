@@ -3289,6 +3289,132 @@ a real server; what the acceptance shows is the path, as Phase 32's did.
 
 ---
 
+## Phase 34 — Karakuri's Own Tools in Its Agents' Hands (Planned)
+
+**Goal:** A coding agent Karakuri delegates to can call Karakuri's own MCP tools
+under a credential scoped to that one delegation, and the tool surface covers
+what the deployment's own streams actually need.
+
+Requested by the operator on 2026-10-05, in these words: "we should develop our
+tools in our MCP and when karakuri delegated to claude code, it should add its
+own tools to be used." The steps below are the whole reading of that sentence;
+nothing in this phase exists yet.
+
+**Karakuri is an MCP server, and it delegates to coding agents; the two do not
+meet.** Phase 28 step 5 made Karakuri an MCP server at `POST /api/v1/mcp`
+(`internal/api/handler/mcp.go`). It serves five tools, all read-only:
+`objectives_list`, `objective_read`, `digest_read`, `reconcile_status` and
+`telemetry_read`. When the loop delegates to a coding-agent CLI,
+`internal/platform/tools/cliagent/claude.go` builds the command line from
+`--print --output-format=stream-json --verbose`, an optional `--allowed-tools=`
+and the prompt. It passes no MCP configuration, so a delegated Claude Code
+session cannot call any of the five.
+
+What that costs, as reported by the operator from this deployment (not read from
+any file in this pass): the standing "engineering backlog" stream needs the
+audit log, the cost report and reconcile status. Its coding agent gets them by
+shelling out to the `krk` binary, which uses the operator's cached admin
+session, held back only by an allow-list of command prefixes written into a
+prompt. An agent that reads logs and audit rows — text somebody outside the
+deployment may have written — holds an administrator's credential while it does
+so. And the audit log, checkpoints, cost and evaluation data are not MCP tools
+at all, so attaching the server as it stands would not replace `krk`.
+
+This phase depends on Karakuri's server speaking a protocol revision the
+installed coding-agent CLI speaks. Phase 33 step 5 moves the server to revision
+2026-07-28; that work stays there and is not repeated here. Step 1 below finds
+out which revisions the CLIs speak, and if the server's current revision is one
+of them this phase does not wait for Phase 33.
+
+**Steps:**
+
+1. **Find out first.** What each installed coding-agent CLI needs in order to
+   attach an MCP server for one headless run.
+
+   **Read so far (2026-10-05, `claude --help` and `claude mcp --help` on the
+   machine that wrote this phase; the documentation was not read).**
+
+   | Question | What the help output says |
+   |---|---|
+   | How a server is passed for one run | `--mcp-config <configs...>`: "Load MCP servers from JSON files or strings (space-separated)" |
+   | Whether other configured servers can be excluded | `--strict-mcp-config`: "Only use MCP servers from --mcp-config, ignoring all other MCP configurations" |
+   | The allow-list | `--allowedTools, --allowed-tools <tools...>`: "Comma or space-separated list of tool names to allow"; `--disallowed-tools` is its counterpart |
+   | Transports | `claude mcp add --transport http <name> <url>`, with `--header "Authorization: Bearer ..."` in an example; `claude mcp add-json` names "stdio, SSE, HTTP, or WebSocket" |
+
+   **To find out**, none of it read in that pass:
+   - The JSON shape `--mcp-config` expects, and whether an HTTP server entry in
+     it carries a header the way `claude mcp add --header` does.
+   - How an attached server's tools are named in the allow-list. The help
+     output gives only built-in examples (`"Bash(git *) Edit"`).
+   - Which MCP protocol revisions Claude Code speaks, and so whether it can
+     talk to Karakuri's server before or only after Phase 33 step 5.
+   - Whether `--strict-mcp-config` also keeps out servers brought by plugins or
+     managed settings. The help text for `--restricted` says "add
+     --strict-mcp-config to skip MCP servers too", which suggests it is the
+     switch, but nobody has run it.
+   - The other adapters in `internal/platform/tools/cliagent/`: `cursor.go`,
+     `gemini.go` and `copilot.go`. None of their CLIs' help output was read.
+     `cursor.go` passes `--allowed-tools=` today and `gemini.go` passes
+     `--prompt`; whether any of the three can attach a server for one run is
+     unknown.
+
+   An adapter whose CLI cannot attach a server says so with an error when an
+   action asks for Karakuri tools. It never delegates silently without them.
+2. **Grow the read surface from what the streams use today.** New tools in
+   `internal/api/handler/mcp.go`, each mapped onto an existing auth action
+   exactly as the five existing tools are, with tests in the style of
+   `internal/api/handler/mcp_test.go`: the audit log (list with the existing
+   filters, and the closed-window export), checkpoints (list, read), the cost
+   report, evaluation results, and standing objectives' reconcile outcomes
+   where `reconcile_status` does not already cover them. No new permission: a
+   tool is reachable exactly when its REST route would be.
+3. **A credential for one delegation.** When the loop delegates to a CLI agent
+   it mints a short-lived token for a principal that holds read-only bindings
+   scoped to the objective's twin, valid no longer than the action's timeout
+   and revoked when the action ends. Never the operator's session, never a
+   long-lived token on disk. The audit row for the delegated action records
+   that a delegation credential was issued and its scope, not the token.
+   Service accounts and twin-scoped role bindings are the existing pieces this
+   starts from; this step begins by reading how they issue and revoke tokens.
+4. **Attach on delegation, declared rather than assumed (ADR 019).** The action
+   says which Karakuri tools it needs, in a documented params field. The CLI
+   adapter writes a per-run MCP configuration (mode `0o600`, outside the
+   worktree, removed afterwards) pointing at this deployment's own MCP endpoint
+   with the delegation credential, excludes the servers the operator's own CLI
+   configuration would otherwise bring along, and adds only the requested tools
+   to the allow-list. An instance option turns attachment on; it defaults to
+   off, so today's behaviour is unchanged until configured. An action that
+   names no Karakuri tool gets none.
+5. **Results are data.** What these tools return can carry text somebody
+   outside the deployment wrote: a pull-request title in an audit payload, a
+   checkpoint note. Decide and record how the delegated action's result is
+   labelled so that ADR 021 holds: the loop must still see third-party material
+   as third-party when it arrived through Karakuri's own tools.
+6. **Use it.** A planner hint in `domains/software/hints.go`: an action that
+   needs the deployment's own data asks for the Karakuri tools instead of
+   shelling out to `krk`. The standing streams' briefs should then drop the
+   `krk` allow-list.
+
+**Acceptance:** With attachment on, a delegated run against a scripted CLI
+receives an MCP configuration naming this deployment's endpoint and a token.
+That token can list the audit rows of its own twin and cannot read another
+twin's objective. After the action ends the token is refused. With attachment
+off, or with no tool requested, the command line and environment are
+byte-for-byte what they are today. No file under the operator's home directory
+is read to produce the credential. A tool whose REST route the principal could
+not call is absent from its tool list.
+
+**What this is not.** The delegated agent gets no mutating tool in this phase.
+It cannot resolve a checkpoint, change an objective, an autonomy level or a
+budget, or approve its own plan: those stay with a person, and a later phase
+that wants any of them must route the call through `AuthorityBounds` like every
+other action (ADR 015), not through a tool. It is not a general way to hand a
+coding agent the operator's identity. And it does not attach the third-party
+MCP servers of the `tools.mcp` slot to the coding agent; that is a different
+question with ADR 022's bounds on it.
+
+---
+
 ## Engineering Backlog
 
 These are enhancements found in this deployment's own telemetry and audit log, each recorded with the data that shows the problem. A human approves an entry by merging the pull request that adds it; the delivery stream implements entries whose status is Planned.
@@ -3296,6 +3422,8 @@ These are enhancements found in this deployment's own telemetry and audit log, e
 | ID | Title | Evidence | Proposed change | Size | Status |
 |----|-------|----------|-----------------|------|--------|
 | EB-001 | The git environment's provenance escalation fires on almost every plan | Read 2026-10-04. `krk --output json audit --limit 300 --kind escalation` returned 85 escalation events (2026-09-26 to 2026-10-04, local +02:00 timestamps); `grep -o` on `escalation_reason` counted 83 of them as `plan drew on material written outside this deployment: software.env.git`, and the other 2 as confidence below threshold. `krk audit export --from 2026-10-03T00:00:00Z --to 2026-10-04T00:00:00Z` held 28 `kind: escalation` events, 27 with that same reason and `bounds_violation: true`. Code read: `domains/software/environments.go` sets `TrustThirdParty` whenever the 7-day window (`gitObservationWindow`) holds any pull request. `gh pr list --state all --limit 15` showed 11 pull requests by the repository owner and 4 by dependabot. Inferred, not verified: the escalations come from the deployment's own pull requests, so the reason no longer tells a reviewer anything. Not measured: how many of the 83 were approved unchanged. | In `domains/software/environments.go` (git environment `Observe`), mark the observation third party only when the window carries a pull request whose author is not in an operator-configured list of the deployment's own logins (default empty, so today's behaviour is kept until configured); still computed from the payload, per ADR 021. No change to `internal/core/agent/decide.go`. Unverified: whether the git adapter's pull request type carries the author; if not, add it in the adapter under `internal/platform/`. Verify with a table test in `domains/software` (own-author PRs only gives operator trust; one outside author gives third party; empty list gives third party) and by re-running the escalation count over a later day. Delivered: the `own_authors` option on a `github` versioncontrol instance; the escalation count over a later day has not been re-run yet. | M | Completed |
+| EB-002 | Objectives whose work is already delivered end by a human rejecting a checkpoint | Read 2026-10-05. `krk audit export --from 2026-10-04T00:00:00Z --to 2026-10-05T00:00:00Z`, counted with `grep -o`: 24 `kind: rejection` events over 12 distinct `objective_id` values, two per objective (one carrying the `checkpoint_id`, one with `escalation_reason: rejected_at_checkpoint`), all with approver `admin`. Of the 12 distinct rejection notes, 9 say the slice or template is already delivered (a commit or pull request is named) and that "this plan would redo it"; 2 name a failed planner call (one on the usage limit); 1 replaces an objective whose brief was too broad. Same export: 68 `execute` events (5 with `success: false`: 4 `software.act.write_code`, 1 `software.verify.run_tests`), 29 `escalation` strings (28 with the reason EB-001 covers), 18 `approval`. Inferred, not verified: after a delivery has been pushed the loop proposes a further plan instead of converging, and the operator's only way to end the objective is to reject it, which records a completed delivery as a rejection and a failed loop. Not measured: what those 9 plans proposed, how long each checkpoint waited, whether the objectives were re-run by hand rather than by the loop, and any day other than 2026-10-04. | First reproduce, then fix. Unverified in code beyond `internal/feature/loop/runner.go`, where a rejected checkpoint is recorded as `rejected_at_checkpoint` and the loop is finalized with an error: find why a plan is raised for an objective whose success criteria already hold, and have the loop evaluate the criteria before planning so that it converges without a checkpoint. If the reproduction shows the plans were legitimate re-plans and the operator was closing objectives by hand, propose instead a distinct terminal reason for "already delivered" so the audit log does not count it as a rejection. Verify with a test in `internal/feature/loop` (an objective whose criteria are met on the first observation finishes with no checkpoint and no rejection event) and by re-running the count of rejection notes containing "would redo it" over a later day. | S | Planned |
+| EB-003 | `krk audit export` returns a window two hours earlier than the one asked for | Read 2026-10-05, about 20:36Z, against the server started 2026-10-05T21:29:19+02:00 (`karakuri-obs/server.log` line 8703), which is after the newest commit on main (3f14f83, 21:18:33+02:00). `krk audit export --from 2026-10-04T00:00:00Z --to 2026-10-05T00:00:00Z`, counted with `grep -o '"created_at":"..."'`: 131 `created_at` values, of which 51 are dated 2026-10-03T22 or 2026-10-03T23 (before the window start) and 80 are dated 2026-10-04; the first is 2026-10-03T22:29:34Z, the last 2026-10-04T20:07:23Z, and none falls between 2026-10-04T21:00Z and the window end. `krk audit export --from 2026-10-05T19:30:00Z --to 2026-10-05T20:36:00Z` returned `"rows":[]`, while `krk --output json audit --limit 300` listed 26 distinct event timestamps between 21:30 and 22:36 at +02:00, which is that same hour. Both observations fit a window read two hours early, the host's offset. Inferred, not verified: the stored `created_at` text carries the local offset and SQLite compares it as text against the UTC bounds that `ListToolEvents` passes (`internal/platform/storage/gorm_storage.go`, whose comment says SQLite compares datetimes as text). Also inferred: the counts in EB-001 and EB-002 that name a UTC day describe 2026-10-03T22:00Z to 2026-10-04T22:00Z instead. Thin in one respect: one host, one offset, two windows, read in one pass; not measured on PostgreSQL, and the 131 values may include rows that are not tool events. No commit on main in the last 15 addresses this. | In `internal/platform/storage` make the window filter of `ListToolEvents` (and `ListResolvedCheckpoints`, which the export also uses) independent of the host's zone: store `created_at` in UTC at write and compare existing rows by instant, not by text; decide in the slice whether old rows are rewritten, since the export promises the same bytes for a past window. Verify with a storage test that writes an event stamped in a non-UTC zone just inside and just outside a UTC window and expects only the inside one, and by re-running the two exports above: no value before the window start, and a non-empty result for an hour the audit list shows events in. | S | Planned |
 
 ---
 
