@@ -45,6 +45,7 @@ Phases 27–32 were proposed from two kinds of evidence: what this repository de
 | 32    | The SRE Path, Actually Wired               | **Completed** |
 | 33    | MCP After the Handshake                    | **Planned**   |
 | 35    | An Unanswered Checkpoint Ends              | **Planned**   |
+| 36    | A Provider's Refusal Is Not a Plan         | **Planned**   |
 
 
 ---
@@ -3480,6 +3481,83 @@ reminder or a notification: an unanswered checkpoint must not become authority,
 which is only ever what is written into `agent.AuthorityBounds` (ADR 015). It
 adds no fallback behaviour other than rejection, and no per-checkpoint policy
 language.
+
+---
+
+## Phase 36 — A Provider's Refusal Is Not a Plan (Planned)
+
+This is a **demand phase**, proposed by the discovery cycle of 2026-10-08
+(`docs/research/discovery-2026-10-08.md`, 'Fit and bets', rank 2). It has two
+sources from two populations; one is a vendor's figure about its own customers
+and the other the report itself calls weak evidence about builders.
+
+**Goal:** When the model provider answers a call with a rate limit, the loop
+says so and ends the iteration with that reason, instead of handing a reviewer
+a placeholder plan to approve.
+
+**Rate limits are a leading cause of failed model calls, by a vendor's own
+count.** Datadog reports of its customers' LLM call errors in February 2026
+that "60% of those errors were caused by exceeded rate limits."; for March it
+reports "2% of all LLM spans in our dataset returned an error." and that "rate
+limit errors accounted for almost a third of them,"
+(https://www.datadoghq.com/state-of-ai-engineering/, read 2026-10-08). These
+are Datadog's figures for its own dataset, not a measurement made here. A
+second source, anthropics/claude-code issue #16157
+(https://github.com/anthropics/claude-code/issues/16157, read 2026-10-08),
+is a user of a coding agent reporting a quota that ran out without an
+explanation; the report grades it weak evidence about people who build agents.
+
+What the feasibility reading observed (`internal/feature/loop/reason.go` lines
+60 to 165, `internal/feature/loop/budget.go` lines 74 to 123,
+`internal/platform/llm/claude.go` lines 64 to 103): when the agent call returns
+any error, `stepReason` builds a plan of one `reason.plan` action holding the
+error text at confidence 0.3; it retries once, and only on a reply that did not
+parse; `ClaudeProvider.Complete` returns the langchaingo error unchanged and
+without the provider name. Inferred, not observed: that the placeholder plan
+reaches a person as a confidence checkpoint (`stepDecide` was not read).
+Karakuri's own token budget (`budgetedAgent.Run`, Phases 15, 18 and 23) is a
+different ceiling and is not changed here.
+
+**Steps:**
+
+1. **Name the error, classify it at the edge, stop building a plan from it.**
+   First read what the feasibility pass could not verify: what langchaingo's
+   Anthropic client returns for an HTTP 429 and whether the status or a
+   Retry-After value survives into it, and what `stepDecide` does with a
+   0.3-confidence `reason.plan`. Then define a domain error
+   `ErrProviderRateLimited`, with an optional retry-after duration, in
+   `internal/core/agent` or the core errors package (no vendor import);
+   classify the langchaingo error into it inside
+   `internal/platform/llm/claude.go`, wrapped with the provider name as
+   `internal/platform/llm/AGENTS.md` rule 3 asks (the classification stays
+   under `internal/platform/`, AGENTS.md rule 1); in `stepReason`
+   (`internal/feature/loop/reason.go`), on that error only, wait once within a
+   small cap and retry, and if it fails again end the iteration with a reason
+   that names the provider limit. Tests for both files. If the 429 cannot be
+   told apart from other failures in what langchaingo returns, stop and record
+   that in this section before writing anything else.
+2. **The other providers.** Apply the same classification to the remaining
+   providers under `internal/platform/llm/`, after reading whether
+   `internal/platform/agent/factory.go` or the CLI-fallback providers already
+   retry; neither was opened by the feasibility pass.
+3. **Reconcile decides whether to try again.** Read whether the reconcile
+   circuit breaker counts such a pass as a failure, and make a rate-limited
+   pass visible as that in the reconcile history. Whether and when the next
+   pass runs stays the supervisor's decision on its cadence (AGENTS.md rule 8).
+
+**Acceptance:** A test with a scripted provider that returns a rate-limit
+answer twice shows: one bounded wait, one retry, no `reason.plan` placeholder
+action, no checkpoint raised from it, and an iteration ended with a reason
+naming the provider and the limit. A provider that fails once and then succeeds
+yields the normal plan. Any other provider error behaves exactly as today. No
+file outside `internal/platform/` imports langchaingo
+(`scripts/check_langchaingo_imports.sh` passes).
+
+**What this is not.** It is not a retry policy with backoff tables, a
+provider failover, a queue, or a change to Karakuri's own quotas and budgets.
+The loop does not learn to keep trying: one bounded retry, then it ends. It
+does not charge for failed calls, and it does not explain a provider's quota
+to the user beyond passing on what the provider's answer said.
 
 ---
 
