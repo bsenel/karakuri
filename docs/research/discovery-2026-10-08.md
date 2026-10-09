@@ -185,9 +185,28 @@ Inferred: the complaint is about starvation and fairness between tenants on a sh
 
 **(ii) What it does that Karakuri does not**, from those versions only: a hook and plugin surface that third parties use to intercept tool calls and permission requests; subagents that inherit a permission mode; an OS-level sandbox with read-deny paths; an automatic permission mode decided by a classifier. (same URL) [E] Sections (iii) and (iv) are not written for this product in this part; part 2 read one of its threads.
 
-### Matrix rows so far
+### Capability matrix
 
-Each cell: observed (a page read today shows it) / claimed by the vendor (its blog, cookbook or announcement says so) / unknown. Part 4 owns the full matrix; these three rows are inputs to it. "Observed" here means read in release notes or a changelog, never run.
+Written by part 4 in place of part 3's interim heading. The matrix is two tables with the same fourteen rows: the first is part 3's three products, its cells unchanged; the second is KARAKURI and the products part 4 added. Each cell: observed (a page read shows it; for Karakuri, a file or roadmap phase in this repository shows it, and it is named) / claimed by the vendor (its blog, cookbook or announcement says so) / unknown. "Observed" means read in release notes, a changelog or the repository, never run. The KARAKURI column was filled on 2026-10-09 from README.md, LICENSE and the phase headings of docs/roadmap.md, each of which marks its phase "(Completed)" or "(Planned)"; that is the repository describing itself, mostly from headings whose text was not re-read, and no Karakuri code was run or read for it.
+
+| Capability | KARAKURI |
+|---|---|
+| Standing or scheduled objectives | observed: roadmap Phase 20, "Standing Objectives + Reconciliation (Completed)"; `internal/feature/reconcile` in AGENTS.md rule 8; standing, not only scheduled |
+| Human approval checkpoints | observed: roadmap Phase 13.5, "Actionable Checkpoints (Completed)" |
+| Earned or graduated autonomy | observed: README ("autonomy it has earned"), ADR 016, and the roadmap status table, "Fully implemented (Phase 20)" |
+| Durable resume after a crash | observed: roadmap Phase 11, "Distributed & Durable Execution (Completed)"; heading only |
+| Audit log and evidence export | observed: roadmap Phase 31, "The Evidence Pack (Completed)"; Phase 19 names audit in the frontend |
+| Spend ceilings | observed: roadmap Phase 23, "Per-Objective Spend Ceilings (Completed)" |
+| MCP client | observed: roadmap Phase 28, "MCP: The Tools Nobody Has To Write (Completed)"; Phase 33 (after the handshake) is Planned |
+| MCP server | unknown: Phase 34 on main, Planned, speaks of "Karakuri's own MCP tools"; whether a server ships today was not read |
+| OpenTelemetry GenAI telemetry | observed: roadmap Phase 29, "Telemetry Other Tools Already Understand (Completed)"; heading only |
+| Incident remediation | observed: roadmap Phase 32, "The SRE Path, Actually Wired (Completed)" |
+| Self-hostable open source | observed: LICENSE is Apache License 2.0; roadmap Phase 5, "Local Deployment Variants (Completed)" |
+| Agent-to-agent protocol | unknown: no mention in README; one mention in docs/roadmap.md, not read |
+| Sandboxed execution | observed, narrow: per-task git worktree for delegated CLIs (roadmap Phase 7, "Sandbox + worktree contract"; ADR 003); no OS-level sandbox found in README |
+| Evaluation built in | observed: roadmap Phase 30, "The Evaluation Set Karakuri Already Has (Completed)"; heading only |
+
+Part 3's three products, as part 3 graded them:
 
 | Capability | LangGraph + LangSmith Deployment | Temporal | Claude Code (2.1.285 to 2.1.294 only) |
 |---|---|---|---|
