@@ -40,11 +40,11 @@ export function DataTable<T>({
   if (error) {
     return (
       <div className="card">
-        <p className="error">{error}</p>
+        <p className="error" role="alert">{error}</p>
       </div>
     );
   }
-  if (loading) return <p className="muted">Loading…</p>;
+  if (loading) return <p className="muted" role="status">Loading…</p>;
   if (rows.length === 0) {
     return <p className="muted">{empty ?? 'Nothing here.'}</p>;
   }

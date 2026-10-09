@@ -67,7 +67,7 @@ rows are inserted; existing rows on the destination are not preserved.`,
 func parseDSN(s string) (string, string, error) {
 	driver, dsn, ok := strings.Cut(s, ":")
 	if !ok || driver == "" || dsn == "" {
-		return "", "", fmt.Errorf("expected <driver>:<dsn>, got %q", s)
+		return "", "", fmt.Errorf("expected <driver>:<dsn>, got %q; put the driver first, e.g. sqlite:./karakuri.db or postgres:postgres://user:pass@localhost:5432/karakuri", s)
 	}
 	return driver, dsn, nil
 }

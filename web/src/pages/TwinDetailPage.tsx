@@ -44,12 +44,24 @@ export function TwinDetailPage() {
     }
   };
 
-  if (err) return <p className="pill red">{err}</p>;
-  if (!twin) return <p className="muted">Loading…</p>;
+  if (!twin) {
+    if (!err) return <p className="muted">Loading…</p>;
+    return (
+      <>
+        <p className="muted small"><Link to="/twins">← Twins</Link></p>
+        <p className="pill red" role="alert">Could not load this twin: {err}</p>
+        <div className="row" style={{ marginTop: 12 }}>
+          <button onClick={() => void load()}>Retry</button>
+        </div>
+      </>
+    );
+  }
 
   return (
     <>
       <p className="muted small"><Link to="/twins">← Twins</Link></p>
+      {/* A failed save keeps the page, so the bindings being edited are not lost. */}
+      {err && <p className="pill red" role="alert">{err}</p>}
       <h1>{twin.name}</h1>
       <div className="row" style={{ marginBottom: 16 }}>
         <span className="pill">{twin.kind}</span>

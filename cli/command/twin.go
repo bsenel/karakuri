@@ -39,7 +39,7 @@ func twinBindingsCmd() *cobra.Command {
 			for _, pair := range set {
 				k, v, ok := strings.Cut(pair, "=")
 				if !ok || k == "" {
-					return fmt.Errorf("invalid --set %q: expect slot=instance", pair)
+					return fmt.Errorf("invalid --set %q: expected slot=instance, e.g. --set versioncontrol=acme_github\nRun 'krk twin bindings %s' without --set to see the current bindings", pair, args[0])
 				}
 				bindings[k] = v
 			}
