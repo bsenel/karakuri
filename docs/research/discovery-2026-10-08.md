@@ -448,6 +448,8 @@ Part 4 run: finished; products written 3 (HolmesGPT and Restate in full, Langfus
 
 ### Sources, part 5
 
+Part 5 run: started 2026-10-09; not finished
+
 ### Sources, part 6
 
 ### Sources, part 7
