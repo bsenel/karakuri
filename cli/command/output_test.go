@@ -9,7 +9,7 @@ func TestLaterEmptyListsSaySo(t *testing.T) {
 		args []string
 		want string
 	}{
-		{[]string{"org", "list"}, "No orgs.\n"},
+		{[]string{"org", "list"}, "No organisations.\n"},
 		{[]string{"team", "list"}, "No teams.\n"},
 		{[]string{"project", "list"}, "No projects.\n"},
 		{[]string{"report", "list"}, "No digest schedules.\n"},
