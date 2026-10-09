@@ -604,7 +604,62 @@ Taken together, Inferred: the fit is where it was on 2026-10-04, best where gove
 
 ## What changed since the last report
 
-Not yet written (part 7).
+Written by part 7 on 2026-10-09, against `docs/research/discovery-2026-10-04.md`. Section names in quotation marks are sections of this report unless the earlier report is named. No page was fetched for this section; where two statements disagree, both are given and neither is settled here.
+
+**CONFIRMED** (this cycle's primary sources support what the earlier report said):
+- The need for a pause enforced by the runtime, with a person deciding. Earlier: titles and vendor sources. Now: the authors' own words in 'What they ask for', item 1, for example "We can't rely on prompt-based solutions as they're not reliable for this use case" (https://github.com/openai/openai-agents-python/issues/378, read 2026-10-08) [Q].
+- Rate limits as a leading cause of failed model calls, now from Datadog's own page and not a third party ('What they ask for', item 3; https://www.datadoghq.com/state-of-ai-engineering/, read 2026-10-08, [Q]; Datadog's figure for its customers).
+- SRE work is investigation, read-only, handed to a person. Earlier: vendor claims. Now: Brex and Zalando speaking for themselves ('Platform and SRE teams').
+- EU high-risk obligations fall on 2 December 2027. Earlier: 'agreed to move to December 2027'. Now: the Commission's page ('Governance and buying criteria' (a); https://digital-strategy.ec.europa.eu/en/policies/regulatory-framework-ai, read 2026-10-09, [Q]).
+- A2A is under the Agentic AI Foundation: the specification page's banner ('Technical frontier' A1; https://a2a-protocol.org/latest/specification/, read 2026-10-09, [Q]). The earlier date of 17 August 2026 was not re-checked.
+- The OpenTelemetry GenAI conventions have moved and have no release: 'Technical frontier' A2 ([Q] for the moved notice and 'Development' status, [E] for the empty Releases section).
+- The earlier fit assessment's overall shape, strongest where governance is the condition: '(a) Fit by segment' above reaches the same place.
+
+**CONTRADICTED** (both statements given):
+- Datadog's figures. Earlier report, second-hand: 5% of LLM calls failing and 60% of those from rate limits, read as a standing figure. This cycle, at the source: those are February 2026; for March, "2% of all LLM spans in our dataset returned an error." and "rate limit errors accounted for almost a third of them," ('What they ask for', item 3) [Q].
+- The date the Digital Omnibus entered into force. Earlier report: 29 July 2026, per a law firm. This cycle: the Commission page says it "entered into force on 27 July 2026." [Q]. Not settled here; the Omnibus text is unread.
+- The n8n MCP complaint. Earlier report filed it as protocol mismatch. Read in full ('What they ask for', item 4), it is a client leaking its own fields into `arguments`, not a disagreement about the protocol.
+- 'Pausing and surviving a restart is already delivered' (earlier report, 'Not proposed', Candidate 3). This cycle: part 6b observed in `internal/feature/loop/runner.go` that a paused loop waits with no timer case, and part 2 found two issue authors asking what happens when nobody answers. Delivered, with a gap the earlier report did not name.
+- Not a contradiction of the earlier report but of the repository: `docs/roadmap.md` Phase 31 says the high-risk obligations "became enforceable on 2 August 2026"; the Commission page gives 2 December 2027. And inside this cycle, part 6b's code reading corrects part 6a's row 4: a per-objective pause exists.
+
+**THIN SPOTS NOW FILLED** (from the earlier report's 'Limits' paragraphs and 'Not found' list):
+- Issue trackers read as titles only: filled in part. Eleven threads read by body, four with replies ('What they ask for'). It settles the earlier open question: of the four human-in-the-loop threads only #636 closed as completed.
+- Vendor surveys read second-hand: filled for Datadog only.
+- No user speaking for themselves: filled in part. Spotify's three posts, Brex, Zalando, and four Hacker News threads ('Who the users are').
+- No SRE team: filled in part, Brex and Zalando; neither describes an agent acting during an incident.
+- No agent-to-agent protocol page: filled. The A2A 1.0 specification, first 100,000 of about 255,000 characters ('Technical frontier' A1).
+- No durable-execution runtime and no AI SRE tool read: filled. Temporal, Restate and HolmesGPT ('Competitive teardown').
+- An identified self-hoster: filled by one thread (Pizza Bot). The licence question: LICENSE is Apache 2.0 (capability matrix).
+
+**THIN SPOTS STILL THIN:**
+- Vendor surveys: Anthropic's report PDF is still unread [N] ('Regulated organisations, and the Anthropic report'); the LangChain survey was not re-read.
+- Less than six months of two changelogs: still thin. Claude Code was read for 2.1.285 to 2.1.294 only; the LangSmith extract has nothing for April and May 2026 ('Competitive teardown', Still thin).
+- No regulated organisation speaking for itself: still none ('Governance and buying criteria').
+- One abstract only: this cycle read two papers past the abstract, as fragments ('Technical frontier' B); this report does not say the earlier report's abstract-only paper was reopened, so that one stays as it was.
+- Cost as a complaint: still no first-hand cost data; the Datadog page gives no spend figures and the '$4,200 in 63 Hours' post was not attempted ('What they ask for', Still thin (5)).
+- The unverified lead (78% of enterprises with pilots, under 15% at production scale): no part followed it; it remains unverified and is cited for nothing.
+- OpenAI Codex: still not read. Practitioner sentiment beyond the threads above: still not sourced.
+
+**NEW** (no heading for it in the earlier report):
+- The distinction between unattended and interactive coding agents: nobody can correct mid-run, so correction moves before and after ('Teams running coding agents unattended', Inferred from Spotify and one Ask HN thread).
+- How issues close: of eleven threads with a known state, five closed as not planned, wontfix or duplicate without the thread showing the need was met ('What they ask for', Summary).
+- A capability matrix of six products and Karakuri over fourteen rows ('Capability matrix').
+- Providers ship the approve-and-budget loop themselves: Claude Managed Agents' session budget and `auto` permission policy; OpenAI's Agents API in public beta ('Technical frontier' C; the OpenAI page is [E]).
+- Two research directions with a method read: unfulfilled obligations (arXiv 2610.11773) and trajectory monitoring (arXiv 2610.12375).
+- A requirements table against repository files, with gaps G1 to G5, and code read for five candidates ('Governance and buying criteria', 'Feasibility').
+- The two gates applied in 'Fit and bets': five candidates recommended, eleven held back, ten of them only because their code was not read.
+
+### Where this cycle is still thin
+
+Every part's run line reads 'finished'; part 7's own line is set at its last commit. What the parts themselves say is thin, in the order the next cycle should fill it:
+
+1. **Feasibility (part 6b):** five of sixteen kept candidates read, each from line ranges of about three files; nothing run. The eleven unread candidates are why Gate 2 holds them back; the cheapest to settle look like the MCP client's arguments (candidate 9) and the provider timeout (candidate 12). Per-candidate unknowns: the storage adapter and `ResumeStoredLoops` (timeout); what langchaingo returns for a 429 and what `stepDecide` does (rate limits); whether a pass shares a cancellable context and whether Pause is audited elsewhere (G1); where instances are built (G4); what `finalizeLoop` records (F3). Phase 34's text was read by no part.
+2. **Governance (part 6a):** the AI Act's legal text unread (EUR-Lex empty twice); Articles 12, 14 and 26 known from a secondary mirror; Article 113 and the Omnibus unread; no NIST or ISO/IEC 42001 control read; OWASP mitigations unread; no procurement questionnaire; no regulated organisation; only two repository files opened.
+3. **Users (part 1):** no SRE team acting during an incident and no conference transcript; one self-hoster thread; unattended coding rests on one company from late 2025; no standing coding agent found; nothing first-hand from a regulated organisation; Anthropic's PDF unopened; no new source for product teams or large enterprises; quotations are fragments not checked against raw pages.
+4. **Complaints (part 2):** replies unread for n8n #25360, #9862, #22181 and langgraph #3716; langgraph #5672 read for 31 of 52 comments; n8n #21716 and pull request #23167 unopened; the claude-code reaction count unconfirmed; no production postmortem; Temporal forum, AutoGen, crewAI and openai/codex not attempted.
+5. **Competitors (parts 3 and 4):** every release-note line is [E]; Claude Code April to September 2026 unread and its sections (iii) and (iv) unwritten; Langfuse before 23 September unread; LangGraph 8 to 30 April and LangSmith April to May missing; Temporal's SDKs, Cloud changelog and licence unread; Restate's documentation unopened; DBOS, Inngest, the OpenAI Agents SDK and any governance-only product not opened; the matrix rows for earned autonomy and agent-to-agent protocol are unknown for all six products; the KARAKURI column rests on headings.
+6. **Frontier (part 5):** A2A read to character 100,000 (authentication and card signing unread; no implementer page); OTel agent-spans page truncated; WIMSE as an extract; `ext-auth` unread; the MCP draft not compared with 2026-07-28; the arXiv search failed, so two papers were chosen by title from one day's listing; OnTrack's limitations unread; the OpenAI changelog a paraphrase.
+7. **Synthesis (part 7):** read the 2026-10-04 report's 'Fit assessment', 'Not found', 'Proposed phases' headings and two 'Limits' paragraphs, not the whole file; did not read 'Competitive teardown' sections 1 to 6 of this report line by line, relying on the capability matrix and both 'Still thin' paragraphs; did not read README.md, only the roadmap phase headings. The contradiction on the Omnibus date was not settled by a fetch.
 
 ### How earlier proposals fared
 
@@ -612,6 +667,7 @@ Written by part 1 from `gh pr list --state all --label karakuri:discovery` on 20
 
 - Pull request #148, "Discovery 2026-10-04: users, pain points, trends; proposes Phase 33 (MCP revision 2026-07-28)", head `karakuri/discovery-2026-10-04`: **merged** on 2026-10-05. Its proposal is on `main` as "Phase 33 — MCP After the Handshake (Planned)" in `docs/roadmap.md`, the highest phase there.
 - No discovery pull request is closed unmerged, so no proposal has been declined by a human; none was open when this pass started.
+- Checked again by part 7 on 2026-10-09: the same command now also shows pull request #158, "Discovery 2026-10-08: deeper cycle, report in progress", head `karakuri/discovery-2026-10-08`, **open** (this cycle's own). #148 is unchanged, merged 2026-10-05. Still none closed unmerged.
 
 ## Sources
 
@@ -779,6 +835,8 @@ Also consulted, not counted: `docs/roadmap.md` (phase headings, the EB-001 row, 
 
 ### Sources, part 7
 
-Part 7 run: started 2026-10-09; not finished
+Part 7 run: finished; synthesis of the parts listed above
+
+No pages fetched. Commands run: `gh pr list --state open --label karakuri:discovery` and `gh pr list --state all --label karakuri:discovery` (2026-10-09). Repository files read: this report (the 'Competitive teardown' product sections 1 to 6 only through the capability matrix and the two 'Still thin' paragraphs), parts of `docs/research/discovery-2026-10-04.md` ('Fit assessment', 'Not found', the Trends limits paragraph, 'What this section supports', headings of the rest), and the last phase headings of `docs/roadmap.md`. README.md was not read. Nothing was built, run or tested.
 
 ### Sources, part 8
