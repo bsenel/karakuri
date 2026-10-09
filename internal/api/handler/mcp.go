@@ -78,10 +78,15 @@ a judgement about who may approve, and it stays with a person.
 What you can see is bounded by the access token you presented — the same
 permissions and the same tenancy that bound it in the REST API bind it here.`
 
-// mcpVersions is every revision this server answers, newest first. A request
-// that names one in its `_meta` is held to it; one that names none is a
-// 2025-06-18 client, which settled the version in the handshake.
+// mcpVersions is every revision this server answers, newest first, and what
+// server/discover lists. A request carrying the MCP-Protocol-Version header is
+// held to the envelope it states; one without it is a 2025-06-18 client, which
+// settled the version in the handshake.
 var mcpVersions = []string{mcp.ModernProtocolVersion, mcp.ProtocolVersion}
+
+// mcpModernVersions is the subset answered on the per-request-envelope path,
+// and what an unsupported-version refusal names as supported.
+var mcpModernVersions = []string{mcp.ModernProtocolVersion}
 
 // codeForbidden is this server's JSON-RPC code for "you may not". JSON-RPC
 // reserves -32000..-32099 for implementation-defined errors, and none of the
@@ -342,6 +347,15 @@ func (h *MCPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	result, rpcErr := h.dispatch(r, principal, req)
 	resp := mcp.Response{JSONRPC: "2.0", ID: req.ID, Result: result, Error: rpcErr}
+	if rpcErr != nil && mcp.IsModernRequest(r.Header) {
+		// A 2026-07-28 error carries an HTTP status as well, from the SDK's one
+		// table, whether the ladder or a tool produced it. The 2025-06-18 path
+		// keeps answering 200, as it always has.
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(mcp.ErrorHTTPStatus(rpcErr.Code))
+		_ = json.NewEncoder(w).Encode(resp)
+		return
+	}
 	writeJSON(w, resp)
 }
 
@@ -352,23 +366,22 @@ func (h *MCPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // resultType its result must carry. So authorization, the withheld tools and
 // the audit hook cannot differ between the two — there is one route to them.
 func (h *MCPHandler) dispatch(r *http.Request, p auth.Principal, req mcp.Request) (json.RawMessage, *mcp.Error) {
-	version := mcp.RequestVersion(req.Params)
-	switch version {
-	case "", mcp.ProtocolVersion, mcp.ModernProtocolVersion:
-	default:
-		// Refused before anything runs: answering under a revision this server
-		// does not implement would hand the client a result to read by rules
-		// that were never applied to it.
-		return nil, &mcp.Error{
-			Code:    mcp.CodeUnsupportedProtocol,
-			Message: fmt.Sprintf("unsupported protocol version %s; this server speaks %s", version, strings.Join(mcpVersions, ", ")),
-			Data:    map[string]any{"supported": mcpVersions},
-		}
+	// The MCP-Protocol-Version header chooses the path and the body does not,
+	// as in the SDK's server (mcp 2.3.0, mcp/server/_streamable_http_modern.py):
+	// without it this is a 2025-06-18 request whatever its `_meta` carries.
+	if !mcp.IsModernRequest(r.Header) {
+		return h.answer(r, p, req)
+	}
+	// Refused before anything runs: answering under a revision this server
+	// does not implement would hand the client a result to read by rules
+	// that were never applied to it.
+	if refusal := mcp.ClassifyInbound(r.Header, req, mcpModernVersions); refusal != nil {
+		return nil, refusal
 	}
 
 	result, rpcErr := h.answer(r, p, req)
-	if rpcErr != nil || version != mcp.ModernProtocolVersion {
-		return result, rpcErr
+	if rpcErr != nil {
+		return nil, rpcErr
 	}
 	complete, err := mcp.CompleteResult(result)
 	if err != nil {
