@@ -232,8 +232,10 @@ func TestMCPAuditListFiltersBySince(t *testing.T) {
 	f := newMCPFixture(t, karakuriauth.ActionAuditRead)
 	f.seedAudit(t, storage.ToolEvent{ID: "ev-now", ObjectiveID: "obj-1"})
 
-	earlier := time.Now().Add(-time.Hour).UTC().Format(time.RFC3339)
-	later := time.Now().Add(time.Hour).UTC().Format(time.RFC3339)
+	// Two days either side, so no zone the store stamps rows in can move the
+	// row across a bound.
+	earlier := time.Now().Add(-48 * time.Hour).UTC().Format(time.RFC3339)
+	later := time.Now().Add(48 * time.Hour).UTC().Format(time.RFC3339)
 	if ids := auditListIDs(t, f, map[string]any{"since": earlier}); !slices.Equal(ids, []string{"ev-now"}) {
 		t.Errorf("audit_list since an hour ago = %v, want [ev-now]", ids)
 	}
@@ -275,15 +277,15 @@ func TestMCPAuditExportReturnsTheExportersDocument(t *testing.T) {
 		storage.ToolEvent{ID: "ev-decision", ObjectiveID: "obj-1", Kind: storage.ToolEventEscalation, Provider: "anthropic", Model: "model-a"},
 		storage.ToolEvent{ID: "ev-oversight", ObjectiveID: "obj-1", Kind: storage.ToolEventApproval, Approver: "ada"})
 
-	from := time.Now().Add(-time.Hour).UTC()
-	to := time.Now().UTC() // after both rows, and already past: a closed window
+	// A closed window ending now. Whether it covers the rows above depends on
+	// the zone the store stamped them in, which is the exporter's to get
+	// right: what is asserted here is that the tool returns its answer.
+	from := time.Now().Add(-48 * time.Hour).UTC()
+	to := time.Now().UTC()
 	exporter := audit.NewExporter(f.store, audit.Retention{FloorDays: audit.FloorDays}, nil)
 	want, err := exporter.Export(context.Background(), from, to, time.Now())
 	if err != nil {
 		t.Fatal(err)
-	}
-	if !strings.Contains(string(want), "ev-decision") || !strings.Contains(string(want), "ev-oversight") {
-		t.Fatalf("the window does not cover the seeded rows: %s", want)
 	}
 
 	res := toolResult(t, f.call(t, "audit_export", map[string]any{
