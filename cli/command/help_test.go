@@ -81,3 +81,28 @@ func TestCheckpointHelp(t *testing.T) {
 		t.Errorf("checkpoint Short %q does not say what a checkpoint is", short)
 	}
 }
+
+// The create examples and flag usages point at IDs that come from get and list.
+func TestGetAndListHelp(t *testing.T) {
+	for _, cmd := range []*cobra.Command{objectiveGetCmd(), objectiveListCmd(), twinGetCmd(), twinListCmd()} {
+		requireExample(t, cmd)
+	}
+}
+
+func TestLoopHelp(t *testing.T) {
+	for _, cmd := range []*cobra.Command{loopStartCmd(), loopStatusCmd(), loopResumeCmd()} {
+		requireExample(t, cmd)
+	}
+
+	if usage := loopStartCmd().Flags().Lookup("twin").Usage; !strings.Contains(usage, "krk twin list") {
+		t.Errorf("--twin usage %q does not say where a twin ID comes from", usage)
+	}
+
+	// --decision is required, so its usage has to name the values it accepts.
+	usage := loopResumeCmd().Flags().Lookup("decision").Usage
+	for _, choice := range []string{"approve", "reject", "modify"} {
+		if !strings.Contains(usage, choice) {
+			t.Errorf("--decision usage %q does not name %q", usage, choice)
+		}
+	}
+}

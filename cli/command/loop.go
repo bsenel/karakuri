@@ -21,7 +21,11 @@ func loopStartCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "start <objective-id>",
 		Short: "Start the reasoning loop for an objective",
-		Args:  cobra.ExactArgs(1),
+		Example: `  krk loop start obj_123 --twin t_7f2a
+
+  # Stop after at most 10 iterations
+  krk loop start obj_123 --twin t_7f2a --max-iter 10`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
 			data, _, err := api.Post("/loops", map[string]any{
 				"objective_id": args[0],
@@ -36,7 +40,7 @@ func loopStartCmd() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&twinID, "twin", "", "Twin ID")
+	cmd.Flags().StringVar(&twinID, "twin", "", "ID of the objective's twin (see: krk twin list)")
 	cmd.Flags().IntVar(&maxIter, "max-iter", 50, "Maximum loop iterations")
 	cmd.Flags().BoolVar(&watchMode, "watch", false, "Enable watch mode (loop continues on environment events)")
 	return cmd
@@ -44,9 +48,10 @@ func loopStartCmd() *cobra.Command {
 
 func loopStatusCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "status <loop-id>",
-		Short: "Get loop status",
-		Args:  cobra.ExactArgs(1),
+		Use:     "status <loop-id>",
+		Short:   "Get loop status",
+		Example: `  krk loop status loop_123`,
+		Args:    cobra.ExactArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
 			data, _, err := api.Get("/loops/" + args[0] + "/status")
 			if err != nil {
@@ -65,7 +70,12 @@ func loopResumeCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "resume <loop-id>",
 		Short: "Resume a paused loop with a checkpoint decision",
-		Args:  cobra.ExactArgs(1),
+		Example: `  # Let the plan go ahead as drafted
+  krk loop resume loop_123 --decision approve --note "plan looks right"
+
+  # Stop it
+  krk loop resume loop_123 --decision reject --note "out of scope"`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(c *cobra.Command, args []string) error {
 			body := buildResolveBody(c, decision, note, approver, removeActions, constraints, revisedConfidence)
 			data, _, err := api.Post("/loops/"+args[0]+"/resume", body)
@@ -76,7 +86,7 @@ func loopResumeCmd() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&decision, "decision", "", "Decision choice (required)")
+	cmd.Flags().StringVar(&decision, "decision", "", "Decision: approve|reject|modify (required)")
 	cmd.Flags().StringVar(&note, "note", "", "Free-form rationale stored on the audit row")
 	cmd.Flags().StringVar(&approver, "approver", "", "Identifier of the operator approving/rejecting (audit attribution)")
 	cmd.Flags().StringSliceVar(&removeActions, "remove-action", nil, "Capability ID to drop from the draft (repeatable; only valid with --decision modify)")
