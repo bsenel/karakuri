@@ -41,7 +41,12 @@ export function AuditPage() {
       const list = await api.get<AuditEvent[]>('/audit' + (queryString ? '?' + queryString : ''));
       setEvents(list ?? []);
       setErr(null);
-    } catch (e) { setErr(String(e)); }
+    } catch (e) {
+      // Drop the previous answer: rows from another search under this error
+      // would read as the result of the one that failed.
+      setEvents([]);
+      setErr(String(e));
+    }
     finally { setLoading(false); }
   };
   useEffect(() => { void load(); }, [queryString]);
@@ -97,11 +102,16 @@ export function AuditPage() {
         </div>
       </div>
 
-      {err && <p className="pill red" style={{ marginTop: 12 }}>{err}</p>}
+      {err && (
+        <div className="row" style={{ marginTop: 12 }}>
+          <p className="pill red" role="alert">Could not load audit events: {err}</p>
+          <button onClick={() => void load()}>Retry</button>
+        </div>
+      )}
       {loading && <p className="muted small" style={{ marginTop: 12 }}>Loading…</p>}
 
       <div className="col" style={{ marginTop: 16 }}>
-        {!loading && events.length === 0 && <p className="muted">No matching audit events.</p>}
+        {!loading && !err && events.length === 0 && <p className="muted">No matching audit events.</p>}
         {events.map((ev) => (
           <AuditEventRow
             key={ev.id}
