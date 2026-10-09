@@ -315,6 +315,8 @@ Part 3 run: finished; products written 3 (two in full, Claude Code partial); fet
 
 ### Sources, part 4
 
+Part 4 run: started 2026-10-09; not finished
+
 ### Sources, part 5
 
 ### Sources, part 6
