@@ -719,4 +719,6 @@ Also consulted, not counted: `docs/roadmap.md` (phase headings, the EB-001 row, 
 
 ### Sources, part 7
 
+Part 7 run: started 2026-10-09; not finished
+
 ### Sources, part 8
