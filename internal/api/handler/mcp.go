@@ -17,11 +17,13 @@ import (
 	coreobjective "github.com/bsenel/karakuri/internal/core/objective"
 	"github.com/bsenel/karakuri/internal/core/reconcile"
 	coretelemetry "github.com/bsenel/karakuri/internal/core/telemetry"
+	featurecp "github.com/bsenel/karakuri/internal/feature/checkpoint"
 	featureobjective "github.com/bsenel/karakuri/internal/feature/objective"
 	featurereconcile "github.com/bsenel/karakuri/internal/feature/reconcile"
 	featurereport "github.com/bsenel/karakuri/internal/feature/report"
 	"github.com/bsenel/karakuri/internal/platform/storage"
 	"github.com/bsenel/karakuri/internal/platform/tools/mcp"
+	karakuriquota "github.com/bsenel/karakuri/internal/quota"
 )
 
 // MCPHandler serves Karakuri itself as an MCP server over streamable HTTP, so a
@@ -52,6 +54,11 @@ type MCPHandler struct {
 	// export through: the same store and the same exporter.
 	Audit       storage.StorageAdapter
 	AuditExport auditExporter
+
+	// Checkpoints and Quota are what CheckpointHandler and QuotaHandler read
+	// pending checkpoints and the cost report through.
+	Checkpoints *featurecp.Service
+	Quota       karakuriquota.Deps
 
 	// Enforcer is used for its Authorizer and its OnDeny hook rather than as
 	// middleware: the subject of an MCP call arrives inside a JSON-RPC body,
