@@ -508,6 +508,18 @@ First slice: Inferred, not built: when an instance completes discovery, write on
 
 Could not verify: whether `InstanceHealth.Server` includes the version or only the name (`Health` was not read); where instances are constructed and whether a store is reachable there (`bootstrap.go` not opened); whether Phase 33's planned work re-discovers after boot, which would change when the event must be written (its text was grepped, not read); whether non-MCP adapters have any version to report. OWASP ASI04 is known by title only (part 6a, https://genai.owasp.org/resource/owasp-top-10-for-agentic-applications-for-2026/, read 2026-10-09, [Q] for the title; mitigations unread), so that this slice satisfies it is not claimed.
 
+### Feasibility: F3, audit a finished run for obligations it did not meet
+
+Files read: `internal/core/objective/objective.go` (lines 30 to 55 and 150 to 189: `Objective`, `Criterion`, `Criterion.VerifierIsReserved`, `Constraint`); `internal/feature/loop/verify.go` (lines 10 to 159: `stepVerify` in full, the head of `evaluateWithAgent`); `internal/feature/eval/eval.go` (lines 1 to 110: package comment, `Store`, `JudgeFor`, `Service`, `CalibrationReport`, `Confusion`, `Item`).
+
+What exists: Observed: an `Objective` carries `SuccessCriteria []Criterion` and `Constraints []Constraint`. A `Criterion` has an id, a description, an optional `Verifier` capability, a weight and a `Met` flag; a `Constraint` has a description, a `Hard` flag and an optional `Expression`. Observed: `stepVerify` settles each criterion: a named verifier that ran must have succeeded on every run; a verifier from the MCP namespace never settles one (ADR 022); a criterion with no verifier, or whose verifier never ran, goes to the agent's judgement over the actual outcomes; no criteria at all scores 0 and not complete. It publishes `criteria_met_count`, `weighted_score` and per-domain scores on a step event. Observed: `internal/feature/eval` calibrates the judge against human checkpoint verdicts and is read-only. So the first 'proved wrong if' of Candidate F3 does not hold: objectives do state what must be true, as criteria.
+
+What is missing: Observed: in `stepVerify`, a criterion whose declared verifier never ran falls into the same branch as a criterion with no verifier and is judged by the model; the event payload carries counts and scores, not which criteria were unmet or how each was settled. Inferred: the record does not distinguish 'the required check ran and failed' from 'the required check was never performed and a model vouched for it', and the second is exactly the omission the paper describes (https://arxiv.org/html/2610.11773, read 2026-10-09 by part 5, [Q, fragments]). Observed: `Constraint` exists as a type; no use of it was seen in the lines of `stepVerify` read. Observed in part 6a's reading, not mine: the export row has no per-criterion field.
+
+First slice: Inferred, not built: in `stepVerify`, record for each criterion how it was settled, one of `verifier_ran`, `verifier_never_ran`, `no_verifier`, `reserved_verifier`, together with its id and `met`, and add the list to the step-completed payload and to the audit event the loop writes at finalisation; add an `unmet_obligations` section to `internal/feature/audit/export.go` listing, per finished run in the window, the criteria that ended unmet and the ones whose declared verifier never ran. No model call is added and no judgement changes, so the paper's low exact-match (its best is 21.67%, as part 5 quotes it) does not bear on this slice: it reports what the loop already decided. Files: `internal/feature/loop/verify.go`, the finalise path in `internal/feature/loop/runner.go`, `internal/feature/audit/export.go`, `docs/openapi.yaml`, tests. The loop's termination is unchanged (rule 8); a run with no recorded settlement (older rows) is reported as unknown, not as zero misses (rule 10); criterion descriptions written by an outside party keep their trust marking (rule 9).
+
+Could not verify: what the loop writes to `tool_events` at finalisation and whether criteria results are in that payload already (`finalizeLoop` was not read); whether `Constraints` are enforced anywhere (not searched); whether Phase 30's evaluation set scores omissions (only its heading and `eval.go`'s first 110 lines were read; those show judge calibration, not omission scoring); whether standing objectives' reconcile history (`reconcile.Outcome`) already keeps per-criterion results. The paper's method was not read by part 6b and nothing here reproduces it.
+
 ### Feasibility: G1, a person can stop the system and bring it to a safe state
 
 Files read: `internal/feature/reconcile/service.go` (lines 225 to 286 and 396 to 460: `Tick`, `dispatch`, `Pause`, `Resume`, `Trigger`); `internal/api/handler/reconcile.go` (lines 170 to 209: `ReconcileHandler.Pause`, `ReconcileHandler.Resume`); `internal/api/server.go` (lines 366 to 394: the objective, loop and checkpoint routes). `internal/core/reconcile/reconcile.go` was grepped, not read.
@@ -519,6 +531,12 @@ What is missing: Observed: `Pause` only writes state; it holds no handle on a pa
 First slice: Inferred, not built: (1) in `Service.Pause`, write a tool event of a new kind (for example `pause`) with the reason and principal, and the same for `Resume`, so `internal/feature/audit/export.go` can list stops under oversight; (2) keep a `context.CancelFunc` per running objective beside `s.running` in `dispatch`, and have `Pause` call it, so a stop reaches the pass in flight (the runner already finalises on `ctx.Done()`, observed at `runner.go` line 274). Files: `internal/feature/reconcile/service.go`, `internal/feature/audit/export.go`, a storage constant for the kind, `docs/openapi.yaml` if the export shape changes. This stays inside reconcile and does not change how the loop terminates (rule 8). A pause-all endpoint and a loop cancel endpoint are a second slice.
 
 Could not verify: whether the pass derives its loop context from the one `dispatch` holds, so that cancelling it actually stops the loop (the `pass` function was not read); whether a cancelled pass leaves a worktree or an external action half done, which is what 'safe state' asks; whether Pause is audited somewhere else (middleware or the store); whether the CLI or the web UI exposes pause. Article 14(4) is known only from the secondary page https://artificialintelligenceact.eu/article/14/ (read 2026-10-09 by part 6a, [E]); the legal text is unread.
+
+### Candidates not read
+
+The limit was five. These eleven kept candidates have no feasibility subsection because no code was read for them; nothing about their feasibility is claimed: F4 reference trajectories (rank 6); F2 authority on MCP calls (7); F1 A2A task (8); MCP client sends undeclared arguments (9); durable state matches what the user saw (10); provider tool-calling contract changes (11); fixed five-minute ceiling on a local model (12); G3 incident notification record (13); G2 competence of overseers (14); G5 framework mapping (15); OS-level sandboxed execution (16). Reason for all: beyond the five-candidate limit, not lack of files. In passing, and only as a grep hit, not a reading: `internal/platform/tools/mcp/client.go` has a `withTimeout` function, which bears on candidates 9 and 12 and was not opened.
+
+**Still thin:** Five of sixteen kept candidates were read; the eleven above were not. Every reading was partial: line ranges of fifteen source files, three or so per candidate, with no test run and nothing built, so each 'What is missing' means missing from the lines named, not from the repository. The points most likely to change a conclusion are listed under each 'Could not verify' and are, in short: for the checkpoint timeout, the storage adapter and what `ResumeStoredLoops` does; for provider rate limits, what error langchaingo returns for a 429 and what `stepDecide` does with the placeholder plan; for G1, whether the reconcile pass shares a cancellable context with its loop and whether Pause is audited elsewhere; for G4, where instances are built and what Phase 33 plans; for F3, what `finalizeLoop` already records. The order of the candidate list below rank 2 is a judgement, since those candidates each rest on one source. Phase 34's text was not read (this branch's roadmap predates it), so candidate 7 is kept unverified and the MCP-server drop rests on a heading. The G1 reading corrects part 6a's row 4 ('nothing found'): a per-objective pause exists; part 6a's text was left as it is.
 
 ## Fit and bets
 
@@ -677,7 +695,27 @@ Repository files opened: `internal/feature/audit/export.go` (in full); `internal
 
 ### Sources, part 6b
 
-Part 6b run: started 2026-10-09; not finished
+Part 6b run: finished; candidates read 5 of 16; files read 15
+
+All opened 2026-10-09. No web page was read, no test was run, nothing was built. Pull request #158 already existed for this branch and was left as it is. The fifteen are source files opened with Read, each for the line ranges its feasibility subsection names:
+
+- `internal/core/checkpoint/checkpoint.go` (whole file)
+- `internal/feature/checkpoint/service.go` (lines 20 to 199)
+- `internal/feature/loop/runner.go` (lines 236 to 293)
+- `internal/feature/reconcile/service.go` (lines 225 to 286, 396 to 460)
+- `internal/api/handler/reconcile.go` (lines 170 to 209)
+- `internal/api/server.go` (lines 366 to 394)
+- `internal/feature/loop/reason.go` (lines 60 to 165)
+- `internal/feature/loop/budget.go` (lines 74 to 123)
+- `internal/platform/llm/claude.go` (lines 64 to 103)
+- `internal/platform/tools/mcp/environment.go` (lines 20 to 129)
+- `internal/platform/tools/mcp/instance.go` (lines 36 to 85)
+- `internal/platform/tools/mcp/protocol.go` (lines 130 to 150)
+- `internal/core/objective/objective.go` (lines 30 to 55, 150 to 189)
+- `internal/feature/loop/verify.go` (lines 10 to 159)
+- `internal/feature/eval/eval.go` (lines 1 to 110)
+
+Also consulted, not counted: `docs/roadmap.md` (phase headings, the EB-001 row, Phase 33 by keyword grep) and the headings and backlog rows of `origin/main`'s copy; `AGENTS.md` and the child `AGENTS.md` files of `internal/core`, `internal/feature`, `internal/api`, `internal/platform` and `internal/platform/llm`. Grepped only, not read: `internal/core/reconcile/reconcile.go`, `internal/feature/audit/export.go`, `internal/platform/tools/mcp/client.go`, `internal/feature/loop/service.go`.
 
 ### Sources, part 7
 
