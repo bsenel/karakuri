@@ -12,7 +12,11 @@ vi.mock('@/api/client', async () => {
 import { ArtifactsPage } from './ArtifactsPage';
 
 describe('ArtifactsPage', () => {
-  beforeEach(() => get.mockReset());
+  // Braces matter: mockReset returns the mock, and vitest runs a function
+  // returned from beforeEach as that test's cleanup — it would call get().
+  beforeEach(() => {
+    get.mockReset();
+  });
 
   it('says it is loading rather than that there are no artifacts', () => {
     // A request that never settles: the table must not claim to be empty.

@@ -14,7 +14,11 @@ import { MemoryPage } from './MemoryPage';
 const recall = () => fireEvent.click(screen.getByRole('button', { name: 'Recall' }));
 
 describe('MemoryPage', () => {
-  beforeEach(() => post.mockReset());
+  // Braces matter: mockReset returns the mock, and vitest runs a function
+  // returned from beforeEach as that test's cleanup — it would call post().
+  beforeEach(() => {
+    post.mockReset();
+  });
 
   it('asks for a query before one has been run', () => {
     render(<MemoryPage />);
