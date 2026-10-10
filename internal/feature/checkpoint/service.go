@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -59,6 +60,9 @@ type CreateOptions struct {
 	// WorldState is what the planner saw when it escalated; nil when the
 	// caller has none (budget pauses, manual checkpoints).
 	WorldState *loop.WorldState
+	// ExpiresAt is when an unanswered checkpoint lapses into a rejection; nil
+	// when the caller sets no limit.
+	ExpiresAt *time.Time
 }
 
 // Create persists a pending checkpoint and publishes a checkpoint event.
@@ -195,6 +199,13 @@ func (s *Service) Record(ctx context.Context, id string, d corecheckpoint.Decisi
 		Success:     success,
 	})
 	return nil
+}
+
+// ExpireDue rejects, as system:timeout, every pending checkpoint whose
+// ExpiresAt is before now, and reports how many it rejected. Expiry never
+// approves.
+func (s *Service) ExpireDue(ctx context.Context, now time.Time) (int, error) {
+	return 0, errors.New("checkpoint: ExpireDue is not implemented")
 }
 
 func newID() (string, error) {
