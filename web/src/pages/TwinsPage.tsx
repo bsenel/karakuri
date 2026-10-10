@@ -1,12 +1,16 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '@/api/client';
+import { describe } from '@/api/useApi';
 import type { Twin } from '@/api/types';
 
 export function TwinsPage() {
   const [twins, setTwins] = useState<Twin[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
+  // Whether the list has been read at least once. Without it a failed first
+  // load renders the empty table, which says there are no twins.
+  const [loaded, setLoaded] = useState(false);
 
   // Create form state
   const [name, setName] = useState('');
@@ -18,9 +22,10 @@ export function TwinsPage() {
     try {
       const list = await api.get<Twin[]>('/twins');
       setTwins(list ?? []);
+      setLoaded(true);
       setErr(null);
     } catch (e) {
-      setErr(String(e));
+      setErr(describe(e));
     } finally {
       setLoading(false);
     }
@@ -35,7 +40,7 @@ export function TwinsPage() {
       setName('');
       await load();
     } catch (e) {
-      setErr(String(e));
+      setErr(describe(e));
     }
   };
 
@@ -78,8 +83,13 @@ export function TwinsPage() {
         </form>
       </div>
 
-      {err && <p className="pill red">{err}</p>}
-      {loading ? <p className="muted">Loading…</p> : (
+      {err && (
+        <p>
+          <span className="pill red">{err}</span>{' '}
+          {!loaded && <button onClick={() => void load()}>Retry</button>}
+        </p>
+      )}
+      {loading ? <p className="muted">Loading…</p> : loaded && (
         <table>
           <thead>
             <tr><th>Name</th><th>Kind</th><th>Domain</th><th>Bindings</th><th>Created</th></tr>

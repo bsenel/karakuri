@@ -41,6 +41,8 @@ func TestEmptyListsSaySo(t *testing.T) {
 		{[]string{"twin", "list"}, "No twins.\n"},
 		{[]string{"checkpoint", "list"}, "No pending checkpoints.\n"},
 		{[]string{"artifact", "list"}, "No artifacts.\n"},
+		{[]string{"objective", "templates"}, "No objective templates.\n"},
+		{[]string{"quota", "tiers"}, "No stored tier limits.\n"},
 	} {
 		for _, body := range []string{"null", "[]\n"} {
 			apiURL := startListServer(t, body)

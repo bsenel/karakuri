@@ -13,6 +13,8 @@ export function MemoryPage() {
   const [results, setResults] = useState<MemoryEntry[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  // How the last recall ended; null until one has been run.
+  const [ran, setRan] = useState<'ok' | 'failed' | null>(null);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -28,7 +30,12 @@ export function MemoryPage() {
       const r = await api.post<MemoryEntry[]>('/memory/recall', q);
       setResults(r ?? []);
       setErr(null);
-    } catch (e) { setErr(String(e)); }
+      setRan('ok');
+    } catch (e) {
+      setResults([]);
+      setErr(String(e));
+      setRan('failed');
+    }
     finally { setLoading(false); }
   };
 
@@ -75,7 +82,7 @@ export function MemoryPage() {
         <button className="primary" type="submit" disabled={loading}>Recall</button>
       </form>
 
-      {err && <p className="pill red">{err}</p>}
+      {err && <p className="pill red" role="alert">{err}</p>}
 
       <h2>Results ({results.length})</h2>
       <table>
@@ -91,8 +98,15 @@ export function MemoryPage() {
               <td className="muted small">{new Date(r.created_at).toLocaleString()}</td>
             </tr>
           ))}
-          {results.length === 0 && (
-            <tr><td colSpan={6} className="muted">No results yet — run a recall query.</td></tr>
+          {loading && (
+            <tr><td colSpan={6} className="muted" role="status">Recalling…</td></tr>
+          )}
+          {!loading && results.length === 0 && (
+            <tr><td colSpan={6} className="muted">
+              {ran === 'ok' && 'No memories matched. Try a broader query, more tiers, or clear the agent and twin filters.'}
+              {ran === 'failed' && 'The recall failed, so there are no results to show.'}
+              {ran === null && 'No results yet — run a recall query.'}
+            </td></tr>
           )}
         </tbody>
       </table>

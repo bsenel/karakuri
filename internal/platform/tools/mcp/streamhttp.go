@@ -4,7 +4,9 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -64,20 +66,26 @@ func (t *httpTransport) Kind() string { return TransportHTTP }
 func (t *httpTransport) Send(ctx context.Context, req Request) (*Response, error) {
 	resp, body, err := t.post(ctx, req)
 	if err != nil {
+		var refused *Error
+		if errors.As(err, &refused) {
+			return &Response{JSONRPC: "2.0", ID: req.ID, Error: refused}, nil
+		}
 		return nil, err
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	// A session id arrives on the initialize reply and is echoed on everything
-	// after it.
-	if sid := resp.Header.Get(sessionHeader); sid != "" {
+	// after it. One offered on any other reply is not kept: revision 2026-07-28
+	// has no sessions, and a connection opened by server/discover never sends
+	// initialize.
+	if sid := resp.Header.Get(sessionHeader); sid != "" && req.Method == MethodInitialize {
 		t.mu.Lock()
 		t.session = sid
 		t.mu.Unlock()
 	}
 
 	if strings.HasPrefix(resp.Header.Get("Content-Type"), "text/event-stream") {
-		return t.readSSE(body, req.ID)
+		return t.readSSE(ctx, body, req.ID)
 	}
 
 	raw, err := io.ReadAll(io.LimitReader(body, maxHTTPBody))
@@ -130,6 +138,7 @@ func (t *httpTransport) post(ctx context.Context, req Request) (*http.Response, 
 	if session != "" {
 		httpReq.Header.Set(sessionHeader, session)
 	}
+	setModernHeaders(httpReq.Header, req)
 
 	resp, err := t.client.Do(httpReq)
 	if err != nil {
@@ -140,6 +149,14 @@ func (t *httpTransport) post(ctx context.Context, req Request) (*http.Response, 
 		// missing token — and a bare status code sends an operator guessing.
 		detail, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
 		_ = resp.Body.Close()
+		// A 2026-07-28 server refuses with a status and a JSON-RPC error
+		// together (ERROR_CODE_HTTP_STATUS in the SDK's mcp/shared/inbound.py
+		// maps -32602 to 400 and -32601 to 404), so a body that is one is the
+		// server's answer rather than a transport failure.
+		var refused Response
+		if json.Unmarshal(bytes.TrimSpace(detail), &refused) == nil && refused.Error != nil {
+			return nil, nil, refused.Error
+		}
 		msg := strings.TrimSpace(string(detail))
 		if msg != "" {
 			msg = ": " + msg
@@ -149,13 +166,61 @@ func (t *httpTransport) post(ctx context.Context, req Request) (*http.Response, 
 	return resp, resp.Body, nil
 }
 
+// setModernHeaders repeats a 2026-07-28 request's envelope in the headers the
+// SDK's server checks it against (classify_inbound_request in
+// mcp/shared/inbound.py): the version, the method and, for a name-bearing
+// method, the name. A request with no version in its `_meta` is a handshake-era
+// one and gets none.
+func setModernHeaders(h http.Header, req Request) {
+	version := RequestVersion(req.Params)
+	if version == "" {
+		return
+	}
+	h.Set(headerProtocolVersion, version)
+	h.Set(headerMethod, req.Method)
+	key, ok := nameBearingMethods[req.Method]
+	if !ok {
+		return
+	}
+	var params map[string]json.RawMessage
+	var name string
+	if json.Unmarshal(req.Params, &params) == nil && len(params[key]) > 0 && json.Unmarshal(params[key], &name) == nil {
+		h.Set(headerName, encodeHeaderValue(name))
+	}
+}
+
+// encodeHeaderValue is encode_header_value in mcp/shared/inbound.py: printable
+// ASCII with no whitespace at either end travels as it is, and anything else —
+// or a value that already looks wrapped — travels as `=?base64?...?=` so the
+// server recovers the exact bytes.
+func encodeHeaderValue(v string) string {
+	const prefix, suffix = "=?base64?", "?="
+	wrapped := len(v) >= len(prefix)+len(suffix) && strings.HasPrefix(v, prefix) && strings.HasSuffix(v, suffix)
+	safe := !wrapped && v == strings.TrimSpace(v)
+	for i := 0; safe && i < len(v); i++ {
+		safe = v[i] >= 0x20 && v[i] <= 0x7E
+	}
+	if safe {
+		return v
+	}
+	return prefix + base64.StdEncoding.EncodeToString([]byte(v)) + suffix
+}
+
+// errStreamBroken is a stream that ended, or failed mid-read, before the reply
+// to this request arrived: the request is lost, as opposed to refused or
+// answered badly. The client tests for it to decide whether to re-issue.
+var errStreamBroken = errors.New("event stream closed before answering the request")
+
 // readSSE pulls JSON-RPC responses out of an event stream and returns the one
 // matching this request, ignoring everything else on it.
 //
 // Ignoring is the point: the reason a server chooses a stream is to send
 // progress notifications before the result, and a reader that took the first
 // event would report progress as a tool result.
-func (t *httpTransport) readSSE(body io.Reader, id json.RawMessage) (*Response, error) {
+//
+// A read that fails because the context ended is not a broken stream: the
+// caller ran out of time, and sending the request again would not give it more.
+func (t *httpTransport) readSSE(ctx context.Context, body io.Reader, id json.RawMessage) (*Response, error) {
 	scanner := bufio.NewScanner(io.LimitReader(body, maxHTTPBody))
 	scanner.Buffer(make([]byte, 0, 64*1024), maxHTTPBody)
 
@@ -196,12 +261,18 @@ func (t *httpTransport) readSSE(body io.Reader, id json.RawMessage) (*Response, 
 		}
 	}
 	if err := scanner.Err(); err != nil {
-		return nil, fmt.Errorf("read event stream: %w", err)
+		if ctx.Err() != nil {
+			return nil, fmt.Errorf("read event stream: %w", err)
+		}
+		return nil, fmt.Errorf("%w: read event stream: %v", errStreamBroken, err)
 	}
 	// A stream that ended without a blank line after its last event is still
 	// carrying a result.
 	if resp, ok := flush(); ok {
 		return resp, nil
 	}
-	return nil, fmt.Errorf("event stream closed before answering the request")
+	if err := ctx.Err(); err != nil {
+		return nil, fmt.Errorf("read event stream: %w", err)
+	}
+	return nil, errStreamBroken
 }

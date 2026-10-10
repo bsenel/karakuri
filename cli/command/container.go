@@ -110,7 +110,7 @@ func containerListCmd(kind, short string) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: short,
-		RunE: func(_ *cobra.Command, _ []string) error {
+		RunE: func(c *cobra.Command, _ []string) error {
 			q := url.Values{"kind": {kind}}
 			if org != "" {
 				parent, err := resolveContainer("org", org, "")
@@ -123,7 +123,11 @@ func containerListCmd(kind, short string) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			client.PrintOutput(data, output)
+			plural := kind + "s"
+			if kind == "org" {
+				plural = "organisations" // the word the help and the web UI use
+			}
+			printList(c, data, plural)
 			return nil
 		},
 	}
@@ -166,7 +170,7 @@ func containerDeleteCmd(kind, short string) *cobra.Command {
 		Use:   "delete <name>",
 		Short: short,
 		Args:  cobra.ExactArgs(1),
-		RunE: func(_ *cobra.Command, args []string) error {
+		RunE: func(c *cobra.Command, args []string) error {
 			id, err := resolveIn(kind, args[0], org)
 			if err != nil {
 				return err
@@ -178,6 +182,16 @@ func containerDeleteCmd(kind, short string) *cobra.Command {
 				return err
 			}
 			client.PrintOutput([]byte(fmt.Sprintf("{%q:%q}", "deleted", id)), output)
+			// The id alone does not say what went; in the pretty format a line
+			// on stderr names it the way report delete does. Stdout is the same
+			// in every format, so a pipe sees what it saw before.
+			if output == "pretty" {
+				noun := kind
+				if kind == "org" {
+					noun = "organisation" // the word the help and the web UI use
+				}
+				fmt.Fprintf(c.ErrOrStderr(), "%s %s deleted\n", noun, args[0])
+			}
 			return nil
 		},
 	}
@@ -361,7 +375,7 @@ func resolveContainer(kind, name, parentID string) (string, error) {
 	}
 	switch len(found) {
 	case 0:
-		return "", fmt.Errorf("no %s called %q", kind, name)
+		return "", fmt.Errorf("no %s called %q\nRun 'krk %s list' to see the names that exist", kind, name, kind)
 	case 1:
 		return found[0].ID, nil
 	default:

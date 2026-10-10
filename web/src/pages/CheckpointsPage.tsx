@@ -44,12 +44,12 @@ export function CheckpointsPage() {
         modify to revise the plan with feedback, or reject to terminate the loop.
       </p>
 
-      {err && <p className="pill red">{err}</p>}
+      {err && <p className="pill red" role="alert">{err}</p>}
 
       <div className="col" style={{ marginTop: 16 }}>
         {/* Neither "not loaded yet" nor "could not load" is "nothing pending":
             saying so would tell an operator no loop is waiting on them. */}
-        {loading && <p className="muted">Loading…</p>}
+        {loading && <p className="muted" role="status">Loading…</p>}
         {!loading && !err && items.length === 0 && (
           <p className="muted">
             No pending checkpoints. One appears here when a running loop

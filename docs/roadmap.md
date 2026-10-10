@@ -43,8 +43,13 @@ Phases 27–32 were proposed from two kinds of evidence: what this repository de
 | 30    | The Evaluation Set Karakuri Already Has    | **Completed** |
 | 31    | The Evidence Pack                          | **Completed** |
 | 32    | The SRE Path, Actually Wired               | **Completed** |
-| 33    | MCP After the Handshake                    | **Planned**   |
+| 33    | MCP After the Handshake                    | **Completed** |
 | 34    | Karakuri's Own Tools in Its Agents' Hands  | **Completed** |
+| 35    | An Unanswered Checkpoint Ends              | **Planned**   |
+| 36    | A Provider's Refusal Is Not a Plan         | **Planned**   |
+| 37    | A Stop That Reaches the Running Pass       | **Planned**   |
+| 38    | What Was Required and Not Done             | **Planned**   |
+| 40    | Streams That Run Without a Coordinator     | **Planned**   |
 
 
 ---
@@ -3181,7 +3186,7 @@ harness.
 
 ---
 
-## Phase 33 — MCP After the Handshake (Planned)
+## Phase 33 — MCP After the Handshake (Completed)
 
 **Goal:** Karakuri's MCP client can bind a server that speaks only revision
 2026-07-28, and still binds the servers it binds today.
@@ -3250,6 +3255,31 @@ client can talk to the servers people run.
    check it; every server above answered `2025-06-18`, the version the client
    asked for. The modern-only server was the SDK's own `_serve_modern_stream`
    driven directly, which is a private function: no SDK ships that mode.
+
+   **Result with the second path (run 2026-10-09).** The client after the
+   review of pull request #159, against the official Python SDK's server
+   (`mcp` 2.3.0, default settings, server name `probe`), by
+   `go test -run SDKInterop ./internal/platform/tools/mcp/` with
+   `KARAKURI_MCP_SDK_PYTHON` and `KARAKURI_MCP_SDK_PROBE` set (the tests skip
+   without them), and Karakuri's own server by its handler tests:
+
+   | Peer | What was run | Result |
+   |---|---|---|
+   | Python SDK 2.3.0, streamable HTTP, default | `Negotiate` (`TestSDKInteropHTTPNegotiatesDiscover`) | passed: the discover path at `2026-07-28`, server name `probe` read from `_meta` |
+   | Python SDK 2.3.0, streamable HTTP, default | the legacy handshake, `Initialize` called directly (`TestSDKInteropHTTPLegacyHandshakeStillConnects`) | passed: connects at `2025-06-18`, server name `probe` |
+   | Python SDK 2.3.0, stdio, default | `Negotiate` (`TestSDKInteropStdio`) | passed: the discover path at `2026-07-28`, server name `probe` |
+   | All three of the above | list tools, call `echo` | passed: one tool, `echo`, and it returned the text sent |
+   | Karakuri's own server, `internal/api/handler/mcp.go` | routing by the `MCP-Protocol-Version` header; the namespaced envelope keys required; `-32020` when header and envelope disagree, before the version is judged; `-32022` for an unsupported version; `404` for an unknown method on the modern path (the six `TestMCPServer...` tests named in the review's step 3) | passed, against `httptest` and this repository's client, not against an SDK client |
+   | Not run | the specification text itself, a 2026-07-28-only server, the TypeScript or any other SDK, an SDK client against Karakuri's server, a real third-party deployment | not verified |
+
+   The wire names are now the SDK's, read from its source and confirmed by
+   these runs; where the "Not verified" entry below says the names are assumed
+   or that no real 2026-07-28 peer was used, this table replaces it for the
+   Python SDK only. The SDK is one implementation, not the specification. The
+   legacy row calls `Initialize` directly because `Negotiate` always tries
+   `server/discover` first and the SDK's default server answers it; the
+   fallback from a refused discover to the handshake was not exercised against
+   the SDK.
 2. **A second protocol path in `internal/platform/tools/mcp/`** — `server/discover`
    in place of `initialize`, the version and capabilities in `_meta` on every
    request, no session header, `resultType` read on every result. The existing
@@ -3287,6 +3317,125 @@ of its own. It is also not a claim of conformance to the revision: tasks, which
 moved to an extension, and trace-context propagation in `_meta` are outside
 this phase. And an `httptest` server built from the specification's text is not
 a real server; what the acceptance shows is the path, as Phase 32's did.
+
+**Shipped (step 1).** The result table under step 1 above, run 2026-10-05. It
+is the only part of this phase that touched a real server, and it ran the client
+as it was before steps 2 to 5.
+
+**Shipped (step 2).** `internal/platform/tools/mcp/protocol.go` declares
+`ModernProtocolVersion = "2026-07-28"`, `MethodServerDiscover` and the names the
+second path reads and writes. `Client.Negotiate` in `client.go` tries
+`server/discover` first and falls back to `initialize`; when both fail the error
+names both. On the discover path every request carries the version and the
+client's capabilities in `_meta`, and a result without a `resultType` is an
+error. `streamhttp.go` keeps a session ID only from the reply to `initialize`,
+so a connection opened by discovery never sends the header. `instance.go`
+records the path in `Health.ProtocolPath` (`protocol_path` in JSON),
+`environment.go` puts it in the observation, and `internal/app/bootstrap.go`
+adds `path` to the boot log line.
+
+**Shipped (step 3).** See
+[ADR 027](adr/027-a-tool-that-asks-for-input-is-an-error-the-planner-sees.md).
+A result of `resultType: "input_required"` is an `*InputRequiredError` from
+`Client.CallTool`, passed through `Instance.Call` unwrapped. `Environment.Act`
+in `environment.go` reports it as a failed, third-party `ActionResult` whose
+`StateDelta` carries `result_type` and what the server asked, with no output.
+It is not answered and not retried. It is not a checkpoint; nothing in
+`internal/feature/` changed.
+
+**Shipped (step 4).** `readSSE` in `streamhttp.go` returns `errStreamBroken`
+when a stream ends or fails before the reply arrives, and not when the context
+ended. `Client.exchange` in `client.go` sends the request again once, on the
+discover path only, under the deadline of the first attempt. The old path does
+not re-issue. The allowlist is checked before either attempt.
+
+**Shipped (step 5).** `internal/api/handler/mcp.go`, Karakuri as an MCP server,
+answers `server/discover` with both revisions it speaks, reads the version from
+a request's `_meta`, adds `resultType` to every result of a request that named
+2026-07-28, and refuses any other named version with `-32022` and the supported
+list. A request that names no version is answered as before, `initialize`
+included. Both revisions go through one `answer` function, so authorization,
+the withheld tools and the audit hook have one route. No `Mcp-Session-Id` is
+set under either revision.
+
+**Shipped (acceptance).** Clause by clause, the test that shows each. All are
+in `internal/platform/tools/mcp/` unless a path is given, and all run against
+`httptest` servers written in this repository.
+
+- *A 2026-07-28-only server, no `initialize`, no session header: the client
+  discovers its tools and calls one.* `TestAcceptance_ModernOnlyServer` in
+  `modern_instance_test.go`; also `TestNegotiateDiscoversAModernOnlyServer`,
+  `TestModernPathListsAndCallsTools` and
+  `TestModernRequestsCarryMetaAndNoSession` in `modern_test.go`.
+- *A 2025-06-18-only server, by the old path.*
+  `TestAcceptance_LegacyOnlyServer` in `modern_instance_test.go` and
+  `TestNegotiateFallsBackToInitialize` in `modern_test.go`.
+- *`input_required` surfaces as ADR 027 chose, with a test.*
+  `TestInputRequiredIsANamedErrorFromCallTool`,
+  `TestActReportsInputRequiredAsANamedFailure`, `TestInputRequiredIsNotRetried`
+  and `TestLegacyPathNeverReportsInputRequired` in `input_required_test.go`.
+- *A result with no `resultType` from a 2026-07-28 server is an error.*
+  `TestModernResultWithoutResultTypeIsAnError` in `modern_test.go`.
+- *The third-party trust of ADR 021 holds on both paths.*
+  `TestThirdPartyTrustHoldsOnBothPaths` in `modern_instance_test.go`.
+- *The four bounds of ADR 022 hold on both paths.* **Shown for one of the four
+  only.** ADR 022's bounds are: never `NeedsWorkspace`, never a criterion's
+  verifier, approval by default, outside pack conformance.
+  `TestDiscoveredToolsStayInTheReservedNamespaceOnBothPaths` asserts on both
+  paths that every discovered capability is in the reserved namespace and
+  grants no workspace, and `TestReissuedCallKeepsTheADR022Bounds` in
+  `reissue_test.go` asserts the same after a re-issue. No test in this phase
+  runs the verifier, approval or conformance bound per path. Those three are
+  decided from the capability ID's namespace outside this package, so that they
+  hold on the new path is inferred from the namespace test and Phase 28's
+  existing tests, not shown here. What the both-paths tests do also cover is
+  the allowlist (`TestAllowlistHoldsOnBothPaths`,
+  `TestEmptyAllowlistAllowsNothingOnBothPaths`) and the call timeout
+  (`TestCallThatHangsHitsTheTimeoutOnBothPaths`), which are Phase 28 bounds but
+  not the four ADR 022 numbers.
+
+Step 4 has no acceptance clause; its tests are in `reissue_test.go`
+(`TestBrokenStreamReissuesAToolCallOnce`, `TestBrokenStreamIsReissuedOnlyOnce`,
+`TestReissueSharesOneDeadline`, `TestAllowlistIsCheckedBeforeEitherAttempt`,
+`TestOnlyABrokenStreamIsReissued`, `TestLegacyPathDoesNotReissueABrokenStream`,
+`TestBrokenStreamReissuesToolsListDuringDiscovery`). Step 5 has none either; its
+tests are in `internal/api/handler/mcp_modern_test.go`
+(`TestMCPServerAnswersDiscover`, `TestMCPServerModernResultsCarryResultType`,
+`TestMCPServerOldPathIsUnchanged`,
+`TestMCPServerRefusesAnUnknownProtocolVersion`,
+`TestMCPServerSetsNoSessionHeader`, `TestMCPServerSpeaksToTheRepositoryClient`,
+`TestMCPServerModernPathAuthorizesAndAuditsRefusals`).
+
+**Not verified.** This is not a claim of conformance to revision 2026-07-28.
+
+The 2026-07-28 field names were taken from this roadmap's description of the
+revision and were not checked against the specification text, as `protocol.go`
+itself says: the `_meta` keys (`protocolVersion`, `clientCapabilities`), the
+`resultType` value `complete` for an ordinary result, the shape of a
+`server/discover` result (`supportedVersions`, `serverInfo`, `capabilities`,
+`instructions`), and `inputRequests`. Any of them may be wrong.
+
+Nothing in steps 2 to 5 was run against a real 2026-07-28 server or client. The
+client was tested against `httptest` servers written here from the same
+assumed names, and the server against those tests and this repository's own
+client (`TestMCPServerSpeaksToTheRepositoryClient`). Client and server agreeing
+with each other does not show that either agrees with the specification. Step
+1's run against the Python SDK's modern-only path was made before the second
+path existed and has not been repeated with it.
+
+A re-issued tool call may run twice on the server. The client cannot tell a
+request that was lost from one that ran and whose answer was lost, and sends no
+idempotency key. A tool with side effects can therefore act twice.
+
+OAuth for remote MCP servers, tasks, and trace-context propagation in `_meta`
+are outside the phase and were not built.
+
+Also not verified: three of ADR 022's four bounds on the new path, as said
+under acceptance above. Re-issue was exercised over streamable HTTP only; what
+a broken stdio pipe does on the discover path was not tested. The `path` field
+in the boot log line was added in `bootstrap.go` and no test was found that
+reads the log line. `-32022` as the code for an unsupported version comes from
+one observation of the Python SDK in step 1, not from the specification text.
 
 ---
 
@@ -3542,6 +3691,1037 @@ file carries no label, as the ADR 021 addendum says.
 
 ---
 
+## Phase 35 — An Unanswered Checkpoint Ends (Planned)
+
+This is a **demand phase**, proposed by the discovery cycle of 2026-10-08
+(`docs/research/discovery-2026-10-08.md`, 'Fit and bets', rank 1). The demand
+rests on one issue tracker, which is thin; the phase is sized to match.
+
+**Goal:** An operator can set a time after which a checkpoint nobody answered
+is rejected, on the record, by `system:timeout`. Expiry never approves.
+
+**A paused loop waits with no limit, and users of other runtimes ask what
+happens then.** Two authors on the openai/openai-agents-python tracker asked
+for it in their own words: "Developers should be able to set timeouts or
+fallback behaviors in case human input is not received within a window."
+(https://api.github.com/repos/openai/openai-agents-python/issues/636, read
+2026-10-08) and "How should we handle timeouts if a human doesn't respond
+promptly?" (https://github.com/openai/openai-agents-python/issues/378, read
+2026-10-08). Both are one population on one tracker; no Karakuri user asked.
+
+What the report's feasibility reading observed in this repository
+(`internal/core/checkpoint/checkpoint.go`, `internal/feature/checkpoint/service.go`
+lines 20 to 199, `internal/feature/loop/runner.go` lines 236 to 293):
+`Checkpoint` has the statuses `pending` and `resolved` and no deadline or
+expiry field; the paused loop waits in a `select` on `ctx.Done()` and
+`state.decisionCh` with no timer case. Inferred from those lines, not from the
+whole repository: a pending checkpoint waits until a person answers or the
+process ends. Nothing was built or run.
+
+**Steps:**
+
+1. **Expiry as a rejection.** Add an optional `ExpiresAt *time.Time` to
+   `checkpoint.Checkpoint` (`internal/core/checkpoint/checkpoint.go`, no vendor
+   import) and to `CreateOptions`. Add `Service.ExpireDue(ctx, now)` in
+   `internal/feature/checkpoint/service.go`: it lists pending checkpoints past
+   their time and calls the existing `Resolve` with
+   `Decision{Choice: "reject", Approver: "system:timeout", Note: ...}`, so the
+   audit row, the loop's reject path and the terminal record are the ones that
+   already exist. Before writing it, read what the feasibility pass could not
+   verify: how `storage.StorageAdapter` stores a checkpoint and whether the
+   column needs a migration, and whether pending checkpoints can be listed
+   without a twin id.
+2. **The sweep is called from reconcile.** The caller belongs in
+   `internal/feature/reconcile`, on the tick the supervisor already has; the
+   loop is not taught a new way to wait or to continue (AGENTS.md rule 8). The
+   duration comes from `config/default.yaml` and defaults to off, so today's
+   behaviour is unchanged until configured.
+3. **Restart.** Read what `ResumeStoredLoops` does with a checkpoint whose time
+   passed while the server was down, and make the first sweep after boot expire
+   it through the same path.
+4. **Contract.** The storage column and the `expires_at` field in
+   `docs/openapi.yaml`, so a reviewer sees when a checkpoint will lapse.
+
+**Acceptance:** With the duration unset, no checkpoint carries an expiry and
+none is ever expired. With it set, a test with a fake clock shows a pending
+checkpoint past its time resolved as a rejection whose approver is
+`system:timeout`, one audit row of kind rejection, and the loop ended as
+`rejected_at_checkpoint`. A checkpoint a person answered before its time is
+untouched. A checkpoint that lapsed while the server was down is expired by the
+first sweep after boot. No code path turns an expiry into an approval.
+
+**What this is not.** It is not a default-approve, an escalation chain, a
+reminder or a notification: an unanswered checkpoint must not become authority,
+which is only ever what is written into `agent.AuthorityBounds` (ADR 015). It
+adds no fallback behaviour other than rejection, and no per-checkpoint policy
+language.
+
+---
+
+## Phase 36 — A Provider's Refusal Is Not a Plan (Planned)
+
+This is a **demand phase**, proposed by the discovery cycle of 2026-10-08
+(`docs/research/discovery-2026-10-08.md`, 'Fit and bets', rank 2). It has two
+sources from two populations; one is a vendor's figure about its own customers
+and the other the report itself calls weak evidence about builders.
+
+**Goal:** When the model provider answers a call with a rate limit, the loop
+says so and ends the iteration with that reason, instead of handing a reviewer
+a placeholder plan to approve.
+
+**Rate limits are a leading cause of failed model calls, by a vendor's own
+count.** Datadog reports of its customers' LLM call errors in February 2026
+that "60% of those errors were caused by exceeded rate limits."; for March it
+reports "2% of all LLM spans in our dataset returned an error." and that "rate
+limit errors accounted for almost a third of them,"
+(https://www.datadoghq.com/state-of-ai-engineering/, read 2026-10-08). These
+are Datadog's figures for its own dataset, not a measurement made here. A
+second source, anthropics/claude-code issue #16157
+(https://github.com/anthropics/claude-code/issues/16157, read 2026-10-08),
+is a user of a coding agent reporting a quota that ran out without an
+explanation; the report grades it weak evidence about people who build agents.
+
+What the feasibility reading observed (`internal/feature/loop/reason.go` lines
+60 to 165, `internal/feature/loop/budget.go` lines 74 to 123,
+`internal/platform/llm/claude.go` lines 64 to 103): when the agent call returns
+any error, `stepReason` builds a plan of one `reason.plan` action holding the
+error text at confidence 0.3; it retries once, and only on a reply that did not
+parse; `ClaudeProvider.Complete` returns the langchaingo error unchanged and
+without the provider name. Inferred, not observed: that the placeholder plan
+reaches a person as a confidence checkpoint (`stepDecide` was not read).
+Karakuri's own token budget (`budgetedAgent.Run`, Phases 15, 18 and 23) is a
+different ceiling and is not changed here.
+
+**Steps:**
+
+1. **Name the error, classify it at the edge, stop building a plan from it.**
+   First read what the feasibility pass could not verify: what langchaingo's
+   Anthropic client returns for an HTTP 429 and whether the status or a
+   Retry-After value survives into it, and what `stepDecide` does with a
+   0.3-confidence `reason.plan`. Then define a domain error
+   `ErrProviderRateLimited`, with an optional retry-after duration, in
+   `internal/core/agent` or the core errors package (no vendor import);
+   classify the langchaingo error into it inside
+   `internal/platform/llm/claude.go`, wrapped with the provider name as
+   `internal/platform/llm/AGENTS.md` rule 3 asks (the classification stays
+   under `internal/platform/`, AGENTS.md rule 1); in `stepReason`
+   (`internal/feature/loop/reason.go`), on that error only, wait once within a
+   small cap and retry, and if it fails again end the iteration with a reason
+   that names the provider limit. Tests for both files. If the 429 cannot be
+   told apart from other failures in what langchaingo returns, stop and record
+   that in this section before writing anything else.
+2. **The other providers.** Apply the same classification to the remaining
+   providers under `internal/platform/llm/`, after reading whether
+   `internal/platform/agent/factory.go` or the CLI-fallback providers already
+   retry; neither was opened by the feasibility pass.
+3. **Reconcile decides whether to try again.** Read whether the reconcile
+   circuit breaker counts such a pass as a failure, and make a rate-limited
+   pass visible as that in the reconcile history. Whether and when the next
+   pass runs stays the supervisor's decision on its cadence (AGENTS.md rule 8).
+
+**Acceptance:** A test with a scripted provider that returns a rate-limit
+answer twice shows: one bounded wait, one retry, no `reason.plan` placeholder
+action, no checkpoint raised from it, and an iteration ended with a reason
+naming the provider and the limit. A provider that fails once and then succeeds
+yields the normal plan. Any other provider error behaves exactly as today. No
+file outside `internal/platform/` imports langchaingo
+(`scripts/check_langchaingo_imports.sh` passes).
+
+**What this is not.** It is not a retry policy with backoff tables, a
+provider failover, a queue, or a change to Karakuri's own quotas and budgets.
+The loop does not learn to keep trying: one bounded retry, then it ends. It
+does not charge for failed calls, and it does not explain a provider's quota
+to the user beyond passing on what the provider's answer said.
+
+---
+
+## Phase 37 — A Stop That Reaches the Running Pass (Planned)
+
+This is a **frontier bet**, proposed by the discovery cycle of 2026-10-08
+(`docs/research/discovery-2026-10-08.md`, 'Fit and bets', rank 3). Nobody asked
+for it. **The bet:** a buyer preparing for the EU AI Act's high-risk
+obligations will ask to see a stop that works while a pass is running and that
+leaves a record of who stopped it.
+
+**Goal:** Pausing a standing objective cancels the pass in flight, and the
+evidence export shows that a person paused and resumed, and when.
+
+**The evidence, and how thin it is.** The one primary page read is the
+European Commission's overview of the regulation, which asks of high-risk
+systems "appropriate human oversight measures." and says "deployers ensure
+human oversight and monitoring."
+(https://digital-strategy.ec.europa.eu/en/policies/regulatory-framework-ai,
+read 2026-10-09); the same page puts those obligations at 2 December 2027.
+That is a general sentence. The specific wording about a person being able to
+stop the system is Article 14(4), which the report knows only from a secondary
+mirror (https://artificialintelligenceact.eu/article/14/, read 2026-10-09);
+the legal text was not read by anyone. No regulated organisation speaking for
+itself was found.
+
+What the feasibility reading observed (`internal/feature/reconcile/service.go`
+lines 225 to 286 and 396 to 460, `internal/api/handler/reconcile.go` lines 170
+to 209, `internal/api/server.go` lines 366 to 394): `POST /{id}/pause` and
+`/resume` exist behind `karakuriauth.ActionObjectivePause`; `Service.Pause`
+writes `Paused`, `PausedReason` and `PhasePaused` to the stored state and holds
+no handle on a pass `dispatch` already started; no audit row is written in the
+lines read. Inferred: a pause prevents the next pass and does not interrupt the
+running one, and the export may not show the stop.
+
+**What would prove the bet wrong:** the legal text of Article 14(4), once
+read, does not ask for a stop of this kind; Pause is already audited elsewhere
+(middleware and the store were not read); or cancelling a pass leaves a
+worktree or an external action half done, so the stop is not a safe state.
+
+**Steps:**
+
+1. **Find out, then prototype, in one slice (time-boxed to that slice).** Read
+   the `pass` function in `internal/feature/reconcile/service.go` to learn
+   whether the loop's context derives from the one `dispatch` holds; read
+   whether Pause is audited elsewhere; read Article 14(4) in the legal text if
+   it can be fetched. Then prototype the feasibility slice: (a) in
+   `Service.Pause` and `Service.Resume`, write a tool event of a new kind (for
+   example `pause`) with the reason and the principal, plus a storage constant
+   for the kind; (b) keep a `context.CancelFunc` per running objective beside
+   `s.running` in `dispatch` and have `Pause` call it (the runner already
+   finalises on `ctx.Done()`, observed at `internal/feature/loop/runner.go`
+   line 274). **Kill criterion:** if a test shows a cancelled pass leaving a
+   delivery worktree or an external action half done with no way to tell from
+   the record, ship only (a), record the finding here, and close the phase; if
+   Pause turns out to be audited already, drop (a) as well.
+2. **The export shows it.** List pause and resume events under oversight in
+   `internal/feature/audit/export.go`, with `docs/openapi.yaml` updated if the
+   export shape changes. An export over a window with no such events says none
+   were recorded; it does not say the system was never stopped.
+3. **Only if step 1 survived:** a cancel for a one-shot loop on the loops
+   route, and a single control that pauses every standing objective. These are
+   the feasibility pass's 'second slice' and are not started before step 1's
+   result is written down.
+
+**Acceptance:** A test starts a pass that blocks, calls `Pause`, and observes
+the pass's context cancelled and the loop finalised; the stored state reads
+paused and `Trigger` still refuses. Pause and resume each leave one audit event
+carrying the principal and the reason, and the export lists both. Pausing an
+objective with no pass running behaves as today plus the audit event. The
+loop's own termination logic is unchanged (AGENTS.md rule 8): the diff touches
+`internal/feature/reconcile` and the export, not how the loop decides to stop.
+
+**What this is not.** It is not a claim of compliance with Article 14 or with
+anything else: no legal text was read. It is not a rollback: a cancelled pass
+is stopped, not undone. It adds no kill switch outside the API, no new role,
+and no second gate on authority.
+
+---
+
+## Phase 38 — What Was Required and Not Done (Planned)
+
+This is a **frontier bet**, proposed by the discovery cycle of 2026-10-08
+(`docs/research/discovery-2026-10-08.md`, 'Fit and bets', rank 4). Nobody asked
+for it. **The bet:** reviewers of unattended agents will come to ask what a run
+was required to do and did not, and not only which forbidden actions it
+avoided.
+
+**Goal:** The record of a finished run says, for each success criterion, how
+it was settled, and the evidence export lists the criteria that ended unmet and
+the ones whose declared verifier never ran.
+
+**The evidence.** One preprint, arXiv 2610.11773, read as fragments of its
+abstract, method and experiments (the formal task definition was not returned):
+"identifying forbidden actions alone is insufficient to ensure agent safety."
+and "we argue that agent safety also depends on identifying required yet
+unperformed safety-critical actions" (https://arxiv.org/html/2610.11773, read
+2026-10-09). By the authors' own numbers the technique is early: their guard
+model's best exact-match is 21.67%. Indirect support, inferred and not a
+request for this feature: Spotify names "a PR that passes CI but is
+functionally incorrect." as the failure of its background coding agents and
+answers with independent verifiers
+(https://engineering.atspotify.com/2025/12/feedback-loops-background-coding-agents-part-3,
+read 2026-10-08). No buyer or user source in the report asks for this.
+
+What the feasibility reading observed (`internal/core/objective/objective.go`
+lines 30 to 55 and 150 to 189, `internal/feature/loop/verify.go` lines 10 to
+159, `internal/feature/eval/eval.go` lines 1 to 110): objectives already state
+what must be true, as `SuccessCriteria`, each with an optional `Verifier`;
+`stepVerify` sends a criterion whose declared verifier never ran down the same
+branch as one with no verifier, to the model's judgement; the step event
+carries counts and scores, not which criteria were unmet or how each was
+settled. Inferred: the record cannot tell 'the required check ran and failed'
+from 'the required check never ran and a model vouched for it'.
+
+**What would prove the bet wrong:** `finalizeLoop` already records
+per-criterion results (it was not read); objectives in practice declare no
+verifiers, so every entry reads `no_verifier` and the list says nothing; or no
+reviewer ever asks.
+
+**Steps:**
+
+1. **Find out, then prototype, in one slice (time-boxed to that slice).** Read
+   `finalizeLoop` in `internal/feature/loop/runner.go` and what the loop writes
+   to `tool_events` at finalisation; count, over this deployment's stored
+   objectives, how many criteria declare a verifier. **Kill criterion:** if
+   per-criterion results are already recorded, or no stored objective declares
+   a verifier, write the finding here and close the phase. Otherwise prototype
+   the feasibility slice: in `stepVerify` (`internal/feature/loop/verify.go`),
+   record for each criterion its id, `met`, and how it was settled, one of
+   `verifier_ran`, `verifier_never_ran`, `no_verifier`, `reserved_verifier`;
+   add the list to the step-completed payload and to the audit event written
+   on the finalise path in `internal/feature/loop/runner.go`. No model call is
+   added and no judgement changes.
+2. **The export lists them.** An `unmet_obligations` section in
+   `internal/feature/audit/export.go`: per finished run in the window, the
+   criteria that ended unmet and the ones whose declared verifier never ran;
+   `docs/openapi.yaml` updated; tests. A run with no recorded settlement (rows
+   written before this phase) is reported as unknown, not as zero misses
+   (AGENTS.md rule 10). Criterion text an outside party wrote keeps its trust
+   marking (rule 9, ADR 021).
+
+**Acceptance:** A loop test with three criteria (one whose verifier ran and
+failed, one whose declared verifier never ran, one with no verifier) produces a
+finalisation event naming each id with its settlement, and the same `met`
+values and score as before the change. The export for that window lists the
+first two under `unmet_obligations` with their settlement, and lists a run from
+before the change as unknown. The loop's termination and the verify decision
+are unchanged (rule 8).
+
+**What this is not.** It is not the paper's guard model, and it reproduces
+nothing from the paper: no model is asked to infer obligations nobody declared.
+It reports what the loop already decided. It does not make a never-run verifier
+fail the criterion; whether it should is a separate decision for a person,
+informed by what this record shows. It does not enforce `Constraints`, whose
+use was not searched.
+
+---
+
+## Phase 39 — Autonomous Domain Packs Behind One Gateway (Planned)
+
+**Goal:** Every tool call, from the reasoning loop or from a coding agent
+Karakuri delegated to, goes through one MCP gateway; the software pack serves
+its capabilities as MCP tools behind that gateway and keeps its internals
+(where it works, its adapters, its secrets) to itself; the orchestrator knows a
+pack only by ADR 028's "whole coupling surface"; and a conformance suite checks
+the pack from outside.
+
+**Acceptance criterion of the phase (the test of the decoupling).** The
+orchestrator's packages (`cmd`, `internal/api`, `internal/feature`,
+`internal/core`) import no pack package and contain no software-domain noun
+(worktree, branch, repository, pull request) outside tests; and a second,
+trivial pack that has no workspace and no secrets at all can be registered and
+driven end to end without any change to the orchestrator. The owner's
+correction of 2026-10-10 sets it: "Karakuri should not care about the internal
+details of a domain pack. The orchestrator should be decoupled from domain
+packs."
+
+Decided by the owner on 2026-10-10, "for scalability of domain packs", and
+recorded in [ADR 028](adr/028-packs-are-autonomous-behind-one-gateway.md). The
+ADR holds the decision and its reasons; this phase is the order of work. It
+**depends on Phase 34**: the credential the gateway sends to a pack is Phase
+34's delegation credential, extended, and the delegated agent is one of the
+gateway's two callers. Nothing in this phase exists yet.
+
+**Why.** A pack today is a Go value compiled into the server
+(`domain.Pack`, implemented by `domains/software/pack.go`). `NewWithTools`
+hands it the deployment's `tools.Registry`, so the adapters and their tokens
+are the orchestrator's. `domains/software/capabilities.go` marks a capability
+that writes files with `NeedsWorkspace`, and its comment says "the loop
+provisions one": the core creates a git worktree, which is the software pack's
+idea of a workspace and nobody else's. Each further pack written this way adds
+its adapters, its tokens and its kind of workspace to the core, in Go, in the
+same process. ADR 028 moves those three into the pack and leaves the
+orchestrator with what only it may decide.
+
+**What it delivers.**
+
+- One gateway where authentication, authority bounds, quota, audit, cost and
+  provenance marking happen for every tool call.
+- A pack manifest, outside MCP, and a configuration entry that registers a
+  pack's server as first-party. A server configured as an MCP instance stays
+  discovered, with ADR 022's four bounds unchanged.
+- The software pack's capabilities served as MCP tools by a server that lives
+  **inside the Karakuri binary**, behind the gateway.
+- An orchestrator with no concept of a workspace, not even an opaque
+  reference: the software pack keys its worktrees on the identifiers every call
+  carries (tenant, twin, objective, loop/pass, action), and nothing
+  pack-defined is stored by the orchestrator or echoed back.
+- Generic lifecycle signals (a pass ended; an objective ended or was
+  cancelled) sent to every pack involved, replacing cleanup by the core.
+- A second, trivial pack registered and driven end to end with no change to the
+  orchestrator.
+- The software pack resolving its own secrets, per tenant.
+- A conformance suite that runs against a pack's server through the call
+  contract.
+
+**What stays in the orchestrator**, unchanged by any step: objectives, the
+loop, reconciliation, checkpoints and approvals, authority, quota, the audit
+log, cost, memory, and the verdict that an objective converged (ADR 028
+Decision 4 and section d). The permission decision is made before a call is
+sent; the bounds travel with the call, and a pack never becomes a second gate
+(ADR 015, AGENTS.md rule 8).
+
+**Steps.** Each is one delivery pass with its own acceptance test, and each
+leaves the system working with the software pack as it is on that day. The
+order is the one proposed with the decision; reading
+`domains/software/capabilities.go` and `environments.go` (function list, the
+`writes` helper and the capability IDs only) gave no reason to change it, and
+one reason to add the hand-over noted in step 3.
+
+1. **The gateway is the single path for the calls that already exist.** One
+   component in the orchestrator through which a capability invocation by the
+   loop and a tool call on the served surface (`internal/api/handler/mcp.go`,
+   and Phase 34's delegated agent) both pass, and where the authority check,
+   quota, audit, cost and provenance marking are applied. No capability moves
+   and no behaviour changes: the gateway dispatches to the in-process
+   implementations that exist today. Where those checks are applied now was not
+   read for this phase (`CapabilityRegistry.Invoke`, the loop's execute step
+   and the auth middleware were not opened); the first task of the step is to
+   list them, and the step is done when each is applied in the gateway and
+   nowhere else on the tool path. *Acceptance:* a test invokes one capability
+   from the loop and one tool from the served surface and finds one audit row
+   and one quota charge for each, written by the gateway; a call that bypasses
+   the gateway does not compile or fails a test that searches for one; the
+   existing loop and MCP handler tests pass unchanged.
+2. **The pack manifest and first-party registration.** A manifest type carrying
+   exactly what ADR 028 Decision 5 names: which tools may be criterion
+   verifiers, the name of the pack's snapshot tool, the objective, agent and
+   stream templates, and routing hints. A configuration entry registers a pack
+   with its manifest; the gateway assigns the namespace from that entry and
+   reads nothing the server says about itself when deciding the class (ADR 028
+   section a). The software pack's manifest is written from what `domain.Pack`
+   returns today, and the registries are filled from it. The manifest
+   nominates verifiers; the orchestrator still decides which it trusts.
+   *Acceptance:* a server configured as an MCP instance whose `serverInfo` and
+   tool names claim to be the software pack is registered under `mcp.` with the
+   four bounds; a manifest naming a tool under `mcp.` fails registration; the
+   software pack registered from its manifest yields the same capability,
+   template and hint IDs as before.
+3. **The software pack's read and verify capabilities as MCP tools,
+   in-process.** A software-pack MCP server inside the binary serves the
+   observe capabilities and the verifiers; the gateway routes to it and sends
+   the call contract's fields (the orchestrator's identifiers: tenant, twin,
+   objective, loop/pass and action; and the bounds). The server
+   returns the result, the trust of its text set from the payload (rule 9), and
+   an explicit "cannot see" error where the environment cannot look (rule 10).
+   A verifier that runs in a worktree the loop provisioned keeps receiving that
+   worktree through the call until step 4; which verifiers those are was not
+   read. Acting capabilities stay on the in-process path. *Acceptance:* a fetch
+   of pull requests through the gateway returns `TrustThirdParty` when the
+   window holds one and the same content as the in-process call; with no
+   version-control instance bound it returns the error, not an empty list; a
+   result with no trust stated is recorded as third party; a criterion is
+   verified through the tool and the verdict is still computed in the loop.
+4. **The orchestrator stops knowing about workspaces.** The software pack's
+   server keys its worktrees on the identifiers it is sent: actions of the same
+   objective and pass find the same worktree (write code, then run the tests on
+   it), others never do. It returns no reference; the orchestrator stores and
+   echoes nothing pack-defined, and the audit row has no workspace field (it
+   holds the call, the caller, the authority and the result as returned).
+   **Lifecycle signals replace core cleanup:** the orchestrator sends every
+   pack called during a pass "pass ended", and every pack called for an
+   objective "objective ended or was cancelled", in domain-neutral terms with
+   its own identifiers; how they are carried (a reserved tool or an MCP
+   notification) is settled here. A signal is safe to repeat, delivery is best
+   effort, and the software pack bounds its own leftovers (expiry by age) so a
+   missed signal costs disk for a while and nothing else. The loop stops
+   provisioning. `NeedsWorkspace` and
+   `GrantsWorkspace` leave the core capability type once nothing in the core
+   reads them, and `git.WorktreeManager` leaves the core's wiring; ADR 028
+   names `internal/feature/loop/service.go`, `internal/app/bootstrap.go`,
+   `internal/api/server.go` and `internal/api/handler/health.go` as referencing
+   it, found by search and not read, so the size of this step is not known and
+   it may need to be cut in two (move, then remove). This is the step that
+   removes AGENTS.md rule 3 and lands ADR 028's effect on ADR 003 and ADR 019
+   (both superseded outright). *Acceptance:* a write and a test run in one pass
+   share their files without the orchestrator passing anything between them;
+   two concurrent passes do not; after "pass ended", sent once or three times,
+   the pack holds nothing for that pass; with the signal withheld, the pack's
+   own bound removes it; cancelling an objective signals every pack it called;
+   no audit row, core type or API field names a workspace; no package under
+   `cmd`, `internal/api`, `internal/core` or `internal/feature` imports the
+   worktree manager.
+5. **Secrets move into the pack, resolved per tenant.** The software pack
+   resolves the token for a call from the tenant the call names, through its
+   own resolver, instead of using adapters built from the orchestrator's
+   `tools.Registry`. No secret appears in a result, an error or a log line. How tokens are configured and stored today was not read
+   (`tools.Registry`'s construction and ADR 006's slots beyond headings); the
+   step starts by reading that, and keeps the existing configuration keys
+   working. In one process this is true of the code and not of the address
+   space, as ADR 028 section e says. *Acceptance:* two tenants with different
+   tokens, called in turn and concurrently, each reach a stub backend with
+   their own token; a planted secret is found in no result, no error and no
+   captured log; a tenant with no secret gets the "cannot see" error.
+6. **Acting capabilities behind the gateway, with the credential.** The
+   write, PR, ticket and message capabilities are served by the pack's server.
+   The gateway sends a signed, limited credential with each call: scoped to the
+   twin, expiring at the action's timeout, revoked when the action ends. It is
+   Phase 34's delegation credential carrying, or accompanied by, tenant,
+   objective and bounds; which of the two, and how the pack verifies the
+   signature, is settled here after reading the keyring (not read). The step
+   also states how this sits with ADR 022's "Karakuri serves MCP read-only",
+   which ADR 028 left open and which was not read for this phase either:
+   whether a delegated agent may reach a pack's acting tools through the
+   gateway is decided in this step, in writing, before it is built. Approval
+   stays off the tool surface. After this step the in-process capability path
+   is removed. *Acceptance:* an acting call without a credential, with an
+   expired one, or with one for another twin is refused by the pack; a call the
+   orchestrator's gate denied never reaches the pack; a pack that refuses a
+   call fails the action and resolves no checkpoint; a call that outlives its
+   timeout fails within it.
+7. **The conformance suite, from outside.** A suite that speaks to a pack's
+   server through the call contract and checks ADR 028 section c: per-tenant
+   secrets, no secret in a result, continuity and isolation by identifier,
+   lifecycle signals safe to repeat, a snapshot value that is equal when
+   nothing changed and the "cannot see" error when the pack cannot look, and
+   timeouts. The suite names no workspace: it observes only what tools return. It reports which promises it tested and which the pack only
+   declared. The existing in-process conformance package and `krk domain test`
+   were not read; which checks carry over, and whether the command keeps its
+   name, is decided in the step. *Acceptance:* the software pack passes; a
+   deliberately broken stub pack fails each check in turn (lets one pass see
+   another's work, fails on a repeated signal, echoes a planted secret, returns
+   an empty result when blind, ignores the timeout), one failure per defect.
+8. **A second, trivial pack, and the test of the decoupling.** A pack with no
+   workspace and no secrets at all (for example one read tool, one verifier and
+   a snapshot tool over an in-memory value) is registered through
+   configuration and its manifest, and driven end to end: an objective from its
+   template converges on its verifier, drift on its snapshot value re-opens it,
+   and it receives the lifecycle signals and ignores them. A check, run with
+   the tests, searches `cmd`, `internal/api`, `internal/feature` and
+   `internal/core` for imports of any pack package and for the nouns worktree,
+   branch, repository and pull request outside test files. *Acceptance:* the
+   trivial pack passes the conformance suite and its objective converges with
+   **no change to the orchestrator** in the step's diff; the search finds
+   nothing. Whatever it finds is moved into the software pack or renamed in
+   domain-neutral terms in this step, and the phase is not done until it is
+   empty.
+
+**What this is not.** It does not split the binary. The software pack's server
+stays in the Karakuri process for the whole phase, and is split out only when a
+second pack exists that is not compiled in, or a pack is written in a language
+other than Go (ADR 028 section e). It migrates no pack other than software
+(step 8's trivial pack is new, and compiled in);
+what the other packs under `domains/` hold was not read. It adds no shared
+library for pack authors: ADR 028 allows one as an option for pack authors,
+and nothing here needs it with one pack. It changes none of ADR 022's four
+bounds for discovered tools, does not put the verdict, permission, drift
+detection, loop state or memory behind MCP, and does not change how the loop
+terminates (rules 8, 9 and 10 stay).
+
+**Risks.**
+
+- **Step 4 is larger than it looks.** Worktree provisioning is referenced from
+  four places nobody read. If the move and the removal do not fit one pass,
+  split them and keep the old path until the new one is proven.
+- **A hop on every call.** Serialisation and the gateway are paid on each tool
+  call from step 3 on, before any pack benefits from being separate. Step 3's
+  test should record the added latency so the cost is a number.
+- **Phase 34 moves.** The credential is designed on an unmerged branch
+  (`karakuri/phase-34-own-tools-in-agents-hands`). If its shape changes, step 6
+  changes with it; steps 1 to 5 do not need it.
+- **Phase 33 changes the protocol under the gateway.** MCP revision 2026-07-28
+  removes the handshake and sessions. The in-process server should be written
+  against whichever revision the client speaks when step 3 starts; the steps of
+  Phase 33 were not read.
+- **A pack that holds secrets is a larger thing to trust**, and in one process
+  the separation is of code, not memory. The suite in step 7 checks behaviour
+  from outside and cannot prove a pack never logs a secret where it does not
+  look.
+- **ADR 005** (domain pack isolation) was not read and is likely affected.
+  Read it before step 2.
+
+---
+
+## Phase 40 — Streams That Run Without a Coordinator (Planned)
+
+**Goal:** The four standing streams of a deployment (`market_discovery`,
+`engineering_backlog`, `ux_improvement`, `roadmap_delivery`, declared in
+`domains/software/streams.go`) are governed and run by Karakuri itself. A
+person defines an objective, reads what it did, merges or closes its pull
+requests, and pauses it. Nothing else is a person's job. That includes
+starting discovery: a market discovery cycle runs on its fixed cadence
+whatever the pipeline holds, and another starts when the pipeline of approved
+work is empty, so the deployment never sits idle for want of approved work.
+
+**The owner's decision (2026-10-10).** Recorded here, not reopened: "All these
+streams must be managed by Karakuri itself independently. We just define an
+objective and oversee its work. We do not hold coordinator role here." And:
+"We create a roadmap item that allows Karakuri to continuously govern and run
+these streams independently."
+
+**The owner's addition (2026-10-10).** Recorded here, not reopened:
+"Eventually, discovery cycles should be launched when no items are remaining
+in the pipeline." And, correcting the reading that this replaces the schedule:
+"Discovery should not be limited to empty task pipeline. It should get
+triggered on a fixed cadence to add items into the roadmap so in the
+pipeline." Market discovery therefore has two triggers and both stay: a fixed
+cadence (today weekly, cron `0 10 * * 0`), and an empty pipeline. Asked
+whether a cycle started by an empty pipeline counts as the scheduled cycle of
+the cadence's current period, the owner answered: "No it does not count."
+Neither trigger replaces, cancels or postpones the other.
+
+**Acceptance criterion of the phase.** For seven consecutive days on a
+deployment running the four streams, no person resolves a checkpoint, replaces
+an objective, opens a pull request, reviews a branch by building it, or sets an
+objective's status, and no person starts a discovery cycle: each scheduled
+cycle in the seven days ran on its cadence, and each time the pipeline was
+empty with no discovery proposal open a cycle started by itself. The only
+human actions are merging or closing pull
+requests, pausing a stream, and reading the oversight view. **This has to be
+observed on a running deployment. No unit test shows it:** each step below has
+a test for its own mechanism, and the phase is finished only when step 15's
+seven days have been watched and recorded.
+
+**Why: what people did by hand, 2026-10-04 to 2026-10-10.** Seven things,
+observed by the owner on this deployment in that week. Where this proposal
+checked one against the code it says so; the rest are recorded as reported.
+
+1. **Approved every plan.** All four streams run at the `propose` rung, so
+   every pass stops at a checkpoint (`effectiveAuthority` in
+   `internal/feature/reconcile/authority.go` sets `MaxAutonomousActions` to 0
+   there). What the reviewer checks is mechanical: the plan's allowed tools hold
+   no merge and no broad shell tool, it pushes only to the stream's own branch,
+   and never to main. No code enforces that. The templates carry a hard
+   constraint whose expression is `no_merge`; a search of the Go sources finds
+   that string only where `streams.go` declares it. The allow-list is written
+   by the planner from the brief's text.
+2. **Two streams can never act.** `market_discovery` suggests
+   `software.agent.strategist` (`authority(0, 0.9, ...)` in
+   `domains/software/agents.go`) and `engineering_backlog` suggests
+   `software.agent.maintainer` (`MaxAutonomousActions: 0` in
+   `domains/software/selfimprove.go`). At `act` the definition's own bounds
+   apply untouched, so both escalate at every rung, although their whole output
+   is roadmap and research text on a branch and a pull request whose merge is
+   the owner's approval.
+3. **Reviewed each pull request by building and running it.** The Phase 33
+   pull request passed CI with wire names that did not interoperate with the
+   real SDK. A UX pull request made `krk bogus` print help and exit 0. A person
+   running the branch caught both, and wrote a one-shot objective to fix each.
+   The delivery brief acts on review comments; nothing produces them.
+4. **Repaired a stream after a restart.** A loop interrupted by a shutdown came
+   back "paused at decide" with no pending checkpoint and its stream was
+   deferred from then on; a person replaced the objective. A loop that had been
+   waiting at a checkpoint re-planned after the restart and ran the new plan on
+   the old approval, leaving a stale checkpoint.
+5. **Noticed the usage limit.** When the coding agent's provider is out of
+   quota every action fails with `claude_code: exit 1 (stderr: )` (EB-004, read
+   2026-10-09), a pass burns through its actions, and a pass cut before its
+   last action leaves a branch with no pull request; a person opened it.
+6. **Closed finished work.** A one-shot objective that did all its work ended
+   "failed" at max-iter 1 and a person set it completed (EB-002, read
+   2026-10-05). Worktrees pile up under `worktrees/<objective-id>/` and a
+   person removes them.
+7. **Paced the work.** Delivery was one pass a day. "Continuous" is imitated
+   with `--every 30m`, which plans (a model call) when nothing is Planned, and
+   the streams compete for one provider quota in no order.
+
+**What it delivers:**
+
+- **A. Bounds enforced by code.** What a stream may do is declared on its
+  template, written into `agent.AuthorityBounds` by reconcile, and enforced
+  where the loop already authorises actions. A plan inside the bounds runs; a
+  plan outside them is refused, on the record. Plan review stops being the
+  gate.
+- **D. A stream that heals itself** after a restart, after a pass that was cut
+  short, and when its work is finished.
+- **E. Provider quota as a state**, shared between streams in a declared
+  order, and not counted as a failure.
+- **B. A stream whose only output is a proposal may act**, inside bounds that
+  confine it to its files, its branch and opening a pull request.
+- **C. Karakuri reviews its own pull requests** by building and running the
+  branch, in a context that is not the author's, and every stream addresses
+  review comments before new work.
+- **F. Continuous means "while there is work"**: delivery makes no model call
+  while nothing is Planned. Its counterpart: the same reading of the pipeline
+  that starts a delivery pass when something is Planned starts a discovery
+  cycle when nothing is, at most one open discovery proposal at a time, and
+  beside the fixed cadence, which keeps running while approved work remains.
+- **G. One oversight view** per stream, on the digest and the existing CLI and
+  web surfaces.
+
+**What other phases already deliver, and this phase uses.** Each line is a
+dependency, not work repeated here.
+
+- **Phase 35** ends a checkpoint nobody answered as a rejection by
+  `system:timeout`. After step 2 a plan outside the bounds is refused without a
+  checkpoint, but escalations for other reasons (confidence, third-party
+  provenance under ADR 021) still raise one, and with no coordinator nobody
+  answers it. Phase 35, with its duration set, is what ends it. Step 15 cannot
+  pass without Phase 35.
+- **Phase 36** makes a rate limit from the *planner's* model provider end the
+  iteration with that reason. Step 8 is the same idea at a different seam, the
+  delegated coding agent (`internal/platform/tools/cliagent`), and reuses Phase
+  36's reason wording so a digest has one vocabulary. It does not touch the
+  planner path.
+- **Phase 37** makes a pause cancel the pass in flight and records who paused.
+  "Pause it" is one of the owner's four actions; this phase adds nothing to it.
+  Step 4 ends an interrupted loop through the same ending Phase 37 gives a
+  cancelled pass, if Phase 37 has landed, and through the loop's existing
+  failure ending if it has not.
+- **Phase 38** records how each success criterion was settled. Step 11's
+  review reads that record to know what a pass claimed, and step 14 shows it;
+  neither rebuilds it.
+- **Phase 39** sends lifecycle signals (a pass ended; an objective ended or was
+  cancelled) and has the software pack bound its own leftovers by age. Worktree
+  cleanup is therefore **not built in this phase**: step 7 only makes sure the
+  endings this phase adds emit those signals. Until Phase 39's signals exist,
+  worktrees still pile up, which costs disk and does not block step 15.
+- **EB-002** (objectives whose work is delivered do not end as done) and
+  **EB-004** (a coding agent's exit 1 leaves no reason) are backlog entries,
+  both marked Planned. Step 7 and step 8 depend on them and do not redo them. Their "Proposed
+  change" columns were not read in full for this proposal; read them first.
+
+**Steps.** Order: A (1 to 3) before anything may act unattended; then D (4 to
+7) and E (8, 9) so an unattended stream cannot get stuck or burn quota; then B
+(10), C (11, 12), F (13), G (14) and the observation (15). Each step is one
+delivery pass, has its own acceptance test, and leaves the system working with
+today's behaviour for anything not yet declared.
+
+1. **Bounds can say what an action may hold.** `agent.AuthorityBounds` gains a
+   list of action limits: for a capability ID, the values (as patterns) that
+   named parameters of that action may take. It is domain-neutral on purpose,
+   because Phase 39's acceptance criterion forbids a software noun in the core:
+   the core compares strings with patterns, and only the pack's template knows
+   that one parameter is a coding agent's tool allow-list and another a pull
+   request's base. The decide step, where bounds are already read, checks every
+   action of a plan against the limits. **Not read for this proposal:**
+   `internal/core/agent` (the struct), the decide step in
+   `internal/feature/loop`, and the shape of a planned action's parameters.
+   Read them first; if a delegated action's allow-list is not a parameter the
+   decide step can see, the first slice is to make it one.
+   *Acceptance:* a table test over bounds and plans: no limits declared, every
+   plan is treated as today; an action whose parameter is outside a limit is
+   reported as a violation naming the action, the parameter and the limit; an
+   action inside passes. No second gate exists: the test asserts the check runs
+   in the decide step's existing bounds check and nowhere else (AGENTS.md rule
+   8, ADR 015).
+2. **A stream's template declares its limits, and a plan outside them is
+   refused.** `objective.Template` gains the limits; each of the four templates
+   declares which tools a delegated coding action may hold (no merge tool, no
+   unrestricted shell), which branch patterns it may push to and open a pull
+   request from, and that the base is main and main is never a push target.
+   `effectiveAuthority` intersects them with the agent definition's bounds: a
+   template can narrow an agent's authority and never widen it. A violation is
+   **refused, not escalated**: the iteration ends with a bounds refusal in the
+   audit log and no checkpoint, because an escalation would hand the mechanical
+   review back to a person and that is the gate this phase removes. The
+   `no_merge` constraint stays as the sentence the planner reads; a test
+   asserts every template carrying it also declares limits that exclude merge,
+   so the string is never again the only thing standing there. The branch each
+   stream uses is today in the brief's text (not read); the step moves the
+   pattern to the template.
+   *Acceptance:* for each of the four templates, a plan with a merge tool, one
+   with an unrestricted shell, one pushing to main and one pushing to another
+   stream's branch are each refused with one audit row and no checkpoint; a
+   plan inside the limits at `act_with_notice` runs with no checkpoint; at
+   `propose` everything still escalates exactly as today.
+3. **What was pushed is checked, not assumed.** The allow-list bounds what a
+   coding agent is told it may run; the push itself happens inside a
+   subprocess. After a delegated action, the software pack compares the remote
+   refs before and after (and, for step 10, the changed paths against the
+   declared ones). A ref outside the declared patterns that moved is a failed
+   action, a bounds violation in the audit log, and the stream goes to
+   `blocked` until the owner looks. This detects; it does not prevent. What
+   prevents a push to main is branch protection on the remote, which is outside
+   Karakuri: the step reports, through the version-control adapter, whether
+   main is protected, and returns `ErrUnsupported` where the backend cannot say
+   (AGENTS.md rule 10), so the oversight view shows "not known" and never a
+   false "protected".
+   *Acceptance:* against a local bare repository, an action that pushes to an
+   undeclared ref is recorded as a violation and blocks the stream; one that
+   pushes only to its declared branch passes; an adapter that cannot read
+   protection yields "not known".
+4. **An interrupted loop is ended and its pass re-run.** At boot, a restored
+   loop that belongs to a standing objective and has no pending checkpoint is
+   ended with the reason `interrupted_by_restart`; the supervisor's next tick
+   starts a fresh pass. Ending is chosen over resuming: a pass already starts
+   from the branch tip, so re-running is safe, and resuming mid-act would give
+   the loop a second lifecycle, which ADR 015 rejected. The ending does not
+   count toward the circuit breaker. **Not read:** `ResumeStoredLoops`
+   (`internal/feature/loop/service.go` line 342) and how reconcile defers a
+   stream whose loop is not finished; read both, and Phase 35's step 3, which
+   touches the same function.
+   *Acceptance:* an integration test stops the server during an act step and
+   starts it again: the loop is ended with that reason, the objective is not
+   deferred, the next tick runs a pass, and `ConsecutiveFailures` is unchanged.
+5. **An approval belongs to the plan it approved.** A checkpoint records which
+   plan it was raised for. A restored loop that was waiting at a checkpoint
+   keeps waiting on that checkpoint and does not re-plan. If a new plan is ever
+   produced while a checkpoint for an older one is open, the old checkpoint is
+   closed as superseded, on the record, and a decision on it authorises
+   nothing.
+   *Acceptance:* a test restarts a loop paused at a checkpoint: no new plan is
+   made, and approving runs the plan that was shown. A second test forces a
+   re-plan and shows the earlier approval refused and one superseded
+   checkpoint, none pending and stale.
+6. **A branch with commits and no pull request gets one.** The software pack's
+   observation for a stream lists the stream's branches that are ahead of main
+   and have no open pull request. Every stream's pass opens those first, before
+   new work; this is one action inside the stream's own limits. If the remote
+   cannot be read the observation is an error, not an empty list (rule 10).
+   *Acceptance:* with a branch ahead of main and no pull request, the next pass
+   of each of the four templates opens it before any other action; with the
+   remote unreachable the pass reports that it could not see.
+7. **Finished ends as finished, and endings are signalled.** Depends on EB-002
+   for one-shot objectives; this step does not redo it. What it adds: every
+   ending this phase introduces (interrupted by restart, refused by bounds,
+   waiting for quota) is a named outcome the digest counts apart from failure,
+   and each emits Phase 39's "pass ended" signal once those exist, so the pack
+   cleans up its leftovers. No cleanup code is added to the orchestrator.
+   *Acceptance:* a test per new ending shows its outcome name in the stored
+   run and, where Phase 39's signal exists, one signal sent. If EB-002 has not
+   landed, the step says so in its pull request and step 15 waits for it.
+8. **Out of quota is a state.** When the coding agent's adapter can tell that
+   its provider refused for quota, it returns a typed error, the pass stops
+   spending actions at once, and the pass ends as deferred with the reason and,
+   where the provider gave one, the time the quota returns. Compare
+   `budget_exhausted`, which `internal/feature/reconcile/run.go` already records
+   as a deferral (seen by search at lines 208 and 227, not read): the same
+   treatment, and not a failure for the circuit breaker. **Depends on EB-004:**
+   today the error is `exit 1` with an empty stderr, and an adapter that cannot
+   tell quota from any other failure must keep reporting a failure. It must not
+   guess from an empty string. What the CLI prints when it is out of quota was
+   not read; find out before writing the detector.
+   *Acceptance:* with a fake coding agent that reports quota exhaustion, a pass
+   makes one attempt, records one deferral with the reason, leaves
+   `ConsecutiveFailures` unchanged, and step 6 opens the pull request for
+   anything already pushed on the next pass. With a fake that exits 1 with no
+   reason, behaviour is as today.
+9. **Streams share the quota in a declared order.** A standing objective has a
+   priority; the templates default to delivery of approved work first, then
+   review (step 11), then UX, the backlog and discovery, and the owner can set
+   another order when defining an objective. The order does not starve the
+   fixed cadence: a scheduled discovery cycle that is due takes the first slot
+   after the delivery pass in flight has ended, ahead of delivery's next pass.
+   It waits for a running pass to end, never for the pipeline to drain. A
+   cycle started by an empty pipeline (step 13) competes with no delivery, by
+   definition. While the quota state is "out", no
+   stream starts a pass; one probe, by the highest-priority waiting stream at
+   the returned time or on a backoff, finds out whether it is back; waiting
+   streams then start in priority order. The supervisor has a `MaxConcurrent`
+   setting that defaults to 4 (`internal/feature/reconcile/service.go`, seen by
+   search), so passes of different objectives can run at once and order has to
+   be applied where slots are handed out. **Not read:** how they are handed
+   out; the step starts there.
+   *Acceptance:* with a fake clock and a fake provider that is out and then
+   back: no pass starts while out, one probe is made per interval, and the
+   streams start in the declared order afterwards. An owner's override changes
+   the order. With Planned work remaining and a scheduled discovery cycle due,
+   the cycle starts when the running delivery pass ends and before the next
+   one.
+10. **Proposal streams may act.** The comment on the maintainer's authority
+    says zero was chosen "deliberately not a small number", because the pack
+    boundary gives no guarantee: "a pack is a namespace, and stepAct resolves
+    environments across every domain an objective names", so zero was the only
+    thing that bounded "what promotion can ever mean". This step answers it and
+    leaves it true. The maintainer and the strategist keep zero, for every
+    objective that names them. `market_discovery` and `engineering_backlog`
+    instead name a new agent definition (one or two, decided after reading how
+    capabilities route) whose authority allows a small number of actions and
+    whose template limits, enforced by steps 1 to 3, confine a pass to
+    `docs/roadmap.md` (and `docs/research/` for discovery), to the stream's own
+    branch, and to opening a pull request against main. The guarantee the
+    comment asked for now comes from limits checked on every action, where
+    before it could only come from permitting none. The merge is still the
+    owner's approval. **ADR 017 was not read** and is cited elsewhere in this
+    roadmap as what bounds the maintainer; read it first. If it decides that
+    nothing in this pack proposes without a checkpoint, this step needs an ADR
+    that says what changed, before any code.
+    *Acceptance:* at `act_with_notice`, a discovery pass and a backlog pass each
+    run to an open pull request with no checkpoint; a plan that touches a path
+    outside the declared ones is refused (step 2), and one that slipped past
+    is caught after the action (step 3). An objective naming
+    `software.agent.maintainer` still escalates every action.
+11. **A review that builds and runs the branch.** A fifth template,
+    `software.objective.pull_request_review`, is a standing objective with its
+    own agent and its own worktree at the pull request's head, so the reviewer
+    is never the author's context: it has not seen the author's plan or
+    reasoning, only the pull request and the repository. It is woken by an open
+    pull request from a stream whose head commit has no review. Its limits: it
+    may build, test, lint and run the binaries in its worktree, and post one
+    review with comments on the pull request; it may push nothing. It is a
+    fifth objective and not a step inside each stream because separation of
+    context is the requirement, and an objective is the unit that has one. Each
+    review states **what it ran and what it did not**. It can verify: that the
+    branch builds, that tests and lint pass at the head, and that commands the
+    pull request claims to change behave as claimed, by exit code and output
+    (`krk bogus` exiting 0 is of this kind). It cannot verify: behaviour against
+    a system that is not installed where it runs (the Phase 33 wire names would
+    be found only if the real SDK can be fetched and run there, and the review
+    must say when it could not), how a web page looks, whether a source in a
+    research report says what the report says beyond fetching it, or whether a
+    proposal is wanted. On a forge where the author and the reviewer are one
+    account the review is a comment review; it cannot approve or request
+    changes, and approval stays the owner's merge.
+    *Acceptance:* against a fixture repository with a pull request that breaks
+    the build and one whose changed command exits with the wrong code, the pass
+    posts a review naming each finding with the command run and its output; on
+    a clean pull request it posts what it ran and no finding; a plan to push is
+    refused by its limits.
+12. **Review comments come before new work, in every stream.** The observation
+    from step 6 also lists the stream's open pull requests with review comments
+    not yet answered by a later commit. A pass addresses those first. A comment
+    written by anyone outside the deployment's own authors is third-party
+    material and sets `TrustThirdParty` from what the payload holds (rule 9,
+    ADR 021); it escalates as today and Phase 35 ends it if nobody answers. A
+    pull request is reviewed again when its head moves, and after a declared
+    number of rounds without converging the stream stops pushing to it and the
+    oversight view shows it as waiting for the owner.
+    *Acceptance:* with an open pull request carrying a review finding, the next
+    pass of each of the four templates pushes a commit for it before any new
+    work; a comment round past the declared limit produces no push and one
+    "waiting for the owner" entry.
+13. **A delivery pass starts when there is work, and costs nothing when there
+    is none.** The software pack computes, without a model, whether delivery has
+    work: an item on main marked Planned with no open pull request, a branch
+    from step 6, or a finding from step 12. The supervisor starts the next pass
+    when the previous one has ended and that is true, and makes no model call
+    while it is false. A merge to main changes the computed state, which is
+    what wakes it. An item whose pull request is open and waiting for the owner
+    is not work, or the stream would plan forever against something only a
+    merge can finish. If main cannot be read the stream is blind and says so.
+    **Not read:** how the supervisor senses and which triggers exist beside a
+    schedule (`internal/feature/reconcile/service.go`); if a snapshot that has
+    not changed already skips the pass, this step is that mechanism given the
+    right snapshot, and nothing new.
+    **The same reading starts discovery when the pipeline is empty.** One
+    reading, two outcomes, no second mechanism: where it finds a Planned item
+    not yet delivered, delivery runs; where it finds none, a market discovery
+    cycle starts without waiting for the cadence. *Empty* means: on
+    origin/main, no phase whose heading ends "(Planned)" and no Engineering
+    Backlog entry with Status Planned, other than items already delivered on a
+    branch with an open pull request. An item that is delivered and waiting
+    for the owner's merge is not work for delivery, so it does not hold
+    discovery back; the pipeline is empty while such pull requests are open.
+    *No pile-up of proposals:* a discovery cycle ends in a pull request the
+    owner has not merged yet, and while it is open the pipeline is still
+    empty, so the rule is at most one open discovery proposal. The next cycle
+    starts only after the previous proposal was merged (then there is work,
+    and delivery runs) or closed (then discovery may run again, and it reads
+    why the proposal was closed, if the owner said, before proposing; that
+    text carries the provenance its payload holds, rule 9). The open proposal
+    is found by the discovery stream's branch pattern from step 2, without a
+    model. *The fixed cadence stays, as a rule and not a fallback:* the
+    scheduled cycle runs on its cadence even while approved work remains, so
+    the roadmap keeps receiving items. The two triggers are independent. A
+    cycle started by an empty pipeline does not count as the scheduled cycle
+    of the cadence's current period ("No it does not count"): one on a
+    Thursday neither cancels nor postpones Sunday's. The one-proposal rule
+    holds for both triggers: a scheduled cycle that finds an open proposal
+    adds to that proposal's branch or skips, and never opens a second. A
+    minimum time between cycles, declared on the template (24 hours as a first
+    guess), applies to the empty-pipeline trigger only, counted from the end
+    of the last cycle of either trigger, so a closed proposal with an empty
+    pipeline cannot start a loop of cycles within an hour; it never delays the
+    scheduled cycle. If main or the pull requests cannot be read, no cycle
+    starts and the stream says it is blind (rule 10). The cadence itself is
+    the objective's schedule, set when it is declared, and is not in
+    `streams.go`. This stays in this step because it adds no mechanism: one
+    more outcome of the reading, one count of open pull requests and one
+    timestamp. If it does not fit one delivery pass, the discovery half is
+    delivered as the pass right after, before step 14.
+    *Acceptance:* with a fake provider that counts calls: nothing Planned and
+    a discovery proposal open, ten ticks, zero model calls; a commit on main
+    adding a Planned item, a delivery pass starts on the next tick; the pass
+    ends with the pull request open, zero further delivery calls until main or
+    the pull request changes.
+    *Acceptance, discovery trigger:* with a fake clock: nothing Planned and no
+    open discovery pull request, a cycle starts without a person and without
+    waiting for the cadence; with one open, none starts; with a delivered item
+    waiting for merge and nothing else Planned, one starts; after a proposal
+    is closed, none starts inside the minimum time and one starts after it,
+    with the closing comment in what the pass read; the scheduled cycle runs
+    on its cadence while Planned work remains, also in a period in which an
+    empty-pipeline cycle already ran, and adds to an open proposal or skips;
+    after a merge that adds Planned work, delivery starts and the empty
+    trigger is silent.
+14. **One oversight view.** The digest (Phase 21) gains, per stream and for a
+    window that defaults to "since the last digest": passes and their named
+    outcomes, pull requests waiting for a merge with the review's result, plans
+    and actions refused by the bounds, and what the stream is blocked on
+    (quota and until when, a comment round limit, a violation from step 3, an
+    unreadable remote, whether main's protection is known). The same data is
+    one CLI listing and one web page built on what exists; no new store, since
+    a digest reads only and can be regenerated for any window. **Not read:**
+    `internal/feature/report`, the CLI's commands and the web pages; the step
+    picks the surfaces after reading them and updates `docs/openapi.yaml` for
+    any field it adds.
+    *Acceptance:* from a seeded audit log and store, the digest for a window
+    lists exactly the seeded passes, refusals, waiting pull requests and
+    blocks per stream; regenerating it for the same window gives the same
+    content.
+15. **The seven days.** Declare the four streams and the review objective on a
+    deployment with Phase 35's duration set, at `act_with_notice`. For seven
+    consecutive days, record from the audit log every action whose actor is a
+    person. The phase is Completed when those are only merges, closes, pauses
+    and reads. Anything else is written into the Engineering Backlog with its
+    evidence and the seven days start again after its fix.
+    *Acceptance:* the record itself, attached to the pull request that marks
+    this phase Completed. This step has no automated test and must not be given
+    one that pretends to be it.
+
+**What this does not do.**
+
+- It does not merge, and it does not approve. No step gives any stream or the
+  review a merge tool; the owner's merge is the approval of every proposal and
+  every change.
+- It adds no second gate. Limits are fields of `agent.AuthorityBounds`,
+  written by reconcile and enforced by the decide step (ADR 015, rule 8).
+- It does not teach the loop to keep running. Recovery, pacing and quota
+  waiting live in `internal/feature/reconcile`, which calls the loop.
+- It does not turn an unanswered checkpoint into authority (Phase 35), and it
+  does not widen what any existing agent definition may do.
+- It builds no cleanup of worktrees (Phase 39), no new store and no new
+  subsystem for oversight, and no coordinator service under another name.
+- It does not choose what the streams work on. Discovery and the backlog
+  propose; the owner's merge decides; delivery implements what is Planned.
+- It does not prevent a push to main by itself. Step 3 detects one; the
+  remote's branch protection prevents it.
+
+**Risks.**
+
+- **The limits are only as strong as the coding agent's own allow-list.** A
+  subprocess that ignores its allow-list is caught by step 3 after the push,
+  not before. Without branch protection on main that is one bad push too late.
+  The oversight view says whether protection is known, and step 15 should not
+  start where it is not.
+- **Refusal can starve a stream.** A planner that keeps writing a plan outside
+  the limits is refused every pass and delivers nothing. Refusals are counted
+  per stream in step 14; whether repeated refusals should trip the breaker is
+  decided in step 2 after reading how the breaker counts.
+- **Karakuri reviewing Karakuri.** The reviewer has a separate context and may
+  still share the author's model and its blind spots. Step 11 makes the review
+  run things and report what it ran, which is evidence a person can check, but
+  a clean review is not a proof, and the owner's merge is still a judgement.
+- **Review loops.** Author and reviewer can trade commits and comments without
+  end and spend quota doing it. Step 12's round limit bounds it; the number is
+  a guess until step 15 shows real rounds.
+- **A timeout rejection may demote.** `demote` drops a rung on a reviewer's
+  rejection. Whether a `system:timeout` rejection (Phase 35) counts as one was
+  not read. If it does, a stream at `act_with_notice` falls back to `propose`
+  after one unanswered escalation and step 15 fails; settle it with Phase 35.
+- **The circuit breaker still asks a person.** When the breaker suspends an
+  objective, `internal/feature/reconcile/run.go` raises a checkpoint offering
+  "resume", "pause" and "investigate" (seen at line 575; the function was not
+  read). Resuming a suspended stream is a human action outside the four the
+  owner kept. Steps 4, 7 and 8 keep restarts, refusals and quota out of the
+  breaker's count, so it should trip only on real repeated failure, and then a
+  person looking is the right outcome; but it means step 15 fails on any week
+  in which a stream fails three passes running, and that is the intended
+  reading of the criterion, not a gap to engineer around.
+- **Provenance escalations.** EB-001 recorded that the git environment's
+  third-party marking escalated almost every plan; its row is marked Completed.
+  Whether escalations for that reason have in fact stopped on this deployment
+  was not measured here. If they have not, every pass raises a checkpoint
+  whatever its limits, and steps 2 and 10 change nothing a person can see.
+- **Phase 39 moves the ground.** Phase 39 puts authority at one gateway and
+  takes software nouns out of the core. Step 1's limits are neutral so they
+  survive it, but steps 3, 6 and 13 are pack code that Phase 39 relocates.
+  Whichever phase lands second adapts.
+- **Not read for this proposal:** `internal/core/agent`, `internal/feature/loop`
+  (decide step, `ResumeStoredLoops`), `internal/feature/reconcile` beyond
+  `authority.go`, `internal/platform/tools/cliagent`, `internal/feature/report`,
+  the CLI and web sources, ADR 017, the stream briefs, and the full text of
+  Phases 34 to 39 (their goals and openings were read, and Phase 35 whole).
+  Every step that touches one of these begins by reading it.
+
+---
+
 ## Engineering Backlog
 
 These are enhancements found in this deployment's own telemetry and audit log, each recorded with the data that shows the problem. A human approves an entry by merging the pull request that adds it; the delivery stream implements entries whose status is Planned.
@@ -3551,6 +4731,7 @@ These are enhancements found in this deployment's own telemetry and audit log, e
 | EB-001 | The git environment's provenance escalation fires on almost every plan | Read 2026-10-04. `krk --output json audit --limit 300 --kind escalation` returned 85 escalation events (2026-09-26 to 2026-10-04, local +02:00 timestamps); `grep -o` on `escalation_reason` counted 83 of them as `plan drew on material written outside this deployment: software.env.git`, and the other 2 as confidence below threshold. `krk audit export --from 2026-10-03T00:00:00Z --to 2026-10-04T00:00:00Z` held 28 `kind: escalation` events, 27 with that same reason and `bounds_violation: true`. Code read: `domains/software/environments.go` sets `TrustThirdParty` whenever the 7-day window (`gitObservationWindow`) holds any pull request. `gh pr list --state all --limit 15` showed 11 pull requests by the repository owner and 4 by dependabot. Inferred, not verified: the escalations come from the deployment's own pull requests, so the reason no longer tells a reviewer anything. Not measured: how many of the 83 were approved unchanged. | In `domains/software/environments.go` (git environment `Observe`), mark the observation third party only when the window carries a pull request whose author is not in an operator-configured list of the deployment's own logins (default empty, so today's behaviour is kept until configured); still computed from the payload, per ADR 021. No change to `internal/core/agent/decide.go`. Unverified: whether the git adapter's pull request type carries the author; if not, add it in the adapter under `internal/platform/`. Verify with a table test in `domains/software` (own-author PRs only gives operator trust; one outside author gives third party; empty list gives third party) and by re-running the escalation count over a later day. Delivered: the `own_authors` option on a `github` versioncontrol instance; the escalation count over a later day has not been re-run yet. | M | Completed |
 | EB-002 | Objectives whose work is already delivered end by a human rejecting a checkpoint | Read 2026-10-05. `krk audit export --from 2026-10-04T00:00:00Z --to 2026-10-05T00:00:00Z`, counted with `grep -o`: 24 `kind: rejection` events over 12 distinct `objective_id` values, two per objective (one carrying the `checkpoint_id`, one with `escalation_reason: rejected_at_checkpoint`), all with approver `admin`. Of the 12 distinct rejection notes, 9 say the slice or template is already delivered (a commit or pull request is named) and that "this plan would redo it"; 2 name a failed planner call (one on the usage limit); 1 replaces an objective whose brief was too broad. Same export: 68 `execute` events (5 with `success: false`: 4 `software.act.write_code`, 1 `software.verify.run_tests`), 29 `escalation` strings (28 with the reason EB-001 covers), 18 `approval`. Inferred, not verified: after a delivery has been pushed the loop proposes a further plan instead of converging, and the operator's only way to end the objective is to reject it, which records a completed delivery as a rejection and a failed loop. Not measured: what those 9 plans proposed, how long each checkpoint waited, whether the objectives were re-run by hand rather than by the loop, and any day other than 2026-10-04. | First reproduce, then fix. Unverified in code beyond `internal/feature/loop/runner.go`, where a rejected checkpoint is recorded as `rejected_at_checkpoint` and the loop is finalized with an error: find why a plan is raised for an objective whose success criteria already hold, and have the loop evaluate the criteria before planning so that it converges without a checkpoint. If the reproduction shows the plans were legitimate re-plans and the operator was closing objectives by hand, propose instead a distinct terminal reason for "already delivered" so the audit log does not count it as a rejection. Verify with a test in `internal/feature/loop` (an objective whose criteria are met on the first observation finishes with no checkpoint and no rejection event) and by re-running the count of rejection notes containing "would redo it" over a later day. | S | Planned |
 | EB-003 | `krk audit export` returns a window two hours earlier than the one asked for | Read 2026-10-05, about 20:36Z, against the server started 2026-10-05T21:29:19+02:00 (`karakuri-obs/server.log` line 8703), which is after the newest commit on main (3f14f83, 21:18:33+02:00). `krk audit export --from 2026-10-04T00:00:00Z --to 2026-10-05T00:00:00Z`, counted with `grep -o '"created_at":"..."'`: 131 `created_at` values, of which 51 are dated 2026-10-03T22 or 2026-10-03T23 (before the window start) and 80 are dated 2026-10-04; the first is 2026-10-03T22:29:34Z, the last 2026-10-04T20:07:23Z, and none falls between 2026-10-04T21:00Z and the window end. `krk audit export --from 2026-10-05T19:30:00Z --to 2026-10-05T20:36:00Z` returned `"rows":[]`, while `krk --output json audit --limit 300` listed 26 distinct event timestamps between 21:30 and 22:36 at +02:00, which is that same hour. Both observations fit a window read two hours early, the host's offset. Inferred, not verified: the stored `created_at` text carries the local offset and SQLite compares it as text against the UTC bounds that `ListToolEvents` passes (`internal/platform/storage/gorm_storage.go`, whose comment says SQLite compares datetimes as text). Also inferred: the counts in EB-001 and EB-002 that name a UTC day describe 2026-10-03T22:00Z to 2026-10-04T22:00Z instead. Thin in one respect: one host, one offset, two windows, read in one pass; not measured on PostgreSQL, and the 131 values may include rows that are not tool events. No commit on main in the last 15 addresses this. | In `internal/platform/storage` make the window filter of `ListToolEvents` (and `ListResolvedCheckpoints`, which the export also uses) independent of the host's zone: store `created_at` in UTC at write and compare existing rows by instant, not by text; decide in the slice whether old rows are rewritten, since the export promises the same bytes for a past window. Verify with a storage test that writes an event stamped in a non-UTC zone just inside and just outside a UTC window and expects only the inside one, and by re-running the two exports above: no value before the window start, and a non-empty result for an hour the audit list shows events in. | S | Planned |
+| EB-004 | A coding agent that exits 1 leaves no reason in the audit log, and the failure is repeated seconds apart | Read 2026-10-09, about 06:41Z. `krk --output json audit --limit 300 --kind execute`, counted with `grep -o`: 220 `created_at` values dated 2026-09-26 to 2026-10-08 (local +02:00 timestamps; 13 days, not one day), of which 22 carry the error `claude_code: exit 1 (stderr: )`, that is, with nothing after `stderr:`; it is the most frequent error string in that listing (next: `command exited with code 1`, 3). Not counted: how the 22 are spread over those days, except for 2026-10-08. `krk audit export --from 2026-10-08T00:00:00Z --to 2026-10-09T00:00:00Z` held 31 `created_at` values, all between 2026-10-08T18:56Z and 2026-10-08T19:16Z (about 20 minutes, not a full day), 23 of them `kind: execute`; 6 `software.act.write_code` events have `success: false`, and 5 of those are on one objective (`7e8a1db9dbc08bde`) at 19:16:27, 19:16:31, 19:16:33, 19:16:37 and 19:16:40Z, 13 seconds from first to last. `krk --output json audit --limit 40 --kind execute --objective 7e8a1db9dbc08bde --since 2026-10-08T21:16:00+02:00` shows all 5 with `claude_code: exit 1 (stderr: )`, after 3 successful `write_code` events on the same objective at 21:01, 21:06 and 21:11 (+02:00). Inferred, not verified: the CLI wrote its reason to stdout (or nowhere), so the adapter's message drops it; and the 5 are the same action tried again at once, each failing within about 3 seconds, on a cause a retry could not clear. Not measured: what the cause was (a usage limit is one guess, with no data behind it), whether the 5 came from one plan or from several loop iterations, and what the sixth failure (objective `9c995331b5156493`, 19:15:17Z) recorded. Update, read 2026-10-10, about 09:45Z: the same error on a second capability and across objectives in the same minute. `krk audit export --from 2026-10-09T00:00:00Z --to 2026-10-10T00:00:00Z`, counted with `grep -o`: 62 `created_at` values (2026-10-09T06Z to 18Z), 49 `kind: execute`; 10 execute events have `success: false`, 9 of them on adapter `software.env.cli_agent`, and the export holds 9 `claude_code: exit 1 (stderr: )` strings (the tenth failure is `software.verify.run_tests`, `command exited with code 1`). Of the 9, 2 are `software.act.write_test`, a capability this entry did not record before, and 7 are `software.act.write_code`. 6 of the 9 fall within 42 seconds on two objectives: `7e8a1db9dbc08bde` at 11:19:17Z, then `1f7da10bdc01bf22` at 11:19:47, :50, :53, :56 and :59Z (write_code and write_test alternating, 3 seconds apart, after a successful `write_code` on that objective at 11:18:48Z per `krk --output json audit --limit 40 --kind execute --objective 1f7da10bdc01bf22`); the others are `808a413d6657bc2e` at 07:06:13Z and `4a30030046a83264` at 18:20:15 and 18:20:19Z. Inferred, not verified: each of the 9 strings belongs to one of the 9 failed `cli_agent` events (the counts match; the pairing was not read row by row), and two objectives failing in the same minute points to a cause outside any one objective. Not measured: the cause, again; and the count (9 in a day) is not materially higher than the one recorded above. | In `internal/platform/tools/cliagent` (`claude.go`, where the message `claude_code: exit %d (stderr: %s)` is built, and the sibling adapters with the same message), when the process exits non-zero with an empty stderr, put the tail of what it wrote to stdout (bounded, for example the last 2000 bytes) into the error, so the audit row says why. Reproduce first: run the adapter against a stub binary that prints a reason to stdout and exits 1. Only after the reason is visible, decide in a second slice whether an immediate identical failure should stop the action instead of being tried again; that part is not proposed here because the caller of the 5 attempts was not identified. Verify with a test in `internal/platform/tools/cliagent` (stub exits 1 with empty stderr and a stdout line; the error contains that line) and by re-running the count of `claude_code: exit 1 (stderr: )` over a later listing: it should be 0. | S | Planned |
 
 ---
 
@@ -3587,6 +4768,14 @@ Phases 23–25 are the follow-on from the standing-objectives line, and are orde
 - **Phase 24** (behavioural conformance) depends on nothing new. It is placed before 25 because 25 adds capabilities and an environment to the karakuri pack, and the point of 24 is that new declarations should meet a suite that runs them rather than reads them. Shipping 25 first would add the exact kind of claim 24 exists to check.
 - **Phase 26** (the write path) was the one blocking everything else in this group: until it landed, `self_improve` could reach two of its three criteria and every roadmap phase was written by a human. It was found by trying to have Karakuri develop Phase 23 and discovering that the capability with a worktree could not write and the capability that could write had no worktree. Both halves of the fix — the workspace and the route — turned out to be the same mistake, recorded in [ADR 019](adr/019-capabilities-declare-what-they-need.md): a property the system needed was inferred from an identifier instead of declared by the thing that knows it.
 - **Phase 25** (self-improvement without a history) depends on **Phase 22** for the pack it extends and on **Phase 6**'s version-control adapter for CI status. It is the phase that makes Phase 22 usable on the day it is enabled rather than months later, and it is deliberately scoped to widen what the maintainer can *see* — never what it may *do*, which stays bounded by ADR 017 and by Phase 20's ceiling.
+
+Phase 39 is ordered by one dependency and one preference.
+
+- **Phase 39** (autonomous packs behind one gateway) depends on **Phase 34**: the credential the gateway sends a pack is Phase 34's delegation credential, and the delegated agent is one of the gateway's two callers. Only its step 6 needs that credential; steps 1 to 5 could start earlier. It is better started after **Phase 33** than before, because the pack's in-process server is written against the MCP revision the client speaks, but nothing in it requires Phase 33. Inside the phase the gateway comes first so that every later step moves a capability onto a path that already carries the audit, quota and authority checks, and the conformance suite comes last because it tests a contract the earlier steps are still settling ([ADR 028](adr/028-packs-are-autonomous-behind-one-gateway.md)).
+
+Phase 40 is ordered by what must be true before a stream runs with nobody watching.
+
+- **Phase 40** (streams that run without a coordinator) depends on **Phase 20** for standing objectives and the autonomy ladder and on **Phase 21** for the digest its oversight view extends. Its seven-day acceptance needs **Phase 35**, because with no coordinator an escalation that is not a bounds refusal is answered by nobody and must end by itself. It reuses **Phase 36**'s wording for a provider's refusal at a different seam (the delegated coding agent, not the planner), ends an interrupted loop the way **Phase 37** ends a cancelled pass, and reads **Phase 38**'s record of how criteria were settled; none of the three blocks its first steps. It leaves worktree cleanup to **Phase 39**'s lifecycle signals and only emits them, and it depends on backlog entries **EB-002** and **EB-004**. Inside the phase the order is load-bearing: bounds enforced by code (steps 1 to 3) come before anything acts unattended, recovery and quota (steps 4 to 9) before a proposal stream is allowed to act (step 10), and the observation (step 15) last.
 
 ---
 
@@ -3881,6 +5070,8 @@ on hard constraint violation at any step → ObjectiveStatusFailed, emit objecti
 
 ## Domain Pack System
 
+[ADR 028](adr/028-packs-are-autonomous-behind-one-gateway.md) (Proposed) changes the pack boundary described below: a pack becomes an MCP server plus a manifest behind one gateway, known to the orchestrator only by ADR 028's whole coupling surface, and is checked by a conformance suite run from outside. The sections below describe the in-process system as it is until Phase 39 migrates the software pack; they are not rewritten here.
+
 ### Registration
 
 `cmd/server/main.go` instantiates domain packs and passes them to `DomainRegistry.Register()`:
@@ -4025,6 +5216,7 @@ Checks (run via `krk domain test <id>`):
 | Observability tool slot (`tools.observability`) and its four adapters | **Fully implemented** (Phase 32, ADR 026), not validated against a live backend — multi-instance and twin-bound (ADR 006); `prometheus` (alerts, metrics), `loki` (logs), `datadog` (alerts, metrics, logs), `pagerduty` (alerts); `ErrUnsupported` for a signal a backend lacks; tested against `httptest` servers. No no-op adapter. One instance per twin |
 | `software.env.observability`                                          | **Fully implemented** (Phase 32, ADR 026) — observes the open alert set, serves `fetch_logs`, `fetch_metrics` and `alerts_resolved`; blind (an `Observe` error and an empty snapshot SHA) when unbound, inactive or unable to answer alerts; the SHA hashes the open alert set, not the messages |
 | Incident response: `software.act.run_remediation` + `software.verify.alerts_resolved` | **Fully implemented** (Phase 32) — remediation is a shell command behind the shell denylist, requires `alert_id`, `rationale` and `cmd`, and always escalates; the remediation criterion is met only when the named alerts are no longer open. Shown end to end with a scripted instance in `internal/feature/loop/incident_test.go`; no infrastructure adapter |
+| MCP revision 2026-07-28, client and server                            | **Implemented** (Phase 33, ADR 027), not checked against the specification text or a real 2026-07-28 peer — the client opens by `server/discover` and falls back to `initialize`, records the path in `protocol_path`, reports `input_required` as a named error, and re-issues once after a broken stream (a tool call may run twice); `internal/api/handler/mcp.go` answers both revisions. Field names are assumed from the roadmap's description; tested against `httptest` servers and the repository's own client only. No OAuth, tasks or trace context |
 | Standing stream templates                                             | **Declared, not yet run** — `software.objective.market_discovery`, `engineering_backlog`, `ux_improvement` and `roadmap_delivery` in `domains/software/streams.go`, for a deployment that improves itself on a cadence. Their criteria describe the state a correct pass leaves behind, so a pass that looked and found nothing to do does not count against the circuit breaker; every criterion is judged, and each carries a hard `no-merge` constraint. No standing objective has run under them yet |
 
 

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from '@/api/client';
+import { describe } from '@/api/useApi';
 import type { HealthResponse } from '@/api/types';
 
 export function HealthPage() {
@@ -11,15 +12,32 @@ export function HealthPage() {
       try {
         setH(await api.get<HealthResponse>('/health'));
         setErr(null);
-      } catch (e) { setErr(String(e)); }
+      } catch (e) { setErr(describe(e)); }
     };
     void load();
     const id = setInterval(load, 5000);
     return () => clearInterval(id);
   }, []);
 
-  if (err) return <p className="pill red">{err}</p>;
-  if (!h) return <p className="muted">Loading…</p>;
+  if (err) {
+    return (
+      <>
+        <h1>Health</h1>
+        <p><span className="pill red">{err}</span></p>
+        <p className="muted">
+          Could not read the server's health. Trying again every 5 seconds.
+        </p>
+      </>
+    );
+  }
+  if (!h) {
+    return (
+      <>
+        <h1>Health</h1>
+        <p className="muted">Loading…</p>
+      </>
+    );
+  }
 
   const bySlot = new Map<string, typeof h.adapters>();
   for (const a of h.adapters) {

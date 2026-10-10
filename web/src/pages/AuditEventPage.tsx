@@ -40,17 +40,22 @@ function AuditEvent() {
   const { id = '' } = useParams();
   const event = useFetch<AuditEvent>(`/audit/${encodeURIComponent(id)}`, [id]);
 
-  if (event.loading) return <p className="muted">Loading…</p>;
+  if (event.loading) return <p className="muted" role="status">Loading…</p>;
   if (event.error) {
     return (
-      <div className="card">
+      <div className="card" role="alert">
         <h2>Not found</h2>
         <p className="muted">
           No audit event with this ID, or none you may read. The two answer alike on
           purpose — an audit log that distinguished them would tell a prober which IDs
           exist.
         </p>
-        <Link to="/audit">Back to the audit log</Link>
+        <div className="row" style={{ marginTop: 12 }}>
+          {/* The request can also fail for a reason that passes, and the page
+              cannot tell which it was. */}
+          <button onClick={event.reload}>Retry</button>
+          <Link to="/audit">Back to the audit log</Link>
+        </div>
       </div>
     );
   }

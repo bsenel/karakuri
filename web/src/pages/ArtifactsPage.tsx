@@ -6,6 +6,8 @@ export function ArtifactsPage() {
   const [items, setItems] = useState<Artifact[]>([]);
   const [filter, setFilter] = useState('');
   const [err, setErr] = useState<string | null>(null);
+  // null until the first answer, so "not loaded" never reads as "none exist".
+  const [loaded, setLoaded] = useState<'ok' | 'failed' | null>(null);
 
   // Diff state
   const [sha1, setSha1] = useState('');
@@ -18,7 +20,12 @@ export function ArtifactsPage() {
       const list = await api.get<Artifact[]>(`/artifacts${q}`);
       setItems(list ?? []);
       setErr(null);
-    } catch (e) { setErr(String(e)); }
+      setLoaded('ok');
+    } catch (e) {
+      setItems([]);
+      setErr(String(e));
+      setLoaded('failed');
+    }
   };
 
   useEffect(() => { void load(); }, []);
@@ -39,14 +46,14 @@ export function ArtifactsPage() {
         <h3>Filter</h3>
         <div className="row">
           <div className="grow">
-            <label>Objective ID</label>
-            <input value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="(all)" />
+            <label htmlFor="artifact-objective">Objective ID</label>
+            <input id="artifact-objective" value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="(all)" />
           </div>
           <button onClick={() => void load(filter || undefined)}>Apply</button>
         </div>
       </div>
 
-      {err && <p className="pill red">{err}</p>}
+      {err && <p className="pill red" role="alert">{err}</p>}
 
       <table>
         <thead><tr><th>SHA</th><th>Objective</th><th>Agent</th><th>Kind</th><th>Size</th><th>Created</th></tr></thead>
@@ -55,8 +62,10 @@ export function ArtifactsPage() {
             <tr key={a.sha}>
               <td className="mono small">
                 <code>{a.sha.slice(0, 16)}…</code>{' '}
-                <button onClick={() => setSha1(a.sha)} className="small">A</button>{' '}
-                <button onClick={() => setSha2(a.sha)} className="small">B</button>
+                {/* "A" alone names nothing out of context; the name says which
+                    artifact goes into which side of the diff below. */}
+                <button onClick={() => setSha1(a.sha)} className="small" aria-label={`Use ${a.sha.slice(0, 16)} as SHA A`}>A</button>{' '}
+                <button onClick={() => setSha2(a.sha)} className="small" aria-label={`Use ${a.sha.slice(0, 16)} as SHA B`}>B</button>
               </td>
               <td className="mono small">{a.objective_id}</td>
               <td className="mono small">{a.agent_id}</td>
@@ -65,8 +74,14 @@ export function ArtifactsPage() {
               <td className="muted small">{new Date(a.created_at).toLocaleString()}</td>
             </tr>
           ))}
-          {items.length === 0 && (
-            <tr><td colSpan={6} className="muted">No artifacts.</td></tr>
+          {loaded === null && (
+            <tr><td colSpan={6} className="muted" role="status">Loading…</td></tr>
+          )}
+          {loaded === 'failed' && (
+            <tr><td colSpan={6} className="muted">Could not load artifacts.</td></tr>
+          )}
+          {loaded === 'ok' && items.length === 0 && (
+            <tr><td colSpan={6} className="muted">No artifacts yet. Agents store them as objectives run.</td></tr>
           )}
         </tbody>
       </table>
@@ -75,12 +90,12 @@ export function ArtifactsPage() {
       <div className="card">
         <div className="row">
           <div className="grow">
-            <label>SHA A</label>
-            <input value={sha1} onChange={(e) => setSha1(e.target.value)} className="mono" />
+            <label htmlFor="artifact-sha-a">SHA A</label>
+            <input id="artifact-sha-a" value={sha1} onChange={(e) => setSha1(e.target.value)} className="mono" />
           </div>
           <div className="grow">
-            <label>SHA B</label>
-            <input value={sha2} onChange={(e) => setSha2(e.target.value)} className="mono" />
+            <label htmlFor="artifact-sha-b">SHA B</label>
+            <input id="artifact-sha-b" value={sha2} onChange={(e) => setSha2(e.target.value)} className="mono" />
           </div>
           <button className="primary" onClick={() => void runDiff()} disabled={!sha1 || !sha2}>Diff</button>
         </div>

@@ -28,6 +28,7 @@ export function DataTable<T>({
   loading,
   error,
   empty,
+  label,
 }: {
   columns: Column<T>[];
   rows: T[];
@@ -36,22 +37,24 @@ export function DataTable<T>({
   error?: string | null;
   /** Shown when there are no rows and nothing went wrong. */
   empty?: ReactNode;
+  /** Names the table, for a page that has more than one. */
+  label?: string;
 }) {
   if (error) {
     return (
       <div className="card">
-        <p className="error">{error}</p>
+        <p className="error" role="alert">{error}</p>
       </div>
     );
   }
-  if (loading) return <p className="muted">Loading…</p>;
+  if (loading) return <p className="muted" role="status">Loading…</p>;
   if (rows.length === 0) {
     return <p className="muted">{empty ?? 'Nothing here.'}</p>;
   }
 
   return (
     <div className="tablewrap">
-      <table>
+      <table aria-label={label}>
         <thead>
           <tr>
             {columns.map((c) => (

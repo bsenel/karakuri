@@ -3,8 +3,12 @@ package mcp
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"slices"
+	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -59,8 +63,8 @@ type Config struct {
 
 // Client is one connection to one MCP server.
 //
-// It speaks the three methods this deployment needs — initialize, tools/list,
-// tools/call — over either transport. What it deliberately does not do is
+// It speaks the methods this deployment needs — server/discover or initialize
+// to open, then tools/list and tools/call — over either transport. What it deliberately does not do is
 // reconnect: an instance discovers at boot and reports what it found, and a
 // client that silently re-established a session would make /health describe a
 // server it is no longer talking to.
@@ -78,6 +82,11 @@ type Client struct {
 
 	server   Info
 	protocol string
+
+	// modern is set once Negotiate has reached the server by server/discover.
+	// From then on every request carries _meta and every result must carry a
+	// resultType; a connection opened by the handshake does neither.
+	modern bool
 }
 
 // NewClient dials the server a Config names. The transport is established here,
@@ -144,6 +153,54 @@ func (c *Client) Initialize(ctx context.Context) (InitializeResult, error) {
 	return out, nil
 }
 
+// How a connection was opened, for /health: a server reached by discovery and
+// one reached by the handshake are spoken to differently from then on.
+const (
+	PathDiscover   = "discover"
+	PathInitialize = "initialize"
+)
+
+// Negotiation is what opening a connection settled: the revision in use, what
+// the server called itself, and which of the two paths got there.
+type Negotiation struct {
+	ProtocolVersion string
+	ServerInfo      Info
+	Path            string
+}
+
+// Negotiate opens the connection by whichever path the server has.
+//
+// server/discover is tried first and the handshake second, in that order
+// because a 2026-07-28 server refuses initialize outright while an older one
+// answers an unknown method with an ordinary error and is still there to be
+// initialized. When both fail the error names both: either alone sends an
+// operator to the wrong half of the problem.
+func (c *Client) Negotiate(ctx context.Context) (Negotiation, error) {
+	var found discoverResult
+	discoverErr := c.exchange(ctx, MethodServerDiscover, nil, &found, true)
+	if discoverErr == nil && !slices.Contains(found.SupportedVersions, ModernProtocolVersion) {
+		// A server that answers discovery and lists no revision this client
+		// speaks that way is advertising the handshake: negotiate_auto in the
+		// SDK's mcp/client/_probe.py falls back here too.
+		discoverErr = fmt.Errorf("%s: server supports %v, not %s", MethodServerDiscover, found.SupportedVersions, ModernProtocolVersion)
+	}
+	if discoverErr == nil {
+		server := found.Meta[metaKeyServerInfo]
+		c.mu.Lock()
+		c.modern = true
+		c.server = server
+		c.protocol = ModernProtocolVersion
+		c.mu.Unlock()
+		return Negotiation{ProtocolVersion: ModernProtocolVersion, ServerInfo: server, Path: PathDiscover}, nil
+	}
+
+	init, err := c.Initialize(ctx)
+	if err != nil {
+		return Negotiation{}, fmt.Errorf("%w; then %w", discoverErr, err)
+	}
+	return Negotiation{ProtocolVersion: init.ProtocolVersion, ServerInfo: init.ServerInfo, Path: PathInitialize}, nil
+}
+
 // ListTools asks the server what it offers.
 //
 // One page. A server that paginates its tools would need a discovery loop, and
@@ -172,6 +229,12 @@ func (c *Client) CallTool(ctx context.Context, name string, args map[string]any)
 	}
 	var out ToolResult
 	if err := c.call(ctx, MethodToolsCall, params, &out); err != nil {
+		// Only here is it known which tool asked. The call is not sent again:
+		// the result arrived whole, and there is no answer to send with it.
+		var asked *InputRequiredError
+		if errors.As(err, &asked) {
+			return ToolResult{}, &InputRequiredError{Tool: name, Request: asked.Request}
+		}
 		return ToolResult{}, err
 	}
 	return out, nil
@@ -186,26 +249,68 @@ func (c *Client) Close() error { return c.transport.Close() }
 // direction, and two calls interleaved on it would return each other's replies.
 func (c *Client) call(ctx context.Context, method string, params json.RawMessage, out any) error {
 	c.mu.Lock()
-	c.nextID++
-	id := json.RawMessage(strconv.FormatInt(c.nextID, 10))
+	modern := c.modern
 	c.mu.Unlock()
+	return c.exchange(ctx, method, params, out, modern)
+}
+
+// exchange is call with the path stated, because server/discover has to be sent
+// the modern way before anything has been negotiated.
+func (c *Client) exchange(ctx context.Context, method string, params json.RawMessage, out any, modern bool) error {
+	if modern {
+		var err error
+		if params, err = withMeta(params); err != nil {
+			return fmt.Errorf("%s: %w", method, err)
+		}
+	}
 
 	ctx, cancel := c.withTimeout(ctx)
 	defer cancel()
 
 	c.sendMu.Lock()
 	defer c.sendMu.Unlock()
-	resp, err := c.transport.Send(ctx, Request{
-		JSONRPC: "2.0",
-		ID:      id,
-		Method:  method,
-		Params:  params,
-	})
+	send := func() (*Response, error) {
+		c.mu.Lock()
+		c.nextID++
+		id := json.RawMessage(strconv.FormatInt(c.nextID, 10))
+		c.mu.Unlock()
+		return c.transport.Send(ctx, Request{
+			JSONRPC: "2.0",
+			ID:      id,
+			Method:  method,
+			Params:  params,
+		})
+	}
+
+	resp, err := send()
+	if modern && errors.Is(err, errStreamBroken) {
+		// Revision 2026-07-28 has no resumption: a stream that breaks before the
+		// reply has lost the request, and the rule is to send it again as a new
+		// one. The server may already have run the tool, so it may run twice;
+		// that is the revision's rule, not an oversight. Once, under the same
+		// context and the same hold on sendMu, so the per-call bound covers the
+		// pair and nothing interleaves between them: one re-issue is what the
+		// rule needs, and a second would be a retry policy. The ADR 022 bounds
+		// sit above this point or are applied per Send, so the second request
+		// is inside them as the first was.
+		//
+		// Only streamable HTTP reports a broken stream. On stdio a failed read
+		// shuts the transport down and kills the subprocess, so there is nothing
+		// left to re-issue against.
+		if resp, err = send(); errors.Is(err, errStreamBroken) {
+			return fmt.Errorf("%s: %w; the request was re-issued once and that stream broke too", method, err)
+		}
+	}
 	if err != nil {
 		return fmt.Errorf("%s: %w", method, err)
 	}
 	if resp.Error != nil {
 		return fmt.Errorf("%s: server error %d: %s", method, resp.Error.Code, resp.Error.Message)
+	}
+	if modern {
+		if err := checkResultType(resp.Result); err != nil {
+			return fmt.Errorf("%s: %w", method, err)
+		}
 	}
 	if out == nil || len(resp.Result) == 0 {
 		return nil
@@ -214,6 +319,118 @@ func (c *Client) call(ctx context.Context, method string, params json.RawMessage
 		return fmt.Errorf("%s: decode result: %w", method, err)
 	}
 	return nil
+}
+
+// withMeta adds the _meta every 2026-07-28 request carries in place of the
+// handshake: the revision spoken and what this client can do.
+func withMeta(params json.RawMessage) (json.RawMessage, error) {
+	fields := map[string]any{}
+	if len(params) > 0 {
+		if err := json.Unmarshal(params, &fields); err != nil {
+			return nil, fmt.Errorf("params are not an object: %w", err)
+		}
+	}
+	fields["_meta"] = map[string]any{
+		metaKeyProtocolVersion: ModernProtocolVersion,
+		// Empty for the reason Initialize declares none: nothing is implemented.
+		metaKeyClientCapabilities: map[string]any{},
+		metaKeyClientInfo:         ClientInfo,
+	}
+	return json.Marshal(fields)
+}
+
+// checkResultType refuses a 2026-07-28 result that is not a complete answer.
+//
+// A missing resultType is an error rather than assumed complete, and so is
+// input_required: read as an answer, either one is a tool that returned
+// nothing. This is the only place a resultType is read, so it is the only
+// place an InputRequiredError is made.
+func checkResultType(result json.RawMessage) error {
+	var head struct {
+		ResultType string `json:"resultType"`
+	}
+	if len(result) > 0 {
+		if err := json.Unmarshal(result, &head); err != nil {
+			return fmt.Errorf("decode result: %w", err)
+		}
+	}
+	switch head.ResultType {
+	case resultTypeComplete:
+		return nil
+	case "":
+		return fmt.Errorf("result carried no resultType, which revision %s requires", ModernProtocolVersion)
+	case ResultTypeInputRequired:
+		return &InputRequiredError{Request: inputRequestText(result)}
+	default:
+		return fmt.Errorf("unknown resultType %q", head.ResultType)
+	}
+}
+
+// InputRequiredError is a tool call the server answered by asking for input
+// instead of answering.
+//
+// It is an error and not a result because this client answers no requests for
+// input: read as a result it is a tool that returned nothing. Request is the
+// server's own text about what it wants, capped in length, and is somebody
+// else's writing wherever it travels. Tool is empty when the result came from
+// a method other than tools/call. See ADR 027.
+type InputRequiredError struct {
+	Tool    string
+	Request string
+}
+
+func (e *InputRequiredError) Error() string {
+	return fmt.Sprintf("tool %q answered with resultType %q: this client does not answer requests for input; the server asked: %s",
+		e.Tool, ResultTypeInputRequired, e.Request)
+}
+
+// maxInputRequestText caps the server's request inside an InputRequiredError.
+//
+// The error's text reaches a planner prompt, and the only other bound on it is
+// the transport's 8 MiB. A question a planner can act on fits in a paragraph;
+// the value is a choice, not a measurement.
+const maxInputRequestText = 1024
+
+// inputRequestText is what the server asked for, as text.
+//
+// It reads the message of each request under inputRequestsField, in key order.
+// That is the shape of an ElicitRequest, the one request kind with a message
+// (see protocol.go); a sampling or roots request, or anything else, is carried
+// as its raw JSON rather than dropped.
+func inputRequestText(result json.RawMessage) string {
+	var body map[string]json.RawMessage
+	_ = json.Unmarshal(result, &body)
+	raw := body[inputRequestsField]
+	if len(raw) == 0 {
+		return "(the server gave no request)"
+	}
+
+	var requests map[string]struct {
+		Params struct {
+			Message string `json:"message"`
+		} `json:"params"`
+	}
+	_ = json.Unmarshal(raw, &requests)
+	keys := make([]string, 0, len(requests))
+	for k := range requests {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	var messages []string
+	for _, k := range keys {
+		if m := strings.TrimSpace(requests[k].Params.Message); m != "" {
+			messages = append(messages, m)
+		}
+	}
+	text := strings.Join(messages, "; ")
+	if text == "" {
+		text = string(raw)
+	}
+	if len(text) > maxInputRequestText {
+		// Cut on bytes, then drop the rune the cut may have split.
+		text = strings.ToValidUTF8(text[:maxInputRequestText], "") + " [truncated]"
+	}
+	return text
 }
 
 // withTimeout applies the per-call bound, leaving a caller's shorter deadline
