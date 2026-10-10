@@ -47,12 +47,17 @@ it does not reopen them.
 2. **Each pack brings its own MCP server or servers**, holding its capabilities
    as tools: fetch logs, fetch PRs, run tests, write code, run a remediation.
    The gateway routes to them.
-3. **Packs are autonomous.** A pack manages its own workspaces (git worktrees
-   for the software pack; a sandbox, or nothing, for another) and its own
-   secrets (the tokens for the systems it talks to). The orchestrator does not
-   create workspaces and does not hold a pack's secrets. It receives only an
-   opaque workspace reference, which it records in the audit log. Cleaning a
-   workspace up is the pack's job.
+3. **Packs are autonomous, and the orchestrator does not know their
+   internals.** (Corrected by the owner the same day: "Karakuri should not care
+   about the internal details of a domain pack. The orchestrator should be
+   decoupled from domain packs.") Where a pack does its work (a git worktree
+   for the software pack; a sandbox, or nowhere at all, for another), which
+   adapters and vendors it uses and which secrets it holds are the pack's own.
+   The orchestrator has no concept of a workspace, not even as an opaque
+   reference: it creates none, grants none, stores none and is told of none. It
+   knows nothing of a pack's worktrees, branches, sandboxes, adapters, vendors
+   or secrets. What it knows about a pack is listed exhaustively under "The
+   whole coupling surface" below.
 4. **What stays in the orchestrator**, never in a pack or an MCP server:
    objectives, the reasoning loop, reconciliation of standing objectives,
    checkpoints and approvals, authority (who is asking and what they may do),
@@ -61,8 +66,30 @@ it does not reopen them.
    it trusts and whether the criteria are met.
 5. **What MCP does not carry goes in a manifest.** Each pack ships a small
    manifest outside MCP: which of its tools may be used as criterion verifiers,
-   how its environments are snapshotted for drift detection, its objective,
-   agent and stream templates, and its routing hints.
+   the name of its snapshot tool for drift detection, its objective, agent and
+   stream templates, and its routing hints.
+
+### The whole coupling surface
+
+These are the only things the orchestrator knows about a pack. The list is
+exhaustive.
+
+- (a) **Its registered MCP endpoint.**
+- (b) **Its tools' names, descriptions and input schemas.**
+- (c) **Its manifest:** which tools may serve as criterion verifiers; its
+  objective, agent and stream templates; its routing hints; and the name of its
+  snapshot tool.
+- (d) **A snapshot value for drift detection**, which the orchestrator only
+  compares for equality with the previous one and never interprets.
+- (e) **Results, their provenance mark, and the explicit "cannot see" error.**
+
+**Rule: anything not on this list is a pack internal, and a change to the
+orchestrator that needs to know one is a design error.** Workspaces, worktrees,
+branches, sandboxes, adapters, vendors and secrets are not on the list.
+
+In the other direction, a pack knows the orchestrator only by what the call
+contract sends it (section b): the orchestrator's identifiers, the authority
+bounds, a credential, and the lifecycle signals.
 
 The sections below are what those five points need in order to be buildable.
 
@@ -77,8 +104,10 @@ by where the operator configured the server, never by anything the server says.
   pack's capability may set today, and are subject to pack conformance.
 - **A tool discovered on anyone else's server** is configured as an MCP
   instance, as ADR 022 has it, and is registered as `mcp.<instance>.<tool>`.
-  ADR 022's four bounds apply to it unchanged: no workspace, never a criterion
-  verifier, approval by default, outside pack conformance. Everything it returns
+  ADR 022's bounds apply to it: never a criterion verifier, approval by
+  default, outside pack conformance. Its first bound, "never gets a workspace",
+  is reworded by this ADR (see Consequences): the orchestrator grants
+  workspaces to nobody, so there is nothing to withhold. Everything it returns
   is `TrustThirdParty`.
 
 The two are told apart the way ADR 022 already tells them apart: by the
@@ -99,7 +128,8 @@ says the orchestrator decides which it trusts.
 
 **The gateway sends, with every call:**
 
-- the tenant, the twin and the objective the call is made for;
+- the orchestrator's own identifiers for the call: tenant, twin, objective,
+  loop and pass, and action;
 - the `agent.AuthorityBounds` in force for the run;
 - a signed, limited credential: scoped to that twin, valid no longer than the
   action's timeout, revoked when the action ends.
@@ -109,6 +139,11 @@ ADR 015's single gate stays single. The bounds travel so that a pack can keep
 what it does on the orchestrator's behalf inside them, for example when it
 starts a coding agent of its own; a pack that refuses a call has failed an
 action, not withheld an approval.
+
+**Correlation is by the orchestrator's identifiers.** A pack that needs
+continuity between the actions of one pass (write code, then run the tests on
+it) keys whatever it keeps on the identifiers it was sent. Nothing pack-defined
+is stored by the orchestrator or echoed back to the pack on a later call.
 
 The likely carrier of the credential is Phase 34's delegation credential.
 `internal/feature/delegation/issuer.go` on that branch mints a token signed with
@@ -126,8 +161,6 @@ read for this ADR.
 - the trust of the text in it, set from what the payload holds (ADR 021,
   AGENTS.md rule 9): `TrustThirdParty` when it carries a PR title, a log line,
   a chat message or anything else somebody outside the deployment wrote;
-- the opaque workspace reference, when the call used a workspace. The
-  orchestrator records it and does not interpret it;
 - **an explicit "cannot see" error, never an empty result**, when the pack could
   not look: no backend bound, backend down, a signal the backend does not have
   (ADR 026, AGENTS.md rule 10). An empty result means the pack looked and found
@@ -137,19 +170,53 @@ The gateway marks provenance from what the pack returned and can only lower
 trust, never raise it: a first-party pack saying "third party" is believed, and
 a result with no trust stated is treated as third party.
 
+The pack returns nothing about where or how it did the work. A pack may put
+what it likes in its result; to the orchestrator that is data, never parsed for
+meaning.
+
+**Lifecycle signals.** The orchestrator tells every pack that was called during
+a pass, in domain-neutral terms and with the same identifiers:
+
+- **a pass ended** (tenant, twin, objective, pass);
+- **an objective ended or was cancelled** (tenant, twin, objective).
+
+What a pack does on a signal is its own business: clean up where it worked,
+drop a cache, nothing. The orchestrator does not know, and decides nothing on
+the outcome. Two rules make a missed signal harmless:
+
+- **A signal is safe to repeat.** The orchestrator may send one more than once,
+  for example after a restart, and a pack treats a signal for something it no
+  longer holds as done.
+- **A pack bounds its own leftovers.** Delivery is best effort: a pack that was
+  down, or an orchestrator that crashed, means a signal is missed. A pack
+  therefore expires on its own what it keeps for a pass or an objective (by
+  age, by count, or however suits it). The signal makes cleanup prompt; the
+  pack's own bound makes it certain.
+
+How the signals are carried (a reserved tool every pack serves, or an MCP
+notification) is for the phase to settle.
+
+**The audit log** records the call, the caller, the authority it ran under and
+the result as the pack returned it. It has no workspace field and no other
+pack-defined field.
+
 ### c. The pack contract, and how it is checked
 
 A pack promises:
 
 - **Per-tenant secret resolution.** The secret used for a call is the one that
   belongs to the tenant named in the call.
-- **No secret in a result or a log.** Not in tool output, not in an error, not
-  in the workspace reference.
-- **Workspace isolation and cleanup.** Two concurrent actions never share a
-  workspace, and a workspace is removed when its work is done or has failed.
-- **Snapshots for drift.** Each environment the manifest names can be
-  snapshotted, the snapshot is stable when nothing changed, and it is empty
-  when the pack cannot see (ADR 026).
+- **No secret in a result or a log.** Not in tool output and not in an error.
+- **Continuity and isolation by identifier.** Actions of the same pass see each
+  other's work where the pack's tools imply it; actions of different passes,
+  objectives, twins or tenants never do. How the pack achieves that is not part
+  of the contract.
+- **Lifecycle signals are safe to repeat, and leftovers are bounded** whether
+  or not a signal arrives.
+- **Snapshots for drift.** The snapshot tool the manifest names returns a value
+  that is equal when nothing changed and different when something did, and the
+  "cannot see" error, not a value, when the pack cannot look (ADR 026). The
+  orchestrator compares values for equality and reads nothing in them.
 - **Timeouts.** A call returns or fails within the timeout the gateway gave it.
 
 The orchestrator can no longer inspect a pack, so the contract is checked from
@@ -171,8 +238,8 @@ only asked the pack to declare.
 - **Permission.** Checkpoints, approvals and the authority decision. An approval
   that is a tool is an approval a tool caller can give itself; the served
   surface already withholds it (`mcpWithheld` in `internal/api/handler/mcp.go`).
-- **Drift detection.** Reconcile compares snapshots on its own schedule. The
-  manifest says how an environment is snapshotted; deciding that the world
+- **Drift detection.** Reconcile compares snapshot values for equality on its
+  own schedule. The manifest names the snapshot tool; deciding that the world
   moved is reconcile's (ADR 015, AGENTS.md rule 8).
 - **The loop's own state and memory.** They are the orchestrator's data, read
   and written in-process. Routing them through a tool boundary would let tool
@@ -202,11 +269,11 @@ edits none of these. The effect lands with the migration, not with this file.
 
 | | Effect |
 |---|---|
-| [ADR 003](003-git-worktrees.md) | **Superseded as a core responsibility.** Worktrees stop being created by `WorktreeManager` in the core. A dedicated worktree per code-writing action survives as the software pack's own workspace policy. |
-| AGENTS.md rule 3 | **Amended** by the phase: delivery worktrees are the software pack's, not obtained from `git.WorktreeManager` in the core. |
-| [ADR 019](019-capabilities-declare-what-they-need.md) | **Decision 1 amended.** A workspace is still something only the capability knows, but it stops being a field the loop acts on: the pack provisions its own. `NeedsWorkspace` and `GrantsWorkspace` leave the core type when the migration is done. Decisions 2 to 4 were read as headings only and are assumed untouched. |
+| [ADR 003](003-git-worktrees.md) | **Superseded outright.** The orchestrator has no `WorktreeManager` and no notion of a worktree. Whether the software pack keeps a worktree per pass is that pack's internal, no longer an architectural decision of Karakuri. |
+| AGENTS.md rule 3 | **Superseded outright**; the phase removes it. |
+| [ADR 019](019-capabilities-declare-what-they-need.md) | **Superseded outright**, with `NeedsWorkspace` and `GrantsWorkspace`: the fields leave the core type and nothing replaces them. Decisions 2 to 4 were read as headings only; whatever they declare that is not on the coupling surface goes the same way, and the phase must check each. |
 | The in-process pack interface (`domain.Pack`) | **Superseded as the pack boundary** by a pack's MCP server plus its manifest. In the first step it remains as how the in-binary software pack is implemented. |
-| [ADR 022](022-discovered-tools-are-bounded-four-ways.md) | **Four bounds untouched.** The first bound holds trivially once the orchestrator provisions a workspace for nobody. The ADR's title also says Karakuri serves MCP read-only; that part was not read, and a gateway that carries a pack's acting tools to a delegated agent bears on it. The phase must say how. |
+| [ADR 022](022-discovered-tools-are-bounded-four-ways.md) | **First bound reworded, the other three untouched.** "A discovered tool never gets a workspace" assumed an orchestrator that grants them. It grants none to anyone, so the bound becomes: a discovered tool gets the call contract and no more, and is sent no lifecycle signals. The ADR's title also says Karakuri serves MCP read-only; that part was not read, and a gateway that carries a pack's acting tools to a delegated agent bears on it. The phase must say how. |
 | AGENTS.md rules 8, 9 and 10; ADR 015, 021, 026 | **Untouched.** Rules 9 and 10 now also bind a pack across the call contract. |
 | ADR 006 | **Untouched** for discovered servers. Whether a pack's own backends keep using its slots is the pack's business. |
 | ADR 005 | Not read. It concerns pack isolation and is likely affected; this ADR does not say how. |
@@ -216,9 +283,15 @@ edits none of these. The effect lands with the migration, not with this file.
 - **A process boundary and serialisation on every call**, once a pack is split
   out. In the first step the cost is the serialisation and the gateway hop
   without the process boundary.
-- **Each pack repeats workspace and secret handling.** The answer is an
-  optional shared library a pack may use. It is not a core responsibility and
-  the orchestrator does not depend on it.
+- **Each pack repeats what packs have in common inside them**, such as secret
+  handling and keeping state per pass. The answer is an optional shared library
+  a pack may use. It is not a core responsibility and the orchestrator does not
+  depend on it.
+- **Cleanup is no longer guaranteed by the core.** A missed lifecycle signal
+  leaves a pack's leftovers until the pack's own bound removes them; the
+  orchestrator cannot see them.
+- **The audit log says less about where work happened.** It holds only what the
+  pack chose to put in its result.
 - **A pack that holds secrets is a larger thing to trust.** Today a pack is
   code handed adapters. After this it holds the tokens, and the orchestrator
   can check its behaviour only from outside.
@@ -229,7 +302,13 @@ edits none of these. The effect lands with the migration, not with this file.
   (found by search, not read). That is the bulk of the phase.
 
 **What it buys.** A second pack adds a registration and a server. It adds no
-adapters, tokens or workspace types to the core, and need not be written in Go.
+adapters, tokens or domain nouns to the core, and need not be written in Go.
+The test of the decoupling, an acceptance criterion of Phase 39: the
+orchestrator's packages (`cmd`, `internal/api`, `internal/feature`,
+`internal/core`) import no pack package and contain no software-domain noun
+(worktree, branch, repository, pull request) outside tests; and a second,
+trivial pack with no workspace and no secrets at all can be registered and
+driven end to end without any change to the orchestrator.
 
 ## What was read
 
