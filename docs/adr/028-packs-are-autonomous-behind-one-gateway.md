@@ -2,7 +2,7 @@
 
 **Status:** Proposed
 **Date:** 2026-10-10
-**Relates to:** [ADR 003](003-git-worktrees.md) (worktrees created by the core; superseded as a core responsibility), [ADR 005](005-domain-pack-isolation.md) (domain pack isolation; not read, see "What was read"), [ADR 006](006-multi-instance-tool-adapters.md) (named instances bound per twin), [ADR 015](015-standing-objectives-and-reconciliation.md) (one gate: authority is written into the bounds), [ADR 019](019-capabilities-declare-what-they-need.md) (`NeedsWorkspace`; Decision 1 amended), [ADR 021](021-observations-carry-provenance.md) (a payload says who wrote it), [ADR 022](022-discovered-tools-are-bounded-four-ways.md) (discovered tools are bounded four ways), [ADR 026](026-an-environment-that-cannot-see-says-so.md) (blind is an error, not an empty result)
+**Relates to:** [ADR 003](003-git-worktrees.md) (worktrees created by the core; superseded), [ADR 005](005-domain-pack-isolation.md) (domain pack isolation; not read, see "What was read"), [ADR 006](006-multi-instance-tool-adapters.md) (named instances bound per twin), [ADR 015](015-standing-objectives-and-reconciliation.md) (one gate: authority is written into the bounds), [ADR 019](019-capabilities-declare-what-they-need.md) (`NeedsWorkspace`; superseded), [ADR 021](021-observations-carry-provenance.md) (a payload says who wrote it), [ADR 022](022-discovered-tools-are-bounded-four-ways.md) (discovered tools are bounded four ways), [ADR 026](026-an-environment-that-cannot-see-says-so.md) (blind is an error, not an empty result)
 
 ## Context
 

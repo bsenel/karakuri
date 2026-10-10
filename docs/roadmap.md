@@ -3723,8 +3723,20 @@ use was not searched.
 
 **Goal:** Every tool call, from the reasoning loop or from a coding agent
 Karakuri delegated to, goes through one MCP gateway; the software pack serves
-its capabilities as MCP tools behind that gateway and manages its own
-workspaces and secrets; and a conformance suite checks the pack from outside.
+its capabilities as MCP tools behind that gateway and keeps its internals
+(where it works, its adapters, its secrets) to itself; the orchestrator knows a
+pack only by ADR 028's "whole coupling surface"; and a conformance suite checks
+the pack from outside.
+
+**Acceptance criterion of the phase (the test of the decoupling).** The
+orchestrator's packages (`cmd`, `internal/api`, `internal/feature`,
+`internal/core`) import no pack package and contain no software-domain noun
+(worktree, branch, repository, pull request) outside tests; and a second,
+trivial pack that has no workspace and no secrets at all can be registered and
+driven end to end without any change to the orchestrator. The owner's
+correction of 2026-10-10 sets it: "Karakuri should not care about the internal
+details of a domain pack. The orchestrator should be decoupled from domain
+packs."
 
 Decided by the owner on 2026-10-10, "for scalability of domain packs", and
 recorded in [ADR 028](adr/028-packs-are-autonomous-behind-one-gateway.md). The
@@ -3753,8 +3765,14 @@ orchestrator with what only it may decide.
   discovered, with ADR 022's four bounds unchanged.
 - The software pack's capabilities served as MCP tools by a server that lives
   **inside the Karakuri binary**, behind the gateway.
-- Worktrees created and removed by the software pack; the core records an
-  opaque workspace reference and nothing else.
+- An orchestrator with no concept of a workspace, not even an opaque
+  reference: the software pack keys its worktrees on the identifiers every call
+  carries (tenant, twin, objective, loop/pass, action), and nothing
+  pack-defined is stored by the orchestrator or echoed back.
+- Generic lifecycle signals (a pass ended; an objective ended or was
+  cancelled) sent to every pack involved, replacing cleanup by the core.
+- A second, trivial pack registered and driven end to end with no change to the
+  orchestrator.
 - The software pack resolving its own secrets, per tenant.
 - A conformance suite that runs against a pack's server through the call
   contract.
@@ -3790,7 +3808,7 @@ one reason to add the hand-over noted in step 3.
    existing loop and MCP handler tests pass unchanged.
 2. **The pack manifest and first-party registration.** A manifest type carrying
    exactly what ADR 028 Decision 5 names: which tools may be criterion
-   verifiers, how each environment is snapshotted, the objective, agent and
+   verifiers, the name of the pack's snapshot tool, the objective, agent and
    stream templates, and routing hints. A configuration entry registers a pack
    with its manifest; the gateway assigns the namespace from that entry and
    reads nothing the server says about itself when deciding the class (ADR 028
@@ -3805,7 +3823,8 @@ one reason to add the hand-over noted in step 3.
 3. **The software pack's read and verify capabilities as MCP tools,
    in-process.** A software-pack MCP server inside the binary serves the
    observe capabilities and the verifiers; the gateway routes to it and sends
-   the call contract's fields (tenant, twin, objective, bounds). The server
+   the call contract's fields (the orchestrator's identifiers: tenant, twin,
+   objective, loop/pass and action; and the bounds). The server
    returns the result, the trust of its text set from the payload (rule 9), and
    an explicit "cannot see" error where the environment cannot look (rule 10).
    A verifier that runs in a worktree the loop provisioned keeps receiving that
@@ -3816,27 +3835,39 @@ one reason to add the hand-over noted in step 3.
    version-control instance bound it returns the error, not an empty list; a
    result with no trust stated is recorded as third party; a criterion is
    verified through the tool and the verdict is still computed in the loop.
-4. **Workspaces move into the pack; the core keeps the reference.** The
-   software pack's server creates the worktree for a call that needs one,
-   isolates concurrent actions from each other, removes it when the work is
-   done or failed, and returns an opaque reference that the gateway writes to
-   the audit row. The loop stops provisioning. `NeedsWorkspace` and
+4. **The orchestrator stops knowing about workspaces.** The software pack's
+   server keys its worktrees on the identifiers it is sent: actions of the same
+   objective and pass find the same worktree (write code, then run the tests on
+   it), others never do. It returns no reference; the orchestrator stores and
+   echoes nothing pack-defined, and the audit row has no workspace field (it
+   holds the call, the caller, the authority and the result as returned).
+   **Lifecycle signals replace core cleanup:** the orchestrator sends every
+   pack called during a pass "pass ended", and every pack called for an
+   objective "objective ended or was cancelled", in domain-neutral terms with
+   its own identifiers; how they are carried (a reserved tool or an MCP
+   notification) is settled here. A signal is safe to repeat, delivery is best
+   effort, and the software pack bounds its own leftovers (expiry by age) so a
+   missed signal costs disk for a while and nothing else. The loop stops
+   provisioning. `NeedsWorkspace` and
    `GrantsWorkspace` leave the core capability type once nothing in the core
    reads them, and `git.WorktreeManager` leaves the core's wiring; ADR 028
    names `internal/feature/loop/service.go`, `internal/app/bootstrap.go`,
    `internal/api/server.go` and `internal/api/handler/health.go` as referencing
    it, found by search and not read, so the size of this step is not known and
    it may need to be cut in two (move, then remove). This is the step that
-   amends AGENTS.md rule 3 and lands ADR 028's effect on ADR 003 and ADR 019.
-   *Acceptance:* two concurrent write actions get different references and
-   different directories; after each, success or failure, the directory is
-   gone; the audit row carries the reference; no package under
-   `internal/core` or `internal/feature` imports the worktree manager.
+   removes AGENTS.md rule 3 and lands ADR 028's effect on ADR 003 and ADR 019
+   (both superseded outright). *Acceptance:* a write and a test run in one pass
+   share their files without the orchestrator passing anything between them;
+   two concurrent passes do not; after "pass ended", sent once or three times,
+   the pack holds nothing for that pass; with the signal withheld, the pack's
+   own bound removes it; cancelling an objective signals every pack it called;
+   no audit row, core type or API field names a workspace; no package under
+   `cmd`, `internal/api`, `internal/core` or `internal/feature` imports the
+   worktree manager.
 5. **Secrets move into the pack, resolved per tenant.** The software pack
    resolves the token for a call from the tenant the call names, through its
    own resolver, instead of using adapters built from the orchestrator's
-   `tools.Registry`. No secret appears in a result, an error, a log line or a
-   workspace reference. How tokens are configured and stored today was not read
+   `tools.Registry`. No secret appears in a result, an error or a log line. How tokens are configured and stored today was not read
    (`tools.Registry`'s construction and ADR 006's slots beyond headings); the
    step starts by reading that, and keeps the existing configuration keys
    working. In one process this is true of the code and not of the address
@@ -3863,22 +3894,38 @@ one reason to add the hand-over noted in step 3.
    timeout fails within it.
 7. **The conformance suite, from outside.** A suite that speaks to a pack's
    server through the call contract and checks ADR 028 section c: per-tenant
-   secrets, no secret in a result, workspace isolation and cleanup, a snapshot
-   that is stable when nothing changed and empty when the pack cannot see, and
-   timeouts. It reports which promises it tested and which the pack only
+   secrets, no secret in a result, continuity and isolation by identifier,
+   lifecycle signals safe to repeat, a snapshot value that is equal when
+   nothing changed and the "cannot see" error when the pack cannot look, and
+   timeouts. The suite names no workspace: it observes only what tools return. It reports which promises it tested and which the pack only
    declared. The existing in-process conformance package and `krk domain test`
    were not read; which checks carry over, and whether the command keeps its
    name, is decided in the step. *Acceptance:* the software pack passes; a
-   deliberately broken stub pack fails each check in turn (shares a workspace,
-   leaves one behind, echoes a planted secret, returns an empty result when
-   blind, ignores the timeout), one failure per defect.
+   deliberately broken stub pack fails each check in turn (lets one pass see
+   another's work, fails on a repeated signal, echoes a planted secret, returns
+   an empty result when blind, ignores the timeout), one failure per defect.
+8. **A second, trivial pack, and the test of the decoupling.** A pack with no
+   workspace and no secrets at all (for example one read tool, one verifier and
+   a snapshot tool over an in-memory value) is registered through
+   configuration and its manifest, and driven end to end: an objective from its
+   template converges on its verifier, drift on its snapshot value re-opens it,
+   and it receives the lifecycle signals and ignores them. A check, run with
+   the tests, searches `cmd`, `internal/api`, `internal/feature` and
+   `internal/core` for imports of any pack package and for the nouns worktree,
+   branch, repository and pull request outside test files. *Acceptance:* the
+   trivial pack passes the conformance suite and its objective converges with
+   **no change to the orchestrator** in the step's diff; the search finds
+   nothing. Whatever it finds is moved into the software pack or renamed in
+   domain-neutral terms in this step, and the phase is not done until it is
+   empty.
 
 **What this is not.** It does not split the binary. The software pack's server
 stays in the Karakuri process for the whole phase, and is split out only when a
 second pack exists that is not compiled in, or a pack is written in a language
-other than Go (ADR 028 section e). It migrates no pack other than software;
+other than Go (ADR 028 section e). It migrates no pack other than software
+(step 8's trivial pack is new, and compiled in);
 what the other packs under `domains/` hold was not read. It adds no shared
-workspace or secrets library: ADR 028 allows one as an option for pack authors,
+library for pack authors: ADR 028 allows one as an option for pack authors,
 and nothing here needs it with one pack. It changes none of ADR 022's four
 bounds for discovered tools, does not put the verdict, permission, drift
 detection, loop state or memory behind MCP, and does not change how the loop
@@ -4252,7 +4299,7 @@ on hard constraint violation at any step → ObjectiveStatusFailed, emit objecti
 
 ## Domain Pack System
 
-[ADR 028](adr/028-packs-are-autonomous-behind-one-gateway.md) (Proposed) changes the pack boundary described below: a pack becomes an MCP server plus a manifest behind one gateway, managing its own workspaces and secrets, and is checked by a conformance suite run from outside. The sections below describe the in-process system as it is until Phase 39 migrates the software pack; they are not rewritten here.
+[ADR 028](adr/028-packs-are-autonomous-behind-one-gateway.md) (Proposed) changes the pack boundary described below: a pack becomes an MCP server plus a manifest behind one gateway, known to the orchestrator only by ADR 028's whole coupling surface, and is checked by a conformance suite run from outside. The sections below describe the in-process system as it is until Phase 39 migrates the software pack; they are not rewritten here.
 
 ### Registration
 
