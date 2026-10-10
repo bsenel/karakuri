@@ -28,6 +28,7 @@ import (
 	objectivepkg "github.com/bsenel/karakuri/internal/core/objective"
 	"github.com/bsenel/karakuri/internal/feature/audit"
 	"github.com/bsenel/karakuri/internal/feature/container"
+	"github.com/bsenel/karakuri/internal/feature/delegation"
 	featurememory "github.com/bsenel/karakuri/internal/feature/memory"
 	"github.com/bsenel/karakuri/internal/platform/db"
 	"github.com/bsenel/karakuri/internal/platform/git"
@@ -200,8 +201,9 @@ func BootstrapServer(cfgPath string) (*Bootstrap, error) {
 	}
 
 	// Register domain packs (software pack uses the tool registry; others are stubs)
+	swPack := domainsw.NewWithTools(toolReg)
 	allPacks := []domain.Pack{
-		domainsw.NewWithTools(toolReg),
+		swPack,
 		domainagri.New(),
 		domainconsult.New(),
 		domainhc.New(),
@@ -331,10 +333,13 @@ func BootstrapServer(cfgPath string) (*Bootstrap, error) {
 		promHandler = promExporter
 	}
 
-	authDeps, err := BuildAuth(ctx, gormDB, store, cfg)
+	authDeps, issuer, err := buildAuth(ctx, gormDB, store, cfg)
 	if err != nil {
 		return nil, err
 	}
+	// A delegation that asks for Karakuri's own MCP tools holds a credential
+	// signed by the keyring the API verifies with (Phase 34).
+	swPack.AttachDelegationIssuer(delegationIssuer{issuer})
 
 	quotaDeps, err := BuildQuota(ctx, gormDB, cfg, hub)
 	if err != nil {
@@ -612,32 +617,62 @@ func ConfigPath() string {
 // (no signing key configured) is precisely the one where continuing would mean
 // running with predictable tokens.
 func BuildAuth(ctx context.Context, gormDB *gorm.DB, store storage.StorageAdapter, cfg *config.Config) (api.AuthDeps, error) {
+	deps, _, err := buildAuth(ctx, gormDB, store, cfg)
+	return deps, err
+}
+
+// delegationIssuer adapts delegation.Issuer to the credential type the
+// software pack declares, which cannot import the feature layer.
+type delegationIssuer struct{ issuer *delegation.Issuer }
+
+func (d delegationIssuer) Issue(ctx context.Context, twinID string, timeout time.Duration) (domainsw.DelegationCredential, error) {
+	c, err := d.issuer.Issue(ctx, twinID, timeout)
+	return domainsw.DelegationCredential(c), err
+}
+
+func (d delegationIssuer) Revoke(ctx context.Context, c domainsw.DelegationCredential) error {
+	return d.issuer.Revoke(ctx, delegation.Credential(c))
+}
+
+// buildAuth is BuildAuth plus the delegation issuer, which shares the auth
+// store, keyring and issuer/audience of the token service built here.
+func buildAuth(ctx context.Context, gormDB *gorm.DB, store storage.StorageAdapter, cfg *config.Config) (api.AuthDeps, *delegation.Issuer, error) {
+	deps, issuer, err := buildAuthStack(ctx, gormDB, store, cfg)
+	if err != nil {
+		return api.AuthDeps{}, nil, err
+	}
+	return deps, issuer, nil
+}
+
+func buildAuthStack(ctx context.Context, gormDB *gorm.DB, store storage.StorageAdapter, cfg *config.Config) (deps api.AuthDeps, issuer *delegation.Issuer, _ error) {
 	authStore, err := karakuriauth.NewStore(gormDB)
 	if err != nil {
-		return api.AuthDeps{}, err
+		return api.AuthDeps{}, nil, err
 	}
 	if err := authStore.Migrate(ctx); err != nil {
-		return api.AuthDeps{}, fmt.Errorf("auth schema: %w", err)
+		return api.AuthDeps{}, nil, fmt.Errorf("auth schema: %w", err)
 	}
 
 	keyring, err := karakuriauth.NewKeyring(cfg.Auth.JWT)
 	if err != nil {
-		return api.AuthDeps{}, err
+		return api.AuthDeps{}, nil, err
 	}
 
-	tokens, err := auth.NewTokenService(authStore, authStore, keyring, auth.TokenConfig{
+	tokenCfg := auth.TokenConfig{
 		Issuer:     cfg.Auth.JWT.Issuer,
 		Audience:   cfg.Auth.JWT.Audience,
 		AccessTTL:  cfg.Auth.JWT.AccessTTLDuration(),
 		RefreshTTL: cfg.Auth.JWT.RefreshTTLDuration(),
-	})
-	if err != nil {
-		return api.AuthDeps{}, fmt.Errorf("token service: %w", err)
 	}
+	tokens, err := auth.NewTokenService(authStore, authStore, keyring, tokenCfg)
+	if err != nil {
+		return api.AuthDeps{}, nil, fmt.Errorf("token service: %w", err)
+	}
+	issuer = delegation.NewIssuer(authStore, keyring, tokenCfg, store)
 
 	catalog := karakuriauth.NewCatalog()
 	if err := karakuriauth.Seed(ctx, authStore, tokens, catalog, cfg.Auth.Bootstrap); err != nil {
-		return api.AuthDeps{}, fmt.Errorf("seed auth model: %w", err)
+		return api.AuthDeps{}, nil, fmt.Errorf("seed auth model: %w", err)
 	}
 
 	// The container service resolves the org, team and project names in the
@@ -645,7 +680,7 @@ func BuildAuth(ctx context.Context, gormDB *gorm.DB, store storage.StorageAdapte
 	// rather than passed in — nothing else in this function needs it.
 	federation, err := karakuriauth.BuildFederation(ctx, cfg, authStore, container.NewService(store))
 	if err != nil {
-		return api.AuthDeps{}, err
+		return api.AuthDeps{}, nil, err
 	}
 	if federation.Enabled() {
 		slog.Info("federated identity enabled", "provider", federation.Kind)
@@ -669,7 +704,7 @@ func BuildAuth(ctx context.Context, gormDB *gorm.DB, store storage.StorageAdapte
 		Enforcer:   enforcer,
 		Cookies:    karakuriauth.CookieConfig(cfg.Auth),
 		Federation: federation,
-	}, nil
+	}, issuer, nil
 }
 
 // BuildQuota constructs the rate limiter and quota tiers from configuration.
