@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 )
 
@@ -58,15 +60,39 @@ func (c *ClaudeCode) Delegate(ctx context.Context, in DelegateInput) (DelegateOu
 }
 
 func (c *ClaudeCode) Stream(ctx context.Context, in DelegateInput) (<-chan DelegateChunk, error) {
-	args := []string{"--print", "--output-format=stream-json", "--verbose"}
-	if len(in.AllowedTools) > 0 {
-		args = append(args, "--allowed-tools="+strings.Join(in.AllowedTools, ","))
+	if in.MCP != nil && len(in.MCP.Tools) == 0 {
+		return nil, fmt.Errorf("claude_code: MCP server %q attached with no tool: nothing would be allowed", in.MCP.ServerName)
 	}
-	args = append(args, in.Prompt)
+
+	allowed := in.AllowedTools
+	if in.MCP != nil {
+		allowed = append([]string{}, in.AllowedTools...)
+		for _, tool := range in.MCP.Tools {
+			allowed = append(allowed, "mcp__"+in.MCP.ServerName+"__"+tool)
+		}
+	}
+	args := []string{"--print", "--output-format=stream-json", "--verbose"}
+	if len(allowed) > 0 {
+		args = append(args, "--allowed-tools="+strings.Join(allowed, ","))
+	}
 
 	ch := make(chan DelegateChunk, 16)
 	go func() {
 		defer close(ch)
+
+		if in.MCP != nil {
+			dir, path, err := writeClaudeMCPConfig(in.MCP)
+			if dir != "" {
+				// The file holds the run's credential: it goes when the run does, on every path.
+				defer func() { _ = os.RemoveAll(dir) }()
+			}
+			if err != nil {
+				ch <- DelegateChunk{Kind: "error", Err: fmt.Errorf("claude_code: %w", err)}
+				return
+			}
+			args = append(args, "--mcp-config", path, "--strict-mcp-config")
+		}
+		args = append(args, in.Prompt)
 
 		exitCode, stderr, err := runStreaming(ctx, in, c.bin, args, func(line string) {
 			parseClaudeStreamLine(line, ch)
@@ -82,6 +108,46 @@ func (c *ClaudeCode) Stream(ctx context.Context, in DelegateInput) (<-chan Deleg
 		ch <- DelegateChunk{Kind: "done"}
 	}()
 	return ch, nil
+}
+
+// writeClaudeMCPConfig writes the one-server MCP configuration for one run
+// into a fresh directory under os.TempDir() (0700, file 0600), so the token
+// reaches the CLI through neither argv nor the environment and never lands in
+// the worktree. The caller removes dir whenever it is non-empty.
+//
+// NOT VERIFIED AGAINST THE CLI: the JSON shape of --mcp-config
+// ({"mcpServers": {<name>: {"type": "http", "url", "headers"}}}), the
+// mcp__<server>__<tool> naming used in the allow-list, and the effect of
+// --strict-mcp-config (ignore every other MCP configuration) were not read
+// from `claude --help` and were not run against a real claude binary. They
+// come from the planner's recollection of Claude Code's documentation. The
+// scripted-binary tests prove what Karakuri passes, not that the claude binary
+// accepts it. Which MCP protocol revisions the CLI speaks is also unknown.
+func writeClaudeMCPConfig(m *MCPAttachment) (dir, path string, err error) {
+	type server struct {
+		Type    string            `json:"type"`
+		URL     string            `json:"url"`
+		Headers map[string]string `json:"headers"`
+	}
+	body, err := json.Marshal(map[string]map[string]server{
+		"mcpServers": {m.ServerName: {
+			Type:    "http",
+			URL:     m.URL,
+			Headers: map[string]string{"Authorization": "Bearer " + m.Token},
+		}},
+	})
+	if err != nil {
+		return "", "", fmt.Errorf("encode MCP configuration: %w", err)
+	}
+	dir, err = os.MkdirTemp("", "karakuri-mcp-")
+	if err != nil {
+		return "", "", fmt.Errorf("create MCP configuration directory: %w", err)
+	}
+	path = filepath.Join(dir, "mcp.json")
+	if err := os.WriteFile(path, body, 0o600); err != nil {
+		return dir, "", fmt.Errorf("write MCP configuration: %w", err)
+	}
+	return dir, path, nil
 }
 
 // parseClaudeStreamLine inspects one NDJSON line from `claude --output-format=stream-json`
