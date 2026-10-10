@@ -30,26 +30,47 @@ const sdkClientPythonEnv = "KARAKURI_MCP_SDK_PYTHON"
 const sdkClientScript = `import asyncio
 import json
 import sys
+from importlib.metadata import version
 
+import mcp
 from mcp import ClientSession
 from mcp.client.streamable_http import streamable_http_client
 
 
+def report(path, negotiated, listed, called):
+    is_error = getattr(called, "is_error", None)
+    if is_error is None:
+        is_error = getattr(called, "isError", False)
+    print(json.dumps({
+        "sdk_version": version("mcp"),
+        "client": path,
+        "protocol_version": negotiated or "",
+        "tools": [tool.name for tool in listed.tools],
+        "is_error": bool(is_error),
+        "text": "".join(getattr(block, "text", "") for block in called.content),
+    }))
+
+
+# Why this test once logged that the 2.3.0 client "negotiated 2025-06-18": the
+# driver forced it. ClientSession.initialize() is the legacy handshake in every
+# SDK version, so server/discover was never sent and nothing of Karakuri's was
+# refused. In mcp 2.3.0 the negotiating client is mcp.Client
+# (mcp/client/client.py): mode defaults to "auto" and Client.__aenter__ calls
+# negotiate_auto(session), which probes server/discover and falls back to
+# initialize on a legacy server. mcp 1.30.0 has no mcp.Client.
 async def main(url):
+    if hasattr(mcp, "Client"):
+        async with mcp.Client(url) as client:
+            listed = await client.list_tools()
+            called = await client.call_tool("objectives_list", {})
+            report("Client(mode=auto)", client.protocol_version, listed, called)
+        return
     async with streamable_http_client(url) as streams:
         async with ClientSession(streams[0], streams[1]) as session:
             init = await session.initialize()
             listed = await session.list_tools()
             called = await session.call_tool("objectives_list", {})
-            is_error = getattr(called, "is_error", None)
-            if is_error is None:
-                is_error = getattr(called, "isError", False)
-            print(json.dumps({
-                "protocol_version": getattr(init, "protocol_version", None) or getattr(init, "protocolVersion", ""),
-                "tools": [tool.name for tool in listed.tools],
-                "is_error": bool(is_error),
-                "text": "".join(getattr(block, "text", "") for block in called.content),
-            }))
+            report("ClientSession.initialize", getattr(init, "protocolVersion", ""), listed, called)
 
 
 asyncio.run(main(sys.argv[1]))
@@ -88,6 +109,8 @@ func TestMCPServerSpeaksToTheSDKClient(t *testing.T) {
 	}
 
 	var got struct {
+		SDKVersion      string   `json:"sdk_version"`
+		Client          string   `json:"client"`
 		ProtocolVersion string   `json:"protocol_version"`
 		Tools           []string `json:"tools"`
 		IsError         bool     `json:"is_error"`
@@ -96,7 +119,18 @@ func TestMCPServerSpeaksToTheSDKClient(t *testing.T) {
 	if err := json.Unmarshal(bytes.TrimSpace(stdout.Bytes()), &got); err != nil {
 		t.Fatalf("the SDK's client printed %q (%v), want one JSON object\nstderr:\n%s", stdout.String(), err, stderr.String())
 	}
-	t.Logf("the SDK's client negotiated %q and was offered %v", got.ProtocolVersion, got.Tools)
+	t.Logf("the SDK's client (mcp %s, %s) negotiated %q and was offered %v", got.SDKVersion, got.Client, got.ProtocolVersion, got.Tools)
+
+	// Which path was negotiated: a handshake-only SDK (mcp 1.x) stays on
+	// 2025-06-18, and one with the discover probe (mcp 2.x) must end on
+	// 2026-07-28 against this server as it does against its own.
+	want := "2026-07-28"
+	if strings.HasPrefix(got.SDKVersion, "1.") {
+		want = "2025-06-18"
+	}
+	if got.ProtocolVersion != want {
+		t.Errorf("mcp %s (%s) negotiated %q, want %q", got.SDKVersion, got.Client, got.ProtocolVersion, want)
+	}
 
 	names := map[string]bool{}
 	for _, name := range got.Tools {
