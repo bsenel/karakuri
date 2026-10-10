@@ -34,6 +34,10 @@ type plan struct {
 	// and a guessed name would be a false record.
 	provider string
 	model    string
+
+	// endReason is set when the iteration ends without a plan, and says why
+	// (Phase 36: the provider's rate limit).
+	endReason string
 }
 
 func stepReason(ctx context.Context, sc *stepContext, ws loop.WorldState) plan {

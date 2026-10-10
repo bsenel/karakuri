@@ -20,6 +20,9 @@ import (
 
 // stepContext is passed to each step function.
 type stepContext struct {
+	// sleep is the wait before the one retry of a rate-limited agent call.
+	// Nil means wait on the real clock; tests replace it (Phase 36).
+	sleep      func(context.Context, time.Duration)
 	loopID     string
 	state      *loopState
 	agent      coreagent.Agent
