@@ -157,6 +157,8 @@ func objectiveUnstandingCmd() *cobra.Command {
 
 The objective and its history survive. Only the supervision stops: its control
 loop is dropped, and nothing runs again unless somebody starts a loop.`,
+		Example: `  # Stop supervising obj_123; find the ID with: krk objective list
+  krk objective unstanding obj_123`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(c *cobra.Command, args []string) error {
 			if _, _, err := api.Delete("/objectives/" + args[0] + "/standing"); err != nil {
@@ -179,6 +181,11 @@ func objectiveReconcileCmd() *cobra.Command {
 It still goes through the lease and the concurrency bound: "now" means as soon
 as this replica has a slot and nobody else holds the objective, not in addition
 to whatever is already running.`,
+		Example: `  # Reconcile obj_123 without waiting for its cadence
+  krk objective reconcile obj_123
+
+  # Then see what the pass did
+  krk objective reconcile-status obj_123 --limit 1`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
 			data, _, err := api.Post("/objectives/"+args[0]+"/reconcile", map[string]any{})
@@ -201,6 +208,11 @@ func objectiveReconcileStatusCmd() *cobra.Command {
 The history includes the cheap sense-only passes, which are the majority and
 the point: "checked forty-eight times today and spent nothing" is the evidence
 the two-tier split is working.`,
+		Example: `  # The control loop and its last 20 passes
+  krk objective reconcile-status obj_123
+
+  # Only the five most recent passes, as JSON
+  krk objective reconcile-status obj_123 --limit 5 --output json`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
 			path := fmt.Sprintf("/objectives/%s/reconcile?limit=%d", args[0], limit)
@@ -228,6 +240,11 @@ had been told to stop would put the objective straight back to work.
 
 Give a reason. An objective stopped for a reason nobody wrote down is one
 nobody can decide to restart.`,
+		Example: `  # Stop obj_123 and record why
+  krk objective pause obj_123 --reason "upstream API is down until Monday"
+
+  # Put it back into rotation later
+  krk objective resume obj_123`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
 			data, _, err := api.Post("/objectives/"+args[0]+"/pause", map[string]any{
@@ -254,6 +271,9 @@ This clears the failure count and the stall streak that stopped it. Clearing
 them is the point rather than a convenience: resuming says somebody has looked
 at why it broke, and leaving the counters at their ceiling would trip the
 breaker again on the next stumble.`,
+		Example: `  # See why it stopped, then resume it
+  krk objective reconcile-status obj_123
+  krk objective resume obj_123`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
 			data, _, err := api.Post("/objectives/"+args[0]+"/resume", map[string]any{})

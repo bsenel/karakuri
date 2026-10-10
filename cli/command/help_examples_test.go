@@ -32,3 +32,18 @@ func TestDomainHelp(t *testing.T) {
 		t.Errorf("--domain usage %q does not say where an ID comes from or name the default", usage)
 	}
 }
+
+func TestStandingHelp(t *testing.T) {
+	for _, cmd := range standingCmds() {
+		requireExample(t, cmd)
+	}
+
+	// pause asks for a reason in its Long, so its example must show the flag;
+	// reconcile-status has one flag and the example should show it too.
+	if example := objectivePauseCmd().Example; !strings.Contains(example, "--reason") {
+		t.Errorf("pause Example %q does not show --reason", example)
+	}
+	if example := objectiveReconcileStatusCmd().Example; !strings.Contains(example, "--limit") {
+		t.Errorf("reconcile-status Example %q does not show --limit", example)
+	}
+}
