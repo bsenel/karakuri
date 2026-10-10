@@ -3272,6 +3272,8 @@ client can talk to the servers people run.
    | Karakuri's own server, `internal/api/handler/mcp.go` | routing by the `MCP-Protocol-Version` header; the namespaced envelope keys required; `-32020` when header and envelope disagree, before the version is judged; `-32022` for an unsupported version; `404` for an unknown method on the modern path (the six `TestMCPServer...` tests named in the review's step 3) | passed, against `httptest` and this repository's client, not against an SDK client |
    | Not run | the specification text itself, a 2026-07-28-only server, the TypeScript or any other SDK, an SDK client against Karakuri's server, a real third-party deployment | not verified |
 
+   2026-10-10: Karakuri's own server refused 2025-06-18 clients that send the `MCP-Protocol-Version` header after `initialize` (every real one); found by running Claude Code against it; fixed in the Phase 34 pull request (#170).
+
    The wire names are now the SDK's, read from its source and confirmed by
    these runs; where the "Not verified" entry below says the names are assumed
    or that no real 2026-07-28 peer was used, this table replaces it for the
@@ -3657,6 +3659,27 @@ The audit row of step 3 (scope recorded, token not) is in
 or a real deployment. Every delegation in the tests is a scripted binary, and
 every server is one built in the test. The tests show what Karakuri passes, not
 that `claude` accepts it.
+
+Review, 2026-10-10. The paragraph above was true when the phase was closed; the
+review then ran the real `claude` CLI against a live server with what this
+branch writes (`--mcp-config <file> --strict-mcp-config
+--allowed-tools=mcp__karakuri__objectives_list`). The CLI connected, so the
+config shape and both flags are accepted, and it was offered no tools. The
+cause was in Karakuri's server, from Phase 33: `mcp.IsModernRequest` sent any
+request carrying `MCP-Protocol-Version` down the 2026-07-28 ladder, and a
+handshake-era client sends that header on every request after `initialize`, so
+`tools/list` was refused with `-32602`. The fix is the SDK's rule (mcp 2.3.0,
+`mcp/server/streamable_http_manager.py`, `_handle_request`): modern only when
+the header is present and its value is outside `HANDSHAKE_PROTOCOL_VERSIONS`.
+After the fix, `go test -count=1 -run SDK -v ./internal/api/handler/`
+(`TestMCPServerSpeaksToTheSDKClient`, the official Python SDK's client against
+Karakuri's own handler: initialize, list tools, call one read-only tool) gave:
+mcp 2.3.0, PASS; mcp 1.30.0, PASS; both negotiated `2025-06-18` and were
+offered `objectives_list`, `objective_read`, `reconcile_status`. Before the fix
+both failed after `initialize`. CI has no SDK, so the test skips there. Still
+not verified: the end-to-end run with the real `claude` CLI was not repeated
+after the fix, so the `mcp__<server>__<tool>` allow-list naming has not been
+shown to match a tool the CLI was actually offered.
 
 Step 1's questions were not answered. The `--mcp-config` JSON shape
 (`{"mcpServers": {<name>: {"type": "http", "url", "headers"}}}`), whether an
