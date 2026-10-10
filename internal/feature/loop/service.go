@@ -51,7 +51,23 @@ type loopState struct {
 	result     loop.Result
 	decisionCh chan corecheckpoint.Decision
 	request    loop.Request // captured for durable replay on server restart
-	mu         sync.RWMutex
+	// answered is set when a loop that was paused before a restart is replayed
+	// with the decision on the checkpoint it raised then. stepDecide takes it
+	// at the replay's first decide so that checkpoint, and not a new one, is
+	// the one the runner reads the decision for.
+	answered bool
+	mu       sync.RWMutex
+}
+
+// takeAnswered reports whether the replay is still owed the decision on the
+// checkpoint it raised before the restart, and clears it: one stored
+// checkpoint answers one pause.
+func (ls *loopState) takeAnswered() bool {
+	ls.mu.Lock()
+	defer ls.mu.Unlock()
+	answered := ls.answered
+	ls.answered = false
+	return answered
 }
 
 type serviceImpl struct {
@@ -415,6 +431,9 @@ func (s *serviceImpl) ResumeStoredLoops(ctx context.Context) error {
 				}
 				// Hand it back so the replayed runner consumes it at its
 				// first escalation instead of asking a second time.
+				ls.mu.Lock()
+				ls.answered = true
+				ls.mu.Unlock()
 				ls.decisionCh <- decision
 				sem <- struct{}{}
 				defer func() { <-sem }()

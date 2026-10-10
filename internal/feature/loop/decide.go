@@ -121,7 +121,17 @@ func stepDecide(ctx context.Context, sc *stepContext, p plan, mods *corecheckpoi
 
 	paused := false
 
-	if escalate {
+	if sc.state.takeAnswered() {
+		// A loop replayed after a restart already raised a checkpoint for this
+		// pause and its decision is waiting on the channel. Stop here for that
+		// one, whatever the re-derived plan's verdict: raising another would
+		// leave a checkpoint nobody answers, and going on without reading the
+		// decision would let a reject (an expiry is one) pass as an approval.
+		sc.state.mu.Lock()
+		sc.state.status.Paused = true
+		sc.state.mu.Unlock()
+		paused = true
+	} else if escalate {
 		// 3. Write the audit row first so the checkpoint payload can
 		// reference its ID — reviewers deep-link from /checkpoints into
 		// /audit without joining tables.
