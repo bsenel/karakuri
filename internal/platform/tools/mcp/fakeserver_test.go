@@ -21,6 +21,10 @@ const fakeServerEnv = "KARAKURI_MCP_FAKE_SERVER"
 // fakeStubbornEnv makes the fake keep running after its stdin closes.
 const fakeStubbornEnv = "KARAKURI_MCP_FAKE_STUBBORN"
 
+// fakeModernEnv makes the stdio fake a 2026-07-28-only server: no handshake,
+// the SDK's ladder without its header rung.
+const fakeModernEnv = "KARAKURI_MCP_FAKE_MODERN"
+
 func TestMain(m *testing.M) {
 	if os.Getenv(fakeServerEnv) == "1" {
 		serveStdio(os.Stdin, os.Stdout)
@@ -89,13 +93,32 @@ func serveStdio(in io.Reader, out io.Writer) {
 	fmt.Fprintln(w, "fake-fs starting up")
 	_ = w.Flush()
 
+	modern := os.Getenv(fakeModernEnv) == "1"
 	scanner := bufio.NewScanner(in)
 	for scanner.Scan() {
 		var req Request
 		if err := json.Unmarshal(scanner.Bytes(), &req); err != nil {
 			continue
 		}
-		resp, ok := fakeHandle(req)
+		var resp Response
+		var ok bool
+		if modern {
+			if req.IsNotification() {
+				continue
+			}
+			resp, ok = modernHandle(req, nil, false)
+			// The SDK's client sends clientInfo on every request, and the test
+			// cannot ask a subprocess what it saw.
+			var p struct {
+				Meta map[string]json.RawMessage `json:"_meta"`
+			}
+			_ = json.Unmarshal(req.Params, &p)
+			if _, has := p.Meta[sdkMetaClientInfo]; ok && resp.Error == nil && !has {
+				resp = Response{JSONRPC: "2.0", ID: req.ID, Error: &Error{Code: CodeInvalidParams, Message: "fake: params._meta carries no " + sdkMetaClientInfo}}
+			}
+		} else {
+			resp, ok = fakeHandle(req)
+		}
 		if !ok {
 			continue
 		}
@@ -123,9 +146,17 @@ func stdioConfig(allowed ...string) Config {
 type httpFake struct {
 	sse bool
 
-	mu       sync.Mutex
-	sessions []string // Mcp-Session-Id seen on each request after initialize
-	auth     []string
+	// breakStream, in sse mode, ends the stream answering a tools/call after
+	// the progress notification and before the result.
+	breakStream bool
+
+	mu sync.Mutex
+	// initialized is set by the first initialize. The server/discover probe
+	// Negotiate sends ahead of it is before any session exists, so it is not
+	// recorded below.
+	initialized bool
+	sessions    []string // Mcp-Session-Id seen on each request after initialize
+	auth        []string
 }
 
 func (f *httpFake) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -136,7 +167,9 @@ func (f *httpFake) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	f.mu.Lock()
 	f.auth = append(f.auth, r.Header.Get("Authorization"))
-	if req.Method != MethodInitialize {
+	if req.Method == MethodInitialize {
+		f.initialized = true
+	} else if f.initialized {
 		f.sessions = append(f.sessions, r.Header.Get(sessionHeader))
 	}
 	f.mu.Unlock()
@@ -163,7 +196,9 @@ func (f *httpFake) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	var b strings.Builder
 	b.WriteString("event: message\n")
 	b.WriteString(`data: {"jsonrpc":"2.0","method":"notifications/progress","params":{"progress":1}}` + "\n\n")
-	b.WriteString("event: message\n")
-	b.WriteString("data: " + string(body) + "\n\n")
+	if !f.breakStream || req.Method != MethodToolsCall {
+		b.WriteString("event: message\n")
+		b.WriteString("data: " + string(body) + "\n\n")
+	}
 	_, _ = w.Write([]byte(b.String()))
 }

@@ -78,6 +78,16 @@ a judgement about who may approve, and it stays with a person.
 What you can see is bounded by the access token you presented — the same
 permissions and the same tenancy that bound it in the REST API bind it here.`
 
+// mcpVersions is every revision this server answers, newest first, and what
+// server/discover lists. A request carrying the MCP-Protocol-Version header is
+// held to the envelope it states; one without it is a 2025-06-18 client, which
+// settled the version in the handshake.
+var mcpVersions = []string{mcp.ModernProtocolVersion, mcp.ProtocolVersion}
+
+// mcpModernVersions is the subset answered on the per-request-envelope path,
+// and what an unsupported-version refusal names as supported.
+var mcpModernVersions = []string{mcp.ModernProtocolVersion}
+
 // codeForbidden is this server's JSON-RPC code for "you may not". JSON-RPC
 // reserves -32000..-32099 for implementation-defined errors, and none of the
 // standard codes says this: a refused call is neither a bad request nor an
@@ -284,9 +294,13 @@ func (h *MCPHandler) tools() []mcpTool {
 //
 // Streamable HTTP, minus the parts that have no caller: a POST carries one
 // message and is answered with one JSON body. No SSE, because nothing here
-// streams — every tool is a bounded read. No session header, because the bearer
-// token already identifies the caller on every request, and a second identifier
-// would be a second thing to expire, resume and get wrong.
+// streams — every tool is a bounded read. No Mcp-Session-Id header, under either
+// revision. Under 2025-06-18 a session is the server's to offer and this one
+// declines: the bearer token already identifies the caller on every request,
+// and a second identifier would be a second thing to expire, resume and get
+// wrong. Under 2026-07-28 there is no session to name — the version and the
+// client's capabilities arrive in each request's `_meta` instead — so the
+// header would have nothing to carry.
 //
 // The GET and DELETE sides of the transport are answered by chi with 405, which
 // is what the specification asks of a server offering neither.
@@ -333,27 +347,61 @@ func (h *MCPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	result, rpcErr := h.dispatch(r, principal, req)
 	resp := mcp.Response{JSONRPC: "2.0", ID: req.ID, Result: result, Error: rpcErr}
+	if rpcErr != nil && mcp.IsModernRequest(r.Header) {
+		// A 2026-07-28 error carries an HTTP status as well, from the SDK's one
+		// table, whether the ladder or a tool produced it. The 2025-06-18 path
+		// keeps answering 200, as it always has.
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(mcp.ErrorHTTPStatus(rpcErr.Code))
+		_ = json.NewEncoder(w).Encode(resp)
+		return
+	}
 	writeJSON(w, resp)
 }
 
 // dispatch answers one request, returning either a result or a JSON-RPC error.
+//
+// The revision is settled here and nowhere below: a request is answered by the
+// same code whichever one it speaks, and 2026-07-28 differs only in the
+// resultType its result must carry. So authorization, the withheld tools and
+// the audit hook cannot differ between the two — there is one route to them.
 func (h *MCPHandler) dispatch(r *http.Request, p auth.Principal, req mcp.Request) (json.RawMessage, *mcp.Error) {
+	// The MCP-Protocol-Version header chooses the path and the body does not,
+	// as in the SDK's server (mcp 2.3.0, mcp/server/_streamable_http_modern.py):
+	// without it this is a 2025-06-18 request whatever its `_meta` carries.
+	if !mcp.IsModernRequest(r.Header) {
+		return h.answer(r, p, req)
+	}
+	// Refused before anything runs: answering under a revision this server
+	// does not implement would hand the client a result to read by rules
+	// that were never applied to it.
+	if refusal := mcp.ClassifyInbound(r.Header, req, mcpModernVersions); refusal != nil {
+		return nil, refusal
+	}
+
+	result, rpcErr := h.answer(r, p, req)
+	if rpcErr != nil {
+		return nil, rpcErr
+	}
+	complete, err := mcp.CompleteResult(result)
+	if err != nil {
+		return nil, &mcp.Error{Code: mcp.CodeInternalError, Message: "could not encode the result"}
+	}
+	return complete, nil
+}
+
+// answer runs one request's method. What it returns is the 2025-06-18 result;
+// dispatch adds what a later revision asks for.
+func (h *MCPHandler) answer(r *http.Request, p auth.Principal, req mcp.Request) (json.RawMessage, *mcp.Error) {
 	ctx := r.Context()
 	switch req.Method {
 	case mcp.MethodInitialize:
-		return marshalResult(mcp.InitializeResult{
-			// What this server speaks, stated rather than echoed: a client
-			// asking for a revision this implementation does not implement
-			// should see the difference instead of being agreed with.
-			ProtocolVersion: mcp.ProtocolVersion,
-			Capabilities: map[string]any{
-				// No listChanged notification: the tool list is fixed for the
-				// life of the process, and what varies is per-principal.
-				"tools": map[string]any{"listChanged": false},
-			},
-			ServerInfo:   mcpServerInfo,
-			Instructions: mcpInstructions,
-		})
+		return marshalResult(mcpServer())
+
+	case mcp.MethodServerDiscover:
+		// The handshake's answer without the handshake: the same description of
+		// this server, and every revision it speaks in place of the one.
+		return marshalResult(mcp.Discovery(mcpServer(), mcpVersions))
 
 	case mcp.MethodPing:
 		return marshalResult(struct{}{})
@@ -366,6 +414,24 @@ func (h *MCPHandler) dispatch(r *http.Request, p auth.Principal, req mcp.Request
 
 	default:
 		return nil, &mcp.Error{Code: mcp.CodeMethodNotFound, Message: "unknown method " + req.Method}
+	}
+}
+
+// mcpServer is how this server describes itself, to initialize and to
+// server/discover alike.
+func mcpServer() mcp.InitializeResult {
+	return mcp.InitializeResult{
+		// What this server speaks, stated rather than echoed: a client
+		// asking for a revision this implementation does not implement
+		// should see the difference instead of being agreed with.
+		ProtocolVersion: mcp.ProtocolVersion,
+		Capabilities: map[string]any{
+			// No listChanged notification: the tool list is fixed for the
+			// life of the process, and what varies is per-principal.
+			"tools": map[string]any{"listChanged": false},
+		},
+		ServerInfo:   mcpServerInfo,
+		Instructions: mcpInstructions,
 	}
 }
 
