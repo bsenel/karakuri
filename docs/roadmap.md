@@ -4110,6 +4110,10 @@ requests, and pauses it. Nothing else is a person's job. That includes
 starting discovery: a market discovery cycle runs on its fixed cadence
 whatever the pipeline holds, and another starts when the pipeline of approved
 work is empty, so the deployment never sits idle for want of approved work.
+It also includes getting unstuck: when a stream is blocked, Karakuri notices
+it, finds out why, does the work that removes the blocker, and proposes the
+change to what caused it, without a person writing an objective or editing a
+brief. The owner reads what happened, and merges or closes.
 
 **The owner's decision (2026-10-10).** Recorded here, not reopened: "All these
 streams must be managed by Karakuri itself independently. We just define an
@@ -4128,21 +4132,42 @@ whether a cycle started by an empty pipeline counts as the scheduled cycle of
 the cadence's current period, the owner answered: "No it does not count."
 Neither trigger replaces, cancels or postpones the other.
 
+**The owner's second addition (2026-10-10).** Recorded here, not reopened:
+"Karakuri should be able to do what you have done when there is a blocker."
+"You" is the person, with an assistant, who led the streams from 2026-10-04 to
+2026-10-10. What that person did at each blocker is in the list below (items
+3 to 5 and 8 to 10), and it had one shape every time: **notice** that
+something is not progressing; **diagnose** by reading the state (the pull
+request, the checks, the audit log, the branch, the coding agent's own log);
+**write a small, bounded task** for exactly that (what was found, the smallest
+fix, where to push, which tools); **run** it; **verify** the blocker is gone;
+**change the standing instruction** if it will come again; **record** what was
+done where the owner will read it. The phase has to do each of these itself.
+The owner supervises.
+
 **Acceptance criterion of the phase.** For seven consecutive days on a
 deployment running the four streams, no person resolves a checkpoint, replaces
 an objective, opens a pull request, reviews a branch by building it, or sets an
 objective's status, and no person starts a discovery cycle: each scheduled
 cycle in the seven days ran on its cadence, and each time the pipeline was
-empty with no discovery proposal open a cycle started by itself. The only
+empty with no discovery proposal open a cycle started by itself. Nor does a
+person remove a blocker: the seven days include the blockers that occur in
+them, each one removed by its stream or handed over as a backlog entry (step
+14c), and no person writes an objective, repairs a branch or edits a brief to
+get a stream moving. A blocker that needed a person restarts the count and
+becomes a backlog entry, as step 15 says. The only
 human actions are merging or closing pull
-requests, pausing a stream, and reading the oversight view. **This has to be
+requests, commenting on a proposal to correct it, pausing a stream, and
+reading the oversight view. **This has to be
 observed on a running deployment. No unit test shows it:** each step below has
 a test for its own mechanism, and the phase is finished only when step 15's
 seven days have been watched and recorded.
 
-**Why: what people did by hand, 2026-10-04 to 2026-10-10.** Seven things,
+**Why: what people did by hand, 2026-10-04 to 2026-10-10.** Ten things,
 observed by the owner on this deployment in that week. Where this proposal
 checked one against the code it says so; the rest are recorded as reported.
+Items 3 to 5 and 8 to 10 are blockers; each says how it was noticed, what was
+done and, where something was, what was changed so it would not come again.
 
 1. **Approved every plan.** All four streams run at the `propose` rung, so
    every pass stops at a checkpoint (`effectiveAuthority` in
@@ -4164,17 +4189,28 @@ checked one against the code it says so; the rest are recorded as reported.
 3. **Reviewed each pull request by building and running it.** The Phase 33
    pull request passed CI with wire names that did not interoperate with the
    real SDK. A UX pull request made `krk bogus` print help and exit 0. A person
-   running the branch caught both, and wrote a one-shot objective to fix each.
+   running the branch caught both, posted the finding on the pull request, and
+   wrote a one-shot objective from it for each: the finding, the smallest fix,
+   a failing test first, the branch to push to, the allowed tools.
    The delivery brief acts on review comments; nothing produces them.
-4. **Repaired a stream after a restart.** A loop interrupted by a shutdown came
+4. **Repaired a stream after a restart, or one holding an error checkpoint.**
+   A loop interrupted by a shutdown came
    back "paused at decide" with no pending checkpoint and its stream was
    deferred from then on; a person replaced the objective. A loop that had been
    waiting at a checkpoint re-planned after the restart and ran the new plan on
-   the old approval, leaving a stale checkpoint.
-5. **Noticed the usage limit.** When the coding agent's provider is out of
+   the old approval, leaving a stale checkpoint. A stream whose checkpoint
+   held a plan that was only an error was repaired the same way: the objective
+   was replaced by a new one from the same brief.
+5. **Noticed the usage limit, and started the cut-off work again.** When the
+   coding agent's provider is out of
    quota every action fails with `claude_code: exit 1 (stderr: )` (EB-004, read
    2026-10-09), a pass burns through its actions, and a pass cut before its
-   last action leaves a branch with no pull request; a person opened it.
+   last action leaves a branch with no pull request; a person opened it by
+   hand. This happened on several days. It was noticed from actions failing
+   with an empty reason; the time the limit resets was read from the coding
+   agent's own session log; after it, the work was started again from what
+   was already on the branch, as a "resume" objective that listed what was
+   done and what was left.
 6. **Closed finished work.** A one-shot objective that did all its work ended
    "failed" at max-iter 1 and a person set it completed (EB-002, read
    2026-10-05). Worktrees pile up under `worktrees/<objective-id>/` and a
@@ -4182,6 +4218,36 @@ checked one against the code it says so; the rest are recorded as reported.
 7. **Paced the work.** Delivery was one pass a day. "Continuous" is imitated
    with `--every 30m`, which plans (a model call) when nothing is Planned, and
    the streams compete for one provider quota in no order.
+8. **Repaired a pull request that conflicted with main.** On 2026-10-10 the
+   Phase 34 pull request conflicted with main in `docs/roadmap.md`. It was
+   noticed because the pull request reported no checks at all. A one-shot
+   objective was written to merge main into the branch keeping both sides and
+   rerun the affected tests, and the delivery brief gained a rule: a
+   conflicting pull request is broken, and merging main in is the first
+   repair action.
+9. **Turned the owner's correction into an amendment.** Three times on
+   2026-10-10 a proposal needed a correction from the owner. Each time a small
+   amendment objective was written from the owner's sentence, onto the same
+   branch and the same pull request.
+10. **Edited the brief when a cause repeated.** When the same kind of blocker
+    came twice, the brief was edited (dated branches, separate verify
+    worktrees, "repair before new work", the conflict rule) and the stream was
+    declared again from the edited brief.
+
+**The blockers, checked against the steps.** One row per case the owner
+recorded. "Missing" is what the steps did not say before the second addition;
+the last column is where it is now.
+
+| Case | Item above | Already covered by | Missing | Added as |
+|------|-----------|--------------------|---------|----------|
+| (a) A pull request that conflicts with main | 8 | Nothing. Step 6 lists branches with no pull request, step 12 lists review comments; neither looks at whether a pull request can be merged | An unmergeable pull request (conflict, or no checks reported) is work for its stream in every template; merged with main, never rebased | Step 6a |
+| (b) A defect found by running the branch | 3 | Step 11 finds it and posts it; step 12 makes the stream fix it first | That the fix starts with a failing test | One sentence in step 12 |
+| (c) A pass cut off by the usage limit | 5 | Step 8 ends the pass as deferred, with the return time where the provider gave one; step 9 starts it again; step 6 opens the pull request for what was pushed | What the "resume" objective carried: what was done and what was left. Reading the return time from the agent's own log | Step 9a |
+| (d) A stream stuck after a restart, or holding an error checkpoint | 4 | Steps 4 and 5 for the restart; Phase 36 for a plan that is only a provider's refusal; Phase 35 ends the checkpoint | An error plan from any other cause | Steps 14a and 14b (a signal, then a diagnosis) |
+| (e) A branch with no pull request | 5 | Step 6 | Nothing | |
+| (f) A correction from the owner | 9 | Nothing. Step 12 treats a comment from outside the deployment's own authors as third-party text and escalates it, and does not say who the own authors are | The owner's comment is an instruction to amend that proposal; how the owner is told apart; what happens to anybody else's comment | Step 12a |
+| (g) A repeated cause | 10 | Nothing. Step 15 writes a backlog entry, but a person does it | Karakuri files the entry itself and delivery implements the change | Step 14c |
+| Any blocker not in this list | | Step 14 shows what a stream is blocked on | Noticing, diagnosing, fixing, verifying, and stopping after a declared number of attempts | Steps 14a to 14c |
 
 **What it delivers:**
 
@@ -4206,6 +4272,16 @@ checked one against the code it says so; the rest are recorded as reported.
   beside the fixed cadence, which keeps running while approved work remains.
 - **G. One oversight view** per stream, on the digest and the existing CLI and
   web surfaces.
+- **H. A blocked stream unblocks itself.** A pull request that cannot be
+  merged is repaired by its stream, merged with main and never rebased; a pass
+  that was cut off is taken up again from its branch; the owner's comment on
+  a proposal amends that proposal. For any other blocker the stream's next
+  pass diagnoses it, writes the diagnosis down, makes the smallest fix inside
+  its own limits and verifies it. After a declared number of failed attempts
+  it stops, shows what it is blocked on and what it tried, and the backlog
+  stream files an Engineering Backlog entry, so that a repeated cause changes
+  the product through a pull request the owner merges, and not through a
+  person editing a brief.
 
 **What other phases already deliver, and this phase uses.** Each line is a
 dependency, not work repeated here.
@@ -4241,7 +4317,10 @@ dependency, not work repeated here.
 
 **Steps.** Order: A (1 to 3) before anything may act unattended; then D (4 to
 7) and E (8, 9) so an unattended stream cannot get stuck or burn quota; then B
-(10), C (11, 12), F (13), G (14) and the observation (15). Each step is one
+(10), C (11, 12), F (13), G (14) and the observation (15). The steps added
+for blockers keep the numbers of the others: 6a, 9a and 12a sit with the step
+each one completes, and the general rule H (14a to 14c) comes after the view
+that shows it and before the observation. Each step is one
 delivery pass, has its own acceptance test, and leaves the system working with
 today's behaviour for anything not yet declared.
 
@@ -4330,6 +4409,35 @@ today's behaviour for anything not yet declared.
    *Acceptance:* with a branch ahead of main and no pull request, the next pass
    of each of the four templates opens it before any other action; with the
    remote unreachable the pass reports that it could not see.
+
+   6a. **A pull request that cannot be merged is work for its stream, in every
+   template.** The observation from step 6 also lists the stream's open pull
+   requests that cannot be merged as they stand: the forge reports a conflict
+   with main, a check failed at the head, or no check was reported at the head
+   a declared time after the push (this is how the conflict on the Phase 34
+   pull request showed itself: no checks at all). Such a pull request is
+   broken, and repairing it comes before everything else in a pass: first
+   unmergeable pull requests, then branches with no pull request (step 6),
+   then review findings (step 12) and the owner's comments (step 12a), then
+   new work. For a conflict the repair is one bounded action inside the
+   stream's limits: merge main into the branch keeping both sides, rerun the
+   tests of what the merge touched, push. **Merged, never rebased:** the
+   template's limits (step 2) hold no force push, and step 3 treats a ref of
+   the stream's own branch that moved without containing its previous tip as a
+   violation. A conflict that cannot be resolved keeping both sides, a failed
+   check, and checks still missing after a clean merge are not guessed at:
+   they are blockers for step 14b. Where the adapter cannot say whether a pull
+   request can be merged it returns `ErrUnsupported` and the view shows "not
+   known" (rule 10). **Not read:** what the version-control adapter returns
+   for a pull request today.
+   *Acceptance:* against a local bare repository and a fake forge, for each of
+   the four templates: with an open pull request whose branch conflicts with
+   main in `docs/roadmap.md`, the next pass makes a merge commit that keeps
+   both sides and pushes it before any other action, and the branch's previous
+   tip is an ancestor of the new one; a plan that rebases or force-pushes is
+   refused (step 2), and a rewritten branch is caught (step 3); with no checks
+   reported after the declared time the pull request is listed as broken; an
+   adapter that cannot read the state yields "not known".
 7. **Finished ends as finished, and endings are signalled.** Depends on EB-002
    for one-shot objectives; this step does not redo it. What it adds: every
    ending this phase introduces (interrupted by restart, refused by bounds,
@@ -4377,6 +4485,26 @@ today's behaviour for anything not yet declared.
    the order. With Planned work remaining and a scheduled discovery cycle due,
    the cycle starts when the running delivery pass ends and before the next
    one.
+
+   9a. **A pass that was cut off is taken up again from its branch.** Step 8
+   ends the pass and step 9 starts the stream again when the quota is back;
+   step 6 opens the pull request for what was pushed. What is still missing is
+   what the person's "resume" objective carried: what was done and what was
+   left. The pass that follows a deferral or an `interrupted_by_restart`
+   ending is given, by reconcile in its request, the commits already on the
+   stream's branch and the success criteria the cut-off pass had not settled
+   (Phase 38's record where it exists, the plan's remaining actions where it
+   does not). It plans only what is left and never starts the item again on a
+   second branch. Where the provider gave no return time, the coding agent's
+   adapter may read it from the agent's own session log, which is where the
+   person read it; an adapter that cannot returns `ErrUnsupported` and step
+   9's backoff applies. **Not read:** `internal/platform/tools/cliagent` and
+   where that log is.
+   *Acceptance:* with a fake coding agent that reports quota exhaustion after
+   the second of four actions and a fake clock: the pass after the return time
+   receives the two commits and the unsettled criteria, plans no action for
+   what the branch already holds, pushes to the same branch, and one pull
+   request exists at the end, not two.
 10. **Proposal streams may act.** The comment on the maintainer's authority
     says zero was chosen "deliberately not a small number", because the pack
     boundary gives no guarantee: "a pack is a namespace, and stepAct resolves
@@ -4428,8 +4556,11 @@ today's behaviour for anything not yet declared.
     refused by its limits.
 12. **Review comments come before new work, in every stream.** The observation
     from step 6 also lists the stream's open pull requests with review comments
-    not yet answered by a later commit. A pass addresses those first. A comment
-    written by anyone outside the deployment's own authors is third-party
+    not yet answered by a later commit. A pass addresses those first. Where a
+    finding is about behaviour, the commit that answers it adds a test that
+    fails without the fix, as the person's one-shot objectives required. A comment
+    written by anyone outside the deployment's own authors (step 12a says who
+    they are) is third-party
     material and sets `TrustThirdParty` from what the payload holds (rule 9,
     ADR 021); it escalates as today and Phase 35 ends it if nobody answers. A
     pull request is reviewed again when its head moves, and after a declared
@@ -4439,6 +4570,40 @@ today's behaviour for anything not yet declared.
     pass of each of the four templates pushes a commit for it before any new
     work; a comment round past the declared limit produces no push and one
     "waiting for the owner" entry.
+
+    12a. **The owner's comment on a proposal is an instruction to amend it.**
+    A comment by the owner on a stream's open pull request is not third-party
+    text to escalate: it is the correction the stream was waiting for, and the
+    next pass of that stream amends the same branch and the same pull request
+    for exactly what the comment says, before any new work. It opens no second
+    pull request and needs no objective written by a person. *Who the owner
+    is:* the deployment's configured own authors, a list of forge accounts in
+    the configuration, in two kinds: the accounts Karakuri itself posts with,
+    and the owners. The comment's author is the account the forge's API
+    returns for it, never a name or a signature in the comment's text. Where
+    Karakuri and the owner post from one account (step 11 notes this case), a
+    comment from that account is the owner's when its ID is not among the
+    comments the audit log records Karakuri as having posted. Provenance is
+    set from what the payload holds (rule 9): text the owner wrote did not
+    come from outside the deployment, so it does not set `TrustThirdParty`.
+    *A comment by somebody else* stays what step 12 says: third-party text,
+    marked so, never an instruction; it escalates, Phase 35 ends the
+    checkpoint if nobody answers, and the oversight view lists it. *An
+    instruction is not authority:* the amendment is planned inside the
+    stream's limits like any other pass, and one that would need a file, a
+    branch or a tool outside them is refused (step 2) and shown as waiting for
+    the owner. The owner's comments do not count toward step 12's round limit.
+    **Not read:** whether a setting for own authors exists today; step 12
+    already relies on one, and this step defines it in `config/default.yaml`
+    if it does not.
+    *Acceptance:* against a fake forge, a discovery proposal's pull request
+    with a comment by a configured owner: the next pass pushes one amending
+    commit to the same branch, with no checkpoint and no new pull request, and
+    the observation does not carry `TrustThirdParty`. The same comment from an
+    account not in the list: no push, the observation is third-party, and it
+    escalates. From the shared account, a comment Karakuri posted itself is
+    not taken as an instruction. An owner's comment asking for a change
+    outside the declared paths: refused, one "waiting for the owner" entry.
 13. **A delivery pass starts when there is work, and costs nothing when there
     is none.** The software pack computes, without a model, whether delivery has
     work: an item on main marked Planned with no open pull request, a branch
@@ -4518,15 +4683,138 @@ today's behaviour for anything not yet declared.
     lists exactly the seeded passes, refusals, waiting pull requests and
     blocks per stream; regenerating it for the same window gives the same
     content.
+
+    14a. **A blocked stream is known to be blocked.** The seven cases are only
+    the ones seen so far, so the phase needs the general rule and not seven
+    special ones. A stream is blocked when a pass ended without progress for a
+    reason that is not "nothing to do" (step 13's reading says there is work,
+    or the pass itself was the work). The signals are ones the code or the
+    earlier steps already produce, read without a model: a failed verify; a
+    plan refused by the bounds (step 2) or a plan that is only an error (Phase
+    36); a pull request that cannot be merged (step 6a); a deferred pass
+    (`Deferred` in `internal/feature/reconcile/run.go`, seen by search); a
+    violation from step 3; and no new commit on the stream's branch after a
+    declared number of passes that had work. A blocker has an identity, its
+    kind and its subject (the pull request, the branch or the item), so "the
+    same blocker" can be counted, and the count of attempts on it is kept with
+    the stream. A deferral for quota is a blocker whose remedy is already
+    known and costs nothing, waiting (steps 8 and 9): it is shown, and no pass
+    is spent on it. This step only detects, counts and shows; it changes no
+    behaviour. It lives in `internal/feature/reconcile`, which already decides
+    whether a pass runs (rule 8). **Not read:** how a failed verify and a
+    stored run's outcome reach reconcile.
+    *Acceptance:* a table test over seeded runs: each signal above yields one
+    blocker with its kind and subject; a pass that ended because nothing was
+    Planned yields none; the same signal on the same subject in two passes is
+    one blocker with a count of two, on two subjects it is two blockers; the
+    oversight view of step 14 lists them.
+
+    14b. **A blocked stream unblocks itself.** On a blocker other than quota,
+    the stream's next pass is a diagnose-and-fix pass. Reconcile writes the
+    blocker into the request of an ordinary pass; the loop is not taught
+    anything (rule 8). The pass (1) reads the state the person read: the pull
+    request, its checks, the audit log, the branch, and the coding agent's own
+    log where the adapter can give it; (2) writes the diagnosis down before
+    acting, in the audit log and as a comment on the stream's pull request
+    where one exists, so the owner reads what was found whether or not the
+    fix works; (3) plans the smallest bounded action for exactly that: what
+    was found, the smallest fix, a failing test first where it is about
+    behaviour, the branch to push to, the tools; (4) runs it; (5) verifies
+    that the blocker is gone by reading again, without a model, the signal
+    that raised it. **It never widens its own limits to get unblocked:** the
+    pass runs under the same `effectiveAuthority` as any other pass of the
+    stream (steps 1 to 3); a fix that needs more is refused by step 2 and is a
+    failed attempt. *A blocker seen before is handled by its recorded remedy.*
+    Where remedies live, after reading the memory code: **not in procedural
+    memory as it stands**, which holds a success and a failure count per agent
+    and capability and no text (`MemoryProceduralModel` in
+    `internal/platform/db/schema/models.go`, written in
+    `internal/feature/loop/learn.go`). Two places that exist are used and no
+    store is added. The remedies for the kinds this phase already knows are
+    the steps themselves, declared by the pack: a conflict is step 6a, a
+    branch with no pull request step 6, a cut-off pass step 9a, a finding
+    step 12, the owner's correction step 12a. A remedy a diagnose-and-fix
+    pass found, and step (5) confirmed, is stored as a semantic memory entry
+    of the stream's agent (that tier has a domain, a text and sources:
+    `MemorySemanticModel`), with the blocker's kind as its domain and the
+    audit rows as its sources; the next pass on a blocker of that kind recalls
+    it. A recalled remedy is a hint to the planner and gives no authority: the
+    plan made from it passes the same limits. A remedy that fails when reused
+    is marked so and not recalled again. **Not read:** `internal/feature/memory`
+    beyond the head of `Consolidate`, and how a pass recalls semantic entries;
+    if a pass cannot recall by domain, the first slice is that.
+    *Acceptance:* with a fake provider and a fixture repository: a stream
+    whose verify fails gets, as its next pass, one whose request carries the
+    blocker; the diagnosis is in the audit log before the first action; the
+    pass ends with the signal clear and the attempt count reset. A second
+    blocker of the same kind recalls the stored remedy (the test asserts it
+    was in what the planner read). A fix that needs a tool outside the limits
+    is refused and counted as a failed attempt, with the limits unchanged.
+    While the quota state is "out" no diagnose-and-fix pass starts.
+
+    14c. **A blocker the stream cannot remove, or that comes back, becomes a
+    backlog entry.** After a declared number of failed attempts on the same
+    blocker (three as a first guess, on the template) the stream stops trying.
+    Its status is `blocked`, the oversight view shows "blocked on <diagnosis>,
+    tried <what>", and no further pass is spent on that blocker. A failed
+    diagnose-and-fix pass counts toward this limit and not toward the circuit
+    breaker, so the stream ends with a diagnosis in the view and not with a
+    breaker checkpoint that has none. The `engineering_backlog` stream's
+    observation lists such blockers, and its next pass files an Engineering
+    Backlog entry with the evidence (the blocker, the diagnosis, each attempt
+    and its audit rows, and the change to the product it proposes) on its own
+    branch and pull request. The same happens, without the stream being
+    stopped, when a blocker of one kind was removed for the second time inside
+    a declared window: it was fixed, and it will come again. One entry per
+    kind; later occurrences add evidence to it. That is how case (g) becomes
+    Karakuri's own work: the person edited the brief and re-declared the
+    stream; here the proposal to change the brief, the template or the code is
+    a backlog entry, the owner's merge approves it, and the delivery stream
+    implements it like any other Planned item. A stream's standing instruction
+    changes only through such a merged pull request, never by the stream
+    writing to it while it runs. Only after the entry is filed is it the
+    owner's turn. **Not read:** the stream briefs, and where a brief is stored.
+    *Acceptance:* with a fake provider whose fix never clears the signal: after
+    the declared number of attempts no further pass starts for that blocker,
+    `ConsecutiveFailures` is unchanged by them, the view shows the diagnosis
+    and the attempts, and the next backlog pass adds one entry carrying them. A
+    blocker of one kind cleared twice inside the window adds one entry and
+    leaves the stream running; a third occurrence adds evidence to that entry
+    and no second one.
 15. **The seven days.** Declare the four streams and the review objective on a
     deployment with Phase 35's duration set, at `act_with_notice`. For seven
     consecutive days, record from the audit log every action whose actor is a
-    person. The phase is Completed when those are only merges, closes, pauses
-    and reads. Anything else is written into the Engineering Backlog with its
-    evidence and the seven days start again after its fix.
+    person, and every blocker of step 14a with how it was removed. The phase
+    is Completed when the first are only merges, closes, pauses and reads,
+    comments on a proposal included (step 12a makes a comment the owner's way
+    of correcting one). A blocker the stream removed itself does not restart
+    the count; one it handed over through step 14c does not either, as long
+    as the owner's part was a merge or a close. Anything else, a blocker that
+    needed a person among it, is written into the Engineering Backlog with its
+    evidence (by step 14c, or by the person if Karakuri did not file it, which
+    is then a second finding) and the seven days start again after its fix. A
+    week in which no blocker occurred passes the criterion and shows nothing
+    about steps 14a to 14c; the record says so.
     *Acceptance:* the record itself, attached to the pull request that marks
     this phase Completed. This step has no automated test and must not be given
     one that pretends to be it.
+
+**What a stream may not do to unblock itself.** Being blocked gives no
+authority. Whatever the diagnosis, a stream does not:
+
+- merge a pull request, its own or another's;
+- push to main, or force-push or rebase any branch;
+- widen its limits, or plan an action outside them "this once";
+- edit the limits of its own template or of another stream's while it runs (a
+  change to a template or a brief arrives as a merged pull request, step 14c);
+- delete a branch, or close a pull request;
+- skip, delete or weaken a test, or a check, to make a verify pass;
+- answer its own checkpoint, or another stream's.
+
+Each of these is either outside every template's limits (steps 2 and 3
+refuse or catch it) or has no tool in any stream's hands. A fix that needs
+one of them is a failed attempt, and after the declared number the blocker is
+the owner's (step 14c).
 
 **What this does not do.**
 
@@ -4564,6 +4852,32 @@ today's behaviour for anything not yet declared.
 - **Review loops.** Author and reviewer can trade commits and comments without
   end and spend quota doing it. Step 12's round limit bounds it; the number is
   a guess until step 15 shows real rounds.
+- **A stream that "fixes" by doing the wrong thing.** A diagnosis is a model's
+  reading and can be wrong: a conflict resolved by dropping one side, a
+  failing test made to pass by changing what it asserts, a finding answered
+  by a commit that only quiets it. What bounds this is that the fix runs
+  inside the same limits, that step 14b verifies by reading the signal again
+  and not by asking the model, that the diagnosis is written down before the
+  action so the owner can read what the stream believed, and that the review
+  of step 11 runs on the new head. None of these catches a wrong fix that
+  leaves every signal clear; the owner's merge still does, or does not. A
+  wrong remedy that was stored is reused until it fails once (step 14b).
+  Weakening a test is forbidden above, and no step can yet detect it
+  mechanically: it is left to the review and the owner.
+- **A fix loop that burns quota.** A stream that keeps diagnosing and failing
+  spends a pass each time. It is bounded twice: by the attempt limit of step
+  14c, after which no pass is spent on that blocker, and by the quota state
+  of steps 8 and 9, under which no diagnose-and-fix pass starts while the
+  provider is out and repair passes take their stream's place in the declared
+  order and no extra one. The attempt limit is a guess until step 15 shows
+  real blockers. A blocker whose identity changes on every pass (a new
+  subject each time) would escape the count; step 14a's "no new commit after
+  N passes" signal is the one that still catches it.
+- **The owner is told apart by an account.** Step 12a trusts the forge's
+  author field and a configured list. A wrong list, or an owner's account in
+  somebody else's hands, turns third-party text into an instruction. The
+  instruction still cannot leave the stream's limits, and the result is
+  still a pull request the owner merges or closes.
 - **A timeout rejection may demote.** `demote` drops a rung on a reviewer's
   rejection. Whether a `system:timeout` rejection (Phase 35) counts as one was
   not read. If it does, a stream at `act_with_notice` falls back to `propose`
@@ -4591,7 +4905,13 @@ today's behaviour for anything not yet declared.
   `authority.go`, `internal/platform/tools/cliagent`, `internal/feature/report`,
   the CLI and web sources, ADR 017, the stream briefs, and the full text of
   Phases 34 to 39 (their goals and openings were read, and Phase 35 whole).
-  Every step that touches one of these begins by reading it.
+  Every step that touches one of these begins by reading it. For the second
+  addition, read: the procedural and semantic memory models in
+  `internal/platform/db/schema/models.go`, where `internal/feature/loop/learn.go`
+  writes procedural memory, and the head of `Consolidate` in
+  `internal/feature/memory/service.go`. Not read: how a pass recalls memory,
+  the version-control adapter's pull request state, and any setting for the
+  deployment's own authors.
 
 ---
 
