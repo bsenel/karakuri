@@ -3,7 +3,31 @@ package command
 import (
 	"strings"
 	"testing"
+
+	"github.com/spf13/cobra"
 )
+
+func TestReportHelp(t *testing.T) {
+	for _, cmd := range []*cobra.Command{reportCreateCmd(), reportListCmd(), reportPreviewCmd(), reportSendCmd(), reportDeleteCmd()} {
+		requireExample(t, cmd)
+	}
+
+	// send and delete take an <id> that nothing else in their help explains.
+	for _, cmd := range []*cobra.Command{reportSendCmd(), reportDeleteCmd()} {
+		if !strings.Contains(cmd.Long, "krk report list") {
+			t.Errorf("%s Long %q does not say where <id> comes from", cmd.Name(), cmd.Long)
+		}
+	}
+
+	// preview refuses to run without --twin, so its example must show it.
+	if example := reportPreviewCmd().Example; !strings.Contains(example, "--twin") {
+		t.Errorf("preview Example %q does not show the required --twin", example)
+	}
+	usage := reportListCmd().Flags().Lookup("twin").Usage
+	if !strings.Contains(usage, "krk twin list") || !strings.Contains(usage, "default") {
+		t.Errorf("--twin usage %q does not say where an ID comes from or name the default", usage)
+	}
+}
 
 func TestAuditHelp(t *testing.T) {
 	requireExample(t, auditCmd())
