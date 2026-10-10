@@ -115,14 +115,16 @@ func (c *ClaudeCode) Stream(ctx context.Context, in DelegateInput) (<-chan Deleg
 // reaches the CLI through neither argv nor the environment and never lands in
 // the worktree. The caller removes dir whenever it is non-empty.
 //
-// NOT VERIFIED AGAINST THE CLI: the JSON shape of --mcp-config
-// ({"mcpServers": {<name>: {"type": "http", "url", "headers"}}}), the
-// mcp__<server>__<tool> naming used in the allow-list, and the effect of
-// --strict-mcp-config (ignore every other MCP configuration) were not read
-// from `claude --help` and were not run against a real claude binary. They
-// come from the planner's recollection of Claude Code's documentation. The
-// scripted-binary tests prove what Karakuri passes, not that the claude binary
-// accepts it. Which MCP protocol revisions the CLI speaks is also unknown.
+// Verified 2026-10-10 by running the real claude binary: --mcp-config with this
+// JSON shape ({"mcpServers": {<name>: {"type": "http", "url", "headers"}}})
+// and --strict-mcp-config are accepted, and the server is connected (the CLI
+// received its instructions).
+//
+// NOT YET SHOWN: the mcp__<server>__<tool> naming used in the allow-list. No
+// tool was offered in that run, because Karakuri's server refused the client's
+// post-handshake requests (a handshake-era MCP-Protocol-Version header was
+// routed to the modern ladder; fixed in mcp.IsModernRequest in the same pull
+// request). The end-to-end rerun with the real binary is pending.
 func writeClaudeMCPConfig(m *MCPAttachment) (dir, path string, err error) {
 	type server struct {
 		Type    string            `json:"type"`
