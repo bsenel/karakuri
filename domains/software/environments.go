@@ -643,6 +643,13 @@ func (e *cliEnv) Observe(_ context.Context, _ environment.ObservationQuery) (env
 	}, nil
 }
 
+// karakuriMCPServer is the name Act attaches Karakuri's MCP server under, and
+// karakuriToolPrefix is how a coding-agent CLI then names that server's tools.
+const (
+	karakuriMCPServer  = "karakuri"
+	karakuriToolPrefix = "mcp__" + karakuriMCPServer + "__"
+)
+
 func (e *cliEnv) Act(ctx context.Context, a environment.Action) (environment.ActionResult, error) {
 	if e.cli == nil || !e.cli.Active() {
 		return noopAct(a), nil
@@ -748,7 +755,7 @@ func (e *cliEnv) Act(ctx context.Context, a environment.Action) (environment.Act
 			scrub = func(s string) string { return strings.ReplaceAll(s, cred.Token, "[redacted]") }
 		}
 		in.MCP = &cliagent.MCPAttachment{
-			ServerName: "karakuri",
+			ServerName: karakuriMCPServer,
 			URL:        e.mcpURL,
 			Token:      cred.Token,
 			Tools:      karakuriTools,
@@ -756,12 +763,23 @@ func (e *cliEnv) Act(ctx context.Context, a environment.Action) (environment.Act
 	}
 
 	out, err := e.cli.Delegate(ctx, in)
+	// What a Karakuri tool returned can be a stranger's prose (an audit row
+	// holds pull-request titles), and the agent wrote everything after it
+	// having read that. Decided from the calls the run made, not from what was
+	// attached (ADR 021); the error of a run that failed is the run's text too.
+	trust := environment.TrustOperator
+	for _, u := range out.ToolUses {
+		if strings.HasPrefix(u.Name, karakuriToolPrefix) {
+			trust = environment.TrustThirdParty
+			break
+		}
+	}
 	if err != nil {
 		delta := map[string]any{"adapter": e.cli.Name()}
 		if credential != nil {
 			delta["delegation_credential"] = credential
 		}
-		return environment.ActionResult{Success: false, Error: scrub(err.Error()), StateDelta: delta}, nil
+		return environment.ActionResult{Success: false, Trust: trust, Error: scrub(err.Error()), StateDelta: delta}, nil
 	}
 	delta := map[string]any{
 		"adapter":    e.cli.Name(),
@@ -773,7 +791,7 @@ func (e *cliEnv) Act(ctx context.Context, a environment.Action) (environment.Act
 	if credential != nil {
 		delta["delegation_credential"] = credential
 	}
-	return environment.ActionResult{Success: true, StateDelta: delta, ArtifactSHAs: out.ArtifactSHAs}, nil
+	return environment.ActionResult{Success: true, Trust: trust, StateDelta: delta, ArtifactSHAs: out.ArtifactSHAs}, nil
 }
 
 func (e *cliEnv) Subscribe(_ context.Context, _ environment.EventFilter) (<-chan environment.EnvironmentEvent, error) {
