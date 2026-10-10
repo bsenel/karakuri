@@ -170,7 +170,7 @@ func containerDeleteCmd(kind, short string) *cobra.Command {
 		Use:   "delete <name>",
 		Short: short,
 		Args:  cobra.ExactArgs(1),
-		RunE: func(_ *cobra.Command, args []string) error {
+		RunE: func(c *cobra.Command, args []string) error {
 			id, err := resolveIn(kind, args[0], org)
 			if err != nil {
 				return err
@@ -182,6 +182,16 @@ func containerDeleteCmd(kind, short string) *cobra.Command {
 				return err
 			}
 			client.PrintOutput([]byte(fmt.Sprintf("{%q:%q}", "deleted", id)), output)
+			// The id alone does not say what went; in the pretty format a line
+			// on stderr names it the way report delete does. Stdout is the same
+			// in every format, so a pipe sees what it saw before.
+			if output == "pretty" {
+				noun := kind
+				if kind == "org" {
+					noun = "organisation" // the word the help and the web UI use
+				}
+				fmt.Fprintf(c.ErrOrStderr(), "%s %s deleted\n", noun, args[0])
+			}
 			return nil
 		},
 	}

@@ -71,6 +71,30 @@ func twoTenants(t *testing.T) *containerServer {
 	return s
 }
 
+// Deleting a container says what was deleted, by the name the caller typed,
+// the way the sibling delete commands do. The line is for a person: the JSON
+// and quiet formats do not get it.
+func TestContainerDeleteNamesWhatWasDeleted(t *testing.T) {
+	twoTenants(t)
+	apiURL := api.BaseURL
+
+	for _, tc := range []struct {
+		args []string
+		want string
+	}{
+		{[]string{"team", "delete", "eng", "--org", "acme"}, "team eng deleted\n"},
+		{[]string{"org", "delete", "globex"}, "organisation globex deleted\n"},
+		{[]string{"project", "delete", "delta"}, "project delta deleted\n"},
+		{[]string{"--output", "json", "project", "delete", "delta"}, ""},
+		{[]string{"--output", "quiet", "project", "delete", "delta"}, ""},
+	} {
+		got := runKrk(t, append([]string{"--api-url", apiURL}, tc.args...)...)
+		if got != tc.want {
+			t.Errorf("krk %v printed %q, want %q", tc.args, got, tc.want)
+		}
+	}
+}
+
 func TestResolveContainerQualifiesATeamByItsOrg(t *testing.T) {
 	srv := twoTenants(t)
 
