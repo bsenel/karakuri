@@ -247,6 +247,13 @@ func (s *Service) Start(ctx context.Context) {
 // deterministically instead of waiting on wall time.
 func (s *Service) Tick(ctx context.Context) {
 	now := s.now()
+	if s.sweeper != nil {
+		if n, err := s.sweeper.ExpireDue(ctx, now); err != nil {
+			slog.Warn("checkpoint expiry sweep failed", "err", err)
+		} else if n > 0 {
+			slog.Info("expired unanswered checkpoints", "count", n)
+		}
+	}
 	due, err := s.store.ListDueReconcileStates(ctx, s.holder, now, s.cfg.MaxConcurrent*4)
 	if err != nil {
 		slog.Warn("reconcile due query failed", "err", err)

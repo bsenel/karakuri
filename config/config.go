@@ -153,6 +153,11 @@ func (r ReconcileConfig) MaxBackoffDuration() time.Duration {
 	return parseDurationOr(r.MaxBackoff, time.Hour)
 }
 
+// CheckpointTTLDuration is zero when checkpoint expiry is off.
+func (r ReconcileConfig) CheckpointTTLDuration() time.Duration {
+	return parseDurationOr(r.CheckpointTTL, 0)
+}
+
 // QuotaConfig configures rate limiting and quotas (ADR 008). Zero values mean
 // "use the shipped default", so a deployment overrides only what it cares
 // about.

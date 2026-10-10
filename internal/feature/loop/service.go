@@ -102,6 +102,7 @@ func NewService(
 	domReg *domain.Registry,
 	quotaDeps karakuriquota.Deps,
 	tracer telemetry.Tracer,
+	checkpointTTL time.Duration,
 ) Service {
 	// The whole Deps rather than just the token budget: the loop now also
 	// charges the per-capability allowance and records what work cost, and
@@ -123,7 +124,20 @@ func NewService(
 		costs:   quotaDeps.Costs,
 		tracer:  tracer,
 		states:  make(map[string]*loopState),
+
+		checkpointTTL: checkpointTTL,
 	}
+}
+
+// checkpointExpiry is when a checkpoint created now lapses into a rejection,
+// or nil when no duration is configured. The loop only stamps the instant; the
+// reconcile tick is what acts on it.
+func (s *serviceImpl) checkpointExpiry() *time.Time {
+	if s.checkpointTTL <= 0 {
+		return nil
+	}
+	t := time.Now().Add(s.checkpointTTL)
+	return &t
 }
 
 // tracing returns the tracer to open spans with, never nil, so a service

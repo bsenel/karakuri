@@ -135,7 +135,7 @@ func NewApp(
 		tracer = otel
 	}
 	agentFactory := platformagent.NewFactory(providers, hub, otel, tracer)
-	loopSvc := featureloop.NewService(store, agentFactory, capReg, envReg, memSvc, cpSvc, artSvc, wt, hub, otel, domReg, quotaDeps, tracer)
+	loopSvc := featureloop.NewService(store, agentFactory, capReg, envReg, memSvc, cpSvc, artSvc, wt, hub, otel, domReg, quotaDeps, tracer, cfg.Reconcile.CheckpointTTLDuration())
 	// Closes the cycle: the loop raises checkpoints, and resolving one has to
 	// reach back into the loop that is blocked on it. Constructor injection
 	// cannot express that in either direction, so the second edge is wired
@@ -150,6 +150,11 @@ func NewApp(
 		DefaultMinInterval: cfg.Reconcile.DefaultMinIntervalDuration(),
 		MaxBackoff:         cfg.Reconcile.MaxBackoffDuration(),
 	})
+	// Only with a duration configured: without one no checkpoint carries an
+	// expiry, and the tick stays exactly the tick it was.
+	if cfg.Reconcile.CheckpointTTLDuration() > 0 {
+		reconcileSvc.WithCheckpointSweeper(cpSvc)
+	}
 
 	reportSvc := featurereport.NewService(store, toolReg, agentFactory, quotaDeps, featurereport.Config{
 		Enabled:  cfg.Reports.Enabled,

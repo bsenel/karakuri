@@ -173,6 +173,7 @@ func stepDecide(ctx context.Context, sc *stepContext, p plan, mods *corecheckpoi
 			Confidence:   p.Confidence,
 			Actions:      actions,
 			AuditEventID: auditID,
+			ExpiresAt:    sc.svc.checkpointExpiry(),
 		}
 		// Record what the planner saw, so the escalation can be replayed.
 		if sc.observed != nil {
