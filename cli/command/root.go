@@ -76,8 +76,17 @@ func NewRoot() *cobra.Command {
 // A missing required flag gets the same two lines. Cobra checks those after the
 // arguments and reports only `required flag(s) "reason" not set`, which names
 // the flag but not what it takes or where the examples are.
+//
+// A command group with no Args of its own keeps it nil: cobra runs its
+// `unknown command "bogus" for "krk"` check only while Args is nil.
 func explainArgs(cmd *cobra.Command) {
+	for _, sub := range cmd.Commands() {
+		explainArgs(sub)
+	}
 	validate := cmd.Args
+	if validate == nil && cmd.HasSubCommands() {
+		return
+	}
 	cmd.Args = func(c *cobra.Command, args []string) error {
 		if validate != nil {
 			if err := validate(c, args); err != nil {
@@ -88,8 +97,5 @@ func explainArgs(cmd *cobra.Command) {
 			return fmt.Errorf("%w\nUsage: %s\nRun '%s --help' for the flags and examples", err, c.UseLine(), c.CommandPath())
 		}
 		return nil
-	}
-	for _, sub := range cmd.Commands() {
-		explainArgs(sub)
 	}
 }
