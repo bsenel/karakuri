@@ -155,3 +155,19 @@ func TestLoad_DefaultYAMLObservabilitySlotEmpty(t *testing.T) {
 		t.Fatalf("Observability.Exporters is empty, want the telemetry exporters untouched")
 	}
 }
+
+// Checkpoint expiry (Phase 35) is off until an operator sets it: neither the
+// built-in defaults nor the shipped default.yaml may give a checkpoint a time
+// after which it is rejected.
+func TestDefault_CheckpointTTLIsOff(t *testing.T) {
+	if got := Default().Reconcile.CheckpointTTL; got != "" {
+		t.Errorf("Default().Reconcile.CheckpointTTL = %q, want empty (off)", got)
+	}
+	cfg, err := Load("default.yaml")
+	if err != nil {
+		t.Fatalf("Load default.yaml: %v", err)
+	}
+	if got := cfg.Reconcile.CheckpointTTL; got != "" {
+		t.Errorf("default.yaml reconcile.checkpoint_ttl = %q, want unset (off)", got)
+	}
+}
