@@ -72,14 +72,22 @@ func NewRoot() *cobra.Command {
 // explainArgs makes a wrong argument count say what was expected. Cobra's own
 // "accepts 1 arg(s), received 0" names the problem but not the argument, and
 // SilenceUsage keeps the usage line from following it.
+//
+// A missing required flag gets the same two lines. Cobra checks those after the
+// arguments and reports only `required flag(s) "reason" not set`, which names
+// the flag but not what it takes or where the examples are.
 func explainArgs(cmd *cobra.Command) {
-	if validate := cmd.Args; validate != nil {
-		cmd.Args = func(c *cobra.Command, args []string) error {
+	validate := cmd.Args
+	cmd.Args = func(c *cobra.Command, args []string) error {
+		if validate != nil {
 			if err := validate(c, args); err != nil {
 				return fmt.Errorf("%w\nUsage: %s\nRun '%s --help' for details", err, c.UseLine(), c.CommandPath())
 			}
-			return nil
 		}
+		if err := c.ValidateRequiredFlags(); err != nil {
+			return fmt.Errorf("%w\nUsage: %s\nRun '%s --help' for the flags and examples", err, c.UseLine(), c.CommandPath())
+		}
+		return nil
 	}
 	for _, sub := range cmd.Commands() {
 		explainArgs(sub)
