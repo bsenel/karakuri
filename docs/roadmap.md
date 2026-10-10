@@ -3955,6 +3955,10 @@ Phases 23–25 are the follow-on from the standing-objectives line, and are orde
 - **Phase 26** (the write path) was the one blocking everything else in this group: until it landed, `self_improve` could reach two of its three criteria and every roadmap phase was written by a human. It was found by trying to have Karakuri develop Phase 23 and discovering that the capability with a worktree could not write and the capability that could write had no worktree. Both halves of the fix — the workspace and the route — turned out to be the same mistake, recorded in [ADR 019](adr/019-capabilities-declare-what-they-need.md): a property the system needed was inferred from an identifier instead of declared by the thing that knows it.
 - **Phase 25** (self-improvement without a history) depends on **Phase 22** for the pack it extends and on **Phase 6**'s version-control adapter for CI status. It is the phase that makes Phase 22 usable on the day it is enabled rather than months later, and it is deliberately scoped to widen what the maintainer can *see* — never what it may *do*, which stays bounded by ADR 017 and by Phase 20's ceiling.
 
+Phase 39 is ordered by one dependency and one preference.
+
+- **Phase 39** (autonomous packs behind one gateway) depends on **Phase 34**: the credential the gateway sends a pack is Phase 34's delegation credential, and the delegated agent is one of the gateway's two callers. Only its step 6 needs that credential; steps 1 to 5 could start earlier. It is better started after **Phase 33** than before, because the pack's in-process server is written against the MCP revision the client speaks, but nothing in it requires Phase 33. Inside the phase the gateway comes first so that every later step moves a capability onto a path that already carries the audit, quota and authority checks, and the conformance suite comes last because it tests a contract the earlier steps are still settling ([ADR 028](adr/028-packs-are-autonomous-behind-one-gateway.md)).
+
 ---
 
 ## Architecture Summary
@@ -4247,6 +4251,8 @@ on hard constraint violation at any step → ObjectiveStatusFailed, emit objecti
 ---
 
 ## Domain Pack System
+
+[ADR 028](adr/028-packs-are-autonomous-behind-one-gateway.md) (Proposed) changes the pack boundary described below: a pack becomes an MCP server plus a manifest behind one gateway, managing its own workspaces and secrets, and is checked by a conformance suite run from outside. The sections below describe the in-process system as it is until Phase 39 migrates the software pack; they are not rewritten here.
 
 ### Registration
 
