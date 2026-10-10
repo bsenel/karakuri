@@ -381,6 +381,18 @@ tools:
   # CLI coding-agent slot (Phase 7). type: claude_code | cursor_cli | gemini_cli | copilot_cli
   # Each instance can override the CLI binary path via the `binary:` field;
   # default looks the binary up on PATH.
+  #
+  # A delegation may ask for Karakuri's own MCP tools (params.karakuri_tools).
+  # That needs attach_karakuri_mcp (default false) and karakuri_mcp_url, this
+  # deployment's MCP endpoint as the CLI reaches it; claude_code only.
+  #
+  #   cli_agents:
+  #     default: claude
+  #     instances:
+  #       claude:
+  #         type: claude_code
+  #         # attach_karakuri_mcp: true
+  #         # karakuri_mcp_url: https://karakuri.example.com/api/v1/mcp
   cli_agents:
     default: ""
     instances: {}

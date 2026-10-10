@@ -391,54 +391,58 @@ func (h *QuotaHandler) Decide(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, decided)
 }
 
-// CostReport answers what was spent, filtered to what the caller may see.
-//
-// GET /api/v1/cost?since=…&until=…&group_by=provider,day&twin=…&limit=…
-func (h *QuotaHandler) CostReport(w http.ResponseWriter, r *http.Request) {
-	if !h.Quota.Costs.Enabled() {
-		writeJSON(w, []any{})
-		return
-	}
-	q := r.URL.Query()
+// costParamError is a cost report parameter that could not be read: the
+// caller's mistake, where any other failure of the report is the server's.
+type costParamError string
 
-	query := cost.Query{Limit: atoiOr(q.Get("limit"), 0)}
+func (e costParamError) Error() string { return string(e) }
+
+// costScopeError is a failure to read what the caller may see, kept apart from
+// a failure of the ledger because the route answers the two differently.
+type costScopeError struct{ error }
+
+// costReport builds the spend report for one principal from parameters supplied
+// as text, keyed as the query string of GET /cost keys them. The REST route and
+// the cost_report MCP tool both report through this, so neither can apply a
+// parameter, or the tenancy filter, that the other drops.
+func costReport(ctx context.Context, deps karakuriquota.Deps, scopes karakuriauth.ScopeAuthorizer, principalID string, get func(string) string) ([]cost.Bucket, error) {
+	if !deps.Costs.Enabled() {
+		return []cost.Bucket{}, nil
+	}
+
+	query := cost.Query{Limit: atoiOr(get("limit"), 0)}
 	var err error
-	if query.Since, err = parseOptionalTime(q.Get("since")); err != nil {
-		authError(w, http.StatusBadRequest, "bad_request", "since: "+err.Error())
-		return
+	if query.Since, err = parseOptionalTime(get("since")); err != nil {
+		return nil, costParamError("since: " + err.Error())
 	}
-	if query.Until, err = parseOptionalTime(q.Get("until")); err != nil {
-		authError(w, http.StatusBadRequest, "bad_request", "until: "+err.Error())
-		return
+	if query.Until, err = parseOptionalTime(get("until")); err != nil {
+		return nil, costParamError("until: " + err.Error())
 	}
-	for _, g := range splitCSV(q.Get("group_by")) {
+	for _, g := range splitCSV(get("group_by")) {
 		query.GroupBy = append(query.GroupBy, cost.GroupBy(g))
 	}
-	if twin := q.Get("twin"); twin != "" {
+	if twin := get("twin"); twin != "" {
 		query.Subjects = append(query.Subjects, karakuriquota.CostSubject(twin))
 	}
-	query.Providers = splitCSV(q.Get("provider"))
+	query.Providers = splitCSV(get("provider"))
 	// A label the caller asked for narrows the report; it never widens it. The
 	// tenancy filter below intersects with it rather than replacing it, so
 	// naming another tenant's org returns nothing instead of their spend.
-	asked := splitCSV(q.Get("label"))
+	asked := splitCSV(get("label"))
 
 	// The tenancy filter. Spend is attributed to the containers a resource sat
 	// in, so the same scope set that decides which twins a caller may list
 	// decides which spend they may total — otherwise a report is a way around
 	// the isolation Phase 17 built.
-	principal, _ := auth.PrincipalFromContext(r.Context())
 	visible, _, err := karakuriauth.ListFor(
-		r.Context(), h.Scopes, principal.ID, karakuriauth.ActionTwinRead, "twin")
+		ctx, scopes, principalID, karakuriauth.ActionTwinRead, "twin")
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
+		return nil, costScopeError{err}
 	}
 	if visible != nil {
 		if visible.Empty() {
 			// No grants means no rows, rather than every row.
-			writeJSON(w, []any{})
-			return
+			return []cost.Bucket{}, nil
 		}
 		if len(visible.Labels) == 0 && len(visible.LabelPrefixes) == 0 {
 			// A caller whose only grants name individual twins can be answered
@@ -447,8 +451,7 @@ func (h *QuotaHandler) CostReport(w http.ResponseWriter, r *http.Request) {
 				query.Subjects = append(query.Subjects, karakuriquota.CostSubject(id))
 			}
 			if len(query.Subjects) == 0 {
-				writeJSON(w, []any{})
-				return
+				return []cost.Bucket{}, nil
 			}
 		} else {
 			query.Labels = visible.Labels
@@ -456,8 +459,7 @@ func (h *QuotaHandler) CostReport(w http.ResponseWriter, r *http.Request) {
 				query.Labels = intersectLabels(visible.Labels, asked)
 				if len(query.Labels) == 0 {
 					// Asked for a container they cannot see.
-					writeJSON(w, []any{})
-					return
+					return []cost.Bucket{}, nil
 				}
 			}
 		}
@@ -466,9 +468,26 @@ func (h *QuotaHandler) CostReport(w http.ResponseWriter, r *http.Request) {
 		query.Labels = asked
 	}
 
-	buckets, err := h.Quota.CostReport(r.Context(), query)
+	return deps.CostReport(ctx, query)
+}
+
+// CostReport answers what was spent, filtered to what the caller may see.
+//
+// GET /api/v1/cost?since=…&until=…&group_by=provider,day&twin=…&limit=…
+func (h *QuotaHandler) CostReport(w http.ResponseWriter, r *http.Request) {
+	principal, _ := auth.PrincipalFromContext(r.Context())
+	buckets, err := costReport(r.Context(), h.Quota, h.Scopes, principal.ID, r.URL.Query().Get)
 	if err != nil {
-		writeQuotaError(w, err)
+		var param costParamError
+		var scope costScopeError
+		switch {
+		case errors.As(err, &param):
+			authError(w, http.StatusBadRequest, "bad_request", err.Error())
+		case errors.As(err, &scope):
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		default:
+			writeQuotaError(w, err)
+		}
 		return
 	}
 	writeJSON(w, buckets)

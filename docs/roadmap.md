@@ -44,6 +44,7 @@ Phases 27–32 were proposed from two kinds of evidence: what this repository de
 | 31    | The Evidence Pack                          | **Completed** |
 | 32    | The SRE Path, Actually Wired               | **Completed** |
 | 33    | MCP After the Handshake                    | **Completed** |
+| 34    | Karakuri's Own Tools in Its Agents' Hands  | **Completed** |
 | 35    | An Unanswered Checkpoint Ends              | **Planned**   |
 | 36    | A Provider's Refusal Is Not a Plan         | **Planned**   |
 | 37    | A Stop That Reaches the Running Pass       | **Planned**   |
@@ -3438,7 +3439,7 @@ one observation of the Python SDK in step 1, not from the specification text.
 
 ---
 
-## Phase 34 — Karakuri's Own Tools in Its Agents' Hands (Planned)
+## Phase 34 — Karakuri's Own Tools in Its Agents' Hands (Completed)
 
 **Goal:** A coding agent Karakuri delegates to can call Karakuri's own MCP tools
 under a credential scoped to that one delegation, and the tool surface covers
@@ -3561,6 +3562,132 @@ other action (ADR 015), not through a tool. It is not a general way to hand a
 coding agent the operator's identity. And it does not attach the third-party
 MCP servers of the `tools.mcp` slot to the coding agent; that is a different
 question with ADR 022's bounds on it.
+
+**Shipped (step 1).** Partly. What was decided is in the adapters: `claude.go`
+in `internal/platform/tools/cliagent/` attaches a server with `--mcp-config
+<file> --strict-mcp-config` and names its tools `mcp__<server>__<tool>` in
+`--allowed-tools`; `cursor.go`, `gemini.go`, `copilot.go` and `noop.go` return
+an error when `DelegateInput.MCP` is set, so none delegates silently without the
+tools (`TestAdaptersWithoutPerRunMCP` in `mcp_attach_test.go`). The "to find
+out" list above was not answered: the comment on `writeClaudeMCPConfig` in
+`claude.go` says the JSON shape, the tool naming and the effect of
+`--strict-mcp-config` were not read from the CLI and not run against it. See
+"Not verified" below.
+
+**Shipped (step 2).** `internal/api/handler/mcp.go` serves five more read-only
+tools: `audit_list`, `audit_export`, `checkpoints_list`, `checkpoint_read` and
+`cost_report`. `audit.go` and `quota.go` in the same package were reshaped so
+the tool and the REST route share one read. Tests are in `mcp_audit_test.go`
+and `mcp_checkpoint_cost_test.go`. Evaluation results and reconcile outcomes
+got no tool, by decision, recorded in the empty commit `37d8b3d`: the only
+evaluation route (`POST /api/v1/eval/calibrate`) spends tokens and writes rows,
+and `reconcile_status` already returns every recorded outcome.
+
+**Shipped (step 3).** `internal/feature/delegation/issuer.go` issues a
+credential for one delegation, read-only and scoped to one twin, expiring with
+the action's timeout, and revokes it. Tests are in `issuer_test.go`.
+`internal/app/bootstrap.go` and `internal/api/server.go` build the issuer and
+`domains/software/pack.go` hands it to the software pack.
+
+**Shipped (step 4).** `cliagent.MCPAttachment` and `DelegateInput.MCP` in
+`internal/platform/tools/cliagent/adapter.go`; `writeClaudeMCPConfig` in
+`claude.go` writes the configuration to a fresh directory under `os.TempDir()`
+(file mode `0o600`) and removes it when the run ends. `cliEnv.Act` in
+`domains/software/environments.go` reads `params.karakuri_tools`, refuses the
+action when the instance has not set `attach_karakuri_mcp` and
+`karakuri_mcp_url`, and otherwise issues the credential, attaches and revokes.
+`SlotInstances.Options` in `internal/platform/tools/registry.go` carries the
+instance options to it; `config/default.yaml` documents them, default off,
+`claude_code` only. Tests are in `cliagent/mcp_attach_test.go` and
+`domains/software/cli_mcp_attach_test.go`.
+
+**Shipped (step 5).** See the addendum of 2026-10-10 to
+[ADR 021](adr/021-observations-carry-provenance.md). The `ActionResult` of a
+delegation whose run called at least one `mcp__karakuri__` tool sets
+`Trust: environment.TrustThirdParty`, decided in `cliEnv.Act` from
+`DelegateOutput.ToolUses`, failed runs included. Tests are in
+`domains/software/cli_mcp_trust_test.go`.
+
+**Shipped (step 6).** The first half. A planner hint in
+`domains/software/hints.go` tells `software.act.write_code`,
+`software.act.write_test` and `software.act.delegate_to_cli` to list the tools
+they need in `params.karakuri_tools` instead of shelling out to `krk`, and says
+an action that asks without the instance options is refused. Tests are in
+`hints_test.go`. The second half, the standing streams' briefs dropping the
+`krk` allow-list, was not done; see below.
+
+**Shipped (acceptance).** Clause by clause, the test whose name matches. The
+tests were run and passed; they were matched to clauses by name and the test
+bodies were not re-read when this note was written, so each pairing is an
+inference about what the test asserts.
+
+- *With attachment on, a delegated run against a scripted CLI receives an MCP
+  configuration naming this deployment's endpoint and a token.*
+  `TestClaudeCode_MCP_WritesPerRunConfigAndRemovesIt` and
+  `TestClaudeCode_MCP_TokenOnlyInTheFile` in `cliagent/mcp_attach_test.go`;
+  `TestKarakuriToolsAttachedWithAScopedCredential` and
+  `TestAttachOptionChangesTheDelegation` in
+  `domains/software/cli_mcp_attach_test.go`.
+- *That token can list the audit rows of its own twin and cannot read another
+  twin's objective.* `TestIssuedTokenReadsItsOwnTwinOnly` in
+  `internal/feature/delegation/issuer_test.go`. Whether that test goes through
+  the MCP handler or only through the authorizer was not checked.
+- *After the action ends the token is refused.*
+  `TestRevokeRefusesTheTokenAndLeavesNothingBehind` in `issuer_test.go` and
+  `TestCredentialRevokedWhenTheAdapterFails` in `cli_mcp_attach_test.go`.
+- *With attachment off, or with no tool requested, the command line and
+  environment are what they are today.* `TestClaudeCode_NoMCP_ArgvUnchanged`,
+  `TestNoKarakuriToolsMeansNoAttachment` and `TestCLIMCPOptionsDefaultOff`.
+  With attachment off and a tool requested the action is refused, not run
+  (`TestKarakuriToolsRefusedWhenAttachmentIsOff`). That the environment, not
+  only the command line, is byte-for-byte unchanged is inferred.
+- *No file under the operator's home directory is read to produce the
+  credential.* `TestIssueTouchesNoDiskAndStoresNoRefreshToken` in
+  `issuer_test.go`.
+- *A tool whose REST route the principal could not call is absent from its tool
+  list.* `TestMCPAuditToolsRequireAuditRead` in `mcp_audit_test.go` and
+  `TestMCPCheckpointAndCostToolsFollowTheirRoutesActions` in
+  `mcp_checkpoint_cost_test.go`.
+
+The audit row of step 3 (scope recorded, token not) is in
+`TestIssueAuditsTheScopeAndNotTheToken` and
+`TestActionResultRecordsTheScopeAndNeverTheToken`.
+
+**Not verified.** Nothing in this phase was run against a real coding-agent CLI
+or a real deployment. Every delegation in the tests is a scripted binary, and
+every server is one built in the test. The tests show what Karakuri passes, not
+that `claude` accepts it.
+
+Step 1's questions were not answered. The `--mcp-config` JSON shape
+(`{"mcpServers": {<name>: {"type": "http", "url", "headers"}}}`), whether an
+HTTP entry carries a header, and the `mcp__<server>__<tool>` naming come from
+recollection of the documentation, as `claude.go` says. Which MCP protocol
+revisions Claude Code speaks, and so whether it can talk to this server at all,
+is unknown. Whether `--strict-mcp-config` also keeps out servers brought by
+plugins or managed settings was not run. The help output of the Cursor, Gemini
+and Copilot CLIs was not read: their adapters refuse an attachment because
+nobody found out whether they can attach, not because it is known they cannot.
+
+The standing streams' briefs still carry the `krk` allow-list. Attachment
+defaults to off and no deployment was configured with it in this phase, so
+dropping the allow-list would leave those streams without the data. The briefs
+are not in this repository: `grep -rn 'Bash(krk' .` finds no file here, so the
+files that hold the allow-list could not be named or changed from this branch.
+Until they change, a delegated agent in those streams still runs `krk` under
+the operator's cached admin session, which is the problem this phase set out to
+remove.
+
+Evaluation results are not an MCP tool, though step 2 lists them; that was a
+decision (commit `37d8b3d`), and it was made from reading the code, with no
+test. The hint lists the ten tool names as a literal string;
+`TestKarakuriToolsHintNamesOnlyServedTools` guards it, by name.
+
+The tests run when the phase was closed were
+`go build ./... && go test -count=1 ./domains/software/... ./internal/api/handler/... ./internal/feature/delegation/... ./internal/platform/tools/cliagent/...`
+on 2026-10-10: all four packages `ok`. The full `go test ./...`, `make test`
+and `scripts/check_langchaingo_imports.sh` were not run in that action. Text a
+delegated agent read through a Karakuri tool and then wrote into a commit or a
+file carries no label, as the ADR 021 addendum says.
 
 ---
 

@@ -6,20 +6,26 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/bsenel/karakuri/auth"
 	karakuriauth "github.com/bsenel/karakuri/internal/auth"
+	corecheckpoint "github.com/bsenel/karakuri/internal/core/checkpoint"
 	coreobjective "github.com/bsenel/karakuri/internal/core/objective"
 	"github.com/bsenel/karakuri/internal/core/reconcile"
 	coretelemetry "github.com/bsenel/karakuri/internal/core/telemetry"
+	featurecp "github.com/bsenel/karakuri/internal/feature/checkpoint"
 	featureobjective "github.com/bsenel/karakuri/internal/feature/objective"
 	featurereconcile "github.com/bsenel/karakuri/internal/feature/reconcile"
 	featurereport "github.com/bsenel/karakuri/internal/feature/report"
 	"github.com/bsenel/karakuri/internal/platform/storage"
 	"github.com/bsenel/karakuri/internal/platform/tools/mcp"
+	karakuriquota "github.com/bsenel/karakuri/internal/quota"
+	"github.com/bsenel/karakuri/quota/cost"
 )
 
 // MCPHandler serves Karakuri itself as an MCP server over streamable HTTP, so a
@@ -45,6 +51,16 @@ type MCPHandler struct {
 	// Telemetry is the deployment's read-only view of itself. Nil on a
 	// deployment that wired none, which the tool reports rather than hiding.
 	Telemetry coretelemetry.Reader
+
+	// Audit and AuditExport are what AuditHandler reads the audit log and its
+	// export through: the same store and the same exporter.
+	Audit       storage.StorageAdapter
+	AuditExport auditExporter
+
+	// Checkpoints and Quota are what CheckpointHandler and QuotaHandler read
+	// pending checkpoints and the cost report through.
+	Checkpoints *featurecp.Service
+	Quota       karakuriquota.Deps
 
 	// Enforcer is used for its Authorizer and its OnDeny hook rather than as
 	// middleware: the subject of an MCP call arrives inside a JSON-RPC body,
@@ -287,6 +303,167 @@ func (h *MCPHandler) tools() []mcpTool {
 				})
 			},
 		},
+		{
+			def: mcp.Tool{
+				Name:        "audit_list",
+				Description: "List the audit log, newest first: what each agent executed, what it escalated and why, and who approved. Every argument narrows the listing; with none it is the latest hundred rows.",
+				InputSchema: objectSchema(map[string]any{
+					"objective_id":     stringProperty("Only rows written for this objective."),
+					"agent_id":         stringProperty("Only rows written by this agent."),
+					"kind":             stringProperty("Only rows of this kind: execute, escalation or approval."),
+					"provider":         stringProperty("Only rows whose decision was made by this LLM provider."),
+					"model":            stringProperty("Only rows whose decision was made by this model."),
+					"template":         stringProperty("Only rows written under this objective template."),
+					"bounds_violation": booleanProperty("true for only rows that fell outside the authority bounds, false for only rows inside them. Omit for both."),
+					"since":            stringProperty("Only rows written at or after this RFC3339 timestamp."),
+					"limit":            integerProperty("How many rows to list. Defaults to 100."),
+				}),
+			},
+			action: karakuriauth.ActionAuditRead,
+			resource: func(context.Context, *MCPHandler, auth.Principal, mcpArgs) auth.ResourceRef {
+				// The reference GET /audit is gated on: the route names no
+				// resource, so the enforcer decides against the collection.
+				return auth.Collection("audit")
+			},
+			read: func(ctx context.Context, h *MCPHandler, _ auth.Principal, args mcpArgs) (any, error) {
+				if h.Audit == nil {
+					return nil, errors.New("no audit store is wired into this deployment")
+				}
+				// The REST route lists past a since it cannot parse. Here the
+				// reader is a model, which would take the wider listing for
+				// the one it asked for.
+				if since := args.str("since"); since != "" {
+					if _, err := time.Parse(time.RFC3339, since); err != nil {
+						return nil, errors.New("since must be an RFC3339 timestamp")
+					}
+				}
+				events, err := listAuditEvents(ctx, h.Audit, args.text)
+				if err != nil {
+					return nil, err
+				}
+				if events == nil {
+					// Nothing matched, which is an answer: an empty array
+					// rather than a null a client has to guess the meaning of.
+					events = []storage.ToolEvent{}
+				}
+				return events, nil
+			},
+		},
+		{
+			def: mcp.Tool{
+				Name:        "audit_export",
+				Description: "Read the audit export for one closed window: the document an auditor is handed, byte for byte what GET /audit/export returns. A window that has not ended is refused.",
+				InputSchema: objectSchema(map[string]any{
+					"from": stringProperty("Start of the window, as an RFC3339 timestamp."),
+					"to":   stringProperty("End of the window, as an RFC3339 timestamp. Must be in the past."),
+				}, "from", "to"),
+			},
+			action: karakuriauth.ActionAuditRead,
+			resource: func(context.Context, *MCPHandler, auth.Principal, mcpArgs) auth.ResourceRef {
+				// As GET /audit/export: the collection, not a window.
+				return auth.Collection("audit")
+			},
+			read: func(ctx context.Context, h *MCPHandler, _ auth.Principal, args mcpArgs) (any, error) {
+				if h.AuditExport == nil {
+					return nil, errors.New("no audit exporter is wired into this deployment")
+				}
+				data, err := exportAuditWindow(ctx, h.AuditExport, args.str("from"), args.str("to"))
+				if err != nil {
+					return nil, err
+				}
+				return mcpVerbatim(data), nil
+			},
+		},
+		{
+			def: mcp.Tool{
+				Name:        "checkpoints_list",
+				Description: "List the checkpoints waiting on a person: each decision an agent escalated and has not yet had answered. Optionally narrowed to one twin.",
+				InputSchema: objectSchema(map[string]any{
+					"twin_id": stringProperty("Only checkpoints raised for this digital twin."),
+				}),
+			},
+			action: karakuriauth.ActionCheckpointRead,
+			resource: func(context.Context, *MCPHandler, auth.Principal, mcpArgs) auth.ResourceRef {
+				// The reference GET /checkpoints is gated on: the route names no
+				// resource, so the enforcer decides against the collection.
+				return auth.Collection("checkpoint")
+			},
+			read: func(ctx context.Context, h *MCPHandler, _ auth.Principal, args mcpArgs) (any, error) {
+				if h.Checkpoints == nil {
+					return nil, errors.New("no checkpoint service is wired into this deployment")
+				}
+				cps, err := h.Checkpoints.ListPending(ctx, args.str("twin_id"))
+				if err != nil {
+					return nil, err
+				}
+				if cps == nil {
+					// Nothing pending is an answer, as it is for audit_list.
+					cps = []corecheckpoint.Checkpoint{}
+				}
+				return cps, nil
+			},
+		},
+		{
+			def: mcp.Tool{
+				Name:        "checkpoint_read",
+				Description: "Read one checkpoint: what was escalated, for which objective, the options offered and whether it is still pending. Reading it decides nothing.",
+				InputSchema: objectSchema(map[string]any{
+					"checkpoint_id": stringProperty("The checkpoint to read."),
+				}, "checkpoint_id"),
+			},
+			action: karakuriauth.ActionCheckpointRead,
+			resource: func(_ context.Context, _ *MCPHandler, _ auth.Principal, args mcpArgs) auth.ResourceRef {
+				// As karakuriauth.CheckpointResource builds it for GET
+				// /checkpoints/{id}: the checkpoint by id, no containers attached.
+				return auth.Resource("checkpoint", args.str("checkpoint_id"))
+			},
+			read: func(ctx context.Context, h *MCPHandler, _ auth.Principal, args mcpArgs) (any, error) {
+				if h.Checkpoints == nil {
+					return nil, errors.New("no checkpoint service is wired into this deployment")
+				}
+				id, err := args.required("checkpoint_id")
+				if err != nil {
+					return nil, err
+				}
+				cp, err := h.Checkpoints.Get(ctx, id)
+				if err != nil {
+					return nil, fmt.Errorf("checkpoint %s not found: %w", id, err)
+				}
+				return cp, nil
+			},
+		},
+		{
+			def: mcp.Tool{
+				Name:        "cost_report",
+				Description: "Report what was spent, in the buckets GET /cost returns, limited to the twins the caller may see. Every argument narrows or regroups the report; with none it is one total.",
+				InputSchema: objectSchema(map[string]any{
+					"since":    stringProperty("Only spend at or after this RFC3339 timestamp."),
+					"until":    stringProperty("Only spend before this RFC3339 timestamp."),
+					"group_by": stringProperty("Comma-separated dimensions to bucket by, e.g. provider,day."),
+					"twin":     stringProperty("Only spend by this digital twin."),
+					"provider": stringProperty("Only spend with these LLM providers, comma-separated."),
+					"label":    stringProperty("Only spend attributed to these containers, comma-separated, e.g. org:o_1."),
+					"limit":    integerProperty("How many buckets to return. Omit for all of them."),
+				}),
+			},
+			action: karakuriauth.ActionCostRead,
+			resource: func(ctx context.Context, h *MCPHandler, p auth.Principal, _ mcpArgs) auth.ResourceRef {
+				// As GET /cost: the collection carrying the caller's own
+				// containers, with the report itself narrowed in the read.
+				return karakuriauth.ScopedCollectionRef(ctx, h.Scopes, p.ID,
+					karakuriauth.ActionCostRead, auth.Collection("cost"))
+			},
+			read: func(ctx context.Context, h *MCPHandler, p auth.Principal, args mcpArgs) (any, error) {
+				buckets, err := costReport(ctx, h.Quota, h.Scopes, p.ID, args.text)
+				if err != nil {
+					return nil, err
+				}
+				if buckets == nil {
+					buckets = []cost.Bucket{}
+				}
+				return buckets, nil
+			},
+		},
 	}
 }
 
@@ -518,12 +695,20 @@ func (h *MCPHandler) callTool(r *http.Request, p auth.Principal, req mcp.Request
 		return marshalResult(mcp.ErrorResult(err.Error()))
 	}
 
+	if text, ok := value.(mcpVerbatim); ok {
+		return marshalResult(mcp.TextResult(string(text)))
+	}
 	rendered, err := json.MarshalIndent(value, "", "  ")
 	if err != nil {
 		return nil, &mcp.Error{Code: mcp.CodeInternalError, Message: "could not encode the result"}
 	}
 	return marshalResult(mcp.TextResult(string(rendered)))
 }
+
+// mcpVerbatim is a tool's answer that is already the document: returned as it
+// is rather than re-encoded, because the audit export is defined by its bytes
+// and a digest taken over a re-indented copy would match nothing.
+type mcpVerbatim []byte
 
 // toolRequest is r with the tool appended to its path, for the audit hook. The
 // hook records method and path, and every MCP call shares one of each.
@@ -569,6 +754,24 @@ type mcpArgs map[string]any
 func (a mcpArgs) str(key string) string {
 	s, _ := a[key].(string)
 	return strings.TrimSpace(s)
+}
+
+// text reads an argument as the text a query string would carry it as, so a
+// tool can hand its arguments to the code a REST route parses its query with.
+// A boolean is "true" or "false" and a whole number its digits; anything else
+// that is not a string is absent.
+func (a mcpArgs) text(key string) string {
+	switch v := a[key].(type) {
+	case string:
+		return strings.TrimSpace(v)
+	case bool:
+		return strconv.FormatBool(v)
+	case float64:
+		if v == math.Trunc(v) && math.Abs(v) < 1<<53 {
+			return strconv.FormatInt(int64(v), 10)
+		}
+	}
+	return ""
 }
 
 // required reads an argument a tool cannot run without.
@@ -633,4 +836,8 @@ func stringProperty(description string) map[string]any {
 
 func integerProperty(description string) map[string]any {
 	return map[string]any{"type": "integer", "description": description}
+}
+
+func booleanProperty(description string) map[string]any {
+	return map[string]any{"type": "boolean", "description": description}
 }
