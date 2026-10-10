@@ -125,6 +125,11 @@ type ReconcileConfig struct {
 	// long-broken objective still retries occasionally rather than
 	// effectively never.
 	MaxBackoff string `yaml:"max_backoff"`
+
+	// CheckpointTTL is how long a checkpoint may wait for an answer before
+	// the supervisor's tick rejects it as system:timeout. Empty means off: a
+	// checkpoint carries no expiry and waits until somebody answers.
+	CheckpointTTL string `yaml:"checkpoint_ttl"`
 }
 
 // IsEnabled reports whether the supervisor should run. Nil means yes: the

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log/slog"
 	"sync"
+	"time"
 
 	"github.com/bsenel/karakuri/internal/core/capability"
 	corecheckpoint "github.com/bsenel/karakuri/internal/core/checkpoint"
@@ -78,6 +79,10 @@ type serviceImpl struct {
 	// tracer opens the invoke_agent and execute_tool spans. Nil means no
 	// tracing; read it through tracing() rather than directly.
 	tracer telemetry.Tracer
+
+	// checkpointTTL is how long a checkpoint this loop creates may wait for
+	// an answer. Zero means it carries no expiry.
+	checkpointTTL time.Duration
 
 	mu     sync.RWMutex
 	states map[string]*loopState // loopID → state

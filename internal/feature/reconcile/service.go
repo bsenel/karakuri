@@ -47,6 +47,12 @@ type LoopRunner interface {
 	Run(ctx context.Context, req coreloop.Request) (coreloop.Result, error)
 }
 
+// CheckpointSweeper is the slice of the checkpoint service the tick needs to
+// end checkpoints nobody answered. Declared here for the reason LoopRunner is.
+type CheckpointSweeper interface {
+	ExpireDue(ctx context.Context, now time.Time) (int, error)
+}
+
 // Config is the operator's ceiling on everything the supervisor does.
 type Config struct {
 	Tick               time.Duration
@@ -140,6 +146,10 @@ type Service struct {
 	mu      sync.Mutex
 	running map[objective.ObjectiveID]bool
 
+	// sweeper expires unanswered checkpoints on the tick. Nil means expiry is
+	// off, which is what a deployment that configured no duration gets.
+	sweeper CheckpointSweeper
+
 	// now is injectable so tests can drive the schedule without sleeping.
 	now func() time.Time
 }
@@ -169,6 +179,13 @@ func NewService(
 		running:  map[objective.ObjectiveID]bool{},
 		now:      func() time.Time { return time.Now().UTC() },
 	}
+}
+
+// WithCheckpointSweeper sets what the tick asks to expire unanswered
+// checkpoints.
+func (s *Service) WithCheckpointSweeper(sw CheckpointSweeper) *Service {
+	s.sweeper = sw
+	return s
 }
 
 // Holder is this replica's identity in the lease, exposed for diagnostics.
