@@ -34,6 +34,18 @@ type SlotInstances[T any] struct {
 type instanceEntry[T any] struct {
 	typeName string // "github", "linear", "noop", …
 	adapter  T
+	// options are the instance's configured options, kept for the ones a
+	// caller reads per action rather than the adapter at construction.
+	options map[string]any
+}
+
+// Options returns the configured options of the given instance. Empty name →
+// default. Nil if the instance is unknown or was installed with Set.
+func (s SlotInstances[T]) Options(name string) map[string]any {
+	if name == "" {
+		name = s.defaultName
+	}
+	return s.instances[name].options
 }
 
 // Resolve returns the adapter for the given instance name. Empty name → default.
@@ -444,6 +456,7 @@ func buildCLIAgentSlot(cfg config.SlotConfig) SlotInstances[cliagent.CLIAgentAda
 			s.instances[name] = instanceEntry[cliagent.CLIAgentAdapter]{
 				typeName: "claude_code",
 				adapter:  cliagent.NewClaudeCode(inst.OptString("binary")),
+				options:  inst.Options,
 			}
 		case "cursor_cli":
 			s.instances[name] = instanceEntry[cliagent.CLIAgentAdapter]{

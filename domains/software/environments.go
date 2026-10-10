@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/bsenel/karakuri/config"
 	"github.com/bsenel/karakuri/internal/core/capability"
 	"github.com/bsenel/karakuri/internal/core/environment"
 	"github.com/bsenel/karakuri/internal/platform/tools"
@@ -115,7 +116,11 @@ func softwareEnvironmentFactories(reg *tools.Registry) []environment.Factory {
 						cli = a
 					}
 				}
-				return &cliEnv{id: "software.env.cli_agent", cli: cli}, nil
+				env := &cliEnv{id: "software.env.cli_agent", cli: cli, twinID: ctx.TwinID}
+				if reg != nil {
+					env.attachMCP, env.mcpURL = cliMCPOptions(reg.CLIAgents.Options(ctx.AdapterBindings["cli_agents"]))
+				}
+				return env, nil
 			},
 		},
 		noopFactory("software.env.ci", "CI pipeline: build status, test results, coverage"),
@@ -618,8 +623,13 @@ type delegationIssuer interface {
 // cliMCPOptions reads attach_karakuri_mcp and karakuri_mcp_url off a
 // cli_agents instance's options.
 func cliMCPOptions(options map[string]any) (attach bool, url string) {
-	return false, ""
+	attach, _ = options["attach_karakuri_mcp"].(bool)
+	return attach, config.InstanceConfig{Options: options}.OptString("karakuri_mcp_url")
 }
+
+// revokeTimeout bounds the revoke that follows a delegation, which runs even
+// when the action's own context is already cancelled.
+const revokeTimeout = 10 * time.Second
 
 func (e *cliEnv) ID() environment.EnvironmentID { return e.id }
 func (e *cliEnv) Domain() string                { return "software" }
@@ -680,22 +690,90 @@ func (e *cliEnv) Act(ctx context.Context, a environment.Action) (environment.Act
 		}
 	}
 
+	// karakuri_tools: the Karakuri MCP tools the agent may call during this
+	// one delegation, e.g. ["audit_list"]. Needs the instance option
+	// attach_karakuri_mcp; the agent holds a read-only credential scoped to
+	// the twin, revoked when the action ends.
+	var karakuriTools []string
+	if list, ok := a.Params["karakuri_tools"].([]any); ok {
+		for _, t := range list {
+			if s, ok := t.(string); ok && s != "" {
+				karakuriTools = append(karakuriTools, s)
+			}
+		}
+	}
+	// scrub keeps the delegation token out of anything the result carries.
+	scrub := func(s string) string { return s }
+	var credential map[string]any
+	if len(karakuriTools) > 0 {
+		refuse := func(why string) (environment.ActionResult, error) {
+			return environment.ActionResult{
+				Success: false,
+				Error:   fmt.Sprintf("%s asked for karakuri_tools %v but %s", a.CapabilityID, karakuriTools, why),
+			}, nil
+		}
+		switch {
+		case !e.attachMCP:
+			return refuse("the cli_agents instance does not set attach_karakuri_mcp")
+		case e.mcpURL == "":
+			return refuse("the cli_agents instance sets no karakuri_mcp_url")
+		case e.twinID == "":
+			return refuse("the action has no twin to scope a delegation credential to")
+		case e.issuer == nil:
+			return refuse("no delegation credential issuer is wired in this deployment")
+		}
+		cred, err := e.issuer.Issue(ctx, e.twinID, time.Duration(in.TimeoutSeconds)*time.Second)
+		if err != nil {
+			return refuse("a delegation credential could not be issued: " + err.Error())
+		}
+		// The map is shared with the result, so the deferred revoke can
+		// still record its outcome after the return value is built.
+		credential = map[string]any{
+			"twin_id":    cred.TwinID,
+			"read_only":  true,
+			"tools":      karakuriTools,
+			"expires_at": cred.ExpiresAt.Format(time.RFC3339),
+			"revoked":    true,
+		}
+		defer func() {
+			// The action's context may be the reason it ended.
+			rctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), revokeTimeout)
+			defer cancel()
+			if err := e.issuer.Revoke(rctx, cred); err != nil {
+				credential["revoked"] = false
+				credential["revoke_error"] = err.Error()
+			}
+		}()
+		if cred.Token != "" {
+			scrub = func(s string) string { return strings.ReplaceAll(s, cred.Token, "[redacted]") }
+		}
+		in.MCP = &cliagent.MCPAttachment{
+			ServerName: "karakuri",
+			URL:        e.mcpURL,
+			Token:      cred.Token,
+			Tools:      karakuriTools,
+		}
+	}
+
 	out, err := e.cli.Delegate(ctx, in)
 	if err != nil {
-		return environment.ActionResult{Success: false, Error: err.Error(),
-			StateDelta: map[string]any{"adapter": e.cli.Name()}}, nil
+		delta := map[string]any{"adapter": e.cli.Name()}
+		if credential != nil {
+			delta["delegation_credential"] = credential
+		}
+		return environment.ActionResult{Success: false, Error: scrub(err.Error()), StateDelta: delta}, nil
 	}
-	return environment.ActionResult{
-		Success: true,
-		StateDelta: map[string]any{
-			"adapter":    e.cli.Name(),
-			"summary":    out.Summary,
-			"tool_uses":  out.ToolUses,
-			"exit_code":  out.ExitCode,
-			"raw_output": out.RawOutput,
-		},
-		ArtifactSHAs: out.ArtifactSHAs,
-	}, nil
+	delta := map[string]any{
+		"adapter":    e.cli.Name(),
+		"summary":    scrub(out.Summary),
+		"tool_uses":  out.ToolUses,
+		"exit_code":  out.ExitCode,
+		"raw_output": scrub(out.RawOutput),
+	}
+	if credential != nil {
+		delta["delegation_credential"] = credential
+	}
+	return environment.ActionResult{Success: true, StateDelta: delta, ArtifactSHAs: out.ArtifactSHAs}, nil
 }
 
 func (e *cliEnv) Subscribe(_ context.Context, _ environment.EventFilter) (<-chan environment.EnvironmentEvent, error) {
