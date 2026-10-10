@@ -589,6 +589,36 @@ func (e *commsEnv) Snapshot(ctx context.Context) (environment.EnvironmentSnapsho
 type cliEnv struct {
 	id  environment.EnvironmentID
 	cli cliagent.CLIAgentAdapter
+
+	// twinID is the twin this environment was built for (BuildContext.TwinID).
+	twinID string
+	// attachMCP and mcpURL are the instance's attach_karakuri_mcp and
+	// karakuri_mcp_url options; issuer mints the credential for one delegation.
+	attachMCP bool
+	mcpURL    string
+	issuer    delegationIssuer
+}
+
+// DelegationCredential is what one delegation carries to Karakuri's own MCP
+// endpoint. It mirrors the issuer's credential so this package does not import
+// the feature layer.
+type DelegationCredential struct {
+	Token       string
+	PrincipalID string
+	TwinID      string
+	ExpiresAt   time.Time
+}
+
+// delegationIssuer is the part of the delegation issuer cliEnv needs.
+type delegationIssuer interface {
+	Issue(ctx context.Context, twinID string, timeout time.Duration) (DelegationCredential, error)
+	Revoke(ctx context.Context, c DelegationCredential) error
+}
+
+// cliMCPOptions reads attach_karakuri_mcp and karakuri_mcp_url off a
+// cli_agents instance's options.
+func cliMCPOptions(options map[string]any) (attach bool, url string) {
+	return false, ""
 }
 
 func (e *cliEnv) ID() environment.EnvironmentID { return e.id }
