@@ -74,8 +74,17 @@ function Orgs() {
     }
   };
 
-  if (containers.error) return <p className="error">{containers.error}</p>;
-  if (containers.loading) return <p className="muted">Loading…</p>;
+  if (containers.error) {
+    return (
+      <>
+        <p className="error" role="alert">Could not load organisations: {containers.error}</p>
+        <div className="row" style={{ marginTop: 12 }}>
+          <button onClick={containers.reload}>Retry</button>
+        </div>
+      </>
+    );
+  }
+  if (containers.loading) return <p className="muted" role="status">Loading…</p>;
 
   return (
     <>
@@ -86,7 +95,7 @@ function Orgs() {
         rewrites no policy.
       </p>
 
-      {error && <p className="error">{error}</p>}
+      {error && <p className="error" role="alert">{error}</p>}
 
       {mayWrite && <CreateRow kinds={['org']} onCreate={(name) => create('org', name, '')} label="New organisation" />}
 
