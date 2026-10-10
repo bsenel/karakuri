@@ -48,7 +48,7 @@ should be allowed to arrive at once. The others are daily caps: give them --cap.
 			switch tier {
 			case "request":
 				if perMinute <= 0 {
-					return fmt.Errorf("--tier request is a rate; give it --per-minute")
+					return fmt.Errorf("--tier request is a rate; give it --per-minute, e.g. `krk quota set --tier request --per-minute 120 --burst 40 --reason %q`", reason)
 				}
 				// Cap is the bucket's capacity and rate is the sustained
 				// refill, which is what "sixty a minute tolerating twenty at
@@ -62,14 +62,14 @@ should be allowed to arrive at once. The others are daily caps: give them --cap.
 				body["rate"] = float64(perMinute) / 60.0
 			case "capability", "llm-tokens", "adapter":
 				if cap <= 0 {
-					return fmt.Errorf("--tier %s is a daily cap; give it --cap", tier)
+					return fmt.Errorf("--tier %s is a daily cap; give it --cap, e.g. `krk quota set --tier %s --cap 2000 --reason %q`", tier, tier, reason)
 				}
 				if perMinute > 0 || burst > 0 {
 					return fmt.Errorf("--per-minute and --burst apply to --tier request only")
 				}
 				body["cap"] = cap
 			default:
-				return fmt.Errorf("unknown tier %q; one of adapter, capability, llm-tokens, request", tier)
+				return fmt.Errorf("unknown tier %q; one of adapter, capability, llm-tokens, request\nRun `krk quota config` to see each tier and its current limit", tier)
 			}
 
 			data, _, err := api.Put("/quota/tiers/"+tier, body)
