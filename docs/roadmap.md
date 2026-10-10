@@ -4215,8 +4215,8 @@ dependency, not work repeated here.
   endings this phase adds emit those signals. Until Phase 39's signals exist,
   worktrees still pile up, which costs disk and does not block step 15.
 - **EB-002** (objectives whose work is delivered do not end as done) and
-  **EB-004** (a coding agent's exit 1 leaves no reason) are backlog entries.
-  Step 7 and step 8 depend on them and do not redo them. Their "Proposed
+  **EB-004** (a coding agent's exit 1 leaves no reason) are backlog entries,
+  both marked Planned. Step 7 and step 8 depend on them and do not redo them. Their "Proposed
   change" columns were not read in full for this proposal; read them first.
 
 **Steps.** Order: A (1 to 3) before anything may act unattended; then D (4 to
@@ -4341,8 +4341,11 @@ today's behaviour for anything not yet declared.
    another order when defining an objective. While the quota state is "out", no
    stream starts a pass; one probe, by the highest-priority waiting stream at
    the returned time or on a backoff, finds out whether it is back; waiting
-   streams then start in priority order. **Not read:** whether the supervisor
-   runs passes of different objectives at the same time; the step starts there.
+   streams then start in priority order. The supervisor has a `MaxConcurrent`
+   setting that defaults to 4 (`internal/feature/reconcile/service.go`, seen by
+   search), so passes of different objectives can run at once and order has to
+   be applied where slots are handed out. **Not read:** how they are handed
+   out; the step starts there.
    *Acceptance:* with a fake clock and a fake provider that is out and then
    back: no pass starts while out, one probe is made per interval, and the
    streams start in the declared order afterwards. An owner's override changes
@@ -4491,10 +4494,20 @@ today's behaviour for anything not yet declared.
   rejection. Whether a `system:timeout` rejection (Phase 35) counts as one was
   not read. If it does, a stream at `act_with_notice` falls back to `propose`
   after one unanswered escalation and step 15 fails; settle it with Phase 35.
-- **Provenance escalations.** EB-001 records that the git environment's
-  third-party marking escalated almost every plan. Its current status was not
-  checked here. If it still fires, every pass raises a checkpoint whatever its
-  limits, and steps 2 and 10 change nothing a person can see.
+- **The circuit breaker still asks a person.** When the breaker suspends an
+  objective, `internal/feature/reconcile/run.go` raises a checkpoint offering
+  "resume", "pause" and "investigate" (seen at line 575; the function was not
+  read). Resuming a suspended stream is a human action outside the four the
+  owner kept. Steps 4, 7 and 8 keep restarts, refusals and quota out of the
+  breaker's count, so it should trip only on real repeated failure, and then a
+  person looking is the right outcome; but it means step 15 fails on any week
+  in which a stream fails three passes running, and that is the intended
+  reading of the criterion, not a gap to engineer around.
+- **Provenance escalations.** EB-001 recorded that the git environment's
+  third-party marking escalated almost every plan; its row is marked Completed.
+  Whether escalations for that reason have in fact stopped on this deployment
+  was not measured here. If they have not, every pass raises a checkpoint
+  whatever its limits, and steps 2 and 10 change nothing a person can see.
 - **Phase 39 moves the ground.** Phase 39 puts authority at one gateway and
   takes software nouns out of the core. Step 1's limits are neutral so they
   survive it, but steps 3, 6 and 13 are pack code that Phase 39 relocates.
