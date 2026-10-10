@@ -3719,6 +3719,195 @@ use was not searched.
 
 ---
 
+## Phase 39 — Autonomous Domain Packs Behind One Gateway (Planned)
+
+**Goal:** Every tool call, from the reasoning loop or from a coding agent
+Karakuri delegated to, goes through one MCP gateway; the software pack serves
+its capabilities as MCP tools behind that gateway and manages its own
+workspaces and secrets; and a conformance suite checks the pack from outside.
+
+Decided by the owner on 2026-10-10, "for scalability of domain packs", and
+recorded in [ADR 028](adr/028-packs-are-autonomous-behind-one-gateway.md). The
+ADR holds the decision and its reasons; this phase is the order of work. It
+**depends on Phase 34**: the credential the gateway sends to a pack is Phase
+34's delegation credential, extended, and the delegated agent is one of the
+gateway's two callers. Nothing in this phase exists yet.
+
+**Why.** A pack today is a Go value compiled into the server
+(`domain.Pack`, implemented by `domains/software/pack.go`). `NewWithTools`
+hands it the deployment's `tools.Registry`, so the adapters and their tokens
+are the orchestrator's. `domains/software/capabilities.go` marks a capability
+that writes files with `NeedsWorkspace`, and its comment says "the loop
+provisions one": the core creates a git worktree, which is the software pack's
+idea of a workspace and nobody else's. Each further pack written this way adds
+its adapters, its tokens and its kind of workspace to the core, in Go, in the
+same process. ADR 028 moves those three into the pack and leaves the
+orchestrator with what only it may decide.
+
+**What it delivers.**
+
+- One gateway where authentication, authority bounds, quota, audit, cost and
+  provenance marking happen for every tool call.
+- A pack manifest, outside MCP, and a configuration entry that registers a
+  pack's server as first-party. A server configured as an MCP instance stays
+  discovered, with ADR 022's four bounds unchanged.
+- The software pack's capabilities served as MCP tools by a server that lives
+  **inside the Karakuri binary**, behind the gateway.
+- Worktrees created and removed by the software pack; the core records an
+  opaque workspace reference and nothing else.
+- The software pack resolving its own secrets, per tenant.
+- A conformance suite that runs against a pack's server through the call
+  contract.
+
+**What stays in the orchestrator**, unchanged by any step: objectives, the
+loop, reconciliation, checkpoints and approvals, authority, quota, the audit
+log, cost, memory, and the verdict that an objective converged (ADR 028
+Decision 4 and section d). The permission decision is made before a call is
+sent; the bounds travel with the call, and a pack never becomes a second gate
+(ADR 015, AGENTS.md rule 8).
+
+**Steps.** Each is one delivery pass with its own acceptance test, and each
+leaves the system working with the software pack as it is on that day. The
+order is the one proposed with the decision; reading
+`domains/software/capabilities.go` and `environments.go` (function list, the
+`writes` helper and the capability IDs only) gave no reason to change it, and
+one reason to add the hand-over noted in step 3.
+
+1. **The gateway is the single path for the calls that already exist.** One
+   component in the orchestrator through which a capability invocation by the
+   loop and a tool call on the served surface (`internal/api/handler/mcp.go`,
+   and Phase 34's delegated agent) both pass, and where the authority check,
+   quota, audit, cost and provenance marking are applied. No capability moves
+   and no behaviour changes: the gateway dispatches to the in-process
+   implementations that exist today. Where those checks are applied now was not
+   read for this phase (`CapabilityRegistry.Invoke`, the loop's execute step
+   and the auth middleware were not opened); the first task of the step is to
+   list them, and the step is done when each is applied in the gateway and
+   nowhere else on the tool path. *Acceptance:* a test invokes one capability
+   from the loop and one tool from the served surface and finds one audit row
+   and one quota charge for each, written by the gateway; a call that bypasses
+   the gateway does not compile or fails a test that searches for one; the
+   existing loop and MCP handler tests pass unchanged.
+2. **The pack manifest and first-party registration.** A manifest type carrying
+   exactly what ADR 028 Decision 5 names: which tools may be criterion
+   verifiers, how each environment is snapshotted, the objective, agent and
+   stream templates, and routing hints. A configuration entry registers a pack
+   with its manifest; the gateway assigns the namespace from that entry and
+   reads nothing the server says about itself when deciding the class (ADR 028
+   section a). The software pack's manifest is written from what `domain.Pack`
+   returns today, and the registries are filled from it. The manifest
+   nominates verifiers; the orchestrator still decides which it trusts.
+   *Acceptance:* a server configured as an MCP instance whose `serverInfo` and
+   tool names claim to be the software pack is registered under `mcp.` with the
+   four bounds; a manifest naming a tool under `mcp.` fails registration; the
+   software pack registered from its manifest yields the same capability,
+   template and hint IDs as before.
+3. **The software pack's read and verify capabilities as MCP tools,
+   in-process.** A software-pack MCP server inside the binary serves the
+   observe capabilities and the verifiers; the gateway routes to it and sends
+   the call contract's fields (tenant, twin, objective, bounds). The server
+   returns the result, the trust of its text set from the payload (rule 9), and
+   an explicit "cannot see" error where the environment cannot look (rule 10).
+   A verifier that runs in a worktree the loop provisioned keeps receiving that
+   worktree through the call until step 4; which verifiers those are was not
+   read. Acting capabilities stay on the in-process path. *Acceptance:* a fetch
+   of pull requests through the gateway returns `TrustThirdParty` when the
+   window holds one and the same content as the in-process call; with no
+   version-control instance bound it returns the error, not an empty list; a
+   result with no trust stated is recorded as third party; a criterion is
+   verified through the tool and the verdict is still computed in the loop.
+4. **Workspaces move into the pack; the core keeps the reference.** The
+   software pack's server creates the worktree for a call that needs one,
+   isolates concurrent actions from each other, removes it when the work is
+   done or failed, and returns an opaque reference that the gateway writes to
+   the audit row. The loop stops provisioning. `NeedsWorkspace` and
+   `GrantsWorkspace` leave the core capability type once nothing in the core
+   reads them, and `git.WorktreeManager` leaves the core's wiring; ADR 028
+   names `internal/feature/loop/service.go`, `internal/app/bootstrap.go`,
+   `internal/api/server.go` and `internal/api/handler/health.go` as referencing
+   it, found by search and not read, so the size of this step is not known and
+   it may need to be cut in two (move, then remove). This is the step that
+   amends AGENTS.md rule 3 and lands ADR 028's effect on ADR 003 and ADR 019.
+   *Acceptance:* two concurrent write actions get different references and
+   different directories; after each, success or failure, the directory is
+   gone; the audit row carries the reference; no package under
+   `internal/core` or `internal/feature` imports the worktree manager.
+5. **Secrets move into the pack, resolved per tenant.** The software pack
+   resolves the token for a call from the tenant the call names, through its
+   own resolver, instead of using adapters built from the orchestrator's
+   `tools.Registry`. No secret appears in a result, an error, a log line or a
+   workspace reference. How tokens are configured and stored today was not read
+   (`tools.Registry`'s construction and ADR 006's slots beyond headings); the
+   step starts by reading that, and keeps the existing configuration keys
+   working. In one process this is true of the code and not of the address
+   space, as ADR 028 section e says. *Acceptance:* two tenants with different
+   tokens, called in turn and concurrently, each reach a stub backend with
+   their own token; a planted secret is found in no result, no error and no
+   captured log; a tenant with no secret gets the "cannot see" error.
+6. **Acting capabilities behind the gateway, with the credential.** The
+   write, PR, ticket and message capabilities are served by the pack's server.
+   The gateway sends a signed, limited credential with each call: scoped to the
+   twin, expiring at the action's timeout, revoked when the action ends. It is
+   Phase 34's delegation credential carrying, or accompanied by, tenant,
+   objective and bounds; which of the two, and how the pack verifies the
+   signature, is settled here after reading the keyring (not read). The step
+   also states how this sits with ADR 022's "Karakuri serves MCP read-only",
+   which ADR 028 left open and which was not read for this phase either:
+   whether a delegated agent may reach a pack's acting tools through the
+   gateway is decided in this step, in writing, before it is built. Approval
+   stays off the tool surface. After this step the in-process capability path
+   is removed. *Acceptance:* an acting call without a credential, with an
+   expired one, or with one for another twin is refused by the pack; a call the
+   orchestrator's gate denied never reaches the pack; a pack that refuses a
+   call fails the action and resolves no checkpoint; a call that outlives its
+   timeout fails within it.
+7. **The conformance suite, from outside.** A suite that speaks to a pack's
+   server through the call contract and checks ADR 028 section c: per-tenant
+   secrets, no secret in a result, workspace isolation and cleanup, a snapshot
+   that is stable when nothing changed and empty when the pack cannot see, and
+   timeouts. It reports which promises it tested and which the pack only
+   declared. The existing in-process conformance package and `krk domain test`
+   were not read; which checks carry over, and whether the command keeps its
+   name, is decided in the step. *Acceptance:* the software pack passes; a
+   deliberately broken stub pack fails each check in turn (shares a workspace,
+   leaves one behind, echoes a planted secret, returns an empty result when
+   blind, ignores the timeout), one failure per defect.
+
+**What this is not.** It does not split the binary. The software pack's server
+stays in the Karakuri process for the whole phase, and is split out only when a
+second pack exists that is not compiled in, or a pack is written in a language
+other than Go (ADR 028 section e). It migrates no pack other than software;
+what the other packs under `domains/` hold was not read. It adds no shared
+workspace or secrets library: ADR 028 allows one as an option for pack authors,
+and nothing here needs it with one pack. It changes none of ADR 022's four
+bounds for discovered tools, does not put the verdict, permission, drift
+detection, loop state or memory behind MCP, and does not change how the loop
+terminates (rules 8, 9 and 10 stay).
+
+**Risks.**
+
+- **Step 4 is larger than it looks.** Worktree provisioning is referenced from
+  four places nobody read. If the move and the removal do not fit one pass,
+  split them and keep the old path until the new one is proven.
+- **A hop on every call.** Serialisation and the gateway are paid on each tool
+  call from step 3 on, before any pack benefits from being separate. Step 3's
+  test should record the added latency so the cost is a number.
+- **Phase 34 moves.** The credential is designed on an unmerged branch
+  (`karakuri/phase-34-own-tools-in-agents-hands`). If its shape changes, step 6
+  changes with it; steps 1 to 5 do not need it.
+- **Phase 33 changes the protocol under the gateway.** MCP revision 2026-07-28
+  removes the handshake and sessions. The in-process server should be written
+  against whichever revision the client speaks when step 3 starts; the steps of
+  Phase 33 were not read.
+- **A pack that holds secrets is a larger thing to trust**, and in one process
+  the separation is of code, not memory. The suite in step 7 checks behaviour
+  from outside and cannot prove a pack never logs a secret where it does not
+  look.
+- **ADR 005** (domain pack isolation) was not read and is likely affected.
+  Read it before step 2.
+
+---
+
 ## Engineering Backlog
 
 These are enhancements found in this deployment's own telemetry and audit log, each recorded with the data that shows the problem. A human approves an entry by merging the pull request that adds it; the delivery stream implements entries whose status is Planned.
