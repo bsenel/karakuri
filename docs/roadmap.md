@@ -48,6 +48,7 @@ Phases 27–32 were proposed from two kinds of evidence: what this repository de
 | 36    | A Provider's Refusal Is Not a Plan         | **Planned**   |
 | 37    | A Stop That Reaches the Running Pass       | **Planned**   |
 | 38    | What Was Required and Not Done             | **Planned**   |
+| 40    | Streams That Run Without a Coordinator     | **Planned**   |
 
 
 ---
@@ -4099,6 +4100,501 @@ terminates (rules 8, 9 and 10 stay).
 
 ---
 
+## Phase 40 — Streams That Run Without a Coordinator (Planned)
+
+**Goal:** The four standing streams of a deployment (`market_discovery`,
+`engineering_backlog`, `ux_improvement`, `roadmap_delivery`, declared in
+`domains/software/streams.go`) are governed and run by Karakuri itself. A
+person defines an objective, reads what it did, merges or closes its pull
+requests, and pauses it. Nothing else is a person's job. That includes
+starting discovery: a market discovery cycle runs on its fixed cadence
+whatever the pipeline holds, and another starts when the pipeline of approved
+work is empty, so the deployment never sits idle for want of approved work.
+
+**The owner's decision (2026-10-10).** Recorded here, not reopened: "All these
+streams must be managed by Karakuri itself independently. We just define an
+objective and oversee its work. We do not hold coordinator role here." And:
+"We create a roadmap item that allows Karakuri to continuously govern and run
+these streams independently."
+
+**The owner's addition (2026-10-10).** Recorded here, not reopened:
+"Eventually, discovery cycles should be launched when no items are remaining
+in the pipeline." And, correcting the reading that this replaces the schedule:
+"Discovery should not be limited to empty task pipeline. It should get
+triggered on a fixed cadence to add items into the roadmap so in the
+pipeline." Market discovery therefore has two triggers and both stay: a fixed
+cadence (today weekly, cron `0 10 * * 0`), and an empty pipeline. Asked
+whether a cycle started by an empty pipeline counts as the scheduled cycle of
+the cadence's current period, the owner answered: "No it does not count."
+Neither trigger replaces, cancels or postpones the other.
+
+**Acceptance criterion of the phase.** For seven consecutive days on a
+deployment running the four streams, no person resolves a checkpoint, replaces
+an objective, opens a pull request, reviews a branch by building it, or sets an
+objective's status, and no person starts a discovery cycle: each scheduled
+cycle in the seven days ran on its cadence, and each time the pipeline was
+empty with no discovery proposal open a cycle started by itself. The only
+human actions are merging or closing pull
+requests, pausing a stream, and reading the oversight view. **This has to be
+observed on a running deployment. No unit test shows it:** each step below has
+a test for its own mechanism, and the phase is finished only when step 15's
+seven days have been watched and recorded.
+
+**Why: what people did by hand, 2026-10-04 to 2026-10-10.** Seven things,
+observed by the owner on this deployment in that week. Where this proposal
+checked one against the code it says so; the rest are recorded as reported.
+
+1. **Approved every plan.** All four streams run at the `propose` rung, so
+   every pass stops at a checkpoint (`effectiveAuthority` in
+   `internal/feature/reconcile/authority.go` sets `MaxAutonomousActions` to 0
+   there). What the reviewer checks is mechanical: the plan's allowed tools hold
+   no merge and no broad shell tool, it pushes only to the stream's own branch,
+   and never to main. No code enforces that. The templates carry a hard
+   constraint whose expression is `no_merge`; a search of the Go sources finds
+   that string only where `streams.go` declares it. The allow-list is written
+   by the planner from the brief's text.
+2. **Two streams can never act.** `market_discovery` suggests
+   `software.agent.strategist` (`authority(0, 0.9, ...)` in
+   `domains/software/agents.go`) and `engineering_backlog` suggests
+   `software.agent.maintainer` (`MaxAutonomousActions: 0` in
+   `domains/software/selfimprove.go`). At `act` the definition's own bounds
+   apply untouched, so both escalate at every rung, although their whole output
+   is roadmap and research text on a branch and a pull request whose merge is
+   the owner's approval.
+3. **Reviewed each pull request by building and running it.** The Phase 33
+   pull request passed CI with wire names that did not interoperate with the
+   real SDK. A UX pull request made `krk bogus` print help and exit 0. A person
+   running the branch caught both, and wrote a one-shot objective to fix each.
+   The delivery brief acts on review comments; nothing produces them.
+4. **Repaired a stream after a restart.** A loop interrupted by a shutdown came
+   back "paused at decide" with no pending checkpoint and its stream was
+   deferred from then on; a person replaced the objective. A loop that had been
+   waiting at a checkpoint re-planned after the restart and ran the new plan on
+   the old approval, leaving a stale checkpoint.
+5. **Noticed the usage limit.** When the coding agent's provider is out of
+   quota every action fails with `claude_code: exit 1 (stderr: )` (EB-004, read
+   2026-10-09), a pass burns through its actions, and a pass cut before its
+   last action leaves a branch with no pull request; a person opened it.
+6. **Closed finished work.** A one-shot objective that did all its work ended
+   "failed" at max-iter 1 and a person set it completed (EB-002, read
+   2026-10-05). Worktrees pile up under `worktrees/<objective-id>/` and a
+   person removes them.
+7. **Paced the work.** Delivery was one pass a day. "Continuous" is imitated
+   with `--every 30m`, which plans (a model call) when nothing is Planned, and
+   the streams compete for one provider quota in no order.
+
+**What it delivers:**
+
+- **A. Bounds enforced by code.** What a stream may do is declared on its
+  template, written into `agent.AuthorityBounds` by reconcile, and enforced
+  where the loop already authorises actions. A plan inside the bounds runs; a
+  plan outside them is refused, on the record. Plan review stops being the
+  gate.
+- **D. A stream that heals itself** after a restart, after a pass that was cut
+  short, and when its work is finished.
+- **E. Provider quota as a state**, shared between streams in a declared
+  order, and not counted as a failure.
+- **B. A stream whose only output is a proposal may act**, inside bounds that
+  confine it to its files, its branch and opening a pull request.
+- **C. Karakuri reviews its own pull requests** by building and running the
+  branch, in a context that is not the author's, and every stream addresses
+  review comments before new work.
+- **F. Continuous means "while there is work"**: delivery makes no model call
+  while nothing is Planned. Its counterpart: the same reading of the pipeline
+  that starts a delivery pass when something is Planned starts a discovery
+  cycle when nothing is, at most one open discovery proposal at a time, and
+  beside the fixed cadence, which keeps running while approved work remains.
+- **G. One oversight view** per stream, on the digest and the existing CLI and
+  web surfaces.
+
+**What other phases already deliver, and this phase uses.** Each line is a
+dependency, not work repeated here.
+
+- **Phase 35** ends a checkpoint nobody answered as a rejection by
+  `system:timeout`. After step 2 a plan outside the bounds is refused without a
+  checkpoint, but escalations for other reasons (confidence, third-party
+  provenance under ADR 021) still raise one, and with no coordinator nobody
+  answers it. Phase 35, with its duration set, is what ends it. Step 15 cannot
+  pass without Phase 35.
+- **Phase 36** makes a rate limit from the *planner's* model provider end the
+  iteration with that reason. Step 8 is the same idea at a different seam, the
+  delegated coding agent (`internal/platform/tools/cliagent`), and reuses Phase
+  36's reason wording so a digest has one vocabulary. It does not touch the
+  planner path.
+- **Phase 37** makes a pause cancel the pass in flight and records who paused.
+  "Pause it" is one of the owner's four actions; this phase adds nothing to it.
+  Step 4 ends an interrupted loop through the same ending Phase 37 gives a
+  cancelled pass, if Phase 37 has landed, and through the loop's existing
+  failure ending if it has not.
+- **Phase 38** records how each success criterion was settled. Step 11's
+  review reads that record to know what a pass claimed, and step 14 shows it;
+  neither rebuilds it.
+- **Phase 39** sends lifecycle signals (a pass ended; an objective ended or was
+  cancelled) and has the software pack bound its own leftovers by age. Worktree
+  cleanup is therefore **not built in this phase**: step 7 only makes sure the
+  endings this phase adds emit those signals. Until Phase 39's signals exist,
+  worktrees still pile up, which costs disk and does not block step 15.
+- **EB-002** (objectives whose work is delivered do not end as done) and
+  **EB-004** (a coding agent's exit 1 leaves no reason) are backlog entries,
+  both marked Planned. Step 7 and step 8 depend on them and do not redo them. Their "Proposed
+  change" columns were not read in full for this proposal; read them first.
+
+**Steps.** Order: A (1 to 3) before anything may act unattended; then D (4 to
+7) and E (8, 9) so an unattended stream cannot get stuck or burn quota; then B
+(10), C (11, 12), F (13), G (14) and the observation (15). Each step is one
+delivery pass, has its own acceptance test, and leaves the system working with
+today's behaviour for anything not yet declared.
+
+1. **Bounds can say what an action may hold.** `agent.AuthorityBounds` gains a
+   list of action limits: for a capability ID, the values (as patterns) that
+   named parameters of that action may take. It is domain-neutral on purpose,
+   because Phase 39's acceptance criterion forbids a software noun in the core:
+   the core compares strings with patterns, and only the pack's template knows
+   that one parameter is a coding agent's tool allow-list and another a pull
+   request's base. The decide step, where bounds are already read, checks every
+   action of a plan against the limits. **Not read for this proposal:**
+   `internal/core/agent` (the struct), the decide step in
+   `internal/feature/loop`, and the shape of a planned action's parameters.
+   Read them first; if a delegated action's allow-list is not a parameter the
+   decide step can see, the first slice is to make it one.
+   *Acceptance:* a table test over bounds and plans: no limits declared, every
+   plan is treated as today; an action whose parameter is outside a limit is
+   reported as a violation naming the action, the parameter and the limit; an
+   action inside passes. No second gate exists: the test asserts the check runs
+   in the decide step's existing bounds check and nowhere else (AGENTS.md rule
+   8, ADR 015).
+2. **A stream's template declares its limits, and a plan outside them is
+   refused.** `objective.Template` gains the limits; each of the four templates
+   declares which tools a delegated coding action may hold (no merge tool, no
+   unrestricted shell), which branch patterns it may push to and open a pull
+   request from, and that the base is main and main is never a push target.
+   `effectiveAuthority` intersects them with the agent definition's bounds: a
+   template can narrow an agent's authority and never widen it. A violation is
+   **refused, not escalated**: the iteration ends with a bounds refusal in the
+   audit log and no checkpoint, because an escalation would hand the mechanical
+   review back to a person and that is the gate this phase removes. The
+   `no_merge` constraint stays as the sentence the planner reads; a test
+   asserts every template carrying it also declares limits that exclude merge,
+   so the string is never again the only thing standing there. The branch each
+   stream uses is today in the brief's text (not read); the step moves the
+   pattern to the template.
+   *Acceptance:* for each of the four templates, a plan with a merge tool, one
+   with an unrestricted shell, one pushing to main and one pushing to another
+   stream's branch are each refused with one audit row and no checkpoint; a
+   plan inside the limits at `act_with_notice` runs with no checkpoint; at
+   `propose` everything still escalates exactly as today.
+3. **What was pushed is checked, not assumed.** The allow-list bounds what a
+   coding agent is told it may run; the push itself happens inside a
+   subprocess. After a delegated action, the software pack compares the remote
+   refs before and after (and, for step 10, the changed paths against the
+   declared ones). A ref outside the declared patterns that moved is a failed
+   action, a bounds violation in the audit log, and the stream goes to
+   `blocked` until the owner looks. This detects; it does not prevent. What
+   prevents a push to main is branch protection on the remote, which is outside
+   Karakuri: the step reports, through the version-control adapter, whether
+   main is protected, and returns `ErrUnsupported` where the backend cannot say
+   (AGENTS.md rule 10), so the oversight view shows "not known" and never a
+   false "protected".
+   *Acceptance:* against a local bare repository, an action that pushes to an
+   undeclared ref is recorded as a violation and blocks the stream; one that
+   pushes only to its declared branch passes; an adapter that cannot read
+   protection yields "not known".
+4. **An interrupted loop is ended and its pass re-run.** At boot, a restored
+   loop that belongs to a standing objective and has no pending checkpoint is
+   ended with the reason `interrupted_by_restart`; the supervisor's next tick
+   starts a fresh pass. Ending is chosen over resuming: a pass already starts
+   from the branch tip, so re-running is safe, and resuming mid-act would give
+   the loop a second lifecycle, which ADR 015 rejected. The ending does not
+   count toward the circuit breaker. **Not read:** `ResumeStoredLoops`
+   (`internal/feature/loop/service.go` line 342) and how reconcile defers a
+   stream whose loop is not finished; read both, and Phase 35's step 3, which
+   touches the same function.
+   *Acceptance:* an integration test stops the server during an act step and
+   starts it again: the loop is ended with that reason, the objective is not
+   deferred, the next tick runs a pass, and `ConsecutiveFailures` is unchanged.
+5. **An approval belongs to the plan it approved.** A checkpoint records which
+   plan it was raised for. A restored loop that was waiting at a checkpoint
+   keeps waiting on that checkpoint and does not re-plan. If a new plan is ever
+   produced while a checkpoint for an older one is open, the old checkpoint is
+   closed as superseded, on the record, and a decision on it authorises
+   nothing.
+   *Acceptance:* a test restarts a loop paused at a checkpoint: no new plan is
+   made, and approving runs the plan that was shown. A second test forces a
+   re-plan and shows the earlier approval refused and one superseded
+   checkpoint, none pending and stale.
+6. **A branch with commits and no pull request gets one.** The software pack's
+   observation for a stream lists the stream's branches that are ahead of main
+   and have no open pull request. Every stream's pass opens those first, before
+   new work; this is one action inside the stream's own limits. If the remote
+   cannot be read the observation is an error, not an empty list (rule 10).
+   *Acceptance:* with a branch ahead of main and no pull request, the next pass
+   of each of the four templates opens it before any other action; with the
+   remote unreachable the pass reports that it could not see.
+7. **Finished ends as finished, and endings are signalled.** Depends on EB-002
+   for one-shot objectives; this step does not redo it. What it adds: every
+   ending this phase introduces (interrupted by restart, refused by bounds,
+   waiting for quota) is a named outcome the digest counts apart from failure,
+   and each emits Phase 39's "pass ended" signal once those exist, so the pack
+   cleans up its leftovers. No cleanup code is added to the orchestrator.
+   *Acceptance:* a test per new ending shows its outcome name in the stored
+   run and, where Phase 39's signal exists, one signal sent. If EB-002 has not
+   landed, the step says so in its pull request and step 15 waits for it.
+8. **Out of quota is a state.** When the coding agent's adapter can tell that
+   its provider refused for quota, it returns a typed error, the pass stops
+   spending actions at once, and the pass ends as deferred with the reason and,
+   where the provider gave one, the time the quota returns. Compare
+   `budget_exhausted`, which `internal/feature/reconcile/run.go` already records
+   as a deferral (seen by search at lines 208 and 227, not read): the same
+   treatment, and not a failure for the circuit breaker. **Depends on EB-004:**
+   today the error is `exit 1` with an empty stderr, and an adapter that cannot
+   tell quota from any other failure must keep reporting a failure. It must not
+   guess from an empty string. What the CLI prints when it is out of quota was
+   not read; find out before writing the detector.
+   *Acceptance:* with a fake coding agent that reports quota exhaustion, a pass
+   makes one attempt, records one deferral with the reason, leaves
+   `ConsecutiveFailures` unchanged, and step 6 opens the pull request for
+   anything already pushed on the next pass. With a fake that exits 1 with no
+   reason, behaviour is as today.
+9. **Streams share the quota in a declared order.** A standing objective has a
+   priority; the templates default to delivery of approved work first, then
+   review (step 11), then UX, the backlog and discovery, and the owner can set
+   another order when defining an objective. The order does not starve the
+   fixed cadence: a scheduled discovery cycle that is due takes the first slot
+   after the delivery pass in flight has ended, ahead of delivery's next pass.
+   It waits for a running pass to end, never for the pipeline to drain. A
+   cycle started by an empty pipeline (step 13) competes with no delivery, by
+   definition. While the quota state is "out", no
+   stream starts a pass; one probe, by the highest-priority waiting stream at
+   the returned time or on a backoff, finds out whether it is back; waiting
+   streams then start in priority order. The supervisor has a `MaxConcurrent`
+   setting that defaults to 4 (`internal/feature/reconcile/service.go`, seen by
+   search), so passes of different objectives can run at once and order has to
+   be applied where slots are handed out. **Not read:** how they are handed
+   out; the step starts there.
+   *Acceptance:* with a fake clock and a fake provider that is out and then
+   back: no pass starts while out, one probe is made per interval, and the
+   streams start in the declared order afterwards. An owner's override changes
+   the order. With Planned work remaining and a scheduled discovery cycle due,
+   the cycle starts when the running delivery pass ends and before the next
+   one.
+10. **Proposal streams may act.** The comment on the maintainer's authority
+    says zero was chosen "deliberately not a small number", because the pack
+    boundary gives no guarantee: "a pack is a namespace, and stepAct resolves
+    environments across every domain an objective names", so zero was the only
+    thing that bounded "what promotion can ever mean". This step answers it and
+    leaves it true. The maintainer and the strategist keep zero, for every
+    objective that names them. `market_discovery` and `engineering_backlog`
+    instead name a new agent definition (one or two, decided after reading how
+    capabilities route) whose authority allows a small number of actions and
+    whose template limits, enforced by steps 1 to 3, confine a pass to
+    `docs/roadmap.md` (and `docs/research/` for discovery), to the stream's own
+    branch, and to opening a pull request against main. The guarantee the
+    comment asked for now comes from limits checked on every action, where
+    before it could only come from permitting none. The merge is still the
+    owner's approval. **ADR 017 was not read** and is cited elsewhere in this
+    roadmap as what bounds the maintainer; read it first. If it decides that
+    nothing in this pack proposes without a checkpoint, this step needs an ADR
+    that says what changed, before any code.
+    *Acceptance:* at `act_with_notice`, a discovery pass and a backlog pass each
+    run to an open pull request with no checkpoint; a plan that touches a path
+    outside the declared ones is refused (step 2), and one that slipped past
+    is caught after the action (step 3). An objective naming
+    `software.agent.maintainer` still escalates every action.
+11. **A review that builds and runs the branch.** A fifth template,
+    `software.objective.pull_request_review`, is a standing objective with its
+    own agent and its own worktree at the pull request's head, so the reviewer
+    is never the author's context: it has not seen the author's plan or
+    reasoning, only the pull request and the repository. It is woken by an open
+    pull request from a stream whose head commit has no review. Its limits: it
+    may build, test, lint and run the binaries in its worktree, and post one
+    review with comments on the pull request; it may push nothing. It is a
+    fifth objective and not a step inside each stream because separation of
+    context is the requirement, and an objective is the unit that has one. Each
+    review states **what it ran and what it did not**. It can verify: that the
+    branch builds, that tests and lint pass at the head, and that commands the
+    pull request claims to change behave as claimed, by exit code and output
+    (`krk bogus` exiting 0 is of this kind). It cannot verify: behaviour against
+    a system that is not installed where it runs (the Phase 33 wire names would
+    be found only if the real SDK can be fetched and run there, and the review
+    must say when it could not), how a web page looks, whether a source in a
+    research report says what the report says beyond fetching it, or whether a
+    proposal is wanted. On a forge where the author and the reviewer are one
+    account the review is a comment review; it cannot approve or request
+    changes, and approval stays the owner's merge.
+    *Acceptance:* against a fixture repository with a pull request that breaks
+    the build and one whose changed command exits with the wrong code, the pass
+    posts a review naming each finding with the command run and its output; on
+    a clean pull request it posts what it ran and no finding; a plan to push is
+    refused by its limits.
+12. **Review comments come before new work, in every stream.** The observation
+    from step 6 also lists the stream's open pull requests with review comments
+    not yet answered by a later commit. A pass addresses those first. A comment
+    written by anyone outside the deployment's own authors is third-party
+    material and sets `TrustThirdParty` from what the payload holds (rule 9,
+    ADR 021); it escalates as today and Phase 35 ends it if nobody answers. A
+    pull request is reviewed again when its head moves, and after a declared
+    number of rounds without converging the stream stops pushing to it and the
+    oversight view shows it as waiting for the owner.
+    *Acceptance:* with an open pull request carrying a review finding, the next
+    pass of each of the four templates pushes a commit for it before any new
+    work; a comment round past the declared limit produces no push and one
+    "waiting for the owner" entry.
+13. **A delivery pass starts when there is work, and costs nothing when there
+    is none.** The software pack computes, without a model, whether delivery has
+    work: an item on main marked Planned with no open pull request, a branch
+    from step 6, or a finding from step 12. The supervisor starts the next pass
+    when the previous one has ended and that is true, and makes no model call
+    while it is false. A merge to main changes the computed state, which is
+    what wakes it. An item whose pull request is open and waiting for the owner
+    is not work, or the stream would plan forever against something only a
+    merge can finish. If main cannot be read the stream is blind and says so.
+    **Not read:** how the supervisor senses and which triggers exist beside a
+    schedule (`internal/feature/reconcile/service.go`); if a snapshot that has
+    not changed already skips the pass, this step is that mechanism given the
+    right snapshot, and nothing new.
+    **The same reading starts discovery when the pipeline is empty.** One
+    reading, two outcomes, no second mechanism: where it finds a Planned item
+    not yet delivered, delivery runs; where it finds none, a market discovery
+    cycle starts without waiting for the cadence. *Empty* means: on
+    origin/main, no phase whose heading ends "(Planned)" and no Engineering
+    Backlog entry with Status Planned, other than items already delivered on a
+    branch with an open pull request. An item that is delivered and waiting
+    for the owner's merge is not work for delivery, so it does not hold
+    discovery back; the pipeline is empty while such pull requests are open.
+    *No pile-up of proposals:* a discovery cycle ends in a pull request the
+    owner has not merged yet, and while it is open the pipeline is still
+    empty, so the rule is at most one open discovery proposal. The next cycle
+    starts only after the previous proposal was merged (then there is work,
+    and delivery runs) or closed (then discovery may run again, and it reads
+    why the proposal was closed, if the owner said, before proposing; that
+    text carries the provenance its payload holds, rule 9). The open proposal
+    is found by the discovery stream's branch pattern from step 2, without a
+    model. *The fixed cadence stays, as a rule and not a fallback:* the
+    scheduled cycle runs on its cadence even while approved work remains, so
+    the roadmap keeps receiving items. The two triggers are independent. A
+    cycle started by an empty pipeline does not count as the scheduled cycle
+    of the cadence's current period ("No it does not count"): one on a
+    Thursday neither cancels nor postpones Sunday's. The one-proposal rule
+    holds for both triggers: a scheduled cycle that finds an open proposal
+    adds to that proposal's branch or skips, and never opens a second. A
+    minimum time between cycles, declared on the template (24 hours as a first
+    guess), applies to the empty-pipeline trigger only, counted from the end
+    of the last cycle of either trigger, so a closed proposal with an empty
+    pipeline cannot start a loop of cycles within an hour; it never delays the
+    scheduled cycle. If main or the pull requests cannot be read, no cycle
+    starts and the stream says it is blind (rule 10). The cadence itself is
+    the objective's schedule, set when it is declared, and is not in
+    `streams.go`. This stays in this step because it adds no mechanism: one
+    more outcome of the reading, one count of open pull requests and one
+    timestamp. If it does not fit one delivery pass, the discovery half is
+    delivered as the pass right after, before step 14.
+    *Acceptance:* with a fake provider that counts calls: nothing Planned and
+    a discovery proposal open, ten ticks, zero model calls; a commit on main
+    adding a Planned item, a delivery pass starts on the next tick; the pass
+    ends with the pull request open, zero further delivery calls until main or
+    the pull request changes.
+    *Acceptance, discovery trigger:* with a fake clock: nothing Planned and no
+    open discovery pull request, a cycle starts without a person and without
+    waiting for the cadence; with one open, none starts; with a delivered item
+    waiting for merge and nothing else Planned, one starts; after a proposal
+    is closed, none starts inside the minimum time and one starts after it,
+    with the closing comment in what the pass read; the scheduled cycle runs
+    on its cadence while Planned work remains, also in a period in which an
+    empty-pipeline cycle already ran, and adds to an open proposal or skips;
+    after a merge that adds Planned work, delivery starts and the empty
+    trigger is silent.
+14. **One oversight view.** The digest (Phase 21) gains, per stream and for a
+    window that defaults to "since the last digest": passes and their named
+    outcomes, pull requests waiting for a merge with the review's result, plans
+    and actions refused by the bounds, and what the stream is blocked on
+    (quota and until when, a comment round limit, a violation from step 3, an
+    unreadable remote, whether main's protection is known). The same data is
+    one CLI listing and one web page built on what exists; no new store, since
+    a digest reads only and can be regenerated for any window. **Not read:**
+    `internal/feature/report`, the CLI's commands and the web pages; the step
+    picks the surfaces after reading them and updates `docs/openapi.yaml` for
+    any field it adds.
+    *Acceptance:* from a seeded audit log and store, the digest for a window
+    lists exactly the seeded passes, refusals, waiting pull requests and
+    blocks per stream; regenerating it for the same window gives the same
+    content.
+15. **The seven days.** Declare the four streams and the review objective on a
+    deployment with Phase 35's duration set, at `act_with_notice`. For seven
+    consecutive days, record from the audit log every action whose actor is a
+    person. The phase is Completed when those are only merges, closes, pauses
+    and reads. Anything else is written into the Engineering Backlog with its
+    evidence and the seven days start again after its fix.
+    *Acceptance:* the record itself, attached to the pull request that marks
+    this phase Completed. This step has no automated test and must not be given
+    one that pretends to be it.
+
+**What this does not do.**
+
+- It does not merge, and it does not approve. No step gives any stream or the
+  review a merge tool; the owner's merge is the approval of every proposal and
+  every change.
+- It adds no second gate. Limits are fields of `agent.AuthorityBounds`,
+  written by reconcile and enforced by the decide step (ADR 015, rule 8).
+- It does not teach the loop to keep running. Recovery, pacing and quota
+  waiting live in `internal/feature/reconcile`, which calls the loop.
+- It does not turn an unanswered checkpoint into authority (Phase 35), and it
+  does not widen what any existing agent definition may do.
+- It builds no cleanup of worktrees (Phase 39), no new store and no new
+  subsystem for oversight, and no coordinator service under another name.
+- It does not choose what the streams work on. Discovery and the backlog
+  propose; the owner's merge decides; delivery implements what is Planned.
+- It does not prevent a push to main by itself. Step 3 detects one; the
+  remote's branch protection prevents it.
+
+**Risks.**
+
+- **The limits are only as strong as the coding agent's own allow-list.** A
+  subprocess that ignores its allow-list is caught by step 3 after the push,
+  not before. Without branch protection on main that is one bad push too late.
+  The oversight view says whether protection is known, and step 15 should not
+  start where it is not.
+- **Refusal can starve a stream.** A planner that keeps writing a plan outside
+  the limits is refused every pass and delivers nothing. Refusals are counted
+  per stream in step 14; whether repeated refusals should trip the breaker is
+  decided in step 2 after reading how the breaker counts.
+- **Karakuri reviewing Karakuri.** The reviewer has a separate context and may
+  still share the author's model and its blind spots. Step 11 makes the review
+  run things and report what it ran, which is evidence a person can check, but
+  a clean review is not a proof, and the owner's merge is still a judgement.
+- **Review loops.** Author and reviewer can trade commits and comments without
+  end and spend quota doing it. Step 12's round limit bounds it; the number is
+  a guess until step 15 shows real rounds.
+- **A timeout rejection may demote.** `demote` drops a rung on a reviewer's
+  rejection. Whether a `system:timeout` rejection (Phase 35) counts as one was
+  not read. If it does, a stream at `act_with_notice` falls back to `propose`
+  after one unanswered escalation and step 15 fails; settle it with Phase 35.
+- **The circuit breaker still asks a person.** When the breaker suspends an
+  objective, `internal/feature/reconcile/run.go` raises a checkpoint offering
+  "resume", "pause" and "investigate" (seen at line 575; the function was not
+  read). Resuming a suspended stream is a human action outside the four the
+  owner kept. Steps 4, 7 and 8 keep restarts, refusals and quota out of the
+  breaker's count, so it should trip only on real repeated failure, and then a
+  person looking is the right outcome; but it means step 15 fails on any week
+  in which a stream fails three passes running, and that is the intended
+  reading of the criterion, not a gap to engineer around.
+- **Provenance escalations.** EB-001 recorded that the git environment's
+  third-party marking escalated almost every plan; its row is marked Completed.
+  Whether escalations for that reason have in fact stopped on this deployment
+  was not measured here. If they have not, every pass raises a checkpoint
+  whatever its limits, and steps 2 and 10 change nothing a person can see.
+- **Phase 39 moves the ground.** Phase 39 puts authority at one gateway and
+  takes software nouns out of the core. Step 1's limits are neutral so they
+  survive it, but steps 3, 6 and 13 are pack code that Phase 39 relocates.
+  Whichever phase lands second adapts.
+- **Not read for this proposal:** `internal/core/agent`, `internal/feature/loop`
+  (decide step, `ResumeStoredLoops`), `internal/feature/reconcile` beyond
+  `authority.go`, `internal/platform/tools/cliagent`, `internal/feature/report`,
+  the CLI and web sources, ADR 017, the stream briefs, and the full text of
+  Phases 34 to 39 (their goals and openings were read, and Phase 35 whole).
+  Every step that touches one of these begins by reading it.
+
+---
+
 ## Engineering Backlog
 
 These are enhancements found in this deployment's own telemetry and audit log, each recorded with the data that shows the problem. A human approves an entry by merging the pull request that adds it; the delivery stream implements entries whose status is Planned.
@@ -4149,6 +4645,10 @@ Phases 23–25 are the follow-on from the standing-objectives line, and are orde
 Phase 39 is ordered by one dependency and one preference.
 
 - **Phase 39** (autonomous packs behind one gateway) depends on **Phase 34**: the credential the gateway sends a pack is Phase 34's delegation credential, and the delegated agent is one of the gateway's two callers. Only its step 6 needs that credential; steps 1 to 5 could start earlier. It is better started after **Phase 33** than before, because the pack's in-process server is written against the MCP revision the client speaks, but nothing in it requires Phase 33. Inside the phase the gateway comes first so that every later step moves a capability onto a path that already carries the audit, quota and authority checks, and the conformance suite comes last because it tests a contract the earlier steps are still settling ([ADR 028](adr/028-packs-are-autonomous-behind-one-gateway.md)).
+
+Phase 40 is ordered by what must be true before a stream runs with nobody watching.
+
+- **Phase 40** (streams that run without a coordinator) depends on **Phase 20** for standing objectives and the autonomy ladder and on **Phase 21** for the digest its oversight view extends. Its seven-day acceptance needs **Phase 35**, because with no coordinator an escalation that is not a bounds refusal is answered by nobody and must end by itself. It reuses **Phase 36**'s wording for a provider's refusal at a different seam (the delegated coding agent, not the planner), ends an interrupted loop the way **Phase 37** ends a cancelled pass, and reads **Phase 38**'s record of how criteria were settled; none of the three blocks its first steps. It leaves worktree cleanup to **Phase 39**'s lifecycle signals and only emits them, and it depends on backlog entries **EB-002** and **EB-004**. Inside the phase the order is load-bearing: bounds enforced by code (steps 1 to 3) come before anything acts unattended, recovery and quota (steps 4 to 9) before a proposal stream is allowed to act (step 10), and the observation (step 15) last.
 
 ---
 
