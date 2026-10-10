@@ -46,7 +46,7 @@ Phases 27–32 were proposed from two kinds of evidence: what this repository de
 | 33    | MCP After the Handshake                    | **Completed** |
 | 35    | An Unanswered Checkpoint Ends              | **Planned**   |
 | 36    | A Provider's Refusal Is Not a Plan         | **Planned**   |
-| 37    | A Stop That Reaches the Running Pass       | **Planned**   |
+| 37    | Any Run Can Be Stopped at Any Time         | **Planned**   |
 | 38    | What Was Required and Not Done             | **Planned**   |
 | 40    | Streams That Run Without a Coordinator     | **Planned**   |
 
@@ -3708,80 +3708,236 @@ to the user beyond passing on what the provider's answer said.
 
 ---
 
-## Phase 37 — A Stop That Reaches the Running Pass (Planned)
+## Phase 37 — Any Run Can Be Stopped at Any Time (Planned)
 
-This is a **frontier bet**, proposed by the discovery cycle of 2026-10-08
-(`docs/research/discovery-2026-10-08.md`, 'Fit and bets', rank 3). Nobody asked
-for it. **The bet:** a buyer preparing for the EU AI Act's high-risk
-obligations will ask to see a stop that works while a pass is running and that
-leaves a record of who stopped it.
+**The reason: the owner's requirement, 2026-10-10.** "We should be able to stop
+any run anytime." This phase is no longer a bet; it is asked for, and this
+section records the requirement and does not reopen it.
 
-**Goal:** Pausing a standing objective cancels the pass in flight, and the
-evidence export shows that a person paused and resumed, and when.
+What prompted it: on 2026-10-10 a one-shot objective was started against the
+branch of a pull request that had just been merged. The mistake was seen
+seconds later and nothing could stop the run. `krk loop` has `start`, `status`
+and `resume` (`cli/command/loop.go`); `krk objective pause` exists for standing
+objectives only, and by this phase's own earlier reading (below) it does not
+interrupt a pass in flight. The run had to be left to finish and push where it
+should not.
 
-**The evidence, and how thin it is.** The one primary page read is the
-European Commission's overview of the regulation, which asks of high-risk
-systems "appropriate human oversight measures." and says "deployers ensure
-human oversight and monitoring."
+**Goal:** every run can be stopped at any time by a person with the right to:
+
+- **(a) A pass of a standing objective**, by pausing the objective. The pause
+  cancels the pass in flight.
+- **(b) A one-shot loop**, by a stop on the loops route and
+  `krk loop stop <loop-id> --reason "..."`. The name follows the CLI's
+  noun-then-verb commands (`krk loop start`, `krk objective pause`) and the
+  `--reason` flag `krk objective pause` already takes.
+- **(c) Everything at once**: one control that stops every running loop and
+  pauses every standing objective, for the moment something is going wrong
+  everywhere.
+
+**What a stop promises.**
+
+- **No further action starts.** Once a stop is acknowledged (the API has
+  answered), no further action of that run starts.
+- **The action in flight ends within a stated bound.** The working bound is 10
+  seconds from the acknowledgement: a delegated coding action's process group
+  is asked to end, and killed if it has not ended when the bound is up. An
+  action that runs in the server's own process (a model call, an adapter call)
+  ends when its context is cancelled; step 1's reading lists any that do not
+  honour their context. Where the bound passes and the action is not known to
+  have ended, the record says exactly that.
+- **A stop reaches the subprocess.** A delegated coding action is a child
+  process. Cancelling the loop's context is not a stop if the child keeps
+  running and pushing. The stop ends the child and the child's own children.
+- **A stop is not a rollback.** Commits already pushed stay pushed; a pull
+  request already opened stays open. The record says what the run had done when
+  it was stopped: which actions completed and which one was cut. Where a cut
+  action leaves something half done (a worktree with uncommitted changes, a
+  push that may or may not have landed), the record says so plainly, and the
+  phase is not closed for it. This replaces the earlier kill criterion.
+- **A stopped run stays stopped.** A stopped one-shot loop is not resumed by a
+  restart. A paused standing objective stays paused until a person resumes it.
+- **A stop is not a failure.** It does not count toward the circuit breaker and
+  does not demote autonomy.
+- **Who and why are on the record.** Every stop and every resume carries the
+  principal and the reason, in the audit log and in the evidence export.
+- **Where.** The CLI, the API (with `docs/openapi.yaml` updated) and the web
+  interface, wherever a running loop or objective is shown.
+
+**What was read in the code, and what was not.** Line numbers are as read on
+2026-10-10 and earlier; nothing below was run.
+
+- *The pause, read for the original proposal*
+  (`internal/feature/reconcile/service.go` lines 225 to 286 and 396 to 460,
+  `internal/api/handler/reconcile.go` lines 170 to 209,
+  `internal/api/server.go` lines 366 to 394): `POST /{id}/pause` and `/resume`
+  exist behind `karakuriauth.ActionObjectivePause`; `Service.Pause` writes
+  `Paused`, `PausedReason` and `PhasePaused` to the stored state and holds no
+  handle on a pass `dispatch` already started; no audit row is written in the
+  lines read. Inferred: a pause prevents the next pass and does not interrupt
+  the running one. Middleware and the store were not read, so Pause may be
+  audited elsewhere.
+- *The child process* (`internal/platform/tools/cliagent/subprocess.go`,
+  `runStreaming`, read in full): the child is started with
+  `exec.CommandContext(ctx, name, args...)`, so it is tied to the context it is
+  given. No process group is set and no grace period is configured (a search of
+  the package finds no `SysProcAttr`, `Setpgid`, `Cancel` or `WaitDelay`), so a
+  cancelled context kills the direct child only. Nothing in the file signals
+  the child's own children, and `runStreaming` reads the child's standard
+  output to its end before it waits, so a grandchild that keeps that pipe open
+  could hold the action open after the child is dead. `copilot.go` starts its
+  process the same way (line 55). **Not read:** the callers, and so whether the
+  context `runStreaming` receives derives from the loop's context at all; the
+  other adapter files; `procenv`.
+- *Restart* (`internal/feature/loop/service.go`, `ResumeStoredLoops`, lines 319
+  to 414): it lists loop states through `store.ListActiveLoopStates`, replays
+  at once every one that is not paused, and gives a paused one (waiting at a
+  checkpoint) a waiter for its decision. A stopped loop whose stored state
+  still reads active would therefore be replayed at the next boot. **Not
+  read:** `ListActiveLoopStates`, `runLoop`, and how a loop's state is marked
+  completed.
+- *Permissions* (`internal/auth/catalog.go`, `routes.go` and `roles.go`, the
+  matching lines only): `objective:pause` covers both pausing and resuming a
+  standing objective; the loop actions are `loop:start`, `loop:read` and
+  `loop:resume`, and there is none for stopping a loop. The role files were not
+  read in full.
+- *Not read at all:* `internal/feature/loop/runner.go` (the earlier proposal
+  observed at line 274 that the runner finalises on `ctx.Done()`), the circuit
+  breaker and the autonomy demotion, `internal/feature/audit/export.go`,
+  `docs/openapi.yaml`, the web interface, `cli/command/root.go`.
+
+**Background: the discovery evidence, and how thin it is.** The phase was first
+proposed as a frontier bet by the discovery cycle of 2026-10-08
+(`docs/research/discovery-2026-10-08.md`, 'Fit and bets', rank 3): a buyer
+preparing for the EU AI Act's high-risk obligations will ask to see a stop that
+works while a pass is running and that leaves a record of who stopped it. The
+one primary page read is the European Commission's overview of the regulation,
+which asks of high-risk systems "appropriate human oversight measures." and
+says "deployers ensure human oversight and monitoring."
 (https://digital-strategy.ec.europa.eu/en/policies/regulatory-framework-ai,
-read 2026-10-09); the same page puts those obligations at 2 December 2027.
-That is a general sentence. The specific wording about a person being able to
-stop the system is Article 14(4), which the report knows only from a secondary
-mirror (https://artificialintelligenceact.eu/article/14/, read 2026-10-09);
-the legal text was not read by anyone. No regulated organisation speaking for
-itself was found.
+read 2026-10-09); the same page puts those obligations at 2 December 2027. That
+is a general sentence. The specific wording about a person being able to stop
+the system is Article 14(4), known only from a secondary mirror
+(https://artificialintelligenceact.eu/article/14/, read 2026-10-09); the legal
+text was not read by anyone, and no regulated organisation speaking for itself
+was found. The phase no longer rests on this reading. It stays here as
+background, and nothing in this phase is a claim about the regulation.
 
-What the feasibility reading observed (`internal/feature/reconcile/service.go`
-lines 225 to 286 and 396 to 460, `internal/api/handler/reconcile.go` lines 170
-to 209, `internal/api/server.go` lines 366 to 394): `POST /{id}/pause` and
-`/resume` exist behind `karakuriauth.ActionObjectivePause`; `Service.Pause`
-writes `Paused`, `PausedReason` and `PhasePaused` to the stored state and holds
-no handle on a pass `dispatch` already started; no audit row is written in the
-lines read. Inferred: a pause prevents the next pass and does not interrupt the
-running one, and the export may not show the stop.
+**Steps.** Each step is one delivery pass, has its own acceptance test, and
+leaves the system working. The stop is delivered by cancelling from outside, in
+`internal/feature/reconcile` and the loop service; no step changes how the loop
+decides to end (AGENTS.md rule 8).
 
-**What would prove the bet wrong:** the legal text of Article 14(4), once
-read, does not ask for a stop of this kind; Pause is already audited elsewhere
-(middleware and the store were not read); or cancelling a pass leaves a
-worktree or an external action half done, so the stop is not a safe state.
+1. **Read, then make a pause cancel the pass in flight.** Read the `pass`
+   function in `internal/feature/reconcile/service.go` to learn whether the
+   loop's context derives from the one `dispatch` holds; follow that context
+   down to `runStreaming` and to the adapter calls, and write down here any
+   action that does not receive it or does not honour it; read whether Pause is
+   audited elsewhere; read where a pass's ending is counted as a failure for
+   the circuit breaker and for autonomy. Then keep a `context.CancelFunc` per
+   running objective beside `s.running` in `dispatch` and have `Pause` call it,
+   after the paused state is stored, so that a crash between the two leaves the
+   objective paused. The cancelled pass ends with a reason of its own
+   (`stopped`), which is not a failure.
+   *Acceptance:* a test starts a pass that blocks, calls `Pause`, and observes
+   the pass's context cancelled and the loop finalised with the stopped reason;
+   the stored state reads paused and `Trigger` still refuses; the failure count
+   and the autonomy level are what they were before the pass; no action of the
+   pass starts after `Pause` returns. Pausing an objective with no pass running
+   behaves as today. The diff does not touch how the loop decides to stop.
+2. **The stop reaches the subprocess.** In `runStreaming`, and in any adapter
+   that starts its own process (`copilot.go` does), start the child in its own
+   process group; on cancellation ask the group to end, kill the group when the
+   bound is up, and stop reading the child's output then, so an orphan holding
+   the pipe cannot keep the action open. The action's result says it was cut
+   and whether the group was seen to exit. Step 1's reading decides whether the
+   context needs threading to reach here; if it does, that is part of this
+   step. The bound's value (10 seconds, working figure) is fixed here and
+   written into this section. If a platform the server supports has no process
+   groups, the step says so here; it does not pretend the bound holds there.
+   *Acceptance:* a test with a real subprocess, not a fake: a script that
+   starts a child of its own, both of which ignore the polite signal and keep
+   writing to a file. The test cancels the context and asserts that both
+   processes are gone and the file has stopped growing within the bound, and
+   that the action returned within the bound with a result marked as cut. A
+   second case covers a child that exits when asked: the action returns well
+   inside the bound.
+3. **A one-shot loop can be stopped.** `POST /loops/{id}/stop` with a reason,
+   and `krk loop stop <loop-id> --reason "..."`, with `docs/openapi.yaml`
+   updated. The loop service keeps a cancel function per running loop; the stop
+   stores the loop as stopped first (a terminal state, with the principal and
+   the reason) and then cancels, so that `ResumeStoredLoops` does not list it
+   and a restart, even one that lands between the two, does not replay it. This
+   step reads `ListActiveLoopStates` and `runLoop` first. A loop waiting at a
+   checkpoint can be stopped too: it ends, and a later decision on that
+   checkpoint authorises nothing. Stopping a loop that has already ended
+   changes nothing and says so. **Permission:** the proposal is a new action
+   `loop:stop` beside `loop:resume`, granted to the existing roles that hold
+   `loop:start`, so that whoever may start a run may stop it; the step decides
+   after reading the role files in full. No new role either way.
+   *Acceptance:* a test starts a loop whose action blocks, calls stop, and
+   observes the context cancelled, the loop finalised as stopped, and no
+   further action started after the stop returned. A second test stops a loop,
+   builds a new service over the same store, calls `ResumeStoredLoops`, and
+   observes that nothing runs. A third stops a loop waiting at a checkpoint and
+   shows a later approval refused. A request without the permission is refused
+   and changes nothing. The CLI command prints what the API returned.
+4. **Stop everything.** One route and one CLI command (working names
+   `POST /stop-all` and `krk stop-all --reason "..."`; the step fits the name
+   to `cli/command/root.go` after reading it) that stops every running loop as
+   step 3 does and pauses every standing objective as step 1 does. It applies
+   to every run the caller has the right to stop, and the answer lists what was
+   stopped, what was paused, and anything it could not reach and why, so a
+   caller whose scope is narrower than the deployment is never told
+   "everything" when it was not. Objectives stay paused and loops stay stopped
+   afterwards; resuming is per objective, by a person, as today. No kill switch
+   outside the API is added.
+   *Acceptance:* with two running one-shot loops and two standing objectives,
+   one of them mid-pass, one call leaves both loops stopped, both objectives
+   paused and the pass cancelled, within the bound; a second call changes
+   nothing and says so; a caller scoped to one of the objectives pauses that
+   one only and the answer names the rest as not reached.
+5. **The record and the export.** Every stop, pause and resume leaves one audit
+   event carrying the principal and the reason (a new tool event kind with its
+   storage constant, unless step 1 found Pause audited already, in which case
+   that record is extended). The event for a stop also says what the run had
+   done: which actions completed, which one was cut, and for the cut one
+   whether it is known to have ended and what it may have left half done. A
+   stop-all leaves one event for the call and one per run it touched.
+   `internal/feature/audit/export.go` lists these events under oversight, with
+   `docs/openapi.yaml` updated if the export shape changes. An export over a
+   window with no such events says none were recorded; it does not say the
+   system was never stopped.
+   *Acceptance:* pause, resume, loop stop and stop-all each leave their events
+   with the principal and the reason; a stop that cut a delegated action in
+   flight names the completed actions and the cut one in the event; the export
+   lists all of them for a window, and for an empty window says none were
+   recorded.
+6. **The web control.** Wherever the web interface shows a running loop or a
+   standing objective, it shows a stop or a pause control that asks for a
+   reason, and one stop-all control. A person without the permission does not
+   see a control that would be refused. A stopped loop and a paused objective
+   show who stopped them, when and why, from step 5's record. The step reads
+   the pages first and names them here.
+   *Acceptance:* component tests for each page: the control calls the route
+   with the reason, the stopped state shows the principal and the reason, and
+   the control is absent without the permission.
 
-**Steps:**
-
-1. **Find out, then prototype, in one slice (time-boxed to that slice).** Read
-   the `pass` function in `internal/feature/reconcile/service.go` to learn
-   whether the loop's context derives from the one `dispatch` holds; read
-   whether Pause is audited elsewhere; read Article 14(4) in the legal text if
-   it can be fetched. Then prototype the feasibility slice: (a) in
-   `Service.Pause` and `Service.Resume`, write a tool event of a new kind (for
-   example `pause`) with the reason and the principal, plus a storage constant
-   for the kind; (b) keep a `context.CancelFunc` per running objective beside
-   `s.running` in `dispatch` and have `Pause` call it (the runner already
-   finalises on `ctx.Done()`, observed at `internal/feature/loop/runner.go`
-   line 274). **Kill criterion:** if a test shows a cancelled pass leaving a
-   delivery worktree or an external action half done with no way to tell from
-   the record, ship only (a), record the finding here, and close the phase; if
-   Pause turns out to be audited already, drop (a) as well.
-2. **The export shows it.** List pause and resume events under oversight in
-   `internal/feature/audit/export.go`, with `docs/openapi.yaml` updated if the
-   export shape changes. An export over a window with no such events says none
-   were recorded; it does not say the system was never stopped.
-3. **Only if step 1 survived:** a cancel for a one-shot loop on the loops
-   route, and a single control that pauses every standing objective. These are
-   the feasibility pass's 'second slice' and are not started before step 1's
-   result is written down.
-
-**Acceptance:** A test starts a pass that blocks, calls `Pause`, and observes
-the pass's context cancelled and the loop finalised; the stored state reads
-paused and `Trigger` still refuses. Pause and resume each leave one audit event
-carrying the principal and the reason, and the export lists both. Pausing an
-objective with no pass running behaves as today plus the audit event. The
-loop's own termination logic is unchanged (AGENTS.md rule 8): the diff touches
-`internal/feature/reconcile` and the export, not how the loop decides to stop.
+**Acceptance for the phase.** The 2026-10-10 case, replayed: a one-shot loop is
+started whose delegated action is a real subprocess that would commit and push
+to a local bare repository after a delay. `krk loop stop` is called before the
+delay is over. No push arrives, the subprocess and its children are gone within
+the bound, the loop reads stopped with the principal and the reason, a restart
+does not bring it back, and the export shows the stop. The same holds for a
+pass of a standing objective stopped by a pause, and for both at once by
+stop-all.
 
 **What this is not.** It is not a claim of compliance with Article 14 or with
-anything else: no legal text was read. It is not a rollback: a cancelled pass
-is stopped, not undone. It adds no kill switch outside the API, no new role,
-and no second gate on authority.
+anything else: no legal text was read. It is not a rollback: a stopped run is
+stopped, not undone, and what it pushed stays pushed. It adds no kill switch
+outside the API, no new role, and no second gate on authority: a stop takes a
+run's future away and grants nothing. The loop's own termination logic is
+unchanged (AGENTS.md rule 8): the stop is delivered by cancelling from outside,
+in reconcile and the loop service, not by teaching the loop a new way to end.
 
 ---
 
@@ -4221,10 +4377,15 @@ dependency, not work repeated here.
   delegated coding agent (`internal/platform/tools/cliagent`), and reuses Phase
   36's reason wording so a digest has one vocabulary. It does not touch the
   planner path.
-- **Phase 37** makes a pause cancel the pass in flight and records who paused.
-  "Pause it" is one of the owner's four actions; this phase adds nothing to it.
-  Step 4 ends an interrupted loop through the same ending Phase 37 gives a
-  cancelled pass, if Phase 37 has landed, and through the loop's existing
+- **Phase 37** makes any run stoppable at any time: a pause cancels the pass
+  in flight, a one-shot loop can be stopped, one control stops everything, the
+  stop reaches a delegated coding agent's subprocess, and each stop records who
+  and why. "Pause it" is one of the owner's four actions; this phase adds
+  nothing to it. Step 4's `interrupted_by_restart` is a different ending from
+  Phase 37's stop and must not undo one: a paused objective stays paused across
+  a restart and gets no fresh pass until a person resumes it. Step 4 gives an
+  interrupted loop an ending that is not a failure in the way Phase 37 gives a
+  stopped pass one, if Phase 37 has landed, and uses the loop's existing
   failure ending if it has not.
 - **Phase 38** records how each success criterion was settled. Step 11's
   review reads that record to know what a pass claimed, and step 14 shows it;
@@ -4510,7 +4671,11 @@ today's behaviour for anything not yet declared.
     (quota and until when, a comment round limit, a violation from step 3, an
     unreadable remote, whether main's protection is known). The same data is
     one CLI listing and one web page built on what exists; no new store, since
-    a digest reads only and can be regenerated for any window. **Not read:**
+    a digest reads only and can be regenerated for any window. "Pause" and
+    "stop" are the owner's controls and are delivered by Phase 37, not here:
+    this view shows a stream that was paused or a pass that was stopped, with
+    who and why from Phase 37's record, and links to those controls where
+    Phase 37 has put them. **Not read:**
     `internal/feature/report`, the CLI's commands and the web pages; the step
     picks the surfaces after reading them and updates `docs/openapi.yaml` for
     any field it adds.
@@ -4646,9 +4811,11 @@ Phase 39 is ordered by one dependency and one preference.
 
 - **Phase 39** (autonomous packs behind one gateway) depends on **Phase 34**: the credential the gateway sends a pack is Phase 34's delegation credential, and the delegated agent is one of the gateway's two callers. Only its step 6 needs that credential; steps 1 to 5 could start earlier. It is better started after **Phase 33** than before, because the pack's in-process server is written against the MCP revision the client speaks, but nothing in it requires Phase 33. Inside the phase the gateway comes first so that every later step moves a capability onto a path that already carries the audit, quota and authority checks, and the conformance suite comes last because it tests a contract the earlier steps are still settling ([ADR 028](adr/028-packs-are-autonomous-behind-one-gateway.md)).
 
+Phase 37 is ordered by the owner's requirement of 2026-10-10 ("We should be able to stop any run anytime."): it depends only on phases already shipped (**Phase 14** for the permission, **Phase 20** for the pause it extends, **Phase 31** for the export), blocks nothing, and is better landed before **Phase 40**'s seven days, because a stream nobody is watching is the run a person most needs to be able to stop.
+
 Phase 40 is ordered by what must be true before a stream runs with nobody watching.
 
-- **Phase 40** (streams that run without a coordinator) depends on **Phase 20** for standing objectives and the autonomy ladder and on **Phase 21** for the digest its oversight view extends. Its seven-day acceptance needs **Phase 35**, because with no coordinator an escalation that is not a bounds refusal is answered by nobody and must end by itself. It reuses **Phase 36**'s wording for a provider's refusal at a different seam (the delegated coding agent, not the planner), ends an interrupted loop the way **Phase 37** ends a cancelled pass, and reads **Phase 38**'s record of how criteria were settled; none of the three blocks its first steps. It leaves worktree cleanup to **Phase 39**'s lifecycle signals and only emits them, and it depends on backlog entries **EB-002** and **EB-004**. Inside the phase the order is load-bearing: bounds enforced by code (steps 1 to 3) come before anything acts unattended, recovery and quota (steps 4 to 9) before a proposal stream is allowed to act (step 10), and the observation (step 15) last.
+- **Phase 40** (streams that run without a coordinator) depends on **Phase 20** for standing objectives and the autonomy ladder and on **Phase 21** for the digest its oversight view extends. Its seven-day acceptance needs **Phase 35**, because with no coordinator an escalation that is not a bounds refusal is answered by nobody and must end by itself. It reuses **Phase 36**'s wording for a provider's refusal at a different seam (the delegated coding agent, not the planner), ends an interrupted loop the way **Phase 37** ends a stopped pass (not as a failure), and reads **Phase 38**'s record of how criteria were settled; none of the three blocks its first steps. It leaves worktree cleanup to **Phase 39**'s lifecycle signals and only emits them, and it depends on backlog entries **EB-002** and **EB-004**. Inside the phase the order is load-bearing: bounds enforced by code (steps 1 to 3) come before anything acts unattended, recovery and quota (steps 4 to 9) before a proposal stream is allowed to act (step 10), and the observation (step 15) last.
 
 ---
 
