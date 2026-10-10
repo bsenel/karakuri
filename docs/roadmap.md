@@ -3869,8 +3869,11 @@ decides to end (AGENTS.md rule 8).
    and a restart, even one that lands between the two, does not replay it. This
    step reads `ListActiveLoopStates` and `runLoop` first. A loop waiting at a
    checkpoint can be stopped too: it ends, and a later decision on that
-   checkpoint authorises nothing. Stopping a loop that has already ended
-   changes nothing and says so. **Permission:** the proposal is a new action
+   checkpoint authorises nothing. So can a loop started with `--watch`
+   (`krk loop start` has the flag; how such a loop waits between events was not
+   read, and the step reads it so the stop reaches a loop that is idle).
+   Stopping a loop that has already ended changes nothing and says so.
+   **Permission:** the proposal is a new action
    `loop:stop` beside `loop:resume`, granted to the existing roles that hold
    `loop:start`, so that whoever may start a run may stop it; the step decides
    after reading the role files in full. No new role either way.
@@ -3879,7 +3882,8 @@ decides to end (AGENTS.md rule 8).
    further action started after the stop returned. A second test stops a loop,
    builds a new service over the same store, calls `ResumeStoredLoops`, and
    observes that nothing runs. A third stops a loop waiting at a checkpoint and
-   shows a later approval refused. A request without the permission is refused
+   shows a later approval refused; a fourth stops a watch-mode loop that is
+   waiting for an event. A request without the permission is refused
    and changes nothing. The CLI command prints what the API returned.
 4. **Stop everything.** One route and one CLI command (working names
    `POST /stop-all` and `krk stop-all --reason "..."`; the step fits the name
