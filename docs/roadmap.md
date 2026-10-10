@@ -4106,7 +4106,10 @@ terminates (rules 8, 9 and 10 stay).
 `engineering_backlog`, `ux_improvement`, `roadmap_delivery`, declared in
 `domains/software/streams.go`) are governed and run by Karakuri itself. A
 person defines an objective, reads what it did, merges or closes its pull
-requests, and pauses it. Nothing else is a person's job.
+requests, and pauses it. Nothing else is a person's job. That includes
+starting discovery: a market discovery cycle runs on its fixed cadence
+whatever the pipeline holds, and another starts when the pipeline of approved
+work is empty, so the deployment never sits idle for want of approved work.
 
 **The owner's decision (2026-10-10).** Recorded here, not reopened: "All these
 streams must be managed by Karakuri itself independently. We just define an
@@ -4114,10 +4117,24 @@ objective and oversee its work. We do not hold coordinator role here." And:
 "We create a roadmap item that allows Karakuri to continuously govern and run
 these streams independently."
 
+**The owner's addition (2026-10-10).** Recorded here, not reopened:
+"Eventually, discovery cycles should be launched when no items are remaining
+in the pipeline." And, correcting the reading that this replaces the schedule:
+"Discovery should not be limited to empty task pipeline. It should get
+triggered on a fixed cadence to add items into the roadmap so in the
+pipeline." Market discovery therefore has two triggers and both stay: a fixed
+cadence (today weekly, cron `0 10 * * 0`), and an empty pipeline. Asked
+whether a cycle started by an empty pipeline counts as the scheduled cycle of
+the cadence's current period, the owner answered: "No it does not count."
+Neither trigger replaces, cancels or postpones the other.
+
 **Acceptance criterion of the phase.** For seven consecutive days on a
 deployment running the four streams, no person resolves a checkpoint, replaces
 an objective, opens a pull request, reviews a branch by building it, or sets an
-objective's status. The only human actions are merging or closing pull
+objective's status, and no person starts a discovery cycle: each scheduled
+cycle in the seven days ran on its cadence, and each time the pipeline was
+empty with no discovery proposal open a cycle started by itself. The only
+human actions are merging or closing pull
 requests, pausing a stream, and reading the oversight view. **This has to be
 observed on a running deployment. No unit test shows it:** each step below has
 a test for its own mechanism, and the phase is finished only when step 15's
@@ -4182,8 +4199,11 @@ checked one against the code it says so; the rest are recorded as reported.
 - **C. Karakuri reviews its own pull requests** by building and running the
   branch, in a context that is not the author's, and every stream addresses
   review comments before new work.
-- **F. Continuous means "while there is work"**: no model call while nothing
-  is Planned.
+- **F. Continuous means "while there is work"**: delivery makes no model call
+  while nothing is Planned. Its counterpart: the same reading of the pipeline
+  that starts a delivery pass when something is Planned starts a discovery
+  cycle when nothing is, at most one open discovery proposal at a time, and
+  beside the fixed cadence, which keeps running while approved work remains.
 - **G. One oversight view** per stream, on the digest and the existing CLI and
   web surfaces.
 
@@ -4338,7 +4358,12 @@ today's behaviour for anything not yet declared.
 9. **Streams share the quota in a declared order.** A standing objective has a
    priority; the templates default to delivery of approved work first, then
    review (step 11), then UX, the backlog and discovery, and the owner can set
-   another order when defining an objective. While the quota state is "out", no
+   another order when defining an objective. The order does not starve the
+   fixed cadence: a scheduled discovery cycle that is due takes the first slot
+   after the delivery pass in flight has ended, ahead of delivery's next pass.
+   It waits for a running pass to end, never for the pipeline to drain. A
+   cycle started by an empty pipeline (step 13) competes with no delivery, by
+   definition. While the quota state is "out", no
    stream starts a pass; one probe, by the highest-priority waiting stream at
    the returned time or on a backoff, finds out whether it is back; waiting
    streams then start in priority order. The supervisor has a `MaxConcurrent`
@@ -4349,7 +4374,9 @@ today's behaviour for anything not yet declared.
    *Acceptance:* with a fake clock and a fake provider that is out and then
    back: no pass starts while out, one probe is made per interval, and the
    streams start in the declared order afterwards. An owner's override changes
-   the order.
+   the order. With Planned work remaining and a scheduled discovery cycle due,
+   the cycle starts when the running delivery pass ends and before the next
+   one.
 10. **Proposal streams may act.** The comment on the maintainer's authority
     says zero was chosen "deliberately not a small number", because the pack
     boundary gives no guarantee: "a pack is a namespace, and stepAct resolves
@@ -4425,10 +4452,57 @@ today's behaviour for anything not yet declared.
     schedule (`internal/feature/reconcile/service.go`); if a snapshot that has
     not changed already skips the pass, this step is that mechanism given the
     right snapshot, and nothing new.
-    *Acceptance:* with a fake provider that counts calls: nothing Planned, ten
-    ticks, zero model calls; a commit on main adding a Planned item, a pass
-    starts on the next tick; the pass ends with the pull request open, zero
-    further calls until main or the pull request changes.
+    **The same reading starts discovery when the pipeline is empty.** One
+    reading, two outcomes, no second mechanism: where it finds a Planned item
+    not yet delivered, delivery runs; where it finds none, a market discovery
+    cycle starts without waiting for the cadence. *Empty* means: on
+    origin/main, no phase whose heading ends "(Planned)" and no Engineering
+    Backlog entry with Status Planned, other than items already delivered on a
+    branch with an open pull request. An item that is delivered and waiting
+    for the owner's merge is not work for delivery, so it does not hold
+    discovery back; the pipeline is empty while such pull requests are open.
+    *No pile-up of proposals:* a discovery cycle ends in a pull request the
+    owner has not merged yet, and while it is open the pipeline is still
+    empty, so the rule is at most one open discovery proposal. The next cycle
+    starts only after the previous proposal was merged (then there is work,
+    and delivery runs) or closed (then discovery may run again, and it reads
+    why the proposal was closed, if the owner said, before proposing; that
+    text carries the provenance its payload holds, rule 9). The open proposal
+    is found by the discovery stream's branch pattern from step 2, without a
+    model. *The fixed cadence stays, as a rule and not a fallback:* the
+    scheduled cycle runs on its cadence even while approved work remains, so
+    the roadmap keeps receiving items. The two triggers are independent. A
+    cycle started by an empty pipeline does not count as the scheduled cycle
+    of the cadence's current period ("No it does not count"): one on a
+    Thursday neither cancels nor postpones Sunday's. The one-proposal rule
+    holds for both triggers: a scheduled cycle that finds an open proposal
+    adds to that proposal's branch or skips, and never opens a second. A
+    minimum time between cycles, declared on the template (24 hours as a first
+    guess), applies to the empty-pipeline trigger only, counted from the end
+    of the last cycle of either trigger, so a closed proposal with an empty
+    pipeline cannot start a loop of cycles within an hour; it never delays the
+    scheduled cycle. If main or the pull requests cannot be read, no cycle
+    starts and the stream says it is blind (rule 10). The cadence itself is
+    the objective's schedule, set when it is declared, and is not in
+    `streams.go`. This stays in this step because it adds no mechanism: one
+    more outcome of the reading, one count of open pull requests and one
+    timestamp. If it does not fit one delivery pass, the discovery half is
+    delivered as the pass right after, before step 14.
+    *Acceptance:* with a fake provider that counts calls: nothing Planned and
+    a discovery proposal open, ten ticks, zero model calls; a commit on main
+    adding a Planned item, a delivery pass starts on the next tick; the pass
+    ends with the pull request open, zero further delivery calls until main or
+    the pull request changes.
+    *Acceptance, discovery trigger:* with a fake clock: nothing Planned and no
+    open discovery pull request, a cycle starts without a person and without
+    waiting for the cadence; with one open, none starts; with a delivered item
+    waiting for merge and nothing else Planned, one starts; after a proposal
+    is closed, none starts inside the minimum time and one starts after it,
+    with the closing comment in what the pass read; the scheduled cycle runs
+    on its cadence while Planned work remains, also in a period in which an
+    empty-pipeline cycle already ran, and adds to an open proposal or skips;
+    after a merge that adds Planned work, delivery starts and the empty
+    trigger is silent.
 14. **One oversight view.** The digest (Phase 21) gains, per stream and for a
     window that defaults to "since the last digest": passes and their named
     outcomes, pull requests waiting for a merge with the review's result, plans
