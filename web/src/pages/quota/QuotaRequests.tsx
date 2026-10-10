@@ -89,6 +89,7 @@ export function QuotaRequests() {
 
       <h2>Requests</h2>
       <DataTable
+        label="Requests"
         loading={requests.loading}
         error={requests.error}
         rows={requests.data ?? []}
@@ -161,6 +162,7 @@ export function QuotaRequests() {
         the tier.
       </p>
       <DataTable
+        label="Raises in force"
         loading={overrides.loading}
         error={overrides.error}
         rows={overrides.data ?? []}
