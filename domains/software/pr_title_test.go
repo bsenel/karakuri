@@ -23,6 +23,12 @@ func TestValidPullRequestTitleAcceptsTheForm(t *testing.T) {
 		// Dependabot's own titles, as they stand on main (#125 and #164).
 		"gomod(deps): bump google.golang.org/grpc from 1.83.1 to 1.83.2",
 		"npm(deps): bump source-map-js from 1.2.1 to 1.2.2 in /web",
+		// The third prefix .github/dependabot.yml configures (#151), and the
+		// two things Dependabot does that a person may not: an upper-case
+		// start (#23) and a summary of any length.
+		"actions(deps): bump anchore/sbom-action from 0.24.2 to 0.24.3",
+		"gomod(deps): Bump the go-minor-and-patch group with 6 updates",
+		"gomod(deps): bump the go-minor-and-patch group across 1 directory with 12 updates",
 	}
 	for _, title := range titles {
 		t.Run(title, func(t *testing.T) {
@@ -70,6 +76,9 @@ func TestValidPullRequestTitleRejects(t *testing.T) {
 		{name: "a trailing full stop", title: "feat(cli): add a flag.", keyword: "stop"},
 		{name: "an empty title", title: ""},
 		{name: "an upper-case scope", title: "feat(CLI): add a flag", keyword: "lower"},
+		{name: "a summary one character over the limit", title: "feat(cli): " + strings.Repeat("a", 73)},
+		{name: "an empty scope", title: "feat(): add a flag"},
+		{name: "a dependabot type with a trailing full stop", title: "npm(deps): bump react."},
 		{name: "a summary far over the limit", title: "feat(cli): " + strings.TrimSpace(strings.Repeat("add a flag ", 11))},
 	}
 	for _, tc := range cases {

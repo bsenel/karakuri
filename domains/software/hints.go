@@ -43,6 +43,21 @@ func softwarePlannerHints() []domain.PlannerHint {
 			Priority: 10,
 		},
 		{
+			// The delegated capabilities are named alongside create_pr
+			// because that is where a title is usually written: a delegated
+			// run pushes its branch and runs `gh pr create` itself. The form
+			// is decided by ValidPullRequestTitle, which CI runs on every
+			// pull request.
+			Condition: "capability.id in ['software.act.create_pr', 'software.act.write_code', 'software.act.write_test', 'software.act.delegate_to_cli']",
+			Guidance: "title a pull request `" + prTitleForm + "`: it becomes the squash commit the version is derived from. " +
+				"Types: feat (minor), fix and perf (patch), docs, refactor, test, build, ci, chore (no release); " +
+				"`!` before the colon marks a breaking change. Choose the type by what the change does to a user. " +
+				"Summary: lower-case imperative, no full stop, at most 72 characters, phase or backlog ID last. " +
+				"E.g. `feat(mcp): attach karakuri tools to delegated agent runs (phase 34)`, " +
+				"`fix(cli): shift audit export window to the requested hours (EB-003)`.",
+			Priority: 9,
+		},
+		{
 			Condition: "objective.template == 'software.objective.incident_response'",
 			Guidance: "fetch evidence first (observe.fetch_logs / observe.fetch_metrics), name the observed alert_id " +
 				"in software.act.run_remediation, and end with software.verify.alerts_resolved for the same alert_ids",
