@@ -29,6 +29,20 @@ func TestReportHelp(t *testing.T) {
 	}
 }
 
+func TestTwinBindingsHelp(t *testing.T) {
+	cmd := twinBindingsCmd()
+	requireExample(t, cmd)
+
+	// The command reads without --set and writes with it; the example must
+	// show both, and the Long must say where <twin-id> comes from.
+	if !strings.Contains(cmd.Example, "--set") || !strings.Contains(cmd.Example, "krk twin bindings t_7f2a\n") {
+		t.Errorf("bindings Example %q does not show both the read and the --set form", cmd.Example)
+	}
+	if !strings.Contains(cmd.Long, "krk twin list") {
+		t.Errorf("bindings Long %q does not say where <twin-id> comes from", cmd.Long)
+	}
+}
+
 func TestAuditHelp(t *testing.T) {
 	requireExample(t, auditCmd())
 	requireExample(t, auditExportCmd())
