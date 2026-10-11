@@ -561,10 +561,36 @@ func (h *MCPHandler) dispatch(r *http.Request, p auth.Principal, req mcp.Request
 		return nil, rpcErr
 	}
 	complete, err := mcp.CompleteResult(result)
+	if err == nil && req.Method == mcp.MethodToolsList {
+		complete, err = withCacheHints(complete)
+	}
 	if err != nil {
 		return nil, &mcp.Error{Code: mcp.CodeInternalError, Message: "could not encode the result"}
 	}
 	return complete, nil
+}
+
+// withCacheHints adds the two fields a 2026-07-28 CacheableResult carries
+// (mcp 2.3.0, mcp_types/_types.py: ttl_ms and cache_scope, wire names ttlMs
+// and cacheScope, "Both fields are required on the 2026-07-28 wire"). Of the
+// results this server emits, server/discover and tools/list are cacheable;
+// discover's are set in mcp.Discovery, and tools/call and ping are plain
+// results that carry neither. Claude Code 2.1.296 discards a tools/list result
+// without them and ends with no tools.
+//
+// The values are the type's defaults, which the SDK's server sends when no
+// hint is set: "private" and 0. The tool list is read with the caller's own
+// permissions and tenancy (visibleTools), so the scope must never be wider
+// than "private": a "public" list would let a shared cache hand one caller's
+// tools to another.
+func withCacheHints(result json.RawMessage) (json.RawMessage, error) {
+	fields := map[string]json.RawMessage{}
+	if err := json.Unmarshal(result, &fields); err != nil {
+		return nil, err
+	}
+	fields["cacheScope"] = json.RawMessage(`"private"`)
+	fields["ttlMs"] = json.RawMessage(`0`)
+	return json.Marshal(fields)
 }
 
 // answer runs one request's method. What it returns is the 2025-06-18 result;
