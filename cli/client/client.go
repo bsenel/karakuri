@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -122,7 +123,21 @@ func (c *Client) doAuthContext(ctx context.Context, method, path string, body an
 	if resp.StatusCode == http.StatusForbidden {
 		return data, resp.StatusCode, errors.New(apiMessage(data, resp.StatusCode))
 	}
+	// A 404 is almost always a mistyped or stale ID. Its plain-text body is
+	// not JSON, so printed as output it came out as "null" and exit 0.
+	if resp.StatusCode == http.StatusNotFound {
+		return data, resp.StatusCode, fmt.Errorf("%s\nCheck the ID: the list command of the same noun shows the ones that exist, e.g. `krk objective list`", notFoundMessage(data))
+	}
 	return data, resp.StatusCode, nil
+}
+
+// notFoundMessage is the server's reason for a 404, which the handlers write
+// either as JSON or as plain text.
+func notFoundMessage(data []byte) string {
+	if text := strings.TrimSpace(string(data)); text != "" && !strings.HasPrefix(text, "{") {
+		return text
+	}
+	return apiMessage(data, http.StatusNotFound)
 }
 
 func (c *Client) Get(path string) ([]byte, int, error) { return c.doAuth(http.MethodGet, path, nil) }
