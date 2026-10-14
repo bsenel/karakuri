@@ -84,6 +84,7 @@ export function TwinDetailPage() {
                   <td className="mono small">{slot}</td>
                   <td>
                     <select
+                      aria-label={`Instance for ${slot}`}
                       value={draftBindings[slot] ?? ''}
                       onChange={(e) => setDraftBindings({ ...draftBindings, [slot]: e.target.value })}
                     >

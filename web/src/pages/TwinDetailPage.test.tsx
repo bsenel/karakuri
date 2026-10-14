@@ -52,6 +52,19 @@ describe('TwinDetailPage', () => {
     );
   });
 
+  it('names each binding picker by its slot', async () => {
+    const withAdapters = {
+      ...health,
+      adapters: [{ slot: 'git', instance: 'github-main', type: 'github', active: true, is_default: true }],
+    };
+    get.mockImplementation((path: string) => Promise.resolve(path === '/health' ? withAdapters : twin));
+
+    renderPage();
+    await waitFor(() =>
+      expect(screen.getByRole('combobox', { name: 'Instance for git' })).toBeInTheDocument(),
+    );
+  });
+
   it('keeps the twin on screen when saving bindings fails', async () => {
     get.mockImplementation(answer);
     put.mockRejectedValue(new Error('API 500: boom'));
