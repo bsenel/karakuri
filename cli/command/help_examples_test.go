@@ -71,3 +71,29 @@ func TestStandingHelp(t *testing.T) {
 		t.Errorf("reconcile-status Example %q does not show --limit", example)
 	}
 }
+
+func TestContainerHelp(t *testing.T) {
+	for _, parent := range []*cobra.Command{orgCmd(), teamCmd(), projectCmd()} {
+		for _, cmd := range parent.Commands() {
+			requireExample(t, cmd)
+			if !strings.Contains(cmd.Example, "krk "+parent.Name()+" "+cmd.Name()) {
+				t.Errorf("%s %s Example %q does not run the command it documents", parent.Name(), cmd.Name(), cmd.Example)
+			}
+		}
+	}
+
+	// A team name is only unique inside its organisation, so every team
+	// example names one.
+	for _, cmd := range teamCmd().Commands() {
+		if !strings.Contains(cmd.Example, "--org") {
+			t.Errorf("team %s Example %q does not show --org", cmd.Name(), cmd.Example)
+		}
+	}
+
+	// "Twin id" does not say where the ID comes from.
+	for _, cmd := range []*cobra.Command{projectAddCmd(), projectRemoveCmd()} {
+		if usage := cmd.Flags().Lookup("twin").Usage; !strings.Contains(usage, "krk twin list") {
+			t.Errorf("%s --twin usage %q does not say where an ID comes from", cmd.Name(), usage)
+		}
+	}
+}
