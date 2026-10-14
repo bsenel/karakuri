@@ -370,7 +370,7 @@ func readSecret(r io.Reader) (string, error) {
 	}
 	secret := strings.TrimRight(line, "\r\n")
 	if secret == "" {
-		return "", fmt.Errorf("no password on stdin")
+		return "", fmt.Errorf("no password on stdin: --password-stdin reads the first line piped in, and it was empty\nPipe the password in, e.g. `--password-stdin < password.txt` or `echo \"$PW\" | krk ... --password-stdin`; check that the file or variable is not empty")
 	}
 	return secret, nil
 }

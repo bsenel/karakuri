@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/bsenel/karakuri/config"
 	"github.com/bsenel/karakuri/internal/core/capability"
 	"github.com/bsenel/karakuri/internal/core/environment"
 	"github.com/bsenel/karakuri/internal/platform/tools"
@@ -115,7 +116,11 @@ func softwareEnvironmentFactories(reg *tools.Registry) []environment.Factory {
 						cli = a
 					}
 				}
-				return &cliEnv{id: "software.env.cli_agent", cli: cli}, nil
+				env := &cliEnv{id: "software.env.cli_agent", cli: cli, twinID: ctx.TwinID}
+				if reg != nil {
+					env.attachMCP, env.mcpURL = cliMCPOptions(reg.CLIAgents.Options(ctx.AdapterBindings["cli_agents"]))
+				}
+				return env, nil
 			},
 		},
 		noopFactory("software.env.ci", "CI pipeline: build status, test results, coverage"),
@@ -589,7 +594,42 @@ func (e *commsEnv) Snapshot(ctx context.Context) (environment.EnvironmentSnapsho
 type cliEnv struct {
 	id  environment.EnvironmentID
 	cli cliagent.CLIAgentAdapter
+
+	// twinID is the twin this environment was built for (BuildContext.TwinID).
+	twinID string
+	// attachMCP and mcpURL are the instance's attach_karakuri_mcp and
+	// karakuri_mcp_url options; issuer mints the credential for one delegation.
+	attachMCP bool
+	mcpURL    string
+	issuer    delegationIssuer
 }
+
+// DelegationCredential is what one delegation carries to Karakuri's own MCP
+// endpoint. It mirrors the issuer's credential so this package does not import
+// the feature layer.
+type DelegationCredential struct {
+	Token       string
+	PrincipalID string
+	TwinID      string
+	ExpiresAt   time.Time
+}
+
+// delegationIssuer is the part of the delegation issuer cliEnv needs.
+type delegationIssuer interface {
+	Issue(ctx context.Context, twinID string, timeout time.Duration) (DelegationCredential, error)
+	Revoke(ctx context.Context, c DelegationCredential) error
+}
+
+// cliMCPOptions reads attach_karakuri_mcp and karakuri_mcp_url off a
+// cli_agents instance's options.
+func cliMCPOptions(options map[string]any) (attach bool, url string) {
+	attach, _ = options["attach_karakuri_mcp"].(bool)
+	return attach, config.InstanceConfig{Options: options}.OptString("karakuri_mcp_url")
+}
+
+// revokeTimeout bounds the revoke that follows a delegation, which runs even
+// when the action's own context is already cancelled.
+const revokeTimeout = 10 * time.Second
 
 func (e *cliEnv) ID() environment.EnvironmentID { return e.id }
 func (e *cliEnv) Domain() string                { return "software" }
@@ -602,6 +642,13 @@ func (e *cliEnv) Observe(_ context.Context, _ environment.ObservationQuery) (env
 		EnvID: e.id, State: state, Version: stateVersion(state), Timestamp: time.Now().UTC(),
 	}, nil
 }
+
+// karakuriMCPServer is the name Act attaches Karakuri's MCP server under, and
+// karakuriToolPrefix is how a coding-agent CLI then names that server's tools.
+const (
+	karakuriMCPServer  = "karakuri"
+	karakuriToolPrefix = "mcp__" + karakuriMCPServer + "__"
+)
 
 func (e *cliEnv) Act(ctx context.Context, a environment.Action) (environment.ActionResult, error) {
 	if e.cli == nil || !e.cli.Active() {
@@ -650,22 +697,101 @@ func (e *cliEnv) Act(ctx context.Context, a environment.Action) (environment.Act
 		}
 	}
 
-	out, err := e.cli.Delegate(ctx, in)
-	if err != nil {
-		return environment.ActionResult{Success: false, Error: err.Error(),
-			StateDelta: map[string]any{"adapter": e.cli.Name()}}, nil
+	// karakuri_tools: the Karakuri MCP tools the agent may call during this
+	// one delegation, e.g. ["audit_list"]. Needs the instance option
+	// attach_karakuri_mcp; the agent holds a read-only credential scoped to
+	// the twin, revoked when the action ends.
+	var karakuriTools []string
+	if list, ok := a.Params["karakuri_tools"].([]any); ok {
+		for _, t := range list {
+			if s, ok := t.(string); ok && s != "" {
+				karakuriTools = append(karakuriTools, s)
+			}
+		}
 	}
-	return environment.ActionResult{
-		Success: true,
-		StateDelta: map[string]any{
-			"adapter":    e.cli.Name(),
-			"summary":    out.Summary,
-			"tool_uses":  out.ToolUses,
-			"exit_code":  out.ExitCode,
-			"raw_output": out.RawOutput,
-		},
-		ArtifactSHAs: out.ArtifactSHAs,
-	}, nil
+	// scrub keeps the delegation token out of anything the result carries.
+	scrub := func(s string) string { return s }
+	var credential map[string]any
+	if len(karakuriTools) > 0 {
+		refuse := func(why string) (environment.ActionResult, error) {
+			return environment.ActionResult{
+				Success: false,
+				Error:   fmt.Sprintf("%s asked for karakuri_tools %v but %s", a.CapabilityID, karakuriTools, why),
+			}, nil
+		}
+		switch {
+		case !e.attachMCP:
+			return refuse("the cli_agents instance does not set attach_karakuri_mcp")
+		case e.mcpURL == "":
+			return refuse("the cli_agents instance sets no karakuri_mcp_url")
+		case e.twinID == "":
+			return refuse("the action has no twin to scope a delegation credential to")
+		case e.issuer == nil:
+			return refuse("no delegation credential issuer is wired in this deployment")
+		}
+		cred, err := e.issuer.Issue(ctx, e.twinID, time.Duration(in.TimeoutSeconds)*time.Second)
+		if err != nil {
+			return refuse("a delegation credential could not be issued: " + err.Error())
+		}
+		// The map is shared with the result, so the deferred revoke can
+		// still record its outcome after the return value is built.
+		credential = map[string]any{
+			"twin_id":    cred.TwinID,
+			"read_only":  true,
+			"tools":      karakuriTools,
+			"expires_at": cred.ExpiresAt.Format(time.RFC3339),
+			"revoked":    true,
+		}
+		defer func() {
+			// The action's context may be the reason it ended.
+			rctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), revokeTimeout)
+			defer cancel()
+			if err := e.issuer.Revoke(rctx, cred); err != nil {
+				credential["revoked"] = false
+				credential["revoke_error"] = err.Error()
+			}
+		}()
+		if cred.Token != "" {
+			scrub = func(s string) string { return strings.ReplaceAll(s, cred.Token, "[redacted]") }
+		}
+		in.MCP = &cliagent.MCPAttachment{
+			ServerName: karakuriMCPServer,
+			URL:        e.mcpURL,
+			Token:      cred.Token,
+			Tools:      karakuriTools,
+		}
+	}
+
+	out, err := e.cli.Delegate(ctx, in)
+	// What a Karakuri tool returned can be a stranger's prose (an audit row
+	// holds pull-request titles), and the agent wrote everything after it
+	// having read that. Decided from the calls the run made, not from what was
+	// attached (ADR 021); the error of a run that failed is the run's text too.
+	trust := environment.TrustOperator
+	for _, u := range out.ToolUses {
+		if strings.HasPrefix(u.Name, karakuriToolPrefix) {
+			trust = environment.TrustThirdParty
+			break
+		}
+	}
+	if err != nil {
+		delta := map[string]any{"adapter": e.cli.Name()}
+		if credential != nil {
+			delta["delegation_credential"] = credential
+		}
+		return environment.ActionResult{Success: false, Trust: trust, Error: scrub(err.Error()), StateDelta: delta}, nil
+	}
+	delta := map[string]any{
+		"adapter":    e.cli.Name(),
+		"summary":    scrub(out.Summary),
+		"tool_uses":  out.ToolUses,
+		"exit_code":  out.ExitCode,
+		"raw_output": scrub(out.RawOutput),
+	}
+	if credential != nil {
+		delta["delegation_credential"] = credential
+	}
+	return environment.ActionResult{Success: true, Trust: trust, StateDelta: delta, ArtifactSHAs: out.ArtifactSHAs}, nil
 }
 
 func (e *cliEnv) Subscribe(_ context.Context, _ environment.EventFilter) (<-chan environment.EnvironmentEvent, error) {

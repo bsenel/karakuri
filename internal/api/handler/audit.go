@@ -25,24 +25,36 @@ type auditExporter interface {
 	Export(ctx context.Context, from, to, now time.Time) ([]byte, error)
 }
 
+// auditBoundError is a window bound that is missing or is not a timestamp:
+// refused before the exporter is asked.
+type auditBoundError string
+
+func (e auditBoundError) Error() string { return string(e) }
+
+// exportAuditWindow parses the bounds of a window and returns the exporter's
+// document for it, untouched. GET /audit/export and the audit_export MCP tool
+// both answer with this.
+func exportAuditWindow(ctx context.Context, exp auditExporter, rawFrom, rawTo string) ([]byte, error) {
+	from, err := time.Parse(time.RFC3339, rawFrom)
+	if err != nil {
+		return nil, auditBoundError("from must be an RFC3339 timestamp")
+	}
+	to, err := time.Parse(time.RFC3339, rawTo)
+	if err != nil {
+		return nil, auditBoundError("to must be an RFC3339 timestamp")
+	}
+	return exp.Export(ctx, from, to, time.Now())
+}
+
 // ExportWindow returns the audit export for one window.
 //
 // GET /api/v1/audit/export?from=RFC3339&to=RFC3339
 func (h *AuditHandler) ExportWindow(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
-	from, err := time.Parse(time.RFC3339, q.Get("from"))
+	data, err := exportAuditWindow(r.Context(), h.Export, q.Get("from"), q.Get("to"))
 	if err != nil {
-		http.Error(w, "from must be an RFC3339 timestamp", http.StatusBadRequest)
-		return
-	}
-	to, err := time.Parse(time.RFC3339, q.Get("to"))
-	if err != nil {
-		http.Error(w, "to must be an RFC3339 timestamp", http.StatusBadRequest)
-		return
-	}
-	data, err := h.Export.Export(r.Context(), from, to, time.Now())
-	if err != nil {
-		if errors.Is(err, audit.ErrWindow) {
+		var bound auditBoundError
+		if errors.As(err, &bound) || errors.Is(err, audit.ErrWindow) {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
@@ -55,28 +67,31 @@ func (h *AuditHandler) ExportWindow(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write(data) // #nosec G705 -- a JSON document the exporter built from stored rows, served as application/json with nosniff (middleware/security.go); never rendered as HTML
 }
 
-func (h *AuditHandler) List(w http.ResponseWriter, r *http.Request) {
-	q := r.URL.Query()
+// listAuditEvents reads the audit log through the filters a caller supplied as
+// text, keyed as the query string of GET /audit keys them. The REST route and
+// the audit_list MCP tool both list through this, so neither can apply a
+// filter the other drops.
+func listAuditEvents(ctx context.Context, store storage.StorageAdapter, get func(string) string) ([]storage.ToolEvent, error) {
 	f := storage.ToolEventFilter{
-		ObjectiveID: q.Get("objective_id"),
-		AgentID:     q.Get("agent_id"),
-		Kind:        q.Get("kind"),
-		Provider:    q.Get("provider"),
-		Model:       q.Get("model"),
-		TemplateID:  q.Get("template"),
+		ObjectiveID: get("objective_id"),
+		AgentID:     get("agent_id"),
+		Kind:        get("kind"),
+		Provider:    get("provider"),
+		Model:       get("model"),
+		TemplateID:  get("template"),
 	}
 
-	if v := q.Get("limit"); v != "" {
+	if v := get("limit"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n > 0 {
 			f.Limit = n
 		}
 	}
-	if v := q.Get("since"); v != "" {
+	if v := get("since"); v != "" {
 		if t, err := time.Parse(time.RFC3339, v); err == nil {
 			f.CreatedAtSince = &t
 		}
 	}
-	if v := q.Get("bounds_violation"); v != "" {
+	if v := get("bounds_violation"); v != "" {
 		b := v == "true" || v == "1"
 		f.BoundsViolation = &b
 	}
@@ -84,7 +99,11 @@ func (h *AuditHandler) List(w http.ResponseWriter, r *http.Request) {
 		f.Limit = 100
 	}
 
-	events, err := h.Store.ListToolEvents(r.Context(), f)
+	return store.ListToolEvents(ctx, f)
+}
+
+func (h *AuditHandler) List(w http.ResponseWriter, r *http.Request) {
+	events, err := listAuditEvents(r.Context(), h.Store, r.URL.Query().Get)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
