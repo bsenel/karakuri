@@ -23,4 +23,8 @@ regexes = [
   '''e2e-bootstrap-password''',
   '''pentest-only-signing-key-not-used-anywhere-32b''',
   '''PentestAdminPassw0rd!''',
+  # Fixture bearer in domains/software/cli_mcp_attach_test.go: a made-up string
+  # a fake delegation issuer hands out so the test can assert it never reaches
+  # a result or an error. No issuer anywhere mints it.
+  '''tok-delegation-secret-1''',
 ]

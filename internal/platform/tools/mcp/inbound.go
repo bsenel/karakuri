@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 	"unicode/utf8"
 )
@@ -14,12 +15,22 @@ import (
 // mcp 2.3.0).
 const CodeHeaderMismatch = -32020
 
+// handshakeProtocolVersions are the revisions reached through the `initialize`
+// handshake: HANDSHAKE_PROTOCOL_VERSIONS in mcp_types/version.py (the SDK, mcp
+// 2.3.0), read 2026-10-10. A client on any of them names it in
+// MCP-Protocol-Version on every request after the handshake.
+var handshakeProtocolVersions = []string{"2024-11-05", "2025-03-26", "2025-06-18", "2025-11-25"}
+
 // IsModernRequest reports whether an HTTP request is on the 2026-07-28 path.
 // The MCP-Protocol-Version header decides it and the body does not, as in the
-// SDK's server (mcp/server/_streamable_http_modern.py): a request without the
-// header is a 2025-06-18 one whatever its `_meta` says about itself.
+// SDK's server (mcp 2.3.0, mcp/server/streamable_http_manager.py,
+// _handle_request): modern only when the header is present and its value is not
+// a handshake-era revision. A request without the header, or with one naming a
+// handshake-era revision, is a legacy one whatever its `_meta` says about
+// itself; an unknown value is modern, so the ladder refuses it by name.
 func IsModernRequest(header http.Header) bool {
-	return header.Get(headerProtocolVersion) != ""
+	values := header.Values(headerProtocolVersion)
+	return len(values) > 0 && !slices.Contains(handshakeProtocolVersions, values[0])
 }
 
 // ClassifyInbound runs the validation ladder a server owes a 2026-07-28 request

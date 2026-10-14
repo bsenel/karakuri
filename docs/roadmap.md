@@ -44,9 +44,10 @@ Phases 27–32 were proposed from two kinds of evidence: what this repository de
 | 31    | The Evidence Pack                          | **Completed** |
 | 32    | The SRE Path, Actually Wired               | **Completed** |
 | 33    | MCP After the Handshake                    | **Completed** |
+| 34    | Karakuri's Own Tools in Its Agents' Hands  | **Completed** |
 | 35    | An Unanswered Checkpoint Ends              | **Planned**   |
 | 36    | A Provider's Refusal Is Not a Plan         | **Planned**   |
-| 37    | A Stop That Reaches the Running Pass       | **Planned**   |
+| 37    | Any Run Can Be Stopped at Any Time         | **Planned**   |
 | 38    | What Was Required and Not Done             | **Planned**   |
 | 40    | Streams That Run Without a Coordinator     | **Planned**   |
 
@@ -3271,6 +3272,8 @@ client can talk to the servers people run.
    | Karakuri's own server, `internal/api/handler/mcp.go` | routing by the `MCP-Protocol-Version` header; the namespaced envelope keys required; `-32020` when header and envelope disagree, before the version is judged; `-32022` for an unsupported version; `404` for an unknown method on the modern path (the six `TestMCPServer...` tests named in the review's step 3) | passed, against `httptest` and this repository's client, not against an SDK client |
    | Not run | the specification text itself, a 2026-07-28-only server, the TypeScript or any other SDK, an SDK client against Karakuri's server, a real third-party deployment | not verified |
 
+   2026-10-10: Karakuri's own server refused 2025-06-18 clients that send the `MCP-Protocol-Version` header after `initialize` (every real one); found by running Claude Code against it; fixed in the Phase 34 pull request (#170).
+
    The wire names are now the SDK's, read from its source and confirmed by
    these runs; where the "Not verified" entry below says the names are assumed
    or that no real 2026-07-28 peer was used, this table replaces it for the
@@ -3438,7 +3441,7 @@ one observation of the Python SDK in step 1, not from the specification text.
 
 ---
 
-## Phase 34 — Karakuri's Own Tools in Its Agents' Hands (Planned)
+## Phase 34 — Karakuri's Own Tools in Its Agents' Hands (Completed)
 
 **Goal:** A coding agent Karakuri delegates to can call Karakuri's own MCP tools
 under a credential scoped to that one delegation, and the tool surface covers
@@ -3561,6 +3564,153 @@ other action (ADR 015), not through a tool. It is not a general way to hand a
 coding agent the operator's identity. And it does not attach the third-party
 MCP servers of the `tools.mcp` slot to the coding agent; that is a different
 question with ADR 022's bounds on it.
+
+**Shipped (step 1).** Partly. What was decided is in the adapters: `claude.go`
+in `internal/platform/tools/cliagent/` attaches a server with `--mcp-config
+<file> --strict-mcp-config` and names its tools `mcp__<server>__<tool>` in
+`--allowed-tools`; `cursor.go`, `gemini.go`, `copilot.go` and `noop.go` return
+an error when `DelegateInput.MCP` is set, so none delegates silently without the
+tools (`TestAdaptersWithoutPerRunMCP` in `mcp_attach_test.go`). The "to find
+out" list above was not answered: the comment on `writeClaudeMCPConfig` in
+`claude.go` says the JSON shape, the tool naming and the effect of
+`--strict-mcp-config` were not read from the CLI and not run against it. See
+"Not verified" below.
+
+**Shipped (step 2).** `internal/api/handler/mcp.go` serves five more read-only
+tools: `audit_list`, `audit_export`, `checkpoints_list`, `checkpoint_read` and
+`cost_report`. `audit.go` and `quota.go` in the same package were reshaped so
+the tool and the REST route share one read. Tests are in `mcp_audit_test.go`
+and `mcp_checkpoint_cost_test.go`. Evaluation results and reconcile outcomes
+got no tool, by decision, recorded in the empty commit `37d8b3d`: the only
+evaluation route (`POST /api/v1/eval/calibrate`) spends tokens and writes rows,
+and `reconcile_status` already returns every recorded outcome.
+
+**Shipped (step 3).** `internal/feature/delegation/issuer.go` issues a
+credential for one delegation, read-only and scoped to one twin, expiring with
+the action's timeout, and revokes it. Tests are in `issuer_test.go`.
+`internal/app/bootstrap.go` and `internal/api/server.go` build the issuer and
+`domains/software/pack.go` hands it to the software pack.
+
+**Shipped (step 4).** `cliagent.MCPAttachment` and `DelegateInput.MCP` in
+`internal/platform/tools/cliagent/adapter.go`; `writeClaudeMCPConfig` in
+`claude.go` writes the configuration to a fresh directory under `os.TempDir()`
+(file mode `0o600`) and removes it when the run ends. `cliEnv.Act` in
+`domains/software/environments.go` reads `params.karakuri_tools`, refuses the
+action when the instance has not set `attach_karakuri_mcp` and
+`karakuri_mcp_url`, and otherwise issues the credential, attaches and revokes.
+`SlotInstances.Options` in `internal/platform/tools/registry.go` carries the
+instance options to it; `config/default.yaml` documents them, default off,
+`claude_code` only. Tests are in `cliagent/mcp_attach_test.go` and
+`domains/software/cli_mcp_attach_test.go`.
+
+**Shipped (step 5).** See the addendum of 2026-10-10 to
+[ADR 021](adr/021-observations-carry-provenance.md). The `ActionResult` of a
+delegation whose run called at least one `mcp__karakuri__` tool sets
+`Trust: environment.TrustThirdParty`, decided in `cliEnv.Act` from
+`DelegateOutput.ToolUses`, failed runs included. Tests are in
+`domains/software/cli_mcp_trust_test.go`.
+
+**Shipped (step 6).** The first half. A planner hint in
+`domains/software/hints.go` tells `software.act.write_code`,
+`software.act.write_test` and `software.act.delegate_to_cli` to list the tools
+they need in `params.karakuri_tools` instead of shelling out to `krk`, and says
+an action that asks without the instance options is refused. Tests are in
+`hints_test.go`. The second half, the standing streams' briefs dropping the
+`krk` allow-list, was not done; see below.
+
+**Shipped (acceptance).** Clause by clause, the test whose name matches. The
+tests were run and passed; they were matched to clauses by name and the test
+bodies were not re-read when this note was written, so each pairing is an
+inference about what the test asserts.
+
+- *With attachment on, a delegated run against a scripted CLI receives an MCP
+  configuration naming this deployment's endpoint and a token.*
+  `TestClaudeCode_MCP_WritesPerRunConfigAndRemovesIt` and
+  `TestClaudeCode_MCP_TokenOnlyInTheFile` in `cliagent/mcp_attach_test.go`;
+  `TestKarakuriToolsAttachedWithAScopedCredential` and
+  `TestAttachOptionChangesTheDelegation` in
+  `domains/software/cli_mcp_attach_test.go`.
+- *That token can list the audit rows of its own twin and cannot read another
+  twin's objective.* `TestIssuedTokenReadsItsOwnTwinOnly` in
+  `internal/feature/delegation/issuer_test.go`. Whether that test goes through
+  the MCP handler or only through the authorizer was not checked.
+- *After the action ends the token is refused.*
+  `TestRevokeRefusesTheTokenAndLeavesNothingBehind` in `issuer_test.go` and
+  `TestCredentialRevokedWhenTheAdapterFails` in `cli_mcp_attach_test.go`.
+- *With attachment off, or with no tool requested, the command line and
+  environment are what they are today.* `TestClaudeCode_NoMCP_ArgvUnchanged`,
+  `TestNoKarakuriToolsMeansNoAttachment` and `TestCLIMCPOptionsDefaultOff`.
+  With attachment off and a tool requested the action is refused, not run
+  (`TestKarakuriToolsRefusedWhenAttachmentIsOff`). That the environment, not
+  only the command line, is byte-for-byte unchanged is inferred.
+- *No file under the operator's home directory is read to produce the
+  credential.* `TestIssueTouchesNoDiskAndStoresNoRefreshToken` in
+  `issuer_test.go`.
+- *A tool whose REST route the principal could not call is absent from its tool
+  list.* `TestMCPAuditToolsRequireAuditRead` in `mcp_audit_test.go` and
+  `TestMCPCheckpointAndCostToolsFollowTheirRoutesActions` in
+  `mcp_checkpoint_cost_test.go`.
+
+The audit row of step 3 (scope recorded, token not) is in
+`TestIssueAuditsTheScopeAndNotTheToken` and
+`TestActionResultRecordsTheScopeAndNeverTheToken`.
+
+**Not verified.** Nothing in this phase was run against a real coding-agent CLI
+or a real deployment. Every delegation in the tests is a scripted binary, and
+every server is one built in the test. The tests show what Karakuri passes, not
+that `claude` accepts it.
+
+Review, 2026-10-10. The paragraph above was true when the phase was closed; the
+review then ran the real `claude` CLI against a live server with what this
+branch writes (`--mcp-config <file> --strict-mcp-config
+--allowed-tools=mcp__karakuri__objectives_list`). The CLI connected, so the
+config shape and both flags are accepted, and it was offered no tools. The
+cause was in Karakuri's server, from Phase 33: `mcp.IsModernRequest` sent any
+request carrying `MCP-Protocol-Version` down the 2026-07-28 ladder, and a
+handshake-era client sends that header on every request after `initialize`, so
+`tools/list` was refused with `-32602`. The fix is the SDK's rule (mcp 2.3.0,
+`mcp/server/streamable_http_manager.py`, `_handle_request`): modern only when
+the header is present and its value is outside `HANDSHAKE_PROTOCOL_VERSIONS`.
+After the fix, `go test -count=1 -run SDK -v ./internal/api/handler/`
+(`TestMCPServerSpeaksToTheSDKClient`, the official Python SDK's client against
+Karakuri's own handler: initialize, list tools, call one read-only tool) gave:
+mcp 2.3.0, PASS; mcp 1.30.0, PASS; both negotiated `2025-06-18` and were
+offered `objectives_list`, `objective_read`, `reconcile_status`. Before the fix
+both failed after `initialize`. CI has no SDK, so the test skips there. Still
+not verified: the end-to-end run with the real `claude` CLI was not repeated
+after the fix, so the `mcp__<server>__<tool>` allow-list naming has not been
+shown to match a tool the CLI was actually offered.
+
+Step 1's questions were not answered. The `--mcp-config` JSON shape
+(`{"mcpServers": {<name>: {"type": "http", "url", "headers"}}}`), whether an
+HTTP entry carries a header, and the `mcp__<server>__<tool>` naming come from
+recollection of the documentation, as `claude.go` says. Which MCP protocol
+revisions Claude Code speaks, and so whether it can talk to this server at all,
+is unknown. Whether `--strict-mcp-config` also keeps out servers brought by
+plugins or managed settings was not run. The help output of the Cursor, Gemini
+and Copilot CLIs was not read: their adapters refuse an attachment because
+nobody found out whether they can attach, not because it is known they cannot.
+
+The standing streams' briefs still carry the `krk` allow-list. Attachment
+defaults to off and no deployment was configured with it in this phase, so
+dropping the allow-list would leave those streams without the data. The briefs
+are not in this repository: `grep -rn 'Bash(krk' .` finds no file here, so the
+files that hold the allow-list could not be named or changed from this branch.
+Until they change, a delegated agent in those streams still runs `krk` under
+the operator's cached admin session, which is the problem this phase set out to
+remove.
+
+Evaluation results are not an MCP tool, though step 2 lists them; that was a
+decision (commit `37d8b3d`), and it was made from reading the code, with no
+test. The hint lists the ten tool names as a literal string;
+`TestKarakuriToolsHintNamesOnlyServedTools` guards it, by name.
+
+The tests run when the phase was closed were
+`go build ./... && go test -count=1 ./domains/software/... ./internal/api/handler/... ./internal/feature/delegation/... ./internal/platform/tools/cliagent/...`
+on 2026-10-10: all four packages `ok`. The full `go test ./...`, `make test`
+and `scripts/check_langchaingo_imports.sh` were not run in that action. Text a
+delegated agent read through a Karakuri tool and then wrote into a commit or a
+file carries no label, as the ADR 021 addendum says.
 
 ---
 
@@ -3708,80 +3858,240 @@ to the user beyond passing on what the provider's answer said.
 
 ---
 
-## Phase 37 — A Stop That Reaches the Running Pass (Planned)
+## Phase 37 — Any Run Can Be Stopped at Any Time (Planned)
 
-This is a **frontier bet**, proposed by the discovery cycle of 2026-10-08
-(`docs/research/discovery-2026-10-08.md`, 'Fit and bets', rank 3). Nobody asked
-for it. **The bet:** a buyer preparing for the EU AI Act's high-risk
-obligations will ask to see a stop that works while a pass is running and that
-leaves a record of who stopped it.
+**The reason: the owner's requirement, 2026-10-10.** "We should be able to stop
+any run anytime." This phase is no longer a bet; it is asked for, and this
+section records the requirement and does not reopen it.
 
-**Goal:** Pausing a standing objective cancels the pass in flight, and the
-evidence export shows that a person paused and resumed, and when.
+What prompted it: on 2026-10-10 a one-shot objective was started against the
+branch of a pull request that had just been merged. The mistake was seen
+seconds later and nothing could stop the run. `krk loop` has `start`, `status`
+and `resume` (`cli/command/loop.go`); `krk objective pause` exists for standing
+objectives only, and by this phase's own earlier reading (below) it does not
+interrupt a pass in flight. The run had to be left to finish and push where it
+should not.
 
-**The evidence, and how thin it is.** The one primary page read is the
-European Commission's overview of the regulation, which asks of high-risk
-systems "appropriate human oversight measures." and says "deployers ensure
-human oversight and monitoring."
+**Goal:** every run can be stopped at any time by a person with the right to:
+
+- **(a) A pass of a standing objective**, by pausing the objective. The pause
+  cancels the pass in flight.
+- **(b) A one-shot loop**, by a stop on the loops route and
+  `krk loop stop <loop-id> --reason "..."`. The name follows the CLI's
+  noun-then-verb commands (`krk loop start`, `krk objective pause`) and the
+  `--reason` flag `krk objective pause` already takes.
+- **(c) Everything at once**: one control that stops every running loop and
+  pauses every standing objective, for the moment something is going wrong
+  everywhere.
+
+**What a stop promises.**
+
+- **No further action starts.** Once a stop is acknowledged (the API has
+  answered), no further action of that run starts.
+- **The action in flight ends within a stated bound.** The working bound is 10
+  seconds from the acknowledgement: a delegated coding action's process group
+  is asked to end, and killed if it has not ended when the bound is up. An
+  action that runs in the server's own process (a model call, an adapter call)
+  ends when its context is cancelled; step 1's reading lists any that do not
+  honour their context. Where the bound passes and the action is not known to
+  have ended, the record says exactly that.
+- **A stop reaches the subprocess.** A delegated coding action is a child
+  process. Cancelling the loop's context is not a stop if the child keeps
+  running and pushing. The stop ends the child and the child's own children.
+- **A stop is not a rollback.** Commits already pushed stay pushed; a pull
+  request already opened stays open. The record says what the run had done when
+  it was stopped: which actions completed and which one was cut. Where a cut
+  action leaves something half done (a worktree with uncommitted changes, a
+  push that may or may not have landed), the record says so plainly, and the
+  phase is not closed for it. This replaces the earlier kill criterion.
+- **A stopped run stays stopped.** A stopped one-shot loop is not resumed by a
+  restart. A paused standing objective stays paused until a person resumes it.
+- **A stop is not a failure.** It does not count toward the circuit breaker and
+  does not demote autonomy.
+- **Who and why are on the record.** Every stop and every resume carries the
+  principal and the reason, in the audit log and in the evidence export.
+- **Where.** The CLI, the API (with `docs/openapi.yaml` updated) and the web
+  interface, wherever a running loop or objective is shown.
+
+**What was read in the code, and what was not.** Line numbers are as read on
+2026-10-10 and earlier; nothing below was run.
+
+- *The pause, read for the original proposal*
+  (`internal/feature/reconcile/service.go` lines 225 to 286 and 396 to 460,
+  `internal/api/handler/reconcile.go` lines 170 to 209,
+  `internal/api/server.go` lines 366 to 394): `POST /{id}/pause` and `/resume`
+  exist behind `karakuriauth.ActionObjectivePause`; `Service.Pause` writes
+  `Paused`, `PausedReason` and `PhasePaused` to the stored state and holds no
+  handle on a pass `dispatch` already started; no audit row is written in the
+  lines read. Inferred: a pause prevents the next pass and does not interrupt
+  the running one. Middleware and the store were not read, so Pause may be
+  audited elsewhere.
+- *The child process* (`internal/platform/tools/cliagent/subprocess.go`,
+  `runStreaming`, read in full): the child is started with
+  `exec.CommandContext(ctx, name, args...)`, so it is tied to the context it is
+  given. No process group is set and no grace period is configured (a search of
+  the package finds no `SysProcAttr`, `Setpgid`, `Cancel` or `WaitDelay`), so a
+  cancelled context kills the direct child only. Nothing in the file signals
+  the child's own children, and `runStreaming` reads the child's standard
+  output to its end before it waits, so a grandchild that keeps that pipe open
+  could hold the action open after the child is dead. `copilot.go` starts its
+  process the same way (line 55). **Not read:** the callers, and so whether the
+  context `runStreaming` receives derives from the loop's context at all; the
+  other adapter files; `procenv`.
+- *Restart* (`internal/feature/loop/service.go`, `ResumeStoredLoops`, lines 319
+  to 414): it lists loop states through `store.ListActiveLoopStates`, replays
+  at once every one that is not paused, and gives a paused one (waiting at a
+  checkpoint) a waiter for its decision. A stopped loop whose stored state
+  still reads active would therefore be replayed at the next boot. **Not
+  read:** `ListActiveLoopStates`, `runLoop`, and how a loop's state is marked
+  completed.
+- *Permissions* (`internal/auth/catalog.go`, `routes.go` and `roles.go`, the
+  matching lines only): `objective:pause` covers both pausing and resuming a
+  standing objective; the loop actions are `loop:start`, `loop:read` and
+  `loop:resume`, and there is none for stopping a loop. The role files were not
+  read in full.
+- *Not read at all:* `internal/feature/loop/runner.go` (the earlier proposal
+  observed at line 274 that the runner finalises on `ctx.Done()`), the circuit
+  breaker and the autonomy demotion, `internal/feature/audit/export.go`,
+  `docs/openapi.yaml`, the web interface, `cli/command/root.go`.
+
+**Background: the discovery evidence, and how thin it is.** The phase was first
+proposed as a frontier bet by the discovery cycle of 2026-10-08
+(`docs/research/discovery-2026-10-08.md`, 'Fit and bets', rank 3): a buyer
+preparing for the EU AI Act's high-risk obligations will ask to see a stop that
+works while a pass is running and that leaves a record of who stopped it. The
+one primary page read is the European Commission's overview of the regulation,
+which asks of high-risk systems "appropriate human oversight measures." and
+says "deployers ensure human oversight and monitoring."
 (https://digital-strategy.ec.europa.eu/en/policies/regulatory-framework-ai,
-read 2026-10-09); the same page puts those obligations at 2 December 2027.
-That is a general sentence. The specific wording about a person being able to
-stop the system is Article 14(4), which the report knows only from a secondary
-mirror (https://artificialintelligenceact.eu/article/14/, read 2026-10-09);
-the legal text was not read by anyone. No regulated organisation speaking for
-itself was found.
+read 2026-10-09); the same page puts those obligations at 2 December 2027. That
+is a general sentence. The specific wording about a person being able to stop
+the system is Article 14(4), known only from a secondary mirror
+(https://artificialintelligenceact.eu/article/14/, read 2026-10-09); the legal
+text was not read by anyone, and no regulated organisation speaking for itself
+was found. The phase no longer rests on this reading. It stays here as
+background, and nothing in this phase is a claim about the regulation.
 
-What the feasibility reading observed (`internal/feature/reconcile/service.go`
-lines 225 to 286 and 396 to 460, `internal/api/handler/reconcile.go` lines 170
-to 209, `internal/api/server.go` lines 366 to 394): `POST /{id}/pause` and
-`/resume` exist behind `karakuriauth.ActionObjectivePause`; `Service.Pause`
-writes `Paused`, `PausedReason` and `PhasePaused` to the stored state and holds
-no handle on a pass `dispatch` already started; no audit row is written in the
-lines read. Inferred: a pause prevents the next pass and does not interrupt the
-running one, and the export may not show the stop.
+**Steps.** Each step is one delivery pass, has its own acceptance test, and
+leaves the system working. The stop is delivered by cancelling from outside, in
+`internal/feature/reconcile` and the loop service; no step changes how the loop
+decides to end (AGENTS.md rule 8).
 
-**What would prove the bet wrong:** the legal text of Article 14(4), once
-read, does not ask for a stop of this kind; Pause is already audited elsewhere
-(middleware and the store were not read); or cancelling a pass leaves a
-worktree or an external action half done, so the stop is not a safe state.
+1. **Read, then make a pause cancel the pass in flight.** Read the `pass`
+   function in `internal/feature/reconcile/service.go` to learn whether the
+   loop's context derives from the one `dispatch` holds; follow that context
+   down to `runStreaming` and to the adapter calls, and write down here any
+   action that does not receive it or does not honour it; read whether Pause is
+   audited elsewhere; read where a pass's ending is counted as a failure for
+   the circuit breaker and for autonomy. Then keep a `context.CancelFunc` per
+   running objective beside `s.running` in `dispatch` and have `Pause` call it,
+   after the paused state is stored, so that a crash between the two leaves the
+   objective paused. The cancelled pass ends with a reason of its own
+   (`stopped`), which is not a failure.
+   *Acceptance:* a test starts a pass that blocks, calls `Pause`, and observes
+   the pass's context cancelled and the loop finalised with the stopped reason;
+   the stored state reads paused and `Trigger` still refuses; the failure count
+   and the autonomy level are what they were before the pass; no action of the
+   pass starts after `Pause` returns. Pausing an objective with no pass running
+   behaves as today. The diff does not touch how the loop decides to stop.
+2. **The stop reaches the subprocess.** In `runStreaming`, and in any adapter
+   that starts its own process (`copilot.go` does), start the child in its own
+   process group; on cancellation ask the group to end, kill the group when the
+   bound is up, and stop reading the child's output then, so an orphan holding
+   the pipe cannot keep the action open. The action's result says it was cut
+   and whether the group was seen to exit. Step 1's reading decides whether the
+   context needs threading to reach here; if it does, that is part of this
+   step. The bound's value (10 seconds, working figure) is fixed here and
+   written into this section. If a platform the server supports has no process
+   groups, the step says so here; it does not pretend the bound holds there.
+   *Acceptance:* a test with a real subprocess, not a fake: a script that
+   starts a child of its own, both of which ignore the polite signal and keep
+   writing to a file. The test cancels the context and asserts that both
+   processes are gone and the file has stopped growing within the bound, and
+   that the action returned within the bound with a result marked as cut. A
+   second case covers a child that exits when asked: the action returns well
+   inside the bound.
+3. **A one-shot loop can be stopped.** `POST /loops/{id}/stop` with a reason,
+   and `krk loop stop <loop-id> --reason "..."`, with `docs/openapi.yaml`
+   updated. The loop service keeps a cancel function per running loop; the stop
+   stores the loop as stopped first (a terminal state, with the principal and
+   the reason) and then cancels, so that `ResumeStoredLoops` does not list it
+   and a restart, even one that lands between the two, does not replay it. This
+   step reads `ListActiveLoopStates` and `runLoop` first. A loop waiting at a
+   checkpoint can be stopped too: it ends, and a later decision on that
+   checkpoint authorises nothing. So can a loop started with `--watch`
+   (`krk loop start` has the flag; how such a loop waits between events was not
+   read, and the step reads it so the stop reaches a loop that is idle).
+   Stopping a loop that has already ended changes nothing and says so.
+   **Permission:** the proposal is a new action
+   `loop:stop` beside `loop:resume`, granted to the existing roles that hold
+   `loop:start`, so that whoever may start a run may stop it; the step decides
+   after reading the role files in full. No new role either way.
+   *Acceptance:* a test starts a loop whose action blocks, calls stop, and
+   observes the context cancelled, the loop finalised as stopped, and no
+   further action started after the stop returned. A second test stops a loop,
+   builds a new service over the same store, calls `ResumeStoredLoops`, and
+   observes that nothing runs. A third stops a loop waiting at a checkpoint and
+   shows a later approval refused; a fourth stops a watch-mode loop that is
+   waiting for an event. A request without the permission is refused
+   and changes nothing. The CLI command prints what the API returned.
+4. **Stop everything.** One route and one CLI command (working names
+   `POST /stop-all` and `krk stop-all --reason "..."`; the step fits the name
+   to `cli/command/root.go` after reading it) that stops every running loop as
+   step 3 does and pauses every standing objective as step 1 does. It applies
+   to every run the caller has the right to stop, and the answer lists what was
+   stopped, what was paused, and anything it could not reach and why, so a
+   caller whose scope is narrower than the deployment is never told
+   "everything" when it was not. Objectives stay paused and loops stay stopped
+   afterwards; resuming is per objective, by a person, as today. No kill switch
+   outside the API is added.
+   *Acceptance:* with two running one-shot loops and two standing objectives,
+   one of them mid-pass, one call leaves both loops stopped, both objectives
+   paused and the pass cancelled, within the bound; a second call changes
+   nothing and says so; a caller scoped to one of the objectives pauses that
+   one only and the answer names the rest as not reached.
+5. **The record and the export.** Every stop, pause and resume leaves one audit
+   event carrying the principal and the reason (a new tool event kind with its
+   storage constant, unless step 1 found Pause audited already, in which case
+   that record is extended). The event for a stop also says what the run had
+   done: which actions completed, which one was cut, and for the cut one
+   whether it is known to have ended and what it may have left half done. A
+   stop-all leaves one event for the call and one per run it touched.
+   `internal/feature/audit/export.go` lists these events under oversight, with
+   `docs/openapi.yaml` updated if the export shape changes. An export over a
+   window with no such events says none were recorded; it does not say the
+   system was never stopped.
+   *Acceptance:* pause, resume, loop stop and stop-all each leave their events
+   with the principal and the reason; a stop that cut a delegated action in
+   flight names the completed actions and the cut one in the event; the export
+   lists all of them for a window, and for an empty window says none were
+   recorded.
+6. **The web control.** Wherever the web interface shows a running loop or a
+   standing objective, it shows a stop or a pause control that asks for a
+   reason, and one stop-all control. A person without the permission does not
+   see a control that would be refused. A stopped loop and a paused objective
+   show who stopped them, when and why, from step 5's record. The step reads
+   the pages first and names them here.
+   *Acceptance:* component tests for each page: the control calls the route
+   with the reason, the stopped state shows the principal and the reason, and
+   the control is absent without the permission.
 
-**Steps:**
-
-1. **Find out, then prototype, in one slice (time-boxed to that slice).** Read
-   the `pass` function in `internal/feature/reconcile/service.go` to learn
-   whether the loop's context derives from the one `dispatch` holds; read
-   whether Pause is audited elsewhere; read Article 14(4) in the legal text if
-   it can be fetched. Then prototype the feasibility slice: (a) in
-   `Service.Pause` and `Service.Resume`, write a tool event of a new kind (for
-   example `pause`) with the reason and the principal, plus a storage constant
-   for the kind; (b) keep a `context.CancelFunc` per running objective beside
-   `s.running` in `dispatch` and have `Pause` call it (the runner already
-   finalises on `ctx.Done()`, observed at `internal/feature/loop/runner.go`
-   line 274). **Kill criterion:** if a test shows a cancelled pass leaving a
-   delivery worktree or an external action half done with no way to tell from
-   the record, ship only (a), record the finding here, and close the phase; if
-   Pause turns out to be audited already, drop (a) as well.
-2. **The export shows it.** List pause and resume events under oversight in
-   `internal/feature/audit/export.go`, with `docs/openapi.yaml` updated if the
-   export shape changes. An export over a window with no such events says none
-   were recorded; it does not say the system was never stopped.
-3. **Only if step 1 survived:** a cancel for a one-shot loop on the loops
-   route, and a single control that pauses every standing objective. These are
-   the feasibility pass's 'second slice' and are not started before step 1's
-   result is written down.
-
-**Acceptance:** A test starts a pass that blocks, calls `Pause`, and observes
-the pass's context cancelled and the loop finalised; the stored state reads
-paused and `Trigger` still refuses. Pause and resume each leave one audit event
-carrying the principal and the reason, and the export lists both. Pausing an
-objective with no pass running behaves as today plus the audit event. The
-loop's own termination logic is unchanged (AGENTS.md rule 8): the diff touches
-`internal/feature/reconcile` and the export, not how the loop decides to stop.
+**Acceptance for the phase.** The 2026-10-10 case, replayed: a one-shot loop is
+started whose delegated action is a real subprocess that would commit and push
+to a local bare repository after a delay. `krk loop stop` is called before the
+delay is over. No push arrives, the subprocess and its children are gone within
+the bound, the loop reads stopped with the principal and the reason, a restart
+does not bring it back, and the export shows the stop. The same holds for a
+pass of a standing objective stopped by a pause, and for both at once by
+stop-all.
 
 **What this is not.** It is not a claim of compliance with Article 14 or with
-anything else: no legal text was read. It is not a rollback: a cancelled pass
-is stopped, not undone. It adds no kill switch outside the API, no new role,
-and no second gate on authority.
+anything else: no legal text was read. It is not a rollback: a stopped run is
+stopped, not undone, and what it pushed stays pushed. It adds no kill switch
+outside the API, no new role, and no second gate on authority: a stop takes a
+run's future away and grants nothing. The loop's own termination logic is
+unchanged (AGENTS.md rule 8): the stop is delivered by cancelling from outside,
+in reconcile and the loop service, not by teaching the loop a new way to end.
 
 ---
 
@@ -4110,6 +4420,10 @@ requests, and pauses it. Nothing else is a person's job. That includes
 starting discovery: a market discovery cycle runs on its fixed cadence
 whatever the pipeline holds, and another starts when the pipeline of approved
 work is empty, so the deployment never sits idle for want of approved work.
+It also includes getting unstuck: when a stream is blocked, Karakuri notices
+it, finds out why, does the work that removes the blocker, and proposes the
+change to what caused it, without a person writing an objective or editing a
+brief. The owner reads what happened, and merges or closes.
 
 **The owner's decision (2026-10-10).** Recorded here, not reopened: "All these
 streams must be managed by Karakuri itself independently. We just define an
@@ -4128,21 +4442,42 @@ whether a cycle started by an empty pipeline counts as the scheduled cycle of
 the cadence's current period, the owner answered: "No it does not count."
 Neither trigger replaces, cancels or postpones the other.
 
+**The owner's second addition (2026-10-10).** Recorded here, not reopened:
+"Karakuri should be able to do what you have done when there is a blocker."
+"You" is the person, with an assistant, who led the streams from 2026-10-04 to
+2026-10-10. What that person did at each blocker is in the list below (items
+3 to 5 and 8 to 10), and it had one shape every time: **notice** that
+something is not progressing; **diagnose** by reading the state (the pull
+request, the checks, the audit log, the branch, the coding agent's own log);
+**write a small, bounded task** for exactly that (what was found, the smallest
+fix, where to push, which tools); **run** it; **verify** the blocker is gone;
+**change the standing instruction** if it will come again; **record** what was
+done where the owner will read it. The phase has to do each of these itself.
+The owner supervises.
+
 **Acceptance criterion of the phase.** For seven consecutive days on a
 deployment running the four streams, no person resolves a checkpoint, replaces
 an objective, opens a pull request, reviews a branch by building it, or sets an
 objective's status, and no person starts a discovery cycle: each scheduled
 cycle in the seven days ran on its cadence, and each time the pipeline was
-empty with no discovery proposal open a cycle started by itself. The only
+empty with no discovery proposal open a cycle started by itself. Nor does a
+person remove a blocker: the seven days include the blockers that occur in
+them, each one removed by its stream or handed over as a backlog entry (step
+14c), and no person writes an objective, repairs a branch or edits a brief to
+get a stream moving. A blocker that needed a person restarts the count and
+becomes a backlog entry, as step 15 says. The only
 human actions are merging or closing pull
-requests, pausing a stream, and reading the oversight view. **This has to be
+requests, commenting on a proposal to correct it, pausing a stream, and
+reading the oversight view. **This has to be
 observed on a running deployment. No unit test shows it:** each step below has
 a test for its own mechanism, and the phase is finished only when step 15's
 seven days have been watched and recorded.
 
-**Why: what people did by hand, 2026-10-04 to 2026-10-10.** Seven things,
+**Why: what people did by hand, 2026-10-04 to 2026-10-10.** Ten things,
 observed by the owner on this deployment in that week. Where this proposal
 checked one against the code it says so; the rest are recorded as reported.
+Items 3 to 5 and 8 to 10 are blockers; each says how it was noticed, what was
+done and, where something was, what was changed so it would not come again.
 
 1. **Approved every plan.** All four streams run at the `propose` rung, so
    every pass stops at a checkpoint (`effectiveAuthority` in
@@ -4164,17 +4499,28 @@ checked one against the code it says so; the rest are recorded as reported.
 3. **Reviewed each pull request by building and running it.** The Phase 33
    pull request passed CI with wire names that did not interoperate with the
    real SDK. A UX pull request made `krk bogus` print help and exit 0. A person
-   running the branch caught both, and wrote a one-shot objective to fix each.
+   running the branch caught both, posted the finding on the pull request, and
+   wrote a one-shot objective from it for each: the finding, the smallest fix,
+   a failing test first, the branch to push to, the allowed tools.
    The delivery brief acts on review comments; nothing produces them.
-4. **Repaired a stream after a restart.** A loop interrupted by a shutdown came
+4. **Repaired a stream after a restart, or one holding an error checkpoint.**
+   A loop interrupted by a shutdown came
    back "paused at decide" with no pending checkpoint and its stream was
    deferred from then on; a person replaced the objective. A loop that had been
    waiting at a checkpoint re-planned after the restart and ran the new plan on
-   the old approval, leaving a stale checkpoint.
-5. **Noticed the usage limit.** When the coding agent's provider is out of
+   the old approval, leaving a stale checkpoint. A stream whose checkpoint
+   held a plan that was only an error was repaired the same way: the objective
+   was replaced by a new one from the same brief.
+5. **Noticed the usage limit, and started the cut-off work again.** When the
+   coding agent's provider is out of
    quota every action fails with `claude_code: exit 1 (stderr: )` (EB-004, read
    2026-10-09), a pass burns through its actions, and a pass cut before its
-   last action leaves a branch with no pull request; a person opened it.
+   last action leaves a branch with no pull request; a person opened it by
+   hand. This happened on several days. It was noticed from actions failing
+   with an empty reason; the time the limit resets was read from the coding
+   agent's own session log; after it, the work was started again from what
+   was already on the branch, as a "resume" objective that listed what was
+   done and what was left.
 6. **Closed finished work.** A one-shot objective that did all its work ended
    "failed" at max-iter 1 and a person set it completed (EB-002, read
    2026-10-05). Worktrees pile up under `worktrees/<objective-id>/` and a
@@ -4182,6 +4528,36 @@ checked one against the code it says so; the rest are recorded as reported.
 7. **Paced the work.** Delivery was one pass a day. "Continuous" is imitated
    with `--every 30m`, which plans (a model call) when nothing is Planned, and
    the streams compete for one provider quota in no order.
+8. **Repaired a pull request that conflicted with main.** On 2026-10-10 the
+   Phase 34 pull request conflicted with main in `docs/roadmap.md`. It was
+   noticed because the pull request reported no checks at all. A one-shot
+   objective was written to merge main into the branch keeping both sides and
+   rerun the affected tests, and the delivery brief gained a rule: a
+   conflicting pull request is broken, and merging main in is the first
+   repair action.
+9. **Turned the owner's correction into an amendment.** Three times on
+   2026-10-10 a proposal needed a correction from the owner. Each time a small
+   amendment objective was written from the owner's sentence, onto the same
+   branch and the same pull request.
+10. **Edited the brief when a cause repeated.** When the same kind of blocker
+    came twice, the brief was edited (dated branches, separate verify
+    worktrees, "repair before new work", the conflict rule) and the stream was
+    declared again from the edited brief.
+
+**The blockers, checked against the steps.** One row per case the owner
+recorded. "Missing" is what the steps did not say before the second addition;
+the last column is where it is now.
+
+| Case | Item above | Already covered by | Missing | Added as |
+|------|-----------|--------------------|---------|----------|
+| (a) A pull request that conflicts with main | 8 | Nothing. Step 6 lists branches with no pull request, step 12 lists review comments; neither looks at whether a pull request can be merged | An unmergeable pull request (conflict, or no checks reported) is work for its stream in every template; merged with main, never rebased | Step 6a |
+| (b) A defect found by running the branch | 3 | Step 11 finds it and posts it; step 12 makes the stream fix it first | That the fix starts with a failing test | One sentence in step 12 |
+| (c) A pass cut off by the usage limit | 5 | Step 8 ends the pass as deferred, with the return time where the provider gave one; step 9 starts it again; step 6 opens the pull request for what was pushed | What the "resume" objective carried: what was done and what was left. Reading the return time from the agent's own log | Step 9a |
+| (d) A stream stuck after a restart, or holding an error checkpoint | 4 | Steps 4 and 5 for the restart; Phase 36 for a plan that is only a provider's refusal; Phase 35 ends the checkpoint | An error plan from any other cause | Steps 14a and 14b (a signal, then a diagnosis) |
+| (e) A branch with no pull request | 5 | Step 6 | Nothing | |
+| (f) A correction from the owner | 9 | Nothing. Step 12 treats a comment from outside the deployment's own authors as third-party text and escalates it, and does not say who the own authors are | The owner's comment is an instruction to amend that proposal; how the owner is told apart; what happens to anybody else's comment | Step 12a |
+| (g) A repeated cause | 10 | Nothing. Step 15 writes a backlog entry, but a person does it | Karakuri files the entry itself and delivery implements the change | Step 14c |
+| Any blocker not in this list | | Step 14 shows what a stream is blocked on | Noticing, diagnosing, fixing, verifying, and stopping after a declared number of attempts | Steps 14a to 14c |
 
 **What it delivers:**
 
@@ -4206,6 +4582,16 @@ checked one against the code it says so; the rest are recorded as reported.
   beside the fixed cadence, which keeps running while approved work remains.
 - **G. One oversight view** per stream, on the digest and the existing CLI and
   web surfaces.
+- **H. A blocked stream unblocks itself.** A pull request that cannot be
+  merged is repaired by its stream, merged with main and never rebased; a pass
+  that was cut off is taken up again from its branch; the owner's comment on
+  a proposal amends that proposal. For any other blocker the stream's next
+  pass diagnoses it, writes the diagnosis down, makes the smallest fix inside
+  its own limits and verifies it. After a declared number of failed attempts
+  it stops, shows what it is blocked on and what it tried, and the backlog
+  stream files an Engineering Backlog entry, so that a repeated cause changes
+  the product through a pull request the owner merges, and not through a
+  person editing a brief.
 
 **What other phases already deliver, and this phase uses.** Each line is a
 dependency, not work repeated here.
@@ -4221,10 +4607,15 @@ dependency, not work repeated here.
   delegated coding agent (`internal/platform/tools/cliagent`), and reuses Phase
   36's reason wording so a digest has one vocabulary. It does not touch the
   planner path.
-- **Phase 37** makes a pause cancel the pass in flight and records who paused.
-  "Pause it" is one of the owner's four actions; this phase adds nothing to it.
-  Step 4 ends an interrupted loop through the same ending Phase 37 gives a
-  cancelled pass, if Phase 37 has landed, and through the loop's existing
+- **Phase 37** makes any run stoppable at any time: a pause cancels the pass
+  in flight, a one-shot loop can be stopped, one control stops everything, the
+  stop reaches a delegated coding agent's subprocess, and each stop records who
+  and why. "Pause it" is one of the owner's four actions; this phase adds
+  nothing to it. Step 4's `interrupted_by_restart` is a different ending from
+  Phase 37's stop and must not undo one: a paused objective stays paused across
+  a restart and gets no fresh pass until a person resumes it. Step 4 gives an
+  interrupted loop an ending that is not a failure in the way Phase 37 gives a
+  stopped pass one, if Phase 37 has landed, and uses the loop's existing
   failure ending if it has not.
 - **Phase 38** records how each success criterion was settled. Step 11's
   review reads that record to know what a pass claimed, and step 14 shows it;
@@ -4241,7 +4632,10 @@ dependency, not work repeated here.
 
 **Steps.** Order: A (1 to 3) before anything may act unattended; then D (4 to
 7) and E (8, 9) so an unattended stream cannot get stuck or burn quota; then B
-(10), C (11, 12), F (13), G (14) and the observation (15). Each step is one
+(10), C (11, 12), F (13), G (14) and the observation (15). The steps added
+for blockers keep the numbers of the others: 6a, 9a and 12a sit with the step
+each one completes, and the general rule H (14a to 14c) comes after the view
+that shows it and before the observation. Each step is one
 delivery pass, has its own acceptance test, and leaves the system working with
 today's behaviour for anything not yet declared.
 
@@ -4330,6 +4724,35 @@ today's behaviour for anything not yet declared.
    *Acceptance:* with a branch ahead of main and no pull request, the next pass
    of each of the four templates opens it before any other action; with the
    remote unreachable the pass reports that it could not see.
+
+   6a. **A pull request that cannot be merged is work for its stream, in every
+   template.** The observation from step 6 also lists the stream's open pull
+   requests that cannot be merged as they stand: the forge reports a conflict
+   with main, a check failed at the head, or no check was reported at the head
+   a declared time after the push (this is how the conflict on the Phase 34
+   pull request showed itself: no checks at all). Such a pull request is
+   broken, and repairing it comes before everything else in a pass: first
+   unmergeable pull requests, then branches with no pull request (step 6),
+   then review findings (step 12) and the owner's comments (step 12a), then
+   new work. For a conflict the repair is one bounded action inside the
+   stream's limits: merge main into the branch keeping both sides, rerun the
+   tests of what the merge touched, push. **Merged, never rebased:** the
+   template's limits (step 2) hold no force push, and step 3 treats a ref of
+   the stream's own branch that moved without containing its previous tip as a
+   violation. A conflict that cannot be resolved keeping both sides, a failed
+   check, and checks still missing after a clean merge are not guessed at:
+   they are blockers for step 14b. Where the adapter cannot say whether a pull
+   request can be merged it returns `ErrUnsupported` and the view shows "not
+   known" (rule 10). **Not read:** what the version-control adapter returns
+   for a pull request today.
+   *Acceptance:* against a local bare repository and a fake forge, for each of
+   the four templates: with an open pull request whose branch conflicts with
+   main in `docs/roadmap.md`, the next pass makes a merge commit that keeps
+   both sides and pushes it before any other action, and the branch's previous
+   tip is an ancestor of the new one; a plan that rebases or force-pushes is
+   refused (step 2), and a rewritten branch is caught (step 3); with no checks
+   reported after the declared time the pull request is listed as broken; an
+   adapter that cannot read the state yields "not known".
 7. **Finished ends as finished, and endings are signalled.** Depends on EB-002
    for one-shot objectives; this step does not redo it. What it adds: every
    ending this phase introduces (interrupted by restart, refused by bounds,
@@ -4377,6 +4800,26 @@ today's behaviour for anything not yet declared.
    the order. With Planned work remaining and a scheduled discovery cycle due,
    the cycle starts when the running delivery pass ends and before the next
    one.
+
+   9a. **A pass that was cut off is taken up again from its branch.** Step 8
+   ends the pass and step 9 starts the stream again when the quota is back;
+   step 6 opens the pull request for what was pushed. What is still missing is
+   what the person's "resume" objective carried: what was done and what was
+   left. The pass that follows a deferral or an `interrupted_by_restart`
+   ending is given, by reconcile in its request, the commits already on the
+   stream's branch and the success criteria the cut-off pass had not settled
+   (Phase 38's record where it exists, the plan's remaining actions where it
+   does not). It plans only what is left and never starts the item again on a
+   second branch. Where the provider gave no return time, the coding agent's
+   adapter may read it from the agent's own session log, which is where the
+   person read it; an adapter that cannot returns `ErrUnsupported` and step
+   9's backoff applies. **Not read:** `internal/platform/tools/cliagent` and
+   where that log is.
+   *Acceptance:* with a fake coding agent that reports quota exhaustion after
+   the second of four actions and a fake clock: the pass after the return time
+   receives the two commits and the unsettled criteria, plans no action for
+   what the branch already holds, pushes to the same branch, and one pull
+   request exists at the end, not two.
 10. **Proposal streams may act.** The comment on the maintainer's authority
     says zero was chosen "deliberately not a small number", because the pack
     boundary gives no guarantee: "a pack is a namespace, and stepAct resolves
@@ -4428,8 +4871,11 @@ today's behaviour for anything not yet declared.
     refused by its limits.
 12. **Review comments come before new work, in every stream.** The observation
     from step 6 also lists the stream's open pull requests with review comments
-    not yet answered by a later commit. A pass addresses those first. A comment
-    written by anyone outside the deployment's own authors is third-party
+    not yet answered by a later commit. A pass addresses those first. Where a
+    finding is about behaviour, the commit that answers it adds a test that
+    fails without the fix, as the person's one-shot objectives required. A comment
+    written by anyone outside the deployment's own authors (step 12a says who
+    they are) is third-party
     material and sets `TrustThirdParty` from what the payload holds (rule 9,
     ADR 021); it escalates as today and Phase 35 ends it if nobody answers. A
     pull request is reviewed again when its head moves, and after a declared
@@ -4439,6 +4885,40 @@ today's behaviour for anything not yet declared.
     pass of each of the four templates pushes a commit for it before any new
     work; a comment round past the declared limit produces no push and one
     "waiting for the owner" entry.
+
+    12a. **The owner's comment on a proposal is an instruction to amend it.**
+    A comment by the owner on a stream's open pull request is not third-party
+    text to escalate: it is the correction the stream was waiting for, and the
+    next pass of that stream amends the same branch and the same pull request
+    for exactly what the comment says, before any new work. It opens no second
+    pull request and needs no objective written by a person. *Who the owner
+    is:* the deployment's configured own authors, a list of forge accounts in
+    the configuration, in two kinds: the accounts Karakuri itself posts with,
+    and the owners. The comment's author is the account the forge's API
+    returns for it, never a name or a signature in the comment's text. Where
+    Karakuri and the owner post from one account (step 11 notes this case), a
+    comment from that account is the owner's when its ID is not among the
+    comments the audit log records Karakuri as having posted. Provenance is
+    set from what the payload holds (rule 9): text the owner wrote did not
+    come from outside the deployment, so it does not set `TrustThirdParty`.
+    *A comment by somebody else* stays what step 12 says: third-party text,
+    marked so, never an instruction; it escalates, Phase 35 ends the
+    checkpoint if nobody answers, and the oversight view lists it. *An
+    instruction is not authority:* the amendment is planned inside the
+    stream's limits like any other pass, and one that would need a file, a
+    branch or a tool outside them is refused (step 2) and shown as waiting for
+    the owner. The owner's comments do not count toward step 12's round limit.
+    **Not read:** whether a setting for own authors exists today; step 12
+    already relies on one, and this step defines it in `config/default.yaml`
+    if it does not.
+    *Acceptance:* against a fake forge, a discovery proposal's pull request
+    with a comment by a configured owner: the next pass pushes one amending
+    commit to the same branch, with no checkpoint and no new pull request, and
+    the observation does not carry `TrustThirdParty`. The same comment from an
+    account not in the list: no push, the observation is third-party, and it
+    escalates. From the shared account, a comment Karakuri posted itself is
+    not taken as an instruction. An owner's comment asking for a change
+    outside the declared paths: refused, one "waiting for the owner" entry.
 13. **A delivery pass starts when there is work, and costs nothing when there
     is none.** The software pack computes, without a model, whether delivery has
     work: an item on main marked Planned with no open pull request, a branch
@@ -4510,7 +4990,11 @@ today's behaviour for anything not yet declared.
     (quota and until when, a comment round limit, a violation from step 3, an
     unreadable remote, whether main's protection is known). The same data is
     one CLI listing and one web page built on what exists; no new store, since
-    a digest reads only and can be regenerated for any window. **Not read:**
+    a digest reads only and can be regenerated for any window. "Pause" and
+    "stop" are the owner's controls and are delivered by Phase 37, not here:
+    this view shows a stream that was paused or a pass that was stopped, with
+    who and why from Phase 37's record, and links to those controls where
+    Phase 37 has put them. **Not read:**
     `internal/feature/report`, the CLI's commands and the web pages; the step
     picks the surfaces after reading them and updates `docs/openapi.yaml` for
     any field it adds.
@@ -4518,15 +5002,138 @@ today's behaviour for anything not yet declared.
     lists exactly the seeded passes, refusals, waiting pull requests and
     blocks per stream; regenerating it for the same window gives the same
     content.
+
+    14a. **A blocked stream is known to be blocked.** The seven cases are only
+    the ones seen so far, so the phase needs the general rule and not seven
+    special ones. A stream is blocked when a pass ended without progress for a
+    reason that is not "nothing to do" (step 13's reading says there is work,
+    or the pass itself was the work). The signals are ones the code or the
+    earlier steps already produce, read without a model: a failed verify; a
+    plan refused by the bounds (step 2) or a plan that is only an error (Phase
+    36); a pull request that cannot be merged (step 6a); a deferred pass
+    (`Deferred` in `internal/feature/reconcile/run.go`, seen by search); a
+    violation from step 3; and no new commit on the stream's branch after a
+    declared number of passes that had work. A blocker has an identity, its
+    kind and its subject (the pull request, the branch or the item), so "the
+    same blocker" can be counted, and the count of attempts on it is kept with
+    the stream. A deferral for quota is a blocker whose remedy is already
+    known and costs nothing, waiting (steps 8 and 9): it is shown, and no pass
+    is spent on it. This step only detects, counts and shows; it changes no
+    behaviour. It lives in `internal/feature/reconcile`, which already decides
+    whether a pass runs (rule 8). **Not read:** how a failed verify and a
+    stored run's outcome reach reconcile.
+    *Acceptance:* a table test over seeded runs: each signal above yields one
+    blocker with its kind and subject; a pass that ended because nothing was
+    Planned yields none; the same signal on the same subject in two passes is
+    one blocker with a count of two, on two subjects it is two blockers; the
+    oversight view of step 14 lists them.
+
+    14b. **A blocked stream unblocks itself.** On a blocker other than quota,
+    the stream's next pass is a diagnose-and-fix pass. Reconcile writes the
+    blocker into the request of an ordinary pass; the loop is not taught
+    anything (rule 8). The pass (1) reads the state the person read: the pull
+    request, its checks, the audit log, the branch, and the coding agent's own
+    log where the adapter can give it; (2) writes the diagnosis down before
+    acting, in the audit log and as a comment on the stream's pull request
+    where one exists, so the owner reads what was found whether or not the
+    fix works; (3) plans the smallest bounded action for exactly that: what
+    was found, the smallest fix, a failing test first where it is about
+    behaviour, the branch to push to, the tools; (4) runs it; (5) verifies
+    that the blocker is gone by reading again, without a model, the signal
+    that raised it. **It never widens its own limits to get unblocked:** the
+    pass runs under the same `effectiveAuthority` as any other pass of the
+    stream (steps 1 to 3); a fix that needs more is refused by step 2 and is a
+    failed attempt. *A blocker seen before is handled by its recorded remedy.*
+    Where remedies live, after reading the memory code: **not in procedural
+    memory as it stands**, which holds a success and a failure count per agent
+    and capability and no text (`MemoryProceduralModel` in
+    `internal/platform/db/schema/models.go`, written in
+    `internal/feature/loop/learn.go`). Two places that exist are used and no
+    store is added. The remedies for the kinds this phase already knows are
+    the steps themselves, declared by the pack: a conflict is step 6a, a
+    branch with no pull request step 6, a cut-off pass step 9a, a finding
+    step 12, the owner's correction step 12a. A remedy a diagnose-and-fix
+    pass found, and step (5) confirmed, is stored as a semantic memory entry
+    of the stream's agent (that tier has a domain, a text and sources:
+    `MemorySemanticModel`), with the blocker's kind as its domain and the
+    audit rows as its sources; the next pass on a blocker of that kind recalls
+    it. A recalled remedy is a hint to the planner and gives no authority: the
+    plan made from it passes the same limits. A remedy that fails when reused
+    is marked so and not recalled again. **Not read:** `internal/feature/memory`
+    beyond the head of `Consolidate`, and how a pass recalls semantic entries;
+    if a pass cannot recall by domain, the first slice is that.
+    *Acceptance:* with a fake provider and a fixture repository: a stream
+    whose verify fails gets, as its next pass, one whose request carries the
+    blocker; the diagnosis is in the audit log before the first action; the
+    pass ends with the signal clear and the attempt count reset. A second
+    blocker of the same kind recalls the stored remedy (the test asserts it
+    was in what the planner read). A fix that needs a tool outside the limits
+    is refused and counted as a failed attempt, with the limits unchanged.
+    While the quota state is "out" no diagnose-and-fix pass starts.
+
+    14c. **A blocker the stream cannot remove, or that comes back, becomes a
+    backlog entry.** After a declared number of failed attempts on the same
+    blocker (three as a first guess, on the template) the stream stops trying.
+    Its status is `blocked`, the oversight view shows "blocked on <diagnosis>,
+    tried <what>", and no further pass is spent on that blocker. A failed
+    diagnose-and-fix pass counts toward this limit and not toward the circuit
+    breaker, so the stream ends with a diagnosis in the view and not with a
+    breaker checkpoint that has none. The `engineering_backlog` stream's
+    observation lists such blockers, and its next pass files an Engineering
+    Backlog entry with the evidence (the blocker, the diagnosis, each attempt
+    and its audit rows, and the change to the product it proposes) on its own
+    branch and pull request. The same happens, without the stream being
+    stopped, when a blocker of one kind was removed for the second time inside
+    a declared window: it was fixed, and it will come again. One entry per
+    kind; later occurrences add evidence to it. That is how case (g) becomes
+    Karakuri's own work: the person edited the brief and re-declared the
+    stream; here the proposal to change the brief, the template or the code is
+    a backlog entry, the owner's merge approves it, and the delivery stream
+    implements it like any other Planned item. A stream's standing instruction
+    changes only through such a merged pull request, never by the stream
+    writing to it while it runs. Only after the entry is filed is it the
+    owner's turn. **Not read:** the stream briefs, and where a brief is stored.
+    *Acceptance:* with a fake provider whose fix never clears the signal: after
+    the declared number of attempts no further pass starts for that blocker,
+    `ConsecutiveFailures` is unchanged by them, the view shows the diagnosis
+    and the attempts, and the next backlog pass adds one entry carrying them. A
+    blocker of one kind cleared twice inside the window adds one entry and
+    leaves the stream running; a third occurrence adds evidence to that entry
+    and no second one.
 15. **The seven days.** Declare the four streams and the review objective on a
     deployment with Phase 35's duration set, at `act_with_notice`. For seven
     consecutive days, record from the audit log every action whose actor is a
-    person. The phase is Completed when those are only merges, closes, pauses
-    and reads. Anything else is written into the Engineering Backlog with its
-    evidence and the seven days start again after its fix.
+    person, and every blocker of step 14a with how it was removed. The phase
+    is Completed when the first are only merges, closes, pauses and reads,
+    comments on a proposal included (step 12a makes a comment the owner's way
+    of correcting one). A blocker the stream removed itself does not restart
+    the count; one it handed over through step 14c does not either, as long
+    as the owner's part was a merge or a close. Anything else, a blocker that
+    needed a person among it, is written into the Engineering Backlog with its
+    evidence (by step 14c, or by the person if Karakuri did not file it, which
+    is then a second finding) and the seven days start again after its fix. A
+    week in which no blocker occurred passes the criterion and shows nothing
+    about steps 14a to 14c; the record says so.
     *Acceptance:* the record itself, attached to the pull request that marks
     this phase Completed. This step has no automated test and must not be given
     one that pretends to be it.
+
+**What a stream may not do to unblock itself.** Being blocked gives no
+authority. Whatever the diagnosis, a stream does not:
+
+- merge a pull request, its own or another's;
+- push to main, or force-push or rebase any branch;
+- widen its limits, or plan an action outside them "this once";
+- edit the limits of its own template or of another stream's while it runs (a
+  change to a template or a brief arrives as a merged pull request, step 14c);
+- delete a branch, or close a pull request;
+- skip, delete or weaken a test, or a check, to make a verify pass;
+- answer its own checkpoint, or another stream's.
+
+Each of these is either outside every template's limits (steps 2 and 3
+refuse or catch it) or has no tool in any stream's hands. A fix that needs
+one of them is a failed attempt, and after the declared number the blocker is
+the owner's (step 14c).
 
 **What this does not do.**
 
@@ -4564,6 +5171,32 @@ today's behaviour for anything not yet declared.
 - **Review loops.** Author and reviewer can trade commits and comments without
   end and spend quota doing it. Step 12's round limit bounds it; the number is
   a guess until step 15 shows real rounds.
+- **A stream that "fixes" by doing the wrong thing.** A diagnosis is a model's
+  reading and can be wrong: a conflict resolved by dropping one side, a
+  failing test made to pass by changing what it asserts, a finding answered
+  by a commit that only quiets it. What bounds this is that the fix runs
+  inside the same limits, that step 14b verifies by reading the signal again
+  and not by asking the model, that the diagnosis is written down before the
+  action so the owner can read what the stream believed, and that the review
+  of step 11 runs on the new head. None of these catches a wrong fix that
+  leaves every signal clear; the owner's merge still does, or does not. A
+  wrong remedy that was stored is reused until it fails once (step 14b).
+  Weakening a test is forbidden above, and no step can yet detect it
+  mechanically: it is left to the review and the owner.
+- **A fix loop that burns quota.** A stream that keeps diagnosing and failing
+  spends a pass each time. It is bounded twice: by the attempt limit of step
+  14c, after which no pass is spent on that blocker, and by the quota state
+  of steps 8 and 9, under which no diagnose-and-fix pass starts while the
+  provider is out and repair passes take their stream's place in the declared
+  order and no extra one. The attempt limit is a guess until step 15 shows
+  real blockers. A blocker whose identity changes on every pass (a new
+  subject each time) would escape the count; step 14a's "no new commit after
+  N passes" signal is the one that still catches it.
+- **The owner is told apart by an account.** Step 12a trusts the forge's
+  author field and a configured list. A wrong list, or an owner's account in
+  somebody else's hands, turns third-party text into an instruction. The
+  instruction still cannot leave the stream's limits, and the result is
+  still a pull request the owner merges or closes.
 - **A timeout rejection may demote.** `demote` drops a rung on a reviewer's
   rejection. Whether a `system:timeout` rejection (Phase 35) counts as one was
   not read. If it does, a stream at `act_with_notice` falls back to `propose`
@@ -4591,7 +5224,13 @@ today's behaviour for anything not yet declared.
   `authority.go`, `internal/platform/tools/cliagent`, `internal/feature/report`,
   the CLI and web sources, ADR 017, the stream briefs, and the full text of
   Phases 34 to 39 (their goals and openings were read, and Phase 35 whole).
-  Every step that touches one of these begins by reading it.
+  Every step that touches one of these begins by reading it. For the second
+  addition, read: the procedural and semantic memory models in
+  `internal/platform/db/schema/models.go`, where `internal/feature/loop/learn.go`
+  writes procedural memory, and the head of `Consolidate` in
+  `internal/feature/memory/service.go`. Not read: how a pass recalls memory,
+  the version-control adapter's pull request state, and any setting for the
+  deployment's own authors.
 
 ---
 
@@ -4646,9 +5285,11 @@ Phase 39 is ordered by one dependency and one preference.
 
 - **Phase 39** (autonomous packs behind one gateway) depends on **Phase 34**: the credential the gateway sends a pack is Phase 34's delegation credential, and the delegated agent is one of the gateway's two callers. Only its step 6 needs that credential; steps 1 to 5 could start earlier. It is better started after **Phase 33** than before, because the pack's in-process server is written against the MCP revision the client speaks, but nothing in it requires Phase 33. Inside the phase the gateway comes first so that every later step moves a capability onto a path that already carries the audit, quota and authority checks, and the conformance suite comes last because it tests a contract the earlier steps are still settling ([ADR 028](adr/028-packs-are-autonomous-behind-one-gateway.md)).
 
+Phase 37 is ordered by the owner's requirement of 2026-10-10 ("We should be able to stop any run anytime."): it depends only on phases already shipped (**Phase 14** for the permission, **Phase 20** for the pause it extends, **Phase 31** for the export), blocks nothing, and is better landed before **Phase 40**'s seven days, because a stream nobody is watching is the run a person most needs to be able to stop.
+
 Phase 40 is ordered by what must be true before a stream runs with nobody watching.
 
-- **Phase 40** (streams that run without a coordinator) depends on **Phase 20** for standing objectives and the autonomy ladder and on **Phase 21** for the digest its oversight view extends. Its seven-day acceptance needs **Phase 35**, because with no coordinator an escalation that is not a bounds refusal is answered by nobody and must end by itself. It reuses **Phase 36**'s wording for a provider's refusal at a different seam (the delegated coding agent, not the planner), ends an interrupted loop the way **Phase 37** ends a cancelled pass, and reads **Phase 38**'s record of how criteria were settled; none of the three blocks its first steps. It leaves worktree cleanup to **Phase 39**'s lifecycle signals and only emits them, and it depends on backlog entries **EB-002** and **EB-004**. Inside the phase the order is load-bearing: bounds enforced by code (steps 1 to 3) come before anything acts unattended, recovery and quota (steps 4 to 9) before a proposal stream is allowed to act (step 10), and the observation (step 15) last.
+- **Phase 40** (streams that run without a coordinator) depends on **Phase 20** for standing objectives and the autonomy ladder and on **Phase 21** for the digest its oversight view extends. Its seven-day acceptance needs **Phase 35**, because with no coordinator an escalation that is not a bounds refusal is answered by nobody and must end by itself. It reuses **Phase 36**'s wording for a provider's refusal at a different seam (the delegated coding agent, not the planner), ends an interrupted loop the way **Phase 37** ends a stopped pass (not as a failure), and reads **Phase 38**'s record of how criteria were settled; none of the three blocks its first steps. It leaves worktree cleanup to **Phase 39**'s lifecycle signals and only emits them, and it depends on backlog entries **EB-002** and **EB-004**. Inside the phase the order is load-bearing: bounds enforced by code (steps 1 to 3) come before anything acts unattended, recovery and quota (steps 4 to 9) before a proposal stream is allowed to act (step 10), and the observation (step 15) last.
 
 ---
 

@@ -14,7 +14,16 @@ import (
 
 type Pack struct {
 	tools *tools.Registry
+	// issuer mints the credential a delegation holds for Karakuri's own MCP
+	// tools; nil until AttachDelegationIssuer.
+	issuer delegationIssuer
 }
+
+// AttachDelegationIssuer gives the CLI environment the issuer for delegation
+// credentials. It is separate from the constructor because the pack is built
+// before the auth stack the issuer signs with; environments built afterwards
+// see it.
+func (p *Pack) AttachDelegationIssuer(issuer delegationIssuer) { p.issuer = issuer }
 
 // New constructs a software domain pack without tool adapters — environments
 // fall back to no-op behavior. Used by tests and the conformance suite.
@@ -40,7 +49,21 @@ func (p *Pack) Capabilities() []capability.Capability {
 }
 
 func (p *Pack) EnvironmentFactories() []environment.Factory {
-	return append(softwareEnvironmentFactories(p.tools), platformTelemetryFactory())
+	factories := softwareEnvironmentFactories(p.tools)
+	for i, f := range factories {
+		if f.EnvID != "software.env.cli_agent" {
+			continue
+		}
+		build := f.Build
+		factories[i].Build = func(ctx environment.BuildContext) (environment.Environment, error) {
+			env, err := build(ctx)
+			if cli, ok := env.(*cliEnv); ok {
+				cli.issuer = p.issuer
+			}
+			return env, err
+		}
+	}
+	return append(factories, platformTelemetryFactory())
 }
 
 func (p *Pack) AgentDefinitions() []agent.Definition {

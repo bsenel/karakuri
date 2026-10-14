@@ -57,6 +57,9 @@ func (c *CursorCLI) Delegate(ctx context.Context, in DelegateInput) (DelegateOut
 }
 
 func (c *CursorCLI) Stream(ctx context.Context, in DelegateInput) (<-chan DelegateChunk, error) {
+	if in.MCP != nil {
+		return nil, fmt.Errorf("cursor_cli: cannot attach an MCP server for one run")
+	}
 	args := []string{"--print", "--output-format=stream-json"}
 	if len(in.AllowedTools) > 0 {
 		args = append(args, "--allowed-tools="+strings.Join(in.AllowedTools, ","))
