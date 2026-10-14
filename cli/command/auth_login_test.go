@@ -38,6 +38,30 @@ func TestLoginMissingFlagSaysWhatToType(t *testing.T) {
 	}
 }
 
+// --password-stdin with nothing piped in says how to pipe the password, for
+// both the login and the user it creates.
+func TestPasswordStdinEmptySaysHowToPipe(t *testing.T) {
+	for _, args := range [][]string{
+		{"auth", "login", "--id", "alice", "--password-stdin"},
+		{"auth", "users", "add", "--id", "bob", "--password-stdin"},
+	} {
+		root := NewRoot()
+		root.SetArgs(append([]string{"--api-url", "http://127.0.0.1:1"}, args...))
+		root.SetIn(strings.NewReader(""))
+		root.SetOut(io.Discard)
+		root.SetErr(io.Discard)
+		err := root.Execute()
+		if err == nil {
+			t.Fatalf("krk %v succeeded, want an error", args)
+		}
+		for _, want := range []string{"no password on stdin", "--password-stdin reads it from the first line of standard input", "< password.txt", `echo "$PW" |`} {
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("krk %v error = %q, want it to mention %q", args, err, want)
+			}
+		}
+	}
+}
+
 // Creating a principal or a binding with a flag missing gets the same help as
 // a login does: the command to type, not only the name of the flag.
 func TestAuthAddMissingFlagSaysWhatToType(t *testing.T) {
