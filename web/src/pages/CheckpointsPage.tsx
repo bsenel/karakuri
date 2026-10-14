@@ -9,6 +9,9 @@ export function CheckpointsPage() {
   const [items, setItems] = useState<Checkpoint[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  // Whether the queue has been read at least once. `err` alone cannot say:
+  // a failed resolve sets it too, and the queue is still known then.
+  const [loaded, setLoaded] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [modifying, setModifying] = useState<Checkpoint | null>(null);
 
@@ -17,10 +20,17 @@ export function CheckpointsPage() {
       const list = await api.get<Checkpoint[]>('/checkpoints');
       setItems(list ?? []);
       setErr(null);
+      setLoaded(true);
     } catch (e) { setErr(describe(e)); }
     finally { setLoading(false); }
   };
   useEffect(() => { void load(); }, []);
+
+  const retry = () => {
+    setErr(null);
+    setLoading(true);
+    void load();
+  };
 
   const resolve = async (id: string, decision: 'approve' | 'reject') => {
     setBusy(id);
@@ -45,6 +55,7 @@ export function CheckpointsPage() {
       </p>
 
       {err && <p className="pill red" role="alert">{err}</p>}
+      {err && !loaded && <p><button onClick={retry}>Retry</button></p>}
 
       <div className="col" style={{ marginTop: 16 }}>
         {/* Neither "not loaded yet" nor "could not load" is "nothing pending":
