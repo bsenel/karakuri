@@ -36,6 +36,21 @@ describe('ArtifactsPage', () => {
     expect(screen.queryByText(/No artifacts/)).not.toBeInTheDocument();
   });
 
+  it('offers a retry when the list could not be read, and loads it again', async () => {
+    get.mockRejectedValueOnce(new Error('API 503: store unavailable'));
+    get.mockResolvedValueOnce([]);
+
+    render(<ArtifactsPage />);
+    await waitFor(() => expect(screen.getByText('Could not load artifacts.')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    await waitFor(() => expect(screen.getByText(/No artifacts yet/)).toBeInTheDocument());
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Retry' })).not.toBeInTheDocument();
+    expect(get).toHaveBeenCalledTimes(2);
+    expect(get).toHaveBeenLastCalledWith('/artifacts');
+  });
+
   it('says the list is empty once the server has answered with none', async () => {
     // The server answers a nil slice as null.
     get.mockResolvedValue(null);
