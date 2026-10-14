@@ -43,6 +43,15 @@ describe('TwinDetailPage', () => {
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
+  it('says there is nothing to bind when the server has no adapters', async () => {
+    get.mockImplementation(answer);
+
+    renderPage();
+    await waitFor(() =>
+      expect(screen.getByText(/No adapters are configured on this server/)).toBeInTheDocument(),
+    );
+  });
+
   it('keeps the twin on screen when saving bindings fails', async () => {
     get.mockImplementation(answer);
     put.mockRejectedValue(new Error('API 500: boom'));
