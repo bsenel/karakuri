@@ -8,6 +8,12 @@ your contribution will be distributed under:
 
 Please review HALA.md before contributing.
 
+## Pull request titles
+
+A pull request title is a Conventional Commits header, `<type>(<scope>): <summary>` (`!` before the colon for a breaking change), for example `fix(cli): shift audit export window to the requested hours (EB-003)`. Types: `feat` (minor), `fix` and `perf` (patch), `docs`, `refactor`, `test`, `build`, `ci`, `chore` (no release).
+The repository squash-merges, so the title becomes the commit on main, and the version is derived from those commits.
+The `PR title` check (`.github/workflows/pr-title.yml`) runs `software.ValidPullRequestTitle`; try a title with `go run ./cmd/prtitle '<title>'`.
+
 ## Reviewing Dependabot pull requests
 
 Every Dependabot PR gets a human eyes-on review before merge — no exceptions, no "trivial" bypass, no auto-approval. Patch bumps, group bumps, lockfile-only updates: all reviewed the same way.

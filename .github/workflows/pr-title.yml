@@ -1,0 +1,45 @@
+name: PR title
+
+# This repository squash-merges, so a pull request's title becomes the commit
+# on main, and the version is derived from those commits. The title therefore
+# has to be a Conventional Commits header: <type>(<scope>): <summary>.
+#
+# A file of its own rather than a job in ci.yml: a title fixed after the fact
+# has to turn this check green without a new commit, which needs the `edited`
+# trigger, and adding `edited` to ci.yml would rerun the whole build on every
+# title or description edit.
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+    # The same filter as ci.yml, so a stacked PR is checked too.
+    branches: [main, "claude/**"]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  title:
+    name: PR title
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.x"
+          cache: true
+      # The decision is software.ValidPullRequestTitle, the same function the
+      # pack's planner hint is tested against; nothing here repeats the
+      # pattern. cmd/prtitle does not import the embedded SPA, so there is no
+      # frontend build to wait for.
+      #
+      # The title is text the author controls. It reaches the step through
+      # the environment and is never interpolated into the script.
+      - name: Check the title
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: go run ./cmd/prtitle
