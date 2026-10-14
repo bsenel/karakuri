@@ -25,6 +25,20 @@ type DelegateInput struct {
 	Env map[string]string
 	// Timeout caps the subprocess wall-clock; 0 means inherit ctx deadline.
 	TimeoutSeconds int
+	// MCP optionally attaches one MCP server to this run only. Nil means none.
+	MCP *MCPAttachment
+}
+
+// MCPAttachment names one MCP server a CLI agent may call for one run.
+type MCPAttachment struct {
+	// ServerName is the name the CLI knows the server by.
+	ServerName string
+	// URL is the server's HTTP endpoint.
+	URL string
+	// Token is the bearer credential for this run; it never goes on the command line.
+	Token string
+	// Tools are the server's tool names the action asked for (e.g. "audit_list").
+	Tools []string
 }
 
 // DelegateOutput is what the CLI agent returns to the loop.

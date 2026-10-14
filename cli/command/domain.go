@@ -56,7 +56,7 @@ func domainCapabilitiesCmd() *cobra.Command {
 		Short: "List the capabilities domain packs provide",
 		Example: `  krk domain capabilities
   krk domain capabilities --domain software`,
-		RunE: func(_ *cobra.Command, _ []string) error {
+		RunE: func(c *cobra.Command, _ []string) error {
 			path := "/domains/capabilities"
 			if domain != "" {
 				path += "?domain=" + domain
@@ -65,7 +65,7 @@ func domainCapabilitiesCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			client.PrintOutput(data, output)
+			printList(c, data, "capabilities")
 			return nil
 		},
 	}
