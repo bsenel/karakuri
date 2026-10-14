@@ -50,6 +50,9 @@ func (g *GeminiCLI) Delegate(ctx context.Context, in DelegateInput) (DelegateOut
 }
 
 func (g *GeminiCLI) Stream(ctx context.Context, in DelegateInput) (<-chan DelegateChunk, error) {
+	if in.MCP != nil {
+		return nil, fmt.Errorf("gemini_cli: cannot attach an MCP server for one run")
+	}
 	args := []string{"--prompt", in.Prompt}
 
 	ch := make(chan DelegateChunk, 16)
