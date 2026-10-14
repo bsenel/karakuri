@@ -5,9 +5,12 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 
 	"github.com/tmc/langchaingo/llms"
 	"github.com/tmc/langchaingo/llms/anthropic"
+
+	coreerrors "github.com/bsenel/karakuri/internal/core/errors"
 )
 
 // ClaudeProvider wraps Anthropic's Claude models via LangChain Go's anthropic
@@ -79,7 +82,7 @@ func (c *ClaudeProvider) Complete(ctx context.Context, req CompletionRequest) (C
 			llms.WithMaxTokens(req.MaxTokens),
 		)
 		if err != nil {
-			return CompletionResponse{}, err
+			return CompletionResponse{}, classifyClaudeError(err)
 		}
 		return CompletionResponse{Content: resp, TokensUsed: len(resp) / 4}, nil
 	}
@@ -101,6 +104,18 @@ func (c *ClaudeProvider) Stream(ctx context.Context, req CompletionRequest) (<-c
 		ch <- CompletionChunk{Content: resp.Content, Done: true}
 	}()
 	return ch, nil
+}
+
+// classifyClaudeError names a rate limit as the domain's
+// ErrProviderRateLimited (Phase 36) and returns any other error unchanged.
+// langchaingo v0.1.14's anthropic client reports a non-200 as text holding the
+// status code, which anthropic.MapError may turn into an *llms.Error; neither
+// keeps the Retry-After header, so RetryAfter stays zero.
+func classifyClaudeError(err error) error {
+	if llms.IsRateLimitError(err) || strings.Contains(err.Error(), "status code: 429") {
+		return &coreerrors.ProviderRateLimitError{Provider: "claude", Cause: err}
+	}
+	return err
 }
 
 func lastUserMessage(msgs []Message) string {

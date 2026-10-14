@@ -3,6 +3,7 @@ package loop
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"sort"
@@ -13,6 +14,7 @@ import (
 	"github.com/bsenel/karakuri/internal/core/capability"
 	corecheckpoint "github.com/bsenel/karakuri/internal/core/checkpoint"
 	"github.com/bsenel/karakuri/internal/core/environment"
+	coreerrors "github.com/bsenel/karakuri/internal/core/errors"
 	"github.com/bsenel/karakuri/internal/core/event"
 	"github.com/bsenel/karakuri/internal/core/loop"
 )
@@ -89,7 +91,21 @@ func stepReason(ctx context.Context, sc *stepContext, ws loop.WorldState) plan {
 	// 3. Call agent
 	output, err := sc.agent.Run(ctx, input)
 
+	// 3a. A provider's rate limit is not a plan (Phase 36): wait once within
+	// a small cap and retry; if it refuses again, end the iteration with a
+	// reason that names the limit instead of a placeholder to approve.
 	var p plan
+	if errors.Is(err, coreerrors.ErrProviderRateLimited) {
+		slog.Warn("model provider rate limited; retrying once",
+			"loop", sc.loopID, "objective", string(sc.obj.ID), "err", err)
+		sc.waitBeforeRetry(ctx, rateLimitWait(err))
+		output, err = sc.agent.Run(ctx, input)
+		if errors.Is(err, coreerrors.ErrProviderRateLimited) {
+			p.endReason = "model provider rate limit: " + err.Error()
+			p.Reasoning = p.endReason
+		}
+	}
+
 	if err == nil {
 		// 4. Try to parse output as JSON plan. Tolerates Markdown code
 		// fences and leading/trailing prose — most chat models default to
@@ -141,7 +157,7 @@ func stepReason(ctx context.Context, sc *stepContext, ws loop.WorldState) plan {
 			}
 		}
 		p.provider, p.model = output.Provider, output.Model
-	} else {
+	} else if p.endReason == "" {
 		// On error create a minimal plan
 		p = plan{
 			Actions: []plannedAction{
@@ -194,6 +210,34 @@ func stepReason(ctx context.Context, sc *stepContext, ws loop.WorldState) plan {
 	})
 
 	return p
+}
+
+// maxRateLimitWait caps the one wait before retrying a rate-limited call.
+const maxRateLimitWait = 30 * time.Second
+
+// defaultRateLimitWait is used when the provider's answer gave no retry-after.
+const defaultRateLimitWait = 5 * time.Second
+
+func rateLimitWait(err error) time.Duration {
+	var rl *coreerrors.ProviderRateLimitError
+	if !errors.As(err, &rl) || rl.RetryAfter <= 0 {
+		return defaultRateLimitWait
+	}
+	return min(rl.RetryAfter, maxRateLimitWait)
+}
+
+// waitBeforeRetry sleeps d, or until ctx is done.
+func (sc *stepContext) waitBeforeRetry(ctx context.Context, d time.Duration) {
+	if sc.sleep != nil {
+		sc.sleep(ctx, d)
+		return
+	}
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-ctx.Done():
+	case <-t.C:
+	}
 }
 
 // reflexionPass runs a two-stage self-correction on top of an initial plan:
