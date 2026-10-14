@@ -116,7 +116,7 @@ func quotaRequestsListCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			printList(c, data, "quota requests")
+			printList(c, data, "quota requests", "krk quota request")
 			return nil
 		},
 	}

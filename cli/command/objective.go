@@ -90,7 +90,7 @@ func objectiveListCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			printList(c, data, "objectives")
+			printList(c, data, "objectives", "krk objective create")
 			return nil
 		},
 	}
@@ -112,7 +112,7 @@ func objectiveTemplatesCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			printList(c, data, "objective templates")
+			printList(c, data, "objective templates", "")
 			return nil
 		},
 	}

@@ -126,7 +126,7 @@ fresh deployment is in.`,
 			if err != nil {
 				return err
 			}
-			printList(c, data, "stored tier limits")
+			printList(c, data, "stored tier limits", "krk quota set")
 			return nil
 		},
 	}

@@ -129,7 +129,7 @@ func containerListCmd(kind, short string) *cobra.Command {
 			if kind == "org" {
 				plural = "organisations" // the word the help and the web UI use
 			}
-			printList(c, data, plural)
+			printList(c, data, plural, "krk "+kind+" create")
 			return nil
 		},
 	}

@@ -25,7 +25,7 @@ func domainListCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			printList(c, data, "domain packs")
+			printList(c, data, "domain packs", "")
 			return nil
 		},
 	}

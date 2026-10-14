@@ -9,11 +9,11 @@ func TestLaterEmptyListsSaySo(t *testing.T) {
 		args []string
 		want string
 	}{
-		{[]string{"org", "list"}, "No organisations.\n"},
-		{[]string{"team", "list"}, "No teams.\n"},
-		{[]string{"project", "list"}, "No projects.\n"},
-		{[]string{"report", "list"}, "No digest schedules.\n"},
-		{[]string{"quota", "requests", "list"}, "No quota requests.\n"},
+		{[]string{"org", "list"}, "No organisations. Create one with: krk org create\n"},
+		{[]string{"team", "list"}, "No teams. Create one with: krk team create\n"},
+		{[]string{"project", "list"}, "No projects. Create one with: krk project create\n"},
+		{[]string{"report", "list"}, "No digest schedules. Create one with: krk report create\n"},
+		{[]string{"quota", "requests", "list"}, "No quota requests. Create one with: krk quota request\n"},
 		{[]string{"domain", "list"}, "No domain packs.\n"},
 		{[]string{"audit"}, "No audit entries.\n"},
 		{[]string{"audit", "--violations-only"}, "No audit entries.\n"},
