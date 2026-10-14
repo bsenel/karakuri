@@ -6,6 +6,27 @@ import (
 	"testing"
 )
 
+// An empty pipe (an unset $PW, an empty file) is not a missing flag, so the
+// error says what was read and shows how a password gets onto stdin.
+func TestLoginEmptyStdinSaysHowToPipe(t *testing.T) {
+	for _, in := range []string{"", "\n", "\r\n"} {
+		root := NewRoot()
+		root.SetArgs([]string{"--api-url", "http://127.0.0.1:1", "auth", "login", "--id", "alice", "--password-stdin"})
+		root.SetIn(strings.NewReader(in))
+		root.SetOut(io.Discard)
+		root.SetErr(io.Discard)
+		err := root.Execute()
+		if err == nil {
+			t.Fatalf("login with stdin %q succeeded, want an error", in)
+		}
+		for _, want := range []string{"no password on stdin", "was empty", "--password-stdin < password.txt", "not empty"} {
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("login with stdin %q error = %q, want it to mention %q", in, err, want)
+			}
+		}
+	}
+}
+
 // `krk auth login` is where "not logged in" sends a new user, so a login that
 // is missing a flag names every way in and shows the command to type.
 func TestLoginMissingFlagSaysWhatToType(t *testing.T) {
