@@ -1,6 +1,9 @@
 package command
 
 import (
+	"bytes"
+	"fmt"
+
 	"github.com/bsenel/karakuri/cli/client"
 	"github.com/spf13/cobra"
 )
@@ -22,7 +25,7 @@ func memoryRecallCmd() *cobra.Command {
 		Short: "Search an agent's memory for entries matching a query",
 		Example: `  krk memory recall --agent agent_42 --query "login test flakiness"
   krk memory recall --agent agent_42 --query "deploy steps" --tier procedural --top-k 10`,
-		RunE: func(_ *cobra.Command, _ []string) error {
+		RunE: func(c *cobra.Command, _ []string) error {
 			tiers := []string{"episodic"}
 			if tier != "" {
 				tiers = []string{tier}
@@ -37,6 +40,13 @@ func memoryRecallCmd() *cobra.Command {
 				return err
 			}
 			client.PrintOutput(data, output)
+			// A recall that matched nothing is not a list waiting for a create
+			// command, so it says what to change instead, as the web UI does.
+			if output == "pretty" {
+				if body := string(bytes.TrimSpace(data)); body == "null" || body == "[]" {
+					fmt.Fprintln(c.ErrOrStderr(), "No memories matched. Try a broader --query or another --tier.")
+				}
+			}
 			return nil
 		},
 	}
