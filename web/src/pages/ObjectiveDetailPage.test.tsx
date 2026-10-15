@@ -65,4 +65,17 @@ describe('ObjectiveDetailPage', () => {
     await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('API 500: boom'));
     expect(screen.getByRole('heading', { name: 'Ship the docs' })).toBeInTheDocument();
   });
+
+  it('announces the run status once the loop reports it', async () => {
+    const status = { loop_id: 'l1', objective_id: 'o1', iteration: 2, paused: false, completed: true };
+    // The page asks for the objective and then polls the loop; answer each by path.
+    get.mockImplementation((path: string) => Promise.resolve(path.startsWith('/loops/') ? status : objective));
+    post.mockResolvedValue({ loop_id: 'l1' });
+
+    renderPage();
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Ship the docs' })).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: 'Start loop' }));
+
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('iteration 2 · completed'));
+  });
 });
