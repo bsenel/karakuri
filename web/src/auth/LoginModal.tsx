@@ -36,8 +36,8 @@ export function LoginModal() {
 
   return (
     <div className="modal-overlay">
-      <div className="modal">
-        <h2 style={{ marginTop: 0 }}>Karakuri</h2>
+      <div className="modal" role="dialog" aria-modal="true" aria-labelledby="login-title">
+        <h2 id="login-title" style={{ marginTop: 0 }}>Karakuri</h2>
         <p className="muted small">
           Sign in to continue. On a fresh install the server creates an{' '}
           <code>admin</code> account with the password from{' '}
@@ -75,7 +75,8 @@ export function LoginModal() {
               onChange={(e) => setPassword(e.target.value)}
             />
           </div>
-          {error && <p className="pill red">{error}</p>}
+          {/* role=alert, so a rejected password is read out rather than only shown. */}
+          {error && <p className="pill red" role="alert">{error}</p>}
           <button type="submit" className="primary" disabled={busy || !id || !password}>
             {busy ? 'Signing in…' : 'Sign in'}
           </button>
