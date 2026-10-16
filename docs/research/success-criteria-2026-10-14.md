@@ -185,3 +185,30 @@ The pages were read through a fetch tool that summarises each page against a que
   - Codecov status checks (project and patch targets, auto target, threshold, base comparison, behaviour when the base report is missing)
   - GitHub required status checks (behaviour when a required check never reports)
 - Sections 4 to 7 belong to later research actions and were not attempted in part one.
+
+**Read first-hand on 2026-10-16** (research part two, sections 4 and 7):
+- Inspect AI: https://inspect.aisi.org.uk/scorers.html, https://inspect.aisi.org.uk/reference/inspect_ai.scorer.html (the first 100,000 of 112,849 characters) and https://inspect.aisi.org.uk/scoring-policy.html
+- SWE-bench grading: https://github.com/SWE-bench/SWE-bench/blob/main/swebench/harness/grading.py
+- promptfoo assertions: https://www.promptfoo.dev/docs/configuration/expected-outputs/
+- Luo et al., FSE 2014, pages 1 to 3: https://mir.cs.illinois.edu/lamyaa/publications/fse14.pdf
+- Google Testing Blog, 2016, comment thread only: https://testing.googleblog.com/2016/05/flaky-tests-at-google-and-how-we.html
+
+All but the Luo PDF were read through the summarising fetch tool. I read the Luo PDF as rendered page images.
+
+**Not read: research part two ran out of its time box.**
+- Section 4, details and optional sources:
+  - Inspect's `Epochs` class and the Reducing Epochs section of the metrics docs
+  - A user-reported failure mode from an issue thread for Inspect, SWE-bench and promptfoo
+  - METR task scoring, DeepEval metric thresholds, OpenAI Evals and LangSmith evaluators (all optional, all skipped)
+- Section 7:
+  - The body of the Google Testing Blog post. The fetch returned only comments, so its figures here come second-hand from Luo et al.
+  - Luo et al. pages 4 onward (manifestation and fixes in detail)
+  - A later survey of flaky tests
+  - Any source on minimum sample sizes
+- Section 5, left with its marker:
+  - CrewAI tasks (`expected_output`, guardrails and their retries)
+  - AutoGen AgentChat termination conditions (AND/OR composition, MaxMessage, TextMention, external)
+  - The LangGraph recursion limit and END
+- Section 6, left with its marker:
+  - The Cucumber Gherkin reference (Given/When/Then, Scenario Outline with Examples)
+  - The Google re:Work guide to OKRs (measurable key results, graded 0.0 to 1.0, the 0.6 to 0.7 expectation)
