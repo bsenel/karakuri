@@ -186,11 +186,23 @@ Default for a noisy signal is `median` over N with `min_samples`; for a pass/fai
 
 ### D5 Sustain for standing objectives, and reconcile
 
-_Not reached in time; see Read and not read._
+**Decision.** The loop evaluates criteria once per run and converges (rule 8). `sustain: N` and any wall-clock `window` are read by reconcile, not by the loop: reconcile records each pass's criterion states and treats a standing objective as healthy when a criterion has been `met` for N consecutive passes. This is a per-criterion streak beside the existing `ScoreStreak` (`reconcile/run.go:508-518`), not a replacement for it. An `inconclusive` pass neither extends nor breaks the streak and does not count towards `BreakerFailures`; only `not_met` on a required criterion does. That directly addresses fact 4: a stream pass whose deterministic criteria are met, such as a PR opened at a green head, is not a failed pass because a model judged a prose criterion unmet. Drift from the converged fingerprint (`sense.go:34,77`) stays the trigger for re-running; a criterion state change is not a second drift signal.
+
+**Rests on.** Section 1: Argo's `consecutiveSuccessLimit` and `interval`. Section 7, takeaways 1 and 4. Code reading facts 4 and 5. Weaker because section 2 (SLO error budgets over rolling windows) was not read.
+
+**Conflicts.** None with rule 8 or ADR 015; it puts time in reconcile on purpose. It changes the breaker's input, which ADR 029 must state.
 
 ### D6 How criteria are given, validated and shown
 
-_Not reached in time; see Read and not read._
+**Decision.**
+- **API.** The create request (`handler/objective.go:25-34`) gains an optional `success_criteria` array with the D1 to D4 fields. Template criteria remain the default; request criteria are added to them, and a request criterion with the same `id` as a template criterion may tighten it (a stricter target, `required: true`) but not loosen or remove it. Since `docs/openapi.yaml` does not exist (fact 3), the phase must either create the spec or correct rule 6.
+- **CLI.** `krk objective create --criteria-file criteria.yaml` is the primary form (YAML, the same shape as the API). A repeatable `--criterion` flag takes `key=value` pairs separated by `;` for one-off cases only. `krk verifier list` shows each verifier's declared metrics, units and parameters; `krk objective criteria <id>` shows per criterion its kind, target, last measured values with unit and source, state and reason.
+- **Validation at create time.** Reject an unknown verifier, a metric the verifier does not declare, a unit mismatch, an unknown parameter, an `op` without a target, a reserved (third-party) verifier, and an objective with no required criterion. Errors name the field.
+- **What a person sees.** Per criterion: met, not met or inconclusive with its reason, the number against the target and baseline, and whether a model or code decided it. The web objective page shows the same.
+
+**Rests on.** Section 1 (Argo and Flagger declare criteria as data in the same object as the rollout). Section 4 (promptfoo's `assert` list as a file). Weaker because section 6 (Gherkin, OKRs) was not read.
+
+**Conflicts.** API contract rule 6 (spec missing, see above). Thin CLI (ADR 001): validation lives in the server, the CLI only sends.
 
 ### D7 Safety and anti-gaming
 
