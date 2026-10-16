@@ -59,7 +59,58 @@ _Not reached in time; see Read and not read._
 
 ## 4 Agent and LLM evaluation
 
-_Not reached in time; see Read and not read._
+All sources below were read on 2026-10-16 through a fetch tool that summarises each page against a question. A later action should confirm the exact wording before quoting.
+
+**Inspect AI scorers, scoring policy and reducers.** Sources: [scorers](https://inspect.aisi.org.uk/scorers.html), [scorer reference](https://inspect.aisi.org.uk/reference/inspect_ai.scorer.html) and [scoring policy](https://inspect.aisi.org.uk/scoring-policy.html).
+- *Criterion.* A scorer returns a `Score` with a `reason` and a value. The value is a grade (`CORRECT` "C", `INCORRECT` "I", `PARTIAL` "P" or `NOANSWER` "N"), a number, or a list or dict. Built-in text scorers set reasons such as `no_response` and `invalid_response_format`.
+- *Settled.* Metrics such as `accuracy`, `mean` and `stderr` run over all samples. `value_to_float()` maps C to 1.0, I to 0, P to 0.5 and N to 0. It casts numbers directly, and lists and dicts log a warning and become 0.
+- *Missing or noisy.* There are four distinct cases:
+  - NOANSWER (an empty completion or a refusal) scores 0 and stays in the denominator.
+  - `Score.unscored()` is NaN. Metrics exclude it, and it is counted as `unscored_samples` after epoch reduction.
+  - A scorer that raises records `sample.error`, and the sample drops out of the metric.
+  - A scorer that returns `None` adds nothing and is not counted as unscored.
+- *Repeated runs.* Noise is handled by epochs: each sample runs N times and a reducer collapses the results. The reducers are `mean_score` (the default), `median_score`, `mode_score`, `max_score`, `at_least(k, value)`, `pass_at(k)` (the probability that at least one of k attempts succeeds) and `pass_k(k)` (the probability that all k succeed).
+- *Baseline.* The scorer model has none. Comparing runs happens outside it.
+- *Partial success.* PARTIAL scores 0.5 by default, and numeric scores can carry any fraction.
+- *Failure mode.* This comes from the scoring-policy page, not from an issue thread. The default `mean` reducer converts NOANSWER to 0.0 "before metrics run, erasing the label". A sample with one correct and one unscored epoch reduces to 1.0. So after reduction, "not measured" can silently become a pass or a fail. The scorer reference also contradicts itself on whether `at_least` needs values greater than or equal to `value` or strictly greater.
+
+**SWE-bench harness grading.** Source: [swebench/harness/grading.py](https://github.com/SWE-bench/SWE-bench/blob/main/swebench/harness/grading.py).
+- *Criterion.* Each instance has two named test lists. FAIL_TO_PASS tests must go from failing to passing, and PASS_TO_PASS tests must keep passing.
+- *Settled.* The harness runs the tests and parses the log; no model judges. `get_resolution_status` returns FULL when both pass fractions are 1, PARTIAL when F2P is between 0 and 1 (exclusive) and P2P is 1, and NO otherwise. An instance is `resolved` only when it is FULL. An empty list counts as 1.
+- *Missing or noisy.* An unusable log means the instance is not resolved. `get_logs_eval` returns `({}, False)` when:
+  - the log shows an apply-patch, reset, test-error or timeout code;
+  - the start or end output marker is missing;
+  - nothing parses and nothing shows that the suite ran; or
+  - the command exits non-zero while no failure is reported.
+
+  An advisory `infra_failure` flag is recorded but does not change the outcome. A test missing from the parsed log does not count as passed: `test_passed` returns False and `test_failed` returns True. A skipped F2P test counts as failed, and a skipped P2P test counts as maintained. A `None` patch stops grading early with `patch_is_None`.
+- *Baseline.* It is built in: F2P and P2P are themselves a before-and-after comparison against the repository at its base commit.
+- *Partial success.* PARTIAL is reported but never counts as resolved.
+- *Failure mode.* This comes from a code comment, not an issue thread. Under `EvalType.FAIL_ONLY` a missing test counts as a success, and the "suite never ran" check exists precisely to stop an empty log from passing.
+
+**promptfoo assertions.** Source: [assertions and metrics](https://www.promptfoo.dev/docs/configuration/expected-outputs/).
+- *Criterion.* An `assert` entry has these fields:
+  - `type`, for example `equals`, `contains`, `llm-rubric`, `cost` or `javascript`;
+  - `value`;
+  - an optional `threshold`, for types that produce a score, such as `similar` and `cost`;
+  - `weight`, which defaults to 1.0; and
+  - `metric`, a named tag that the UI aggregates.
+
+  Any type can be negated with a `not-` prefix.
+- *Settled.* The test score is the weighted average of the assertion scores.
+  - With no test-level `threshold`, every assertion with non-zero weight must pass.
+  - With a threshold, the test passes when the weighted score reaches it, even if some assertions failed.
+  - An `assert-set` groups child assertions and has its own weight and metric. Either all its children must pass, or, with a set `threshold`, enough of them must (0.5 means half).
+- *Missing or noisy.* For negated model-graded types, a grader error or a missing verdict stays a failure with score 0, because negation inverts only a valid verdict. Configuration errors also still fail under negation. This page does not cover repeated runs.
+- *Baseline.* This page does not cover it. Comparison happens across providers or prompts in the results matrix, which I did not read.
+- *Partial success.* Scores are weighted averages. `weight: 0` records a metric without letting it gate, which is the same shadow mode as Argo's `dryRun` in section 1.
+- *Failure mode.* Not read from an issue thread. In the docs' own example, the weighted average lets a passing weight-1 `contains` partly offset a failed weight-2 `equals` (score 0.33). With a test-level threshold at or below that score, the test would pass. This is the hazard of mixing gates with weights.
+
+**Takeaways for the family (inference, not a source claim).**
+1. Karakuri's `Met bool` collapses four outcomes that Inspect keeps apart: wrong (0), no answer (0, kept in the denominator), unscored (excluded and counted) and errored (excluded and recorded). The proposal's "not measured, with a reason" matches `unscored`, but the reason has to survive aggregation, and Inspect shows that a reducer can erase it.
+2. SWE-bench is the closest analogue to a delivery criterion: a deterministic before-and-after test contract. An unusable log, a missing test or an infrastructure error means "not resolved", with the cause recorded beside it. PARTIAL is reported but never counts as done.
+3. Repetition belongs in the criterion: Inspect's epochs with a named reducer (`pass_at` against `pass_k`) match the count and consecutive-success limits in section 1.
+4. promptfoo decides required versus weighted with one rule: without a threshold, every assertion with non-zero weight is required. Weight 0 is a shadow mode.
 
 ## 5 Agent frameworks' notions of done
 
