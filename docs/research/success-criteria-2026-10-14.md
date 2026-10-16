@@ -180,7 +180,31 @@ _Not reached in time; see Read and not read._
 
 ## Code reading: what is true today
 
-_Not reached in time; see Read and not read._
+Read on 2026-10-16 on this branch (base 14c719f).
+
+1. **Criterion and how it is settled: confirmed.** `type Criterion struct` is at `internal/core/objective/objective.go:156` with `Threshold any` at :160, plus `Verifier capability.CapabilityID` (:159), `Weight float64` (:161), `Met bool` (:162) and an optional `Domain`. **Nothing reads `Criterion.Threshold`:** `grep -rn 'Threshold' --include=*.go internal domains cli` outside tests, with `ConfidenceThreshold` and `PressureThreshold` removed, finds only the field itself, `effectiveThreshold` in `internal/feature/loop/decide.go:51-66` (the authority bounds check) and `EffectiveThreshold` in `internal/feature/audit/export.go:86,325,348`. `func stepVerify` is at `internal/feature/loop/verify.go:17`. A reserved (third-party) verifier is never met and never judged (:88, ADR 022). A named verifier that ran is met iff every run succeeded (:93-104). Otherwise, "No verifier declared, or the declared one never ran. The agent judges" (:106-109), with the prompt "absence of evidence is not evidence it was met" at :178. Completion is `allMet := metCount == len(criteria)` (:127). Correction to one detail: an objective with no criteria makes `metCount == len(criteria)` true at :127, so "never complete" was not verified in this code path in time; `objective.go:141` only guards `CriterionDomains`.
+2. **ActionResult has no typed measurement: confirmed.** `internal/core/environment/environment.go:89-101`: `Success bool`, `StateDelta map[string]any`, `ArtifactSHAs []string`, `Error string`, `Trust Trust`.
+3. **No way to state criteria at create time: confirmed, with one correction.** The create request at `internal/api/handler/objective.go:25-34` has `title, description, domain, additional_domains, priority, max_iterations, twin_id, template_id` and no criteria. `grep -rn -i 'criteri' cli/` finds only `cli/command/eval.go:42,48,179` (the eval command's per-item `criterion` string), nothing in `objective create`. **Correction:** `docs/openapi.yaml` does not exist; `git ls-files | grep -i openapi` prints nothing, so AGENTS.md rule 6 points at a missing file and the create schema could not be checked.
+4. **Stream and delivery criteria: confirmed.** `domains/software/streams.go:42-47`: "Every criterion is judged and none names a verifier: nothing deterministic settles 'the data was read and held nothing new'"; the four stream templates' criteria are at :67-69, :81-83, :95-97 and :109-110, all built by `judged(...)`. The comment at :10-22 states that an unmet loop ends failed, reconcile counts it towards `BreakerFailures` (default 3), and the create request carries no criteria. `software.objective.delivery` (`domains/software/objectives.go:48-58`) has `tests-pass` (verifier `software.verify.run_tests`, 0.4), `lint-pass` (`software.verify.lint`, 0.1), and judged `peer-review` and `lead-review` (0.25 each). For a docs-only task neither verifier is a natural fit, so both fall to the judge (verify.go:106) along with the two reviews. The UX passes, from `gh pr view <n> --json number,title,state,mergedAt,files`:
+   - #168 MERGED 2026-10-10T15:35:42Z, "UX 2026-10-10 (second pass)", 12 files (CLI help, errors, empty lists; web audit and quota pages, with tests).
+   - #174 MERGED 2026-10-14T18:31:31Z, "feat(ux): add cli help examples and objective page retry", 9 files with tests.
+   - #177 OPEN, "feat(ux): CLI ID hints and 404 errors, web empty states and control labels", 33 files with tests.
+
+   Each pass delivered what the `improvement` criterion asks for, an open PR with tests; the breaker trip itself and the "criteria not met" verdicts were not re-read from the audit log in time.
+
+**Fact 5: what Phase 41 builds on and must not duplicate.**
+- Phase 38 (`docs/roadmap.md:4098`, Planned): what a run was required to do and did not. Phase 41 reuses its "required and not done" reporting rather than adding a second one.
+- Phase 39 (`:4177`, Planned) and ADR 028: every tool call through one MCP gateway; packs serve capabilities as MCP tools. A verifier and its declared metrics travel in that pack manifest.
+- Phase 40 (`:4413`, Planned): the four streams govern and run themselves. Its step at `:4525` and the dependency at `:4756-4763` already cite EB-002; Phase 41 supplies the criteria those steps assume, not a new stream mechanism.
+- EB-002 (`:5244`): delivered objectives end by a rejected checkpoint; fix is "evaluate the criteria before planning". Phase 41 must not re-specify that fix.
+- ADR 015 / rule 8: standing behaviour lives in reconcile, which calls the loop; authority goes through `AuthorityBounds`.
+- ADR 022: discovered tools are bounded four ways; a reserved verifier never settles a criterion (verify.go:88).
+- ADR 026 / rule 10: an environment that cannot see errors, and adapters return `ErrUnsupported`, never an empty result.
+- ADR 028: packs are autonomous behind one gateway.
+- Reconcile: `ScoreStreak` is reset or incremented at `internal/feature/reconcile/run.go:427,508,516,518`; the converged `fingerprint` is computed at `internal/feature/reconcile/sense.go:34` and compared at :77 to give `Drift`.
+- `OutputSchema Schema` is declared on `Capability` at `internal/core/capability/capability.go:11`; `mcp.go:96` and `universal.go:18,33` set it only to `{Type: "object"}`.
+- Phase 32 observability adapters: `internal/platform/tools/observability/{prometheus,datadog,loki,pagerduty}.go`.
+- Cost: `internal/feature/report/{service,assemble,render}.go` mention cost. Escalation approval-rate telemetry: `grep -rln 'EscalationRate\|escalation_rate\|approval_rate' internal` prints nothing; where it lives was not verified in time.
 
 ## Numbering check
 
