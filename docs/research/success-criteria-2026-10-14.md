@@ -206,11 +206,56 @@ Default for a noisy signal is `median` over N with `min_samples`; for a pass/fai
 
 ### D7 Safety and anti-gaming
 
-_Not reached in time; see Read and not read._
+**Decision.**
+- Targets, baselines, reducers and sample counts are fixed at create time and stored with the objective. The loop has no capability that writes them; a change goes through the API by a person, is audited, and resets any sustain streak.
+- A verifier is a pack capability. A discovered MCP tool can never be a verifier (extends verify.go:88 and ADR 022 from "never met" to "rejected at create time").
+- A `measured` or `verified` criterion is never handed to the model: when its verifier did not run, the state is `inconclusive: not_run`, not a judgement. This removes the verify.go:106 fallback for criteria that name a verifier.
+- Every measurement is audited with its verifier, parameters, value, unit, source, trust and the commit it was taken at.
+- Anti-gaming: when a pass changes the files a criterion's verifier reads its definition from (the test files behind `tests-pass`, the coverage config, the benchmark, the metric query), the criterion is `inconclusive: measure_changed` and needs a person, like SWE-bench running the original FAIL_TO_PASS/PASS_TO_PASS tests rather than the patch's. Packs declare those paths with the verifier.
+
+**Rests on.** Section 4: SWE-bench's fixed test lists, Inspect's scorer kept apart from the solver. Section 7: Luo et al. F.12. Code reading fact 1 (reserved verifiers, the judge fallback). Weaker because section 3 (required checks that never report) was not read.
+
+**Conflicts.** None; it reinforces ADR 022 and rule 9. Removing the judge fallback for verifier-named criteria changes `software.objective.delivery` behaviour on docs-only tasks (fact 4), which is wanted: the template should use the D8 deterministic booleans or not name the verifier.
 
 ### D8 Departures from the starting proposal
 
-_Not reached in time; see Read and not read._
+| Element | Kept, changed, dropped or added | Reason |
+|---|---|---|
+| Kinds JUDGED, VERIFIED, MEASURED | Kept | D1; sections 1 and 4 separate code-settled from model-settled outcomes. |
+| "Not measured with a reason is neither met nor a failure" | Changed | Named `inconclusive` with a fixed reason list; it blocks completion but not the breaker (D1, D5). |
+| `Met bool` | Changed | Replaced by a state; `met` stays derived in JSON (D1). |
+| `Threshold any` | Dropped | Nothing reads it (fact 1); replaced by typed `op`/`target`/`unit`. |
+| metric, op, target, unit | Kept | D4; unit must match the verifier's declaration (D3). |
+| baseline (fixed or at_start) | Kept | `at_start` is frozen and audited (D4, D7). |
+| change (relative) | Kept | Absolute or percentage delta to the baseline (D4). |
+| aggregate (last, min, max, mean, all) | Changed | Renamed reducer; adds `median`, `p95`, `k_of_n`, `samples` and `min_samples`; "any passes" excluded (D4; section 7). |
+| window | Changed | Moved out of the loop to reconcile (D5; rule 8). |
+| sustain (N reconciles) | Kept, moved | Per-criterion streak in reconcile beside `ScoreStreak` (D5). |
+| required versus weight | Changed | Required by default; weight is progress only; weight 0 is shadow (D2). |
+| — | Added | Zero-required-criteria objectives rejected (D2; fact 1). |
+| `--criterion 'id=..; ...'` | Kept, demoted | Secondary to the file (D6). |
+| `--criteria-file criteria.yaml` | Kept | Primary form (D6). |
+| Create-time validation, perhaps via OutputSchema | Changed | Validates against declared metrics beside OutputSchema, not inside it (D3, D6). |
+| `krk verifier list` | Kept | D6. |
+| `krk objective criteria <id>` | Kept | Shows state, reason, value against target, who decided (D6). |
+| API criteria field | Added | The proposal named only the CLI; thin CLI needs the API (D6; ADR 001). |
+| Template-plus-request merge, tighten only | Added | D6, D7. |
+| `Measurements []{Name, Value, Unit, Source}` on ActionResult | Kept, extended | Adds trust (rule 9) and travels typed through MCP (D3). |
+| Targets the loop can never edit | Kept | D7. |
+| Every measurement audited | Kept | Adds commit and parameters (D7). |
+| — | Added | Measured or verified criteria never fall back to the judge (D7). |
+| — | Added | `measure_changed` anti-gaming state (D7). |
+| — | Added | Discovered MCP tools rejected as verifiers at create time (D7). |
+| Verifier: coverage per package | Kept | Needs a baseline (`at_start`) to be useful (D4). |
+| Verifier: flaky-test count over N runs | Kept | Section 7, takeaway 3. |
+| Verifier: p95 latency and error rate via Phase 32 adapters | Kept | `internal/platform/tools/observability/{prometheus,datadog}.go`; no-data must be inconclusive (D1). |
+| Verifier: cost per pass | Kept, unverified | Cost appears in `internal/feature/report`; the source was not verified in time. |
+| Verifier: escalation approval rate | Kept, unverified | No telemetry found by grep (fact 5); the next action must locate or drop it. |
+| Verifier: web bundle size | Kept | Deterministic; sequencing is the next action's. |
+| Verifier: CLI startup time | Kept | Noisy; needs `samples` and `median` (D4). |
+| Deterministic booleans (stream PR opened or updated this pass, CI green at its head, only declared paths changed) | Kept, first | These address fact 4 directly and should ship before the numeric verifiers. |
+| Statistical canary judge | Not adopted | Out of scope for Phase 41 (D4). |
+| ADR | Added | ADR 029 is needed: core entity changes (D1, D3), breaker input (D5), judge fallback removal (D7). |
 
 ## Code reading: what is true today
 
