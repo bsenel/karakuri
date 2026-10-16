@@ -122,7 +122,27 @@ _Not reached in time; see Read and not read._
 
 ## 7 Measurement statistics for noisy metrics
 
-_Not reached in time; see Read and not read._
+All sources below were read on 2026-10-16.
+
+**Luo, Hariri, Eloussi and Marinov, "An Empirical Analysis of Flaky Tests", FSE 2014.** Source: [PDF](https://mir.cs.illinois.edu/lamyaa/publications/fse14.pdf). I read pages 1 to 3 as rendered page images: the introduction, Table 1 (findings) and Table 2 (categories).
+- *What a flaky test is.* A test whose "outcome is non-deterministic with respect to a given software version": it can pass or fail on the same code.
+- *Scale (second-hand).* Through a personal communication with John Micco, the paper reports that Google's TAP system averaged 1.6M test failures a day over 15 months, and 73K of them (4.56%) were caused by flaky tests.
+- *Repeated runs and reruns (second-hand for Google).* The paper calls the most common mitigation running a failing test several times and declaring it passing if any run passes. It says that at Google a failing test is rerun 10 times on the same code version, and is labelled flaky if any of those reruns passes. Frameworks offer the same thing through annotations such as Android `@FlakyTest`, Jenkins `@RandomFail` and Spring `@Repeat`. The authors call reruns and exclusion (`@Ignore`) "workarounds" that "waste a lot of machine resources" or reduce coverage.
+- *Causes.* 201 commits that fix flaky tests in 51 Apache projects. Async Wait (74), Concurrency (32) and Test Order Dependency (19) are the top three categories; 40 commits were hard to classify (Table 2). 78% of flaky tests are flaky from the first time they are written (F.2). 96% are platform-independent (F.3).
+- *Failure mode.* Flaky tests waste debugging time and "may also hide real bugs", because developers learn to ignore their failures. 24% of fixes changed the code under test, and 94% of those fixed a real bug (F.12). So "rerun until green" can mask a real defect.
+
+**Google Testing Blog, "Flaky Tests at Google and How We Mitigate Them" (2016).** Source: [post](https://testing.googleblog.com/2016/05/flaky-tests-at-google-and-how-we.html). The fetch returned only the comment thread, not the article body, so the article's own figures were not read; see Read and not read.
+- A reply from the blog's team says: "Our rerun mechanism is only used for tests that are marked as flaky or when users specifically request it". Another says "a test that fails reliably is far better than a test that is flaky".
+- The team also says it does not "keep accurate count of the number of times that flaky tests are really masking bugs".
+- Commenters (not Google) report rerunning failures three times, failing only on two consecutive failures, running hundreds of reliability executions and moving tests below a consistency threshold out of CI gating, and soaking new tests in a loop for a week before they gate.
+
+**Cross-reference to section 1 (not re-read).** Argo Rollouts puts repetition into the criterion itself: `count`, `interval`, `failureLimit`, `consecutiveSuccessLimit`, and Inconclusive as a named state. Kayenta compares a canary with a baseline measured at the same time, using a Mann-Whitney U test at 98% confidence and an effect-size tolerance band instead of a fixed threshold. It reports Nodata, and scores 0 when 50% or more of the metrics have no data.
+
+**Takeaways for the family (inference, not a source claim).**
+1. A single run of a noisy check is not a measurement. A criterion over a noisy signal needs a repetition policy (N runs, a reducer and a minimum sample), and the policy belongs to the criterion so that the verifier cannot pick it.
+2. "Passes if any rerun passes" (Google's rerun rule as Luo et al. report it) is a definition of flakiness, not of success. Used as a success rule, it hides real bugs (F.12). For a gate, `all` or "k of N" with a recorded flake count is safer.
+3. Flakiness is itself a metric worth measuring: the proposal's "flaky-test count over N runs" verifier matches the reliability-suite practice the commenters describe.
+4. Too few samples should give "inconclusive", not pass or fail, which matches Argo's Inconclusive, Kayenta's Nodata and Inspect's `unscored` (section 4).
 
 ## What this means for Karakuri
 
