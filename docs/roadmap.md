@@ -5579,20 +5579,80 @@ leaves `go test ./...` green and the system working.
       a test reads it. Otherwise the verifier is dropped from this list and
       the finding is written here (the kill criterion).
 
-**What this is not.** It is not a statistical canary judge and does not change
-rule 8: the loop still converges once.
+**What this is not.**
+- It is not a statistical canary judge (D4).
+- It does not change rule 8. The loop still converges once, and time and
+  sustain live in reconcile.
+- It does not re-specify EB-002's fix ("evaluate the criteria before
+  planning").
+- It does not add a second "required and not done" record. It extends
+  Phase 38's.
+- It does not add a stream mechanism. Phase 40 governs the streams, and this
+  phase supplies the criteria Phase 40's steps assume.
+- It does not let a person or a model loosen a template's criteria per run.
 
-**Risks.** Changing how criteria are settled changes which objectives complete,
-including the streams'.
+**Risks.**
+- **Forever inconclusive.** A required criterion that can never be measured
+  neither completes nor trips the breaker. Mitigations: the digest line (see
+  4), and Phase 40's "no new commit after N passes" signal (step 14a).
+- **The streams' behaviour changes.** Some passes that a model failed will
+  now be `met`, and some that a model passed will be `inconclusive`. Step 3's
+  replay is the check. The streams' first week after step 3 should be read in
+  the digest.
+- **Thinner evidence.** The windows, the CI-gate semantics and the SLO
+  budgets rest on sections 1, 4 and 7 only. If sections 2 and 3 are read
+  later and disagree, steps 7 and 8 change, while steps 1 to 3 do not.
+- **The forge is the source.** `stream_pr` and `ci_green` trust the forge's
+  API. A forge outage is `inconclusive` (rule 10), not a pass.
+- **Anti-gaming is partial.** `measure_changed` catches changes to declared
+  paths only. A pass can still weaken a check whose definition lives
+  elsewhere. Review and the owner's merge remain the backstop.
+- **Two verifiers may not exist.** No source was found for escalation
+  approval rate, and the source for cost per pass was not verified (D8).
+  Step 13 may drop them.
 
-**Dependencies and recommended order.** It builds on Phases 38, 39 and 40; the
-order relative to Phase 39 is the owner's decision.
+**Dependencies and recommended order.** The owner decides the order.
+- **Phase 38.** Its settlement values (`verifier_ran`, `verifier_never_ran`,
+  `no_verifier`, `reserved_verifier`) map onto this phase's state and
+  reason. Whichever of Phase 38 step 1 and this phase's step 1 lands second
+  adapts to the first. They should not keep two records.
+- **Phase 39 and ADR 028.** Steps 4 and onward put the metric declaration in
+  the pack manifest and carry measurements through the gateway's MCP
+  results. Before Phase 39 they would be written in process and then moved.
+- **Phase 40.** Its seven-day observation (step 15) fails on any week in
+  which a stream fails three passes running. With judged criteria, that is
+  what happened on 2026-10-14.
+- **Recommendation.** Ship steps 1 to 3 now, before Phase 39 and before
+  Phase 40's step 15, because the streams fail on this today and those steps
+  need neither the manifest nor the gateway. Ship steps 4 to 13 after
+  Phase 39's manifest step.
 
-**ADR decision.** ADR 029 is needed, because the design changes core entities
-(report D1, D3).
+**ADR decision.**
+[ADR 029](adr/029-criteria-are-settled-by-what-can-settle-them.md) is needed,
+for four reasons:
+- It adds a typed `Measurement` and a criterion state to `internal/core`
+  (D1, D3).
+- It adds metric declarations to ADR 028's pack manifest.
+- It changes the breaker's input in reconcile under ADR 015 (D5).
+- It extends ADR 022's reserved-verifier rule to rejection at create time and
+  removes the judge fallback for named verifiers (D7).
 
-**Read and not read.** See the research report's 'Read and not read'; its
-sections 2, 3, 5 and 6 were not reached in time.
+It changes how rule 10 is read for measurements (no data is
+`inconclusive`), not its text.
+
+**Read and not read.**
+- **The research.** Read: the research report,
+  [docs/research/success-criteria-2026-10-14.md](research/success-criteria-2026-10-14.md),
+  sections 1, 4 and 7, its Code reading and D1 to D8. Not reached in time,
+  with the marker: sections 2 (SLO specifications), 3 (CI quality gates),
+  5 (agent frameworks' notions of done) and 6 (acceptance-criteria
+  practice), and the details its 'Read and not read' lists.
+- **The roadmap, for this phase.** Read: Phase 38 in full, the end of
+  Phase 40 and its ordering note, and the Engineering Backlog.
+- **Not read for this phase:** the body of Phase 39, Phase 40's steps, the
+  stream templates' source (the report's Code reading was relied on), the web
+  objective page, the digest code and the audit log of the 2026-10-14 trip.
+  Every step that touches one of these begins by reading it.
 
 ---
 
