@@ -23,4 +23,10 @@ describe('Layout', () => {
     expect(screen.getByRole('link', { name: current.label })).toHaveAttribute('aria-current', 'page');
     expect(screen.getByRole('button', { name: 'Sign out' })).toBeInTheDocument();
   });
+
+  it('hides the decorative brand glyph from screen readers', () => {
+    render(<MemoryRouter><Layout /></MemoryRouter>);
+
+    expect(screen.getByText('⌬')).toHaveAttribute('aria-hidden', 'true');
+  });
 });
