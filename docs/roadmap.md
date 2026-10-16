@@ -5234,6 +5234,59 @@ the owner's (step 14c).
 
 ---
 
+## Phase 41 — Success a Machine Can Check (Planned)
+
+**The owner's request (2026-10-14).** "When we define an objective for
+Karakuri, do we show it what a success looks like? Do we provide something like
+success criteria?", then "Sometimes checkable success can be quantitative as
+well. Expand on criterion and verifier flags", and finally: "have Karakuri
+improve this to make it a roadmap phase. It should conduct deep research and
+find the best design for itself." The owner's starting proposal (kinds
+JUDGED, VERIFIED and MEASURED, metric fields, CLI flags, typed measurements,
+a first list of verifiers) is the starting point; this phase says where it
+departs from it and why. The research is
+[docs/research/success-criteria-2026-10-14.md](research/success-criteria-2026-10-14.md).
+
+**Goal:** A person can state, when an objective is created, what success looks
+like as numbers and checks that code settles; the loop cannot change them, and
+a pass that did the work is no longer judged a failure by a model.
+
+**Why.** Criteria exist but only templates supply them, `Threshold` is never
+read, and the streams' criteria are all judged (report, Code reading facts 1 to
+4); on 2026-10-14 the UX stream's breaker tripped after three passes that each
+opened a pull request (#168, #174, #177).
+
+**What it delivers.** Criteria with a kind and a state, typed measurements from
+pack verifiers, criteria in the create request and the CLI, and deterministic
+criteria for the four streams and for one-shot delivery.
+
+**Steps:** (one delivery pass each; detail to follow)
+
+1. Criterion state and the deterministic stream booleans.
+2. Typed measurements and the verifier declaration.
+3. Criteria in the API and the CLI, validated at create time.
+4. Baselines and repeated samples.
+5. Sustain in reconcile.
+6. Anti-gaming.
+7. The numeric verifiers.
+
+**What this is not.** It is not a statistical canary judge and does not change
+rule 8: the loop still converges once.
+
+**Risks.** Changing how criteria are settled changes which objectives complete,
+including the streams'.
+
+**Dependencies and recommended order.** It builds on Phases 38, 39 and 40; the
+order relative to Phase 39 is the owner's decision.
+
+**ADR decision.** ADR 029 is needed, because the design changes core entities
+(report D1, D3).
+
+**Read and not read.** See the research report's 'Read and not read'; its
+sections 2, 3, 5 and 6 were not reached in time.
+
+---
+
 ## Engineering Backlog
 
 These are enhancements found in this deployment's own telemetry and audit log, each recorded with the data that shows the problem. A human approves an entry by merging the pull request that adds it; the delivery stream implements entries whose status is Planned.
@@ -5290,6 +5343,10 @@ Phase 37 is ordered by the owner's requirement of 2026-10-10 ("We should be able
 Phase 40 is ordered by what must be true before a stream runs with nobody watching.
 
 - **Phase 40** (streams that run without a coordinator) depends on **Phase 20** for standing objectives and the autonomy ladder and on **Phase 21** for the digest its oversight view extends. Its seven-day acceptance needs **Phase 35**, because with no coordinator an escalation that is not a bounds refusal is answered by nobody and must end by itself. It reuses **Phase 36**'s wording for a provider's refusal at a different seam (the delegated coding agent, not the planner), ends an interrupted loop the way **Phase 37** ends a stopped pass (not as a failure), and reads **Phase 38**'s record of how criteria were settled; none of the three blocks its first steps. It leaves worktree cleanup to **Phase 39**'s lifecycle signals and only emits them, and it depends on backlog entries **EB-002** and **EB-004**. Inside the phase the order is load-bearing: bounds enforced by code (steps 1 to 3) come before anything acts unattended, recovery and quota (steps 4 to 9) before a proposal stream is allowed to act (step 10), and the observation (step 15) last.
+
+Phase 41 is ordered by the owner's request of 2026-10-14 and by what the streams fail on now.
+
+- **Phase 41** (success a machine can check) depends on **Phase 38** for the per-criterion settlement record it extends, on **Phase 39** and [ADR 028](adr/028-packs-are-autonomous-behind-one-gateway.md) for the pack manifest a verifier declares its metrics in, and on **Phase 40** for the streams whose criteria it replaces. Step 1 needs none of the three.
 
 ---
 
