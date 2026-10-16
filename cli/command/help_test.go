@@ -99,6 +99,23 @@ func TestGetAndListHelp(t *testing.T) {
 	}
 }
 
+// A list command's filter flags say as much as the create flags they mirror:
+// where a twin ID comes from and which kinds and domains exist.
+func TestListFiltersMatchCreateFlags(t *testing.T) {
+	for _, cmd := range []*cobra.Command{objectiveListCmd(), checkpointListCmd()} {
+		if usage := cmd.Flags().Lookup("twin").Usage; !strings.Contains(usage, "krk twin list") {
+			t.Errorf("%s --twin usage %q does not say where a twin ID comes from", cmd.Name(), usage)
+		}
+	}
+	flags := twinListCmd().Flags()
+	if usage := flags.Lookup("kind").Usage; !strings.Contains(usage, "person|team|organization") {
+		t.Errorf("twin list --kind usage %q does not name the kinds", usage)
+	}
+	if usage := flags.Lookup("domain").Usage; !strings.Contains(usage, "krk domain list") {
+		t.Errorf("twin list --domain usage %q does not say where a domain comes from", usage)
+	}
+}
+
 func TestResearchHelp(t *testing.T) {
 	cmd := researchCmd()
 	requireExample(t, cmd)

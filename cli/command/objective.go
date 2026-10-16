@@ -93,7 +93,7 @@ func objectiveListCmd() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&twinID, "twin", "", "Filter by twin ID")
+	cmd.Flags().StringVar(&twinID, "twin", "", "Filter by twin ID (see: krk twin list)")
 	cmd.Flags().StringVar(&status, "status", "", "Filter by status (pending|active|blocked|converged|completed|failed)")
 	return cmd
 }
