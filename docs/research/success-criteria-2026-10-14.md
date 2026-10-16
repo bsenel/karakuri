@@ -146,6 +146,36 @@ All sources below were read on 2026-10-16.
 
 ## What this means for Karakuri
 
+### D1 Criterion kinds and states
+
+_Not reached in time; see Read and not read._
+
+### D2 Required versus weighted, and the completion rule
+
+_Not reached in time; see Read and not read._
+
+### D3 The verifier contract
+
+_Not reached in time; see Read and not read._
+
+### D4 Baselines, relative targets, windows, repeated runs and aggregation
+
+_Not reached in time; see Read and not read._
+
+### D5 Sustain for standing objectives, and reconcile
+
+_Not reached in time; see Read and not read._
+
+### D6 How criteria are given, validated and shown
+
+_Not reached in time; see Read and not read._
+
+### D7 Safety and anti-gaming
+
+_Not reached in time; see Read and not read._
+
+### D8 Departures from the starting proposal
+
 _Not reached in time; see Read and not read._
 
 ## Code reading: what is true today
