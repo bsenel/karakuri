@@ -5251,24 +5251,333 @@ departs from it and why. The research is
 like as numbers and checks that code settles; the loop cannot change them, and
 a pass that did the work is no longer judged a failure by a model.
 
-**Why.** Criteria exist but only templates supply them, `Threshold` is never
-read, and the streams' criteria are all judged (report, Code reading facts 1 to
-4); on 2026-10-14 the UX stream's breaker tripped after three passes that each
-opened a pull request (#168, #174, #177).
+**Why.** What is true today, from the report's 'Code reading' (read on
+2026-10-16 at 14c719f):
 
-**What it delivers.** Criteria with a kind and a state, typed measurements from
-pack verifiers, criteria in the create request and the CLI, and deterministic
-criteria for the four streams and for one-shot delivery.
+- `Criterion` (`internal/core/objective/objective.go:156`) has `Verifier`
+  (:159), `Threshold any` (:160), `Weight` (:161) and `Met bool` (:162).
+  Nothing reads `Threshold`. `stepVerify` (`internal/feature/loop/verify.go:17`)
+  treats a criterion as met when its named verifier ran and every run
+  succeeded (:93-104). When no verifier is named, or the named one never ran,
+  "the agent judges" (:106-109). Completion is `metCount == len(criteria)`
+  (:127), which is also true for an empty list (fact 1).
+- `ActionResult` (`internal/core/environment/environment.go:89-101`) has no
+  typed measurement, so a number can only travel as prose or in `StateDelta`
+  (fact 2).
+- The create request (`internal/api/handler/objective.go:25-34`) and
+  `krk objective create` have no criteria field. Only templates supply
+  criteria. `docs/openapi.yaml`, which rule 6 names, does not exist (fact 3).
+- The four stream templates build every criterion with `judged(...)`
+  (`domains/software/streams.go:42-47`, :67-110). An unmet loop ends failed,
+  and three failures trip the breaker (:10-22). On 2026-10-14 the UX stream's
+  breaker tripped after three passes judged "criteria not met". Each of those
+  passes had opened a pull request with tests: #168 and #174 merged, and #177
+  is open. `software.objective.delivery`
+  (`domains/software/objectives.go:48-58`) names `run_tests` and `lint`. On a
+  docs-only task neither verifier fits, so every criterion falls to the
+  judge, and those one-shots ended "failed" and were completed by hand
+  (fact 4). The audit log's verdicts for the trip were not re-read in this
+  pass, so step 3's acceptance test replays the trip.
 
-**Steps:** (one delivery pass each; detail to follow)
+**What it delivers.** Each criterion has a kind and a state. Pack verifiers
+return typed measurements. Criteria can be given in the create request and in
+the CLI and are validated when the objective is created. Targets are fixed by
+their author. The four streams and one-shot delivery get deterministic
+criteria, so a pass that did the work is no longer failed by a model's
+reading.
 
-1. Criterion state and the deterministic stream booleans.
-2. Typed measurements and the verifier declaration.
-3. Criteria in the API and the CLI, validated at create time.
-4. Baselines and repeated samples.
-5. Sustain in reconcile.
-6. Anti-gaming.
-7. The numeric verifiers.
+### The design, decision by decision
+
+Each decision cites the research report: a section number, and D*n* for the
+decisions under 'What this means for Karakuri'. Sections 2 (SLOs), 3 (CI
+gates), 5 (agent frameworks' notions of done) and 6 (acceptance-criteria
+practice) were not reached in time. Decisions marked *thinner* below rest on
+sections 1, 4 and 7 only.
+
+**1. The criterion model (D1, D2; sections 1, 4, 7).**
+- **Three kinds, each settled by a different thing.** A `judged` criterion is
+  settled by a model, as today. A `verified` criterion is settled by a pack
+  verifier's pass or fail. A `measured` criterion is a named number from a
+  pack verifier, compared with a target by deterministic code.
+- **A state replaces `Met bool`.** The states are `met`, `not_met` and
+  `inconclusive`. An `inconclusive` state always carries a reason:
+  `no_data`, `verifier_error`, `too_few_samples`, `not_run`, `unsupported` or
+  `measure_changed`.
+  - A missing measurement, a NaN or an empty result is `inconclusive`, never
+    a silent zero and never a pass. This follows Argo's Inconclusive,
+    Kayenta's Nodata and Inspect's `unscored` (sections 1 and 4).
+  - `met` stays in JSON as a derived field, so the API does not break.
+- **Required versus weighted.** A criterion is `required` unless it says
+  otherwise.
+  - `weight` keeps its present role: the progress score that reconcile's
+    score streak reads.
+  - A criterion with `required: false` adds to that score but can neither
+    block nor grant completion.
+  - `required: false, weight: 0` is a shadow criterion. It is evaluated,
+    shown and audited, but never gates, so a new verifier can be watched
+    before it gates (Argo's `dryRun`, Kayenta's `critical`).
+- **The completion rule.** Completion stays "all required criteria `met`".
+  No weighted score can turn a failed required criterion into completion
+  (promptfoo's weighted-average hazard, SWE-bench's PARTIAL; section 4).
+  - An objective with no required criterion is rejected at create time. This
+    closes the gap at verify.go:127.
+  - **Departure:** `inconclusive` blocks completion but is reported apart and
+    does not count as a failed pass (see 4).
+
+**2. The verifier contract (D3; sections 1 and 4; facts 1, 2 and 5).**
+- **Declaration.** A verifier is a pack capability. Its pack manifest
+  (Phase 39, ADR 028) declares each metric the verifier can emit: name, unit,
+  direction and typed parameters. The declaration sits beside `OutputSchema`
+  (`internal/core/capability/capability.go:11`), not inside a JSON Schema,
+  so validation can read it without interpreting a schema.
+- **Measurements.** `ActionResult` gains
+  `Measurements []Measurement{Name, Value float64, Unit, Source, Trust}`. The
+  gateway carries them through MCP results as structured content, so a number
+  is never scraped out of `StateDelta` or prose (Flagger's float64 result,
+  Inspect's typed `Score`).
+- **Provenance (rule 9).** A measurement's trust is set from what it holds:
+  - A value this deployment's own verifier computed is first-party.
+  - A number read out of text somebody else wrote, such as a figure in a PR
+    comment, is `TrustThirdParty`.
+  - A third-party measurement may be shown but cannot settle a required
+    criterion.
+- **Cannot measure (rule 10).** A verifier that cannot measure returns
+  `ErrUnsupported` or an error. That becomes `inconclusive: unsupported` or
+  `inconclusive: verifier_error`, never an empty list read as zero.
+- **Core stays free of software nouns.** `internal/core` holds only
+  `Measurement`, the state, the operators and the comparison. Metric names
+  such as `coverage` or `p95_latency_ms` live in packs, as Phase 39's
+  acceptance criterion requires.
+
+**3. Baselines, windows, samples and aggregation (D4; sections 1, 4 and 7;
+*thinner*, because Codecov's base comparison and SLO windows were not read).**
+- **Form.** A measured criterion is `metric op target unit`, with `op` in
+  `< <= > >= ==` and a unit that must equal the declared unit.
+- **Baselines.**
+  - `baseline: at_start` is measured once when the objective starts, then
+    frozen and audited.
+  - `baseline: <number>` fixes it by hand.
+  - `change` is an absolute or percentage delta against the baseline, for
+    example "not more than 10% above".
+- **Repeated runs.** `samples: N` takes a reducer: `all`, `k_of_n`, `median`,
+  `p95`, `min`, `max` or `mean`. Below `min_samples` the state is
+  `inconclusive: too_few_samples`.
+  - A noisy signal defaults to `median`.
+  - A pass/fail signal defaults to `all`. There is never an "any rerun
+    passes" reducer, because rerunning until green hides real bugs (Luo et
+    al., section 7).
+- **Departures.** The proposal's `aggregate` is renamed `reducer` and
+  widened, and its `window` moves out of the loop (see 4). A statistical
+  canary judge is not adopted.
+
+**4. Sustain for standing objectives (D5; section 1; facts 4 and 5;
+*thinner*, because SLO error budgets were not read).**
+- **The loop still evaluates once and converges (rule 8).** `sustain: N` and
+  any wall-clock window are read by reconcile.
+  - Reconcile records each pass's criterion states.
+  - It keeps a per-criterion streak beside `ScoreStreak`
+    (`internal/feature/reconcile/run.go:508-518`), not in its place.
+- **What moves the streak and the breaker.**
+  - `inconclusive` neither extends nor breaks a streak, and it does not count
+    towards `BreakerFailures`.
+  - Only `not_met` on a required criterion counts towards the breaker. This
+    breaks the 2026-10-14 pattern directly.
+- **Drift.** Drift against the converged fingerprint
+  (`internal/feature/reconcile/sense.go:34,77`) stays the only trigger for
+  re-running. A change of criterion state is not a second drift signal.
+- **Departure from D5, added here.** N consecutive `inconclusive` passes on a
+  required criterion are surfaced in the digest. Otherwise a stream that can
+  never be measured would neither complete nor trip the breaker (see Risks).
+
+**5. How criteria are given and shown (D6; sections 1 and 4; *thinner*,
+because Gherkin and OKR practice were not read).**
+- **API.** The create request gains an optional `success_criteria` array with
+  the fields above.
+  - Template criteria remain the default, and request criteria are added to
+    them.
+  - A request criterion with a template criterion's `id` may tighten it,
+    with a stricter target or `required: true`, but may not loosen or remove
+    it.
+  - Because `docs/openapi.yaml` does not exist, step 5 creates it with the
+    objective paths it touches, and rule 6 then points at a real file.
+- **CLI (thin, ADR 001).**
+  - `krk objective create --criteria-file criteria.yaml` is the primary form.
+    The YAML has the same shape as the API.
+  - A repeatable `--criterion 'id=..;kind=measured;metric=..;op=..;target=..;unit=..'`
+    is for one-offs. **Departure:** the proposal gave the flag and the file
+    equal weight; here the file comes first.
+  - All validation happens in the server.
+- **Create-time validation.** The server rejects:
+  - an unknown verifier, or a reserved or discovered one;
+  - a metric the verifier does not declare;
+  - a unit mismatch, or an unknown parameter;
+  - an `op` without a target;
+  - an objective with no required criterion.
+
+  Each error names the field.
+- **What a person sees.**
+  - `krk verifier list` shows each verifier's metrics, units and parameters.
+  - `krk objective criteria <id>`, and the same panel on the web objective
+    page, show for each criterion: kind, target, baseline, the last values
+    with unit and source, state and reason, and whether code or a model
+    decided.
+  - The digest (Phase 21) lists criteria that are `not_met`, or
+    `inconclusive` for more than one pass. This digest part is this phase's
+    addition; D6 did not cover the digest.
+
+**6. Safety (D7; sections 4 and 7; ADR 022; *thinner*, because GitHub's
+behaviour for required checks that never report was not read).**
+- **Targets belong to their author.** Targets, baselines, reducers and
+  sample counts are fixed at create time. The loop has no capability that
+  writes them. A change goes through the API by a person, is audited, and
+  resets every sustain streak.
+- **A verifier is a pack capability.** A discovered MCP tool is rejected as a
+  verifier at create time. This extends verify.go:88 and ADR 022 from "never
+  met" to "never accepted".
+- **A model never settles a measured or verified criterion.** When the
+  verifier did not run, the state is `inconclusive: not_run`. This removes the
+  verify.go:106 fallback for criteria that name a verifier. It is the decision
+  Phase 38's "What this is not" leaves to a person, proposed here and taken
+  by the owner's merge.
+- **Measurements are audited.** Every measurement is audited with its
+  verifier, parameters, value, unit, source, trust and the commit it was
+  taken at.
+- **Anti-gaming.** Each verifier declares the paths its definition is read
+  from: the test files, the coverage configuration, the benchmark, the query.
+  A pass that changes one of those paths makes the criterion
+  `inconclusive: measure_changed`, and it waits for a person. SWE-bench runs
+  the original test lists, not the patch's (section 4). This mechanises
+  Phase 40's "weakening a test … no step can yet detect it" for declared
+  measures only.
+
+**7. The first verifiers, in build order (D8).** The order is set by this
+deployment's real failures. The case of a pass that did the work and was
+judged a failure comes first.
+
+1. `software.verify.stream_pr`: a pull request on the stream's branch was
+   opened or updated in this pass. It also emits `tests_changed` (count).
+   When there is no PR, the state is `inconclusive: no_data`.
+2. `software.verify.ci_green`: every required check is green at the PR head.
+   Pending or absent checks are `inconclusive`.
+3. `software.verify.paths_declared`: the diff touches only the declared path
+   globs.
+4. `coverage` per package, with `baseline: at_start`.
+5. `flaky_test_count` over N runs.
+6. `web_bundle_bytes` and `cli_startup_ms`. The latter is noisy, so it uses
+   `median` over samples.
+7. `p95_latency_ms` and `error_rate` through Phase 32's
+   `internal/platform/tools/observability` adapters. No data is
+   `inconclusive`.
+8. `cost_per_pass` and `escalation_approval_rate`. The report did not verify
+   a source for either (D8). The step finds one or drops the verifier.
+
+**8. New criteria for the templates.** Prose judgements become
+`required: false` with a weight, so they still score progress but cannot fail
+a pass.
+
+| Template | Required criteria (verified or measured) | Kept as judged, not required |
+|---|---|---|
+| Discovery | `stream_pr` with `paths_declared: docs/research/**`, `ci_green` | "findings are new" |
+| Backlog | `stream_pr` with `paths_declared: docs/roadmap.md`, `ci_green` | "each entry cites evidence" |
+| UX | `stream_pr` with `paths_declared: cli/**, web/**`, `ci_green`, `tests_changed >= 1` | "the improvement is visible to a user" |
+| Delivery (stream) | `stream_pr`, `ci_green`, `run_tests`; coverage of the changed packages `>= at_start` as a shadow first | peer and lead review |
+| One-shot `software.objective.delivery` | As today for code: `run_tests` and `lint` | peer and lead review |
+| New one-shot `software.objective.docs` | `stream_pr`, `paths_declared: docs/**`, `ci_green` | review of the prose |
+
+How these rows stop the two failures:
+
+- **The breaker trip.** Under these rows #168, #174 and #177 would each have
+  been `met`.
+- **Nothing-new passes.** A discovery pass that found nothing new opens no
+  PR. It is `inconclusive: no_data`, so it does not trip the breaker. That is
+  the case `streams.go:42-47` said nothing deterministic could settle.
+- **Docs-only one-shots.** They use the docs template, so they no longer
+  fall to the judge and end "failed".
+
+**Steps.** Each step is one delivery pass, has its own acceptance test, and
+leaves `go test ./...` green and the system working.
+
+1. **Criterion state and required (core and loop).**
+   - Work: add `State`, `Reason` and `Required` (default `true`). Keep `Met`
+     derived in JSON. Completion becomes "all required met". Reject an
+     objective with no required criterion. Reconcile does not count
+     `inconclusive` towards `BreakerFailures`.
+   - *Acceptance:* a loop test with one required `met`, one `inconclusive`
+     and one non-required `not_met` criterion does not complete and records
+     the reason. A reconcile test shows an inconclusive pass leaves
+     `BreakerFailures` unchanged. An empty-criteria objective is rejected.
+     Existing objectives keep their scores.
+2. **The deterministic stream verifiers (software pack).**
+   - Work: `stream_pr`, `ci_green` and `paths_declared` as pack
+     capabilities.
+   - *Acceptance:* table tests against a fake forge cover PR opened, updated,
+     absent, CI pending, red and green, and a path outside the globs.
+     Pending and absent give `inconclusive`, never `met`.
+3. **The templates on the new criteria, and no judge for named verifiers.**
+   - Work: the table above, plus `software.objective.docs`. Remove the
+     verify.go:106 fallback for criteria that name a verifier.
+   - *Acceptance:*
+     - A replay of #174's state (PR open, checks green, tests changed) makes
+       the UX pass `met`.
+     - A discovery pass with no PR is `inconclusive` and leaves the breaker
+       count unchanged.
+     - A docs-only one-shot completes without a judge call.
+     - This test reads the 2026-10-14 trip's verdicts from the audit log
+       first and records them, because the report did not.
+4. **Typed measurements and the verifier declaration.**
+   - Work: `Measurement` in `internal/core/environment`, with `Trust`; the
+     metric declaration beside `OutputSchema`; the deterministic comparison
+     for `measured`; structured content through MCP results.
+   - *Acceptance:*
+     - A fake verifier emitting 0.81 `ratio` against `>= 0.8` is `met`.
+     - An empty result is `inconclusive: no_data`.
+     - `ErrUnsupported` is `inconclusive: unsupported`.
+     - A third-party measurement cannot settle a required criterion.
+     - The import check shows no software noun in `internal/core`.
+5. **Criteria in the API, validated, with the spec.**
+   - Work: `success_criteria` in the create request; template merge (tighten
+     only); create-time validation; `docs/openapi.yaml` created for the
+     objective paths.
+   - *Acceptance:* handler tests send each rejected case and check the error
+     names the field. A tighten is accepted and a loosen is rejected.
+6. **CLI, web page and digest.**
+   - Work: `--criteria-file`, `--criterion`, `krk verifier list`,
+     `krk objective criteria <id>`, the web panel, and the digest lines.
+   - *Acceptance:* CLI golden tests; a web component test for each of the
+     three states; a digest test listing a criterion inconclusive for two
+     passes.
+7. **Baselines and samples.**
+   - Work: `at_start` frozen and audited; `change`; `samples`, the reducers
+     and `min_samples`.
+   - *Acceptance:* median of [10, 50, 12] against `<= 15` is `met`. Two
+     samples with `min_samples: 3` are `too_few_samples`. `at_start` is
+     audited once and never rewritten.
+8. **Sustain in reconcile.**
+   - Work: a per-criterion streak beside `ScoreStreak`.
+   - *Acceptance:* a reconcile test shows `met, inconclusive, met` with
+     `sustain: 2` reaching the streak. A person's target change resets it.
+     Drift still comes only from the fingerprint.
+9. **Anti-gaming and audit.**
+   - Work: declared measure paths, `measure_changed`, and the full
+     measurement audit.
+   - *Acceptance:* a pass that edits a declared test file makes `run_tests`
+     `inconclusive: measure_changed`. The audit row carries the verifier,
+     parameters, value, unit, source, trust and commit. No loop capability
+     can write a target, and a test enumerates the capabilities.
+10. **Coverage and flaky-test count.**
+    - *Acceptance:* coverage of a fixture package against `at_start`; a
+      fixture test that fails one run in three is counted as flaky over
+      three runs.
+11. **Bundle size and CLI startup time.**
+    - *Acceptance:* the bundle bytes match `du` on the built fixture; startup
+      uses the `median` of N and rejects fewer than `min_samples`.
+12. **p95 latency and error rate.**
+    - *Acceptance:* recorded Prometheus and Datadog responses give the value.
+      An empty series gives `inconclusive: no_data`.
+13. **Cost per pass and escalation approval rate.**
+    - *Acceptance:* the source for each is found and cited at file:line and
+      a test reads it. Otherwise the verifier is dropped from this list and
+      the finding is written here (the kill criterion).
 
 **What this is not.** It is not a statistical canary judge and does not change
 rule 8: the loop still converges once.
