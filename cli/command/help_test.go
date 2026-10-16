@@ -31,6 +31,16 @@ func TestCreateHelp(t *testing.T) {
 	}
 }
 
+// A filter flag that takes a twin ID should say where the ID comes from.
+func TestTwinFilterSaysWhereIDComesFrom(t *testing.T) {
+	for _, cmd := range []*cobra.Command{costReportCmd(), evalCalibrateCmd()} {
+		requireExample(t, cmd)
+		if usage := cmd.Flags().Lookup("twin").Usage; !strings.Contains(usage, "krk twin list") {
+			t.Errorf("%s --twin usage %q does not say where a twin ID comes from", cmd.Name(), usage)
+		}
+	}
+}
+
 // A wrong argument count has to show what the command expects: with
 // SilenceUsage set, cobra's "accepts 1 arg(s), received 0" is all the user gets.
 func TestMissingArgumentShowsUsage(t *testing.T) {

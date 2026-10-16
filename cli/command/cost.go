@@ -88,7 +88,7 @@ func costReportCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().DurationVar(&since, "since", 30*24*time.Hour, "how far back to total")
-	cmd.Flags().StringVar(&twin, "twin", "", "only this twin's spend")
+	cmd.Flags().StringVar(&twin, "twin", "", "only this twin's spend (see: krk twin list)")
 	cmd.Flags().StringVar(&org, "org", "", "only this organisation's spend")
 	cmd.Flags().StringVar(&team, "team", "", "only this team's spend; needs --org")
 	cmd.Flags().StringVar(&project, "project", "", "only this project's spend")
