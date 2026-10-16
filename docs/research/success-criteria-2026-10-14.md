@@ -146,13 +146,23 @@ All sources below were read on 2026-10-16.
 
 ## What this means for Karakuri
 
+Sections 2, 3, 5 and 6 hold the marker, so every decision below rests on sections 1, 4 and 7 only and is weaker for it: SLO error budgets, CI gate semantics (Codecov, SonarQube, GitHub required checks), agent frameworks' termination and acceptance-criteria practice were not read.
+
 ### D1 Criterion kinds and states
 
-_Not reached in time; see Read and not read._
+**Decision.** Keep three kinds, settled by three different things: `judged` (a model, from action outcomes, as today), `verified` (a pack verifier's pass or fail) and `measured` (a named number from a pack verifier compared with a target by deterministic code). Replace `Met bool` with a state: `met`, `not_met` or `inconclusive`, and `inconclusive` always carries a reason (`no_data`, `verifier_error`, `too_few_samples`, `not_run`, `unsupported`). A missing measurement, NaN or an empty result is `inconclusive`, never a pass and never a silent zero. For a gate, `inconclusive` is not `met`, so the objective does not complete, but it also does not count as a failed pass for the breaker; it is reported apart. Keep `Met` in JSON as derived (`state == met`) so the API does not break.
+
+**Rests on.** Section 1: Argo's Inconclusive and Kayenta's Nodata/NodataFailMetric and the `replace` silent-pass hazard (https://argo-rollouts.readthedocs.io/en/stable/features/analysis/, https://spinnaker.io/docs/guides/user/canary/judge/). Section 4: Inspect's four outcomes and the reducer that erases "not measured" (https://inspect.aisi.org.uk/scoring-policy.html); SWE-bench's "unusable log means not resolved, cause recorded" (https://github.com/SWE-bench/SWE-bench/blob/main/swebench/harness/grading.py). Section 7, takeaway 4.
+
+**Conflicts.** None with a rule. It changes a core entity, which with D3 is why ADR 029 is needed.
 
 ### D2 Required versus weighted, and the completion rule
 
-_Not reached in time; see Read and not read._
+**Decision.** Every criterion is `required` unless it says otherwise, and completion stays "all required criteria met". `weight` keeps its present role, the progress score that reconcile's score streak reads, and a criterion with `required: false` contributes to the score but cannot block or grant completion. `required: false, weight: 0` is a shadow criterion: evaluated, shown and audited, never gating, so a new verifier can be observed before it gates. No weighted threshold may turn a failed required criterion into completion. An objective with zero required criteria is rejected at create time (closing the code-reading gap in fact 1, where `metCount == len(criteria)` is true for an empty list).
+
+**Rests on.** Section 1: Kayenta's `critical` gate overriding weighted scores, Argo's `dryRun` shadow mode. Section 4: promptfoo's "no threshold means every non-zero-weight assertion is required" and its weighted-average hazard (https://www.promptfoo.dev/docs/configuration/expected-outputs/); SWE-bench's PARTIAL that never counts as resolved.
+
+**Conflicts.** None. Rule 8 is respected: completion stays a single convergence; anything weighted over time is reconcile's business (D5).
 
 ### D3 The verifier contract
 
