@@ -166,11 +166,23 @@ Sections 2, 3, 5 and 6 hold the marker, so every decision below rests on section
 
 ### D3 The verifier contract
 
-_Not reached in time; see Read and not read._
+**Decision.** A verifier is a pack capability that declares, in its pack manifest (Phase 39 / ADR 028), the metrics it can emit: name, unit, direction (higher or lower is better) and typed parameters. That declaration goes beside the existing `OutputSchema` (`capability.go:11`, today only `{Type: "object"}`), not inside a free-form schema, so create-time validation (D6) can read it without interpreting JSON Schema. `ActionResult` gains `Measurements []Measurement{Name, Value float64, Unit, Source}`, a typed field that the gateway carries through MCP results as structured content, so a number is never scraped out of `StateDelta` or prose. Each measurement carries `Trust` (rule 9): a value computed by this deployment's own verifier is first-party; one read from a third-party system (a Datadog query over traffic others generate is still first-party data, a number in a PR comment is not) is marked from what it holds. Rule 10: a verifier that cannot measure returns `ErrUnsupported` or an error, which becomes `inconclusive` with reason `unsupported` or `verifier_error`, never an empty list read as zero. Core holds only `Measurement`, criterion state and the comparison; metric names like `coverage` or `p95_latency_ms` live in packs.
+
+**Rests on.** Section 1: Flagger's `MetricTemplate` returning one float64 and Argo's provider plus condition split (https://docs.flagger.app/usage/metrics). Section 4: Inspect's typed `Score` with a `reason` (https://inspect.aisi.org.uk/scorers.html). Code reading facts 1, 2 and 5.
+
+**Conflicts.** Changes `ActionResult` and `Criterion` in core and the pack manifest of ADR 028, so **ADR 029 is needed**. Consistent with ADRs 022, 026 and rules 9 and 10.
 
 ### D4 Baselines, relative targets, windows, repeated runs and aggregation
 
-_Not reached in time; see Read and not read._
+**Decision.** A measured criterion is `metric op target` with `op` in `<, <=, >, >=, ==`, a `unit` that must equal the declared unit, and optionally:
+- `baseline: at_start` (measured once when the objective starts and frozen, recorded in the audit log) or a fixed number, with `change` as an absolute or percentage delta against it ("coverage of ./internal/feature not lower than at start", "p95 not more than 10% above baseline");
+- `samples: N` with a reducer (`all`, `k_of_n`, `median`, `p95`, `max`, `min`, `mean`) and a `min_samples` below which the state is `inconclusive: too_few_samples`.
+
+Default for a noisy signal is `median` over N with `min_samples`; for a pass/fail signal it is `all`, never "any rerun passes". A statistical canary judge (Kayenta's Mann-Whitney) is out of scope for Phase 41; `window` over wall-clock time is dropped from the loop and belongs to D5.
+
+**Rests on.** Section 1: Argo's `count`/`failureLimit`/`consecutiveSuccessLimit`, Kayenta's contemporaneous baseline. Section 4: Inspect's epochs and reducers, `pass_at` versus `pass_k`. Section 7: Luo et al., F.12, rerun-until-green hides real bugs (https://mir.cs.illinois.edu/lamyaa/publications/fse14.pdf). Weaker because section 2 (SLO windows) and section 3 (Codecov base comparison and missing-base behaviour) were not read.
+
+**Conflicts.** None. A frozen `at_start` baseline is a target the loop cannot edit (D7).
 
 ### D5 Sustain for standing objectives, and reconcile
 
