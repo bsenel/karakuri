@@ -91,4 +91,26 @@ Checked on 2026-10-16 against origin/main at 14c719f and all open pull requests.
 
 ## Read and not read
 
-_Not reached in time; see Read and not read._
+**Read first-hand on 2026-10-16** (section 1):
+- Argo Rollouts analysis docs: https://argo-rollouts.readthedocs.io/en/stable/features/analysis/ and the source at https://raw.githubusercontent.com/argoproj/argo-rollouts/master/docs/features/analysis.md
+- Spinnaker canary judge: https://spinnaker.io/docs/guides/user/canary/judge/
+- Flagger metrics: https://docs.flagger.app/usage/metrics
+
+The pages were read through a fetch tool that summarises each page against a question, not as full raw text. A later action should confirm the exact wording before quoting.
+
+**Not read: research part one ran out of its time box.**
+- Section 1, details missing from the pages above:
+  - Argo Rollouts `consecutiveErrorLimit`, `inconclusiveLimit` and the measurement Error phase, which are probably in the AnalysisTemplate spec reference at https://argo-rollouts.readthedocs.io/en/stable/features/specification/
+  - Flagger's canary analysis page (`analysis.threshold`, behaviour on no data or query errors)
+  - Kayenta's default marginal and pass thresholds
+  - An issue thread with a user-reported failure mode for each of the three systems
+- Section 2, left with its marker:
+  - The OpenSLO specification
+  - The Google SRE workbook chapters on implementing SLOs and on error budget policy
+  - Keptn quality gates (SLI/SLO evaluation, pass and warning criteria, comparison with previous results, total score)
+  - Sloth and Pyrra (optional)
+- Section 3, left with its marker:
+  - SonarQube quality gates (conditions on new code)
+  - Codecov status checks (project and patch targets, auto target, threshold, base comparison, behaviour when the base report is missing)
+  - GitHub required status checks (behaviour when a required check never reports)
+- Sections 4 to 7 belong to later research actions and were not attempted in part one.
