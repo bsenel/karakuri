@@ -27,9 +27,9 @@ describe('AuditPage', () => {
 
     renderPage();
     await waitFor(() =>
-      expect(screen.getByRole('alert')).toHaveTextContent('Could not load audit events: Error: API 500: boom'),
+      expect(screen.getByRole('alert')).toHaveTextContent('Could not load audit events: API 500: boom'),
     );
-    expect(screen.queryByText('No matching audit events.')).not.toBeInTheDocument();
+    expect(screen.queryByText(/No audit events yet/)).not.toBeInTheDocument();
   });
 
   it('asks again when Retry is pressed', async () => {
@@ -41,9 +41,28 @@ describe('AuditPage', () => {
     await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
 
-    await waitFor(() => expect(screen.getByText('No matching audit events.')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/No audit events yet/)).toBeInTheDocument());
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     expect(get).toHaveBeenCalledTimes(2);
+  });
+
+  it('says how to see more when a filter hides every event', async () => {
+    get.mockResolvedValue([]);
+
+    render(<MemoryRouter initialEntries={['/audit?kind=rejection']}><AuditPage /></MemoryRouter>);
+    expect(
+      await screen.findByText('No matching audit events. Clear the filters above to see every event.'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/No audit events yet/)).not.toBeInTheDocument();
+  });
+
+  it('names where events come from when there are none at all', async () => {
+    get.mockResolvedValue([]);
+
+    renderPage();
+    expect(await screen.findByText(/No audit events yet/)).toHaveTextContent(
+      'No audit events yet. They appear when an agent runs a tool or a checkpoint is resolved; krk audit reads the same log.',
+    );
   });
 
   it('opens and closes an event from the keyboard', async () => {

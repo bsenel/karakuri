@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { api } from '@/api/client';
+import { describe } from '@/api/useApi';
 import type { AuditEvent } from '@/api/types';
 
 // AuditPage surfaces the authority-bounds audit log served by
@@ -23,6 +24,8 @@ export function AuditPage() {
   const violationsOnly = params.get('bounds_violation') === 'true';
   const since = params.get('since') ?? '';
   const limit = params.get('limit') ?? '100';
+  // Limit is not a filter: on its own it never hides every event.
+  const filtered = Boolean(objective || agent || kind || violationsOnly || since);
 
   const queryString = useMemo(() => {
     const qs = new URLSearchParams();
@@ -45,7 +48,7 @@ export function AuditPage() {
       // Drop the previous answer: rows from another search under this error
       // would read as the result of the one that failed.
       setEvents([]);
-      setErr(String(e));
+      setErr(describe(e));
     }
     finally { setLoading(false); }
   };
@@ -111,7 +114,16 @@ export function AuditPage() {
       {loading && <p className="muted small" style={{ marginTop: 12 }}>Loading…</p>}
 
       <div className="col" style={{ marginTop: 16 }}>
-        {!loading && !err && events.length === 0 && <p className="muted">No matching audit events.</p>}
+        {!loading && !err && events.length === 0 && (
+          filtered ? (
+            <p className="muted">No matching audit events. Clear the filters above to see every event.</p>
+          ) : (
+            <p className="muted">
+              No audit events yet. They appear when an agent runs a tool or a checkpoint is resolved;{' '}
+              <code>krk audit</code> reads the same log.
+            </p>
+          )
+        )}
         {events.map((ev) => (
           <AuditEventRow
             key={ev.id}
