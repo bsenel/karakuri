@@ -300,6 +300,11 @@ reconcile:
   # objective still retries occasionally rather than effectively never.
   max_backoff: 1h
 
+  # How long a checkpoint may wait for an answer before it is rejected, on the
+  # record, by system:timeout (Phase 35). Expiry never approves. Off by
+  # default: unset, a checkpoint waits until somebody answers it.
+  # checkpoint_ttl: 72h
+
 # Periodic digests (Phase 21) — what a twin's standing objectives did, and what
 # they need you to decide.
 #

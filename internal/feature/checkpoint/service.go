@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -59,6 +60,9 @@ type CreateOptions struct {
 	// WorldState is what the planner saw when it escalated; nil when the
 	// caller has none (budget pauses, manual checkpoints).
 	WorldState *loop.WorldState
+	// ExpiresAt is when an unanswered checkpoint lapses into a rejection; nil
+	// when the caller sets no limit.
+	ExpiresAt *time.Time
 }
 
 // Create persists a pending checkpoint and publishes a checkpoint event.
@@ -82,6 +86,7 @@ func (s *Service) Create(
 		Actions:      opts.Actions,
 		AuditEventID: opts.AuditEventID,
 		WorldState:   opts.WorldState,
+		ExpiresAt:    opts.ExpiresAt,
 		Status:       corecheckpoint.StatusPending,
 		CreatedAt:    time.Now().UTC(),
 	}
@@ -195,6 +200,42 @@ func (s *Service) Record(ctx context.Context, id string, d corecheckpoint.Decisi
 		Success:     success,
 	})
 	return nil
+}
+
+// ExpireDue rejects, as system:timeout, every pending checkpoint whose
+// ExpiresAt is before now, and reports how many it rejected. Expiry never
+// approves.
+//
+// It goes through Resolve, so the audit row and the loop's reject path are the
+// ones a person's rejection takes; a checkpoint with no loop waiting is still
+// recorded. One checkpoint failing does not stop the rest: the failures come
+// back joined, alongside the count of those that did lapse.
+func (s *Service) ExpireDue(ctx context.Context, now time.Time) (int, error) {
+	pending, err := s.store.ListPendingCheckpoints(ctx, "")
+	if err != nil {
+		return 0, fmt.Errorf("checkpoint: list pending for expiry: %w", err)
+	}
+	var (
+		expired int
+		errs    []error
+	)
+	for _, cp := range pending {
+		if cp.ExpiresAt == nil || !cp.ExpiresAt.Before(now) {
+			continue
+		}
+		d := corecheckpoint.Decision{
+			Choice:   "reject",
+			Approver: "system:timeout",
+			Note: fmt.Sprintf("Nobody answered before the checkpoint expired at %s.",
+				cp.ExpiresAt.UTC().Format(time.RFC3339)),
+		}
+		if err := s.Resolve(ctx, cp.ID, d); err != nil {
+			errs = append(errs, fmt.Errorf("checkpoint: expire %s: %w", cp.ID, err))
+			continue
+		}
+		expired++
+	}
+	return expired, errors.Join(errs...)
 }
 
 func newID() (string, error) {

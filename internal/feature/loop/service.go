@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log/slog"
 	"sync"
+	"time"
 
 	"github.com/bsenel/karakuri/internal/core/capability"
 	corecheckpoint "github.com/bsenel/karakuri/internal/core/checkpoint"
@@ -50,7 +51,23 @@ type loopState struct {
 	result     loop.Result
 	decisionCh chan corecheckpoint.Decision
 	request    loop.Request // captured for durable replay on server restart
-	mu         sync.RWMutex
+	// answered is set when a loop that was paused before a restart is replayed
+	// with the decision on the checkpoint it raised then. stepDecide takes it
+	// at the replay's first decide so that checkpoint, and not a new one, is
+	// the one the runner reads the decision for.
+	answered bool
+	mu       sync.RWMutex
+}
+
+// takeAnswered reports whether the replay is still owed the decision on the
+// checkpoint it raised before the restart, and clears it: one stored
+// checkpoint answers one pause.
+func (ls *loopState) takeAnswered() bool {
+	ls.mu.Lock()
+	defer ls.mu.Unlock()
+	answered := ls.answered
+	ls.answered = false
+	return answered
 }
 
 type serviceImpl struct {
@@ -79,6 +96,10 @@ type serviceImpl struct {
 	// tracing; read it through tracing() rather than directly.
 	tracer telemetry.Tracer
 
+	// checkpointTTL is how long a checkpoint this loop creates may wait for
+	// an answer. Zero means it carries no expiry.
+	checkpointTTL time.Duration
+
 	mu     sync.RWMutex
 	states map[string]*loopState // loopID → state
 }
@@ -97,6 +118,7 @@ func NewService(
 	domReg *domain.Registry,
 	quotaDeps karakuriquota.Deps,
 	tracer telemetry.Tracer,
+	checkpointTTL time.Duration,
 ) Service {
 	// The whole Deps rather than just the token budget: the loop now also
 	// charges the per-capability allowance and records what work cost, and
@@ -118,7 +140,20 @@ func NewService(
 		costs:   quotaDeps.Costs,
 		tracer:  tracer,
 		states:  make(map[string]*loopState),
+
+		checkpointTTL: checkpointTTL,
 	}
+}
+
+// checkpointExpiry is when a checkpoint created now lapses into a rejection,
+// or nil when no duration is configured. The loop only stamps the instant; the
+// reconcile tick is what acts on it.
+func (s *serviceImpl) checkpointExpiry() *time.Time {
+	if s.checkpointTTL <= 0 {
+		return nil
+	}
+	t := time.Now().Add(s.checkpointTTL)
+	return &t
 }
 
 // tracing returns the tracer to open spans with, never nil, so a service
@@ -396,6 +431,9 @@ func (s *serviceImpl) ResumeStoredLoops(ctx context.Context) error {
 				}
 				// Hand it back so the replayed runner consumes it at its
 				// first escalation instead of asking a second time.
+				ls.mu.Lock()
+				ls.answered = true
+				ls.mu.Unlock()
 				ls.decisionCh <- decision
 				sem <- struct{}{}
 				defer func() { <-sem }()

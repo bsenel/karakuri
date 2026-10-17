@@ -446,8 +446,16 @@ func (s *GORMStorage) SaveCheckpoint(ctx context.Context, c checkpoint.Checkpoin
 			wsJ = string(b)
 		}
 	}
+	// In UTC, for the reason ListResolvedCheckpoints gives: SQLite compares
+	// datetimes as text.
+	var expiresAt *time.Time
+	if c.ExpiresAt != nil {
+		t := c.ExpiresAt.UTC()
+		expiresAt = &t
+	}
 	return s.db.WithContext(ctx).Save(&schema.CheckpointModel{
-		ID: c.ID, ObjectiveID: string(c.ObjectiveID), TwinID: c.TwinID,
+		ExpiresAt: expiresAt,
+		ID:        c.ID, ObjectiveID: string(c.ObjectiveID), TwinID: c.TwinID,
 		Reason: c.Reason, Summary: c.Summary, OptionsJSON: string(optsJ),
 		Capability:   string(c.Capability),
 		Confidence:   c.Confidence,
@@ -566,6 +574,7 @@ func checkpointFromModel(m schema.CheckpointModel) checkpoint.Checkpoint {
 		Status:       checkpoint.Status(m.Status), Decision: dec,
 		WorldState: ws,
 		CreatedAt:  m.CreatedAt, ResolvedAt: m.ResolvedAt,
+		ExpiresAt: m.ExpiresAt,
 	}
 }
 

@@ -47,6 +47,12 @@ type LoopRunner interface {
 	Run(ctx context.Context, req coreloop.Request) (coreloop.Result, error)
 }
 
+// CheckpointSweeper is the slice of the checkpoint service the tick needs to
+// end checkpoints nobody answered. Declared here for the reason LoopRunner is.
+type CheckpointSweeper interface {
+	ExpireDue(ctx context.Context, now time.Time) (int, error)
+}
+
 // Config is the operator's ceiling on everything the supervisor does.
 type Config struct {
 	Tick               time.Duration
@@ -140,6 +146,10 @@ type Service struct {
 	mu      sync.Mutex
 	running map[objective.ObjectiveID]bool
 
+	// sweeper expires unanswered checkpoints on the tick. Nil means expiry is
+	// off, which is what a deployment that configured no duration gets.
+	sweeper CheckpointSweeper
+
 	// now is injectable so tests can drive the schedule without sleeping.
 	now func() time.Time
 }
@@ -169,6 +179,13 @@ func NewService(
 		running:  map[objective.ObjectiveID]bool{},
 		now:      func() time.Time { return time.Now().UTC() },
 	}
+}
+
+// WithCheckpointSweeper sets what the tick asks to expire unanswered
+// checkpoints.
+func (s *Service) WithCheckpointSweeper(sw CheckpointSweeper) *Service {
+	s.sweeper = sw
+	return s
 }
 
 // Holder is this replica's identity in the lease, exposed for diagnostics.
@@ -230,6 +247,13 @@ func (s *Service) Start(ctx context.Context) {
 // deterministically instead of waiting on wall time.
 func (s *Service) Tick(ctx context.Context) {
 	now := s.now()
+	if s.sweeper != nil {
+		if n, err := s.sweeper.ExpireDue(ctx, now); err != nil {
+			slog.Warn("checkpoint expiry sweep failed", "err", err)
+		} else if n > 0 {
+			slog.Info("expired unanswered checkpoints", "count", n)
+		}
+	}
 	due, err := s.store.ListDueReconcileStates(ctx, s.holder, now, s.cfg.MaxConcurrent*4)
 	if err != nil {
 		slog.Warn("reconcile due query failed", "err", err)

@@ -1,0 +1,76 @@
+openapi: 3.0.3
+info:
+  title: Karakuri API
+  version: "1"
+paths:
+  /api/v1/checkpoints:
+    get:
+      summary: List pending checkpoints
+      parameters:
+        - name: twin_id
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Pending checkpoints
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Checkpoint"
+  /api/v1/checkpoints/{id}:
+    get:
+      summary: Get a checkpoint
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The checkpoint
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Checkpoint"
+components:
+  schemas:
+    Checkpoint:
+      type: object
+      required: [id, objective_id, twin_id, summary, options, status, created_at]
+      properties:
+        id:
+          type: string
+        objective_id:
+          type: string
+        twin_id:
+          type: string
+        reason:
+          type: string
+        summary:
+          type: string
+        options:
+          type: array
+          items:
+            type: string
+        capability:
+          type: string
+        confidence:
+          type: number
+        status:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        resolved_at:
+          type: string
+          format: date-time
+        expires_at:
+          type: string
+          format: date-time
+          description: >-
+            When an unanswered checkpoint lapses and is resolved as a rejection
+            by system:timeout. Absent when no expiry is configured.

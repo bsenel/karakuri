@@ -45,7 +45,7 @@ Phases 27–32 were proposed from two kinds of evidence: what this repository de
 | 32    | The SRE Path, Actually Wired               | **Completed** |
 | 33    | MCP After the Handshake                    | **Completed** |
 | 34    | Karakuri's Own Tools in Its Agents' Hands  | **Completed** |
-| 35    | An Unanswered Checkpoint Ends              | **Planned**   |
+| 35    | An Unanswered Checkpoint Ends              | **Completed** |
 | 36    | A Provider's Refusal Is Not a Plan         | **Planned**   |
 | 37    | Any Run Can Be Stopped at Any Time         | **Planned**   |
 | 38    | What Was Required and Not Done             | **Planned**   |
@@ -3714,7 +3714,7 @@ file carries no label, as the ADR 021 addendum says.
 
 ---
 
-## Phase 35 — An Unanswered Checkpoint Ends (Planned)
+## Phase 35 — An Unanswered Checkpoint Ends (Completed)
 
 This is a **demand phase**, proposed by the discovery cycle of 2026-10-08
 (`docs/research/discovery-2026-10-08.md`, 'Fit and bets', rank 1). The demand
@@ -3778,6 +3778,85 @@ reminder or a notification: an unanswered checkpoint must not become authority,
 which is only ever what is written into `agent.AuthorityBounds` (ADR 015). It
 adds no fallback behaviour other than rejection, and no per-checkpoint policy
 language.
+
+**Shipped (step 1).** `Checkpoint.ExpiresAt *time.Time` (`expires_at`,
+omitted when nil) in `internal/core/checkpoint/checkpoint.go`, and
+`CreateOptions.ExpiresAt` in `internal/feature/checkpoint/service.go`.
+`Service.ExpireDue(ctx, now)` lists pending checkpoints with
+`ListPendingCheckpoints(ctx, "")`, which returns every twin's, and calls the
+existing `Resolve` with `Decision{Choice: "reject", Approver: "system:timeout"}`
+for each one whose `ExpiresAt` is before `now`. One failure does not stop the
+rest. What was read before writing it is in the header comment of
+`internal/feature/checkpoint/expire_test.go`: a checkpoint is stored as columns,
+so `expires_at` needed its own column in `schema.CheckpointModel`, and
+migration is gorm AutoMigrate, which adds the nullable column to an existing
+table with no SQL file.
+
+**Shipped (step 2).** `reconcile.checkpoint_ttl` in `config/config.go`, left
+commented out in `config/default.yaml`, so it is off by default.
+`internal/api/server.go` passes the duration to `featureloop.NewService`, which
+stamps `ExpiresAt` on the checkpoints the loop raises, and only when it is set
+gives the reconcile service a `CheckpointSweeper` through
+`WithCheckpointSweeper`. `reconcile.Service.Tick` calls `ExpireDue` with its
+clock's `now` before it looks for due objectives; a sweep error is logged and
+the tick goes on. The loop was not taught a new way to wait.
+
+**Shipped (step 3).** What `ResumeStoredLoops` did with a lapsed checkpoint is
+in the header comment of `internal/feature/loop/restart_expiry_test.go`: the
+sweep's reject reached the waiting loop, but the replay raised a second
+checkpoint before it read the decision, and nothing ever resolved that one.
+`loopState.answered` is now set when a stored loop is replayed with a decision,
+and `stepDecide` in `decide.go` takes it at the replay's first decide and
+pauses on the checkpoint already raised instead of creating another, so the
+reject is read and the loop ends as `rejected_at_checkpoint`.
+
+**Shipped (step 4).** The `expires_at` column is written in UTC by
+`SaveCheckpoint` and read back by `checkpointFromModel` in
+`internal/platform/storage/gorm_storage.go`. `docs/openapi.yaml` did not exist
+on this branch, though AGENTS.md rule 6 names it; it was added with the
+checkpoint routes and a `Checkpoint` schema whose optional `expires_at` is a
+`date-time`. It describes those routes only.
+
+**Shipped (acceptance).** Clause by clause:
+
+- *With the duration unset, no checkpoint carries an expiry and none is ever
+  expired.* `TestDefault_CheckpointTTLIsOff` in `config/config_test.go`,
+  `TestEscalationCarriesNoExpiryWhenTheDurationIsUnset` in
+  `internal/feature/loop/checkpoint_expiry_test.go`,
+  `TestTickWithoutASweeperBehavesAsBefore` and
+  `TestTickExpiresNothingWhenExpiryIsOff` in
+  `internal/feature/reconcile/expiry_sweep_test.go`, and
+  `TestCheckpointExpiresAt_NilWhenUnset` in
+  `internal/platform/storage/checkpoint_expires_at_test.go`.
+- *With it set, a fake clock shows a past-due checkpoint rejected by
+  `system:timeout`, one rejection audit row, and the loop ended as
+  `rejected_at_checkpoint`.* `TestExpireDue_RejectsPastDueAsSystemTimeout` in
+  `internal/feature/checkpoint/expire_test.go`,
+  `TestTickCallsTheSweeperWithTheClocksNow` and
+  `TestTickExpiresAnUnansweredCheckpoint` in `expiry_sweep_test.go`, and
+  `TestRestartFirstSweepExpiresACheckpointThatLapsedWhileDown`, which reads the
+  `rejected_at_checkpoint` row and the stored loop state.
+- *A checkpoint a person answered before its time is untouched.*
+  `TestExpireDue_LeavesOthersUntouched`, and
+  `TestRestartFirstSweepLeavesACheckpointWithTimeLeft` for one with time left.
+- *A checkpoint that lapsed while the server was down is expired by the first
+  sweep after boot.* `TestRestartFirstSweepExpiresACheckpointThatLapsedWhileDown`.
+- *No code path turns an expiry into an approval.* `TestExpireDue_NeverApproves`
+  shows `ExpireDue` writes only rejections. That no other path exists is
+  inferred from reading the diff: `system:timeout` is written in one place, with
+  `Choice: "reject"`.
+- *Contract.* `TestCheckpointExpiresAt_RoundTrips`,
+  `TestGetCheckpointCarriesExpiresAtOnlyWhenSet`,
+  `TestListPendingCheckpointsCarriesExpiresAtOnlyWhenSet` and
+  `TestOpenAPICheckpointSchemaDeclaresExpiresAt`.
+
+Not verified: no server was started and no real checkpoint was left to lapse;
+every test above runs in-process, against SQLite or fakes. That
+`BootstrapServer` registers stored loops before the first reconcile tick is
+read from `internal/app/bootstrap.go` and not tested, because that function has
+no seam between the two calls. The AutoMigrate of `expires_at` was exercised on
+SQLite only, not on PostgreSQL. No Karakuri user asked for this; the demand is
+the two issues above.
 
 ---
 
