@@ -329,7 +329,7 @@ All sources below were read on 2026-10-16.
 
 ## What this means for Karakuri
 
-Sections 2, 3, 5 and 6 held the marker when these decisions were written, so every decision below rests on sections 1, 4 and 7 only and is weaker for it: SLO error budgets, CI gate semantics (Codecov, SonarQube, GitHub required checks), agent frameworks' termination and acceptance-criteria practice were not read. Section 3 was written afterwards (2026-10-17); its takeaways support D1, D4 and D7, and the decisions have not been revised against it.
+The decisions below were first written from sections 1, 4 and 7, while sections 2, 3, 5 and 6 still held their markers. A second pass on 2026-10-16 and 2026-10-17 revised them against sections 2, 3, 5 and 6, the expanded section 1 and the code reading's finding that an objective with no criteria cannot complete (fact 6). Each of D1 to D7 ends with a paragraph saying whether that pass changed it or checked it, and **What changed in the second pass** before D8 sums them up.
 
 ### D1 Criterion kinds and states
 
@@ -418,6 +418,19 @@ Default for a noisy signal is `median` over N with `min_samples`; for a pass/fai
 **Conflicts.** None; it reinforces ADR 022 and rule 9. Removing the judge fallback for verifier-named criteria changes `software.objective.delivery` behaviour on docs-only tasks (fact 4), which is wanted: the template should use the D8 deterministic booleans or not name the verifier.
 
 **Changed in the second pass.** A skipped or unreported verifier now resolves to `inconclusive: not_run`, a distinct state that is neither `met` nor `not_met`, after a bounded wait. A criterion is settled only by its named verifier at the commit being judged. That agrees with D1 as it now stands: `inconclusive` blocks completion without feeding the breaker, and a run outcome such as a spent budget settles no criterion. D1's reason list gains `measure_changed`, which this decision already used. Section 3's GitHub subsection drove the change. GitHub has two opposite answers for "did not run" (takeaway 1), and waiting forever needs a bound (takeaway 2). The expected app and the latest commit are its source and commit pins (takeaways 3 and 4). Section 5 (LangGraph takeaway 1, AutoGen takeaways 1 and 2) supplied the rule that a run stopped at its limit has ended but not succeeded. The restarted sustain window follows D5.
+
+### What changed in the second pass
+
+| Decision | Change | Driven by |
+|---|---|---|
+| D1 | Verifier errors are never fed back to the agent nor spend an attempt; the run outcome is kept apart from criterion states and settles none of them; the reason list gains `no_baseline` (from D4) and `measure_changed` (from D7). | Section 5 (CrewAI, AutoGen, LangGraph takeaways); section 1's second pass, section 2's Keptn and section 3's takeaways confirmed the state set. |
+| D2 | Zero required criteria never completes, the guard counts required criteria, the rule is read over one state of the world, and stretch targets are optional weighted progress. | Code reading fact 6; section 5, AutoGen takeaway 3; section 6, re:Work OKRs. |
+| D4 | A relative target with no baseline is `inconclusive: no_baseline`, never approximated, and the baseline value is shown. | Section 3, Codecov; section 2, SRE workbook takeaway 4. |
+| D5 | Sustain is a budget of `not_met` passes over a rolling window, with `min_passes`, instead of N consecutive passes. | Section 2, SRE workbook (error budgets, multiwindow alerting, too few events). |
+| D6 | Criteria are prose bound to a verifier by ID; judged criteria name an observable outcome and their `evidence`; `not_run` and progress are shown as such. | Section 6, Gherkin and re:Work OKRs. |
+| D7 | A skipped or unreported verifier is `inconclusive: not_run` after a bounded wait; only the named verifier at the judged commit settles a criterion. | Section 3, GitHub required status checks; section 5 (LangGraph, AutoGen). |
+
+D3 was checked and confirmed: section 2's Keptn and section 3's SonarQube and Codecov keep the metric source apart from the comparison and report one result per condition, as D3 does. D8's table was updated to agree with the six changed decisions.
 
 ### D8 Departures from the starting proposal
 
