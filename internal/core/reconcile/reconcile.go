@@ -128,6 +128,9 @@ type Outcome struct {
 
 	// Deferred names why a pass that was due did not spend — a budget
 	// exhausted, a quiet window — and is empty when it went ahead.
+	// "provider_rate_limited" is a pass whose loop the model provider
+	// refused (Phase 36); its loop row carries the provider's text, and it
+	// has no DeferredUntil, so the cadence schedules the next pass.
 	//
 	// Deliberately not an Error. A deferral is the system working: nothing
 	// misbehaved, the conditions for spending were simply not met. Recording

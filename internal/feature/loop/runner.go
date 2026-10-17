@@ -20,6 +20,9 @@ import (
 
 // stepContext is passed to each step function.
 type stepContext struct {
+	// sleep is the wait before the one retry of a rate-limited agent call.
+	// Nil means wait on the real clock; tests replace it (Phase 36).
+	sleep      func(context.Context, time.Duration)
 	loopID     string
 	state      *loopState
 	agent      coreagent.Agent
@@ -155,6 +158,7 @@ func (s *serviceImpl) runLoop(ctx context.Context, loopID string, req loop.Reque
 		twinID:   obj.TwinID,
 		svc:      s,
 		rung:     req.AutonomyRung,
+		sleep:    s.sleep,
 	}
 
 	var (
@@ -247,6 +251,15 @@ func (s *serviceImpl) runLoop(ctx context.Context, loopID string, req loop.Reque
 			Output:    string(outputJSON),
 			Timestamp: time.Now().UTC(),
 		})
+
+		// No plan to decide on: the provider refused twice. End the run with
+		// its error rather than asking a human to approve an empty plan; the
+		// next pass is reconcile's decision, not the loop's.
+		if p.endReason != "" {
+			span.End()
+			s.finalizeLoop(ctx, state, obj, iterations, false, p.endErr)
+			return
+		}
 
 		// decide
 		state.mu.Lock()
@@ -486,6 +499,9 @@ func (s *serviceImpl) finalizeLoop(ctx context.Context, state *loopState, obj ob
 	state.mu.Lock()
 	state.result = result
 	state.status.Step = loop.StepLearn
+	if runErr != nil {
+		state.runErr = runErr.Error()
+	}
 	state.mu.Unlock()
 
 	// Persist the terminal state (Phase 11): Completed=true keeps it out of
@@ -493,10 +509,14 @@ func (s *serviceImpl) finalizeLoop(ctx context.Context, state *loopState, obj ob
 	s.persistState(ctx, state, true)
 
 	if obj.ID != "" {
+		payload := map[string]any{"loop_id": state.id, "criteria_met": criteriaMet}
+		if runErr != nil {
+			payload["error"] = runErr.Error()
+		}
 		s.hub.Publish(ctx, event.Event{
 			Type:        evtType,
 			ObjectiveID: string(obj.ID),
-			Payload:     map[string]any{"loop_id": state.id, "criteria_met": criteriaMet},
+			Payload:     payload,
 			Timestamp:   time.Now().UTC(),
 		})
 	}

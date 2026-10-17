@@ -28,6 +28,12 @@ type State struct {
 	CriteriaMet  float64                   `json:"criteria_met"`
 	CheckpointID string                    `json:"checkpoint_id,omitempty"`
 
+	// Error is the text of the error a run ended with, empty when it ended
+	// without one. Text rather than the error value, because this row is read
+	// by a process that did not run the loop (Phase 36: reconcile reads it to
+	// tell a provider's rate limit from a failure).
+	Error string `json:"error,omitempty"`
+
 	// RequestJSON is the full marshalled Request as supplied to Run(); enough
 	// to reconstruct the loop's parameters on a cold start.
 	RequestJSON string `json:"request_json,omitempty"`
