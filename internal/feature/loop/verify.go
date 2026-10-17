@@ -163,10 +163,22 @@ func stepVerify(ctx context.Context, sc *stepContext, outcomes []actionOutcome) 
 // carried out at all reported nothing, so it is left out, and when no run
 // reported the criterion is inconclusive — never not_met, and never handed to
 // the judge: an adapter refusing the call says nothing about the work.
+//
+// A verifier that settles its own state says so in StateDelta "state" and
+// "reason". An inconclusive run is left out like one that could not run, and
+// its reason is the criterion's when no run settled anything; read as a plain
+// failure it would be not_met, and a pass with no data would trip the breaker.
 func settleByVerifier(ran []actionOutcome) (objective.CriterionState, objective.InconclusiveReason) {
 	reported := 0
+	reason := objective.ReasonVerifierError
 	for _, o := range ran {
 		if o.Errored {
+			continue
+		}
+		if state, _ := o.Result.StateDelta["state"].(string); state == string(objective.CriterionInconclusive) {
+			if r, _ := o.Result.StateDelta["reason"].(string); r != "" {
+				reason = objective.InconclusiveReason(r)
+			}
 			continue
 		}
 		reported++
@@ -175,7 +187,7 @@ func settleByVerifier(ran []actionOutcome) (objective.CriterionState, objective.
 		}
 	}
 	if reported == 0 {
-		return objective.CriterionInconclusive, objective.ReasonVerifierError
+		return objective.CriterionInconclusive, reason
 	}
 	return objective.CriterionMet, ""
 }

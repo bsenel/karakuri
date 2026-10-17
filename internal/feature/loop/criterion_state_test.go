@@ -183,6 +183,39 @@ func TestAVerifierErrorIsNotJudged(t *testing.T) {
 	}
 }
 
+// A verifier that reports its own inconclusive state, such as a stream verifier
+// finding no pull request, settles the criterion inconclusive with its reason:
+// never not_met for being unsuccessful, and never handed to the judge.
+func TestAVerifierReportingInconclusiveIsInconclusive(t *testing.T) {
+	judge := &scriptedAgent{scripted: []coreagent.Output{{Content: "PASS"}}}
+	sc := &stepContext{
+		svc:   &serviceImpl{hub: event.NewHub()},
+		agent: judge,
+		obj: objective.Objective{
+			ID: "obj-no-data",
+			SuccessCriteria: []objective.Criterion{
+				{ID: "pr", Description: "a pull request was opened", Verifier: "test.verify.stream_pr"},
+			},
+		},
+	}
+
+	_, allMet := stepVerify(context.Background(), sc, []actionOutcome{
+		{CapabilityID: "test.verify.stream_pr", Result: environment.ActionResult{Success: false, Error: "no pull request",
+			StateDelta: map[string]any{"state": "inconclusive", "reason": "no_data"}}},
+	})
+
+	if allMet {
+		t.Error("an inconclusive criterion completed the objective")
+	}
+	if judge.calls != 0 {
+		t.Errorf("the judge was asked %d times about a verifier that reported", judge.calls)
+	}
+	c := sc.obj.SuccessCriteria[0]
+	if c.State != objective.CriterionInconclusive || c.Reason != objective.ReasonNoData {
+		t.Errorf("state=%q reason=%q, want inconclusive/no_data", c.State, c.Reason)
+	}
+}
+
 // An optional criterion can neither block nor grant completion. Every
 // required one met completes the objective, however the optional one went,
 // and the optional one still counts towards the score.
