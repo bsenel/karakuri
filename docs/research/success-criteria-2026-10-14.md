@@ -333,7 +333,7 @@ Sections 2, 3, 5 and 6 held the marker when these decisions were written, so eve
 
 ### D1 Criterion kinds and states
 
-**Decision.** Keep three kinds, settled by three different things: `judged` (a model, from action outcomes, as today), `verified` (a pack verifier's pass or fail) and `measured` (a named number from a pack verifier compared with a target by deterministic code). Replace `Met bool` with a state: `met`, `not_met` or `inconclusive`, and `inconclusive` always carries a reason (`no_data`, `verifier_error`, `too_few_samples`, `not_run`, `unsupported`, `no_baseline`). A missing measurement, NaN or an empty result is `inconclusive`, never a pass and never a silent zero. For a gate, `inconclusive` is not `met`, so the objective does not complete, but it also does not count as a failed pass for the breaker; it is reported apart. A verifier error stays a reason under `inconclusive`, not a fourth state: what the gate and the breaker need is that it is told apart from `not_met`, and the reason does that. A `verifier_error` is never handed to the agent as feedback on its work and never counts as an attempt. A criterion's state comes from its verifier reading the world after the run, never from how the run ended. A run that converged, spent its iteration budget or errored is a run outcome, recorded apart from the criterion states, and a run that spent its budget is done but not `met` by that fact alone. Keep `Met` in JSON as derived (`state == met`) so the API does not break.
+**Decision.** Keep three kinds, settled by three different things: `judged` (a model, from action outcomes, as today), `verified` (a pack verifier's pass or fail) and `measured` (a named number from a pack verifier compared with a target by deterministic code). Replace `Met bool` with a state: `met`, `not_met` or `inconclusive`, and `inconclusive` always carries a reason (`no_data`, `verifier_error`, `too_few_samples`, `not_run`, `unsupported`, `no_baseline`, `measure_changed`). A missing measurement, NaN or an empty result is `inconclusive`, never a pass and never a silent zero. For a gate, `inconclusive` is not `met`, so the objective does not complete, but it also does not count as a failed pass for the breaker; it is reported apart. A verifier error stays a reason under `inconclusive`, not a fourth state: what the gate and the breaker need is that it is told apart from `not_met`, and the reason does that. A `verifier_error` is never handed to the agent as feedback on its work and never counts as an attempt. A criterion's state comes from its verifier reading the world after the run, never from how the run ended. A run that converged, spent its iteration budget or errored is a run outcome, recorded apart from the criterion states, and a run that spent its budget is done but not `met` by that fact alone. Keep `Met` in JSON as derived (`state == met`) so the API does not break.
 
 **Rests on.** Section 1: Argo's Inconclusive and Kayenta's Nodata/NodataFailMetric and the `replace` silent-pass hazard (https://argo-rollouts.readthedocs.io/en/stable/features/analysis/, https://spinnaker.io/docs/guides/user/canary/judge/). Section 1, second pass: Argo keeps "Error", "Failed" and "Inconclusive" as separate unsuccessful stages, and an Inconclusive run pauses the rollout for a person (https://argo-rollouts.readthedocs.io/en/stable/features/specification/, https://argo-rollouts.readthedocs.io/en/stable/features/analysis/). Section 2, Keptn: a query with no data first failed the evaluation, then became a warning that names the query (https://github.com/keptn-contrib/dynatrace-service/issues/728). Section 3, takeaways for section 3: none of Codecov, GitHub or SonarQube has a first-class inconclusive state, and the user reports come from that gap. Section 4: Inspect's four outcomes and the reducer that erases "not measured" (https://inspect.aisi.org.uk/scoring-policy.html); SWE-bench's "unusable log means not resolved, cause recorded" (https://github.com/SWE-bench/SWE-bench/blob/main/swebench/harness/grading.py). Section 5: CrewAI's guardrail that turns an outage into a failed validation and spends a retry, with the PASS/FAIL/UNVERIFIED proposal (https://github.com/crewAIInc/crewAI/issues/7150); AutoGen's free-text `stop_reason` and LangGraph's shared `END`, which send budget stops and success stops through one path (https://microsoft.github.io/autogen/stable/user-guide/agentchat-user-guide/tutorial/termination.html, https://docs.langchain.com/oss/python/langgraph/graph-api). Section 7, takeaway 4.
 
@@ -405,43 +405,50 @@ Default for a noisy signal is `median` over N with `min_samples`; for a pass/fai
 ### D7 Safety and anti-gaming
 
 **Decision.**
-- Targets, baselines, reducers and sample counts are fixed at create time and stored with the objective. The loop has no capability that writes them; a change goes through the API by a person, is audited, and resets any sustain streak.
+- Targets, baselines, reducers, sample counts and sustain budgets are fixed at create time and stored with the objective. The loop has no capability that writes them; a change goes through the API by a person, is audited, and restarts the criterion's sustain window (D5).
 - A verifier is a pack capability. A discovered MCP tool can never be a verifier (extends verify.go:88 and ADR 022 from "never met" to "rejected at create time").
 - A `measured` or `verified` criterion is never handed to the model: when its verifier did not run, the state is `inconclusive: not_run`, not a judgement. This removes the verify.go:106 fallback for criteria that name a verifier.
+- **Unreported or skipped is `not_run`, whatever the cause.** A verifier that reports skipped or neutral, and one that has not reported when the verify step's bounded wait ends, both give `inconclusive: not_run`. Neither is ever `met`, as GitHub's `if`-skipped job is, and neither is left pending with no end, as its path-skipped workflow is. Neither is `not_met` either: under D1 the criterion blocks completion, does not count towards the breaker, and is reported apart. A run that stopped at its iteration limit has ended but not succeeded, and that run outcome settles no criterion. The verifiers settle them from the world the run left, and one that did not report there is `not_run`.
+- **Only the named verifier, only this commit.** A criterion is settled only by a measurement from the verifier it names, taken at the commit being judged. A measurement from any other capability or from an earlier commit is audited but settles nothing. If no measurement qualifies, the state is `not_run`.
 - Every measurement is audited with its verifier, parameters, value, unit, source, trust and the commit it was taken at.
 - Anti-gaming: when a pass changes the files a criterion's verifier reads its definition from (the test files behind `tests-pass`, the coverage config, the benchmark, the metric query), the criterion is `inconclusive: measure_changed` and needs a person, like SWE-bench running the original FAIL_TO_PASS/PASS_TO_PASS tests rather than the patch's. Packs declare those paths with the verifier.
 
-**Rests on.** Section 4: SWE-bench's fixed test lists, Inspect's scorer kept apart from the solver. Section 7: Luo et al. F.12. Code reading fact 1 (reserved verifiers, the judge fallback). Weaker because section 3 (required checks that never report) was not read.
+**Rests on.** Section 3, GitHub required status checks: `skipped` counts as passing, a path-skipped workflow stays "Pending" and blocks forever, an `if`-skipped job "reports "Success"", the expected app pins who may set a check, and "Checks from earlier commits don't satisfy the requirement" (https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches/about-protected-branches, https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/collaborating-on-repositories-with-code-quality-features/troubleshooting-required-status-checks). Section 4: SWE-bench's fixed test lists, Inspect's scorer kept apart from the solver. Section 5: LangGraph routes a run that ran out of steps to the same `END` as one that finished, and AutoGen joins budget stops and approvals with OR, telling them apart only by a free-text `stop_reason` (https://docs.langchain.com/oss/python/langgraph/graph-api, https://microsoft.github.io/autogen/stable/user-guide/agentchat-user-guide/tutorial/termination.html). AutoGen #6826: a stop word in the task ended the run (https://github.com/microsoft/autogen/issues/6826). Section 6, Gherkin: an undefined step skipped and then counted as passed (https://github.com/cucumber/cucumber-jvm/issues/1946). Section 7: Luo et al. F.12. Code reading fact 1 (reserved verifiers, the judge fallback).
 
 **Conflicts.** None; it reinforces ADR 022 and rule 9. Removing the judge fallback for verifier-named criteria changes `software.objective.delivery` behaviour on docs-only tasks (fact 4), which is wanted: the template should use the D8 deterministic booleans or not name the verifier.
+
+**Changed in the second pass.** A skipped or unreported verifier now resolves to `inconclusive: not_run`, a distinct state that is neither `met` nor `not_met`, after a bounded wait. A criterion is settled only by its named verifier at the commit being judged. That agrees with D1 as it now stands: `inconclusive` blocks completion without feeding the breaker, and a run outcome such as a spent budget settles no criterion. D1's reason list gains `measure_changed`, which this decision already used. Section 3's GitHub subsection drove the change. GitHub has two opposite answers for "did not run" (takeaway 1), and waiting forever needs a bound (takeaway 2). The expected app and the latest commit are its source and commit pins (takeaways 3 and 4). Section 5 (LangGraph takeaway 1, AutoGen takeaways 1 and 2) supplied the rule that a run stopped at its limit has ended but not succeeded. The restarted sustain window follows D5.
 
 ### D8 Departures from the starting proposal
 
 | Element | Kept, changed, dropped or added | Reason |
 |---|---|---|
 | Kinds JUDGED, VERIFIED, MEASURED | Kept | D1; sections 1 and 4 separate code-settled from model-settled outcomes. |
-| "Not measured with a reason is neither met nor a failure" | Changed | Named `inconclusive` with a fixed reason list; it blocks completion but not the breaker (D1, D5). |
+| "Not measured with a reason is neither met nor a failure" | Changed | Named `inconclusive` with a fixed reason list (including `no_baseline` and `measure_changed`); it blocks completion but not the breaker and spends no sustain budget (D1, D4, D5, D7). |
 | `Met bool` | Changed | Replaced by a state; `met` stays derived in JSON (D1). |
+| — | Added | The run outcome (converged, budget spent, errored) is recorded apart from criterion states and settles none of them; a verifier error is never fed back to the agent and never spends an attempt (D1; section 5). |
 | `Threshold any` | Dropped | Nothing reads it (fact 1); replaced by typed `op`/`target`/`unit`. |
 | metric, op, target, unit | Kept | D4; unit must match the verifier's declaration (D3). |
-| baseline (fixed or at_start) | Kept | `at_start` is frozen and audited (D4, D7). |
+| baseline (fixed or at_start) | Kept, extended | `at_start` is frozen and audited (D4, D7); an absent baseline is `inconclusive: no_baseline`, never approximated, and the person sees the baseline value (D4; section 3, Codecov). |
 | change (relative) | Kept | Absolute or percentage delta to the baseline (D4). |
 | aggregate (last, min, max, mean, all) | Changed | Renamed reducer; adds `median`, `p95`, `k_of_n`, `samples` and `min_samples`; "any passes" excluded (D4; section 7). |
-| window | Changed | Moved out of the loop to reconcile (D5; rule 8). |
-| sustain (N reconciles) | Kept, moved | Per-criterion streak in reconcile beside `ScoreStreak` (D5). |
-| required versus weight | Changed | Required by default; weight is progress only; weight 0 is shadow (D2). |
-| — | Added | Zero-required-criteria objectives rejected (D2; fact 1). |
+| window | Changed | Moved out of the loop to reconcile as the rolling window of the sustain budget, never calendar (D5; rule 8; section 2, SRE workbook). |
+| sustain (N reconciles) | Changed | A budget of `not_met` passes over a rolling window, not N consecutive passes, with `min_passes` below which it is `inconclusive: too_few_samples`; per criterion in reconcile beside `ScoreStreak` (D5; section 2, SRE workbook). |
+| required versus weight | Changed | Required by default; weight is progress only; weight 0 is shadow; an OKR-style stretch target is `required: false` and shown as progress (D2, D6; section 6). |
+| — | Added | Zero required criteria never completes: the `verify.go:37` guard counts required criteria, and create rejects such an objective to save wasted iterations (D2; fact 6). |
 | `--criterion 'id=..; ...'` | Kept, demoted | Secondary to the file (D6). |
-| `--criteria-file criteria.yaml` | Kept | Primary form (D6). |
-| Create-time validation, perhaps via OutputSchema | Changed | Validates against declared metrics beside OutputSchema, not inside it (D3, D6). |
+| `--criteria-file criteria.yaml` | Kept | Primary form; help and example show one observable outcome per criterion (D6; section 6). |
+| — | Added | A criterion is prose a person writes, bound to its verifier by ID, never by matching text; a `judged` criterion names an observable outcome and its `evidence`, and create rejects one without it (D6; section 6). |
+| Create-time validation, perhaps via OutputSchema | Changed | Validates against declared metrics beside OutputSchema, not inside it, and requires `evidence` on judged criteria (D3, D6). |
 | `krk verifier list` | Kept | D6. |
-| `krk objective criteria <id>` | Kept | Shows state, reason, value against target, who decided (D6). |
+| `krk objective criteria <id>` | Kept | Shows state, reason, value against target, who decided; `not_run` never shown as met, optional weighted criteria shown as progress (D6). |
 | API criteria field | Added | The proposal named only the CLI; thin CLI needs the API (D6; ADR 001). |
 | Template-plus-request merge, tighten only | Added | D6, D7. |
 | `Measurements []{Name, Value, Unit, Source}` on ActionResult | Kept, extended | Adds trust (rule 9) and travels typed through MCP (D3). |
-| Targets the loop can never edit | Kept | D7. |
-| Every measurement audited | Kept | Adds commit and parameters (D7). |
+| Targets the loop can never edit | Kept | Includes sustain budgets; a person's change restarts the sustain window (D5, D7). |
+| Every measurement audited | Kept | Adds commit and parameters; only the named verifier's measurement at the judged commit settles a criterion (D7; section 3, GitHub). |
 | — | Added | Measured or verified criteria never fall back to the judge (D7). |
+| — | Added | A skipped or unreported verifier is `inconclusive: not_run` after a bounded wait, never met and never pending forever (D7; section 3, GitHub). |
 | — | Added | `measure_changed` anti-gaming state (D7). |
 | — | Added | Discovered MCP tools rejected as verifiers at create time (D7). |
 | Verifier: coverage per package | Kept | Needs a baseline (`at_start`) to be useful (D4). |
@@ -453,7 +460,7 @@ Default for a noisy signal is `median` over N with `min_samples`; for a pass/fai
 | Verifier: CLI startup time | Kept | Noisy; needs `samples` and `median` (D4). |
 | Deterministic booleans (stream PR opened or updated this pass, CI green at its head, only declared paths changed) | Kept, first | These address fact 4 directly and should ship before the numeric verifiers. |
 | Statistical canary judge | Not adopted | Out of scope for Phase 41 (D4). |
-| ADR | Added | ADR 029 is needed: core entity changes (D1, D3), breaker input (D5), judge fallback removal (D7). |
+| ADR | Added | ADR 029 is needed: core entity changes (D1, D3, D6's `evidence`), breaker input and sustain budget (D5), judge fallback removal and `not_run` for unreported verifiers (D7). |
 
 ## Code reading: what is true today
 
