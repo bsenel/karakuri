@@ -35,7 +35,7 @@ func artifactListCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			printList(c, data, "artifacts")
+			printList(c, data, "artifacts", "")
 			return nil
 		},
 	}

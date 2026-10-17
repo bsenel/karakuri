@@ -91,6 +91,7 @@ func twinGetCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:     "get <id>",
 		Short:   "Get a twin by ID",
+		Long:    "Get a twin by ID. krk twin list shows each twin's ID, and krk twin create\nprints the ID of the one it creates.",
 		Example: `  krk twin get t_7f2a`,
 		Args:    cobra.ExactArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
@@ -125,7 +126,7 @@ func twinListCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			printList(c, data, "twins")
+			printList(c, data, "twins", "krk twin create")
 			return nil
 		},
 	}

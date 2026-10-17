@@ -80,7 +80,7 @@ most recent entries across all kinds.`,
 			if err != nil {
 				return err
 			}
-			printList(c, data, "audit entries")
+			printList(c, data, "audit entries", "")
 			return nil
 		},
 	}

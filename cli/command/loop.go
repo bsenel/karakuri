@@ -21,10 +21,14 @@ func loopStartCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "start <objective-id>",
 		Short: "Start the reasoning loop for an objective",
+		Long:  "Start the reasoning loop for an objective. krk objective list shows each\nobjective's ID, and krk objective create prints the ID of the one it creates.",
 		Example: `  krk loop start obj_123 --twin t_7f2a
 
   # Stop after at most 10 iterations
-  krk loop start obj_123 --twin t_7f2a --max-iter 10`,
+  krk loop start obj_123 --twin t_7f2a --max-iter 10
+
+  # Keep watching the objective's environments after the loop finishes
+  krk loop start obj_123 --twin t_7f2a --watch`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
 			data, _, err := api.Post("/loops", map[string]any{
@@ -42,7 +46,7 @@ func loopStartCmd() *cobra.Command {
 	}
 	cmd.Flags().StringVar(&twinID, "twin", "", "ID of the objective's twin (see: krk twin list)")
 	cmd.Flags().IntVar(&maxIter, "max-iter", 50, "Maximum loop iterations")
-	cmd.Flags().BoolVar(&watchMode, "watch", false, "Enable watch mode (loop continues on environment events)")
+	cmd.Flags().BoolVar(&watchMode, "watch", false, "Keep watching after the loop finishes: declares the objective standing and observe-only (stop with: krk objective pause)")
 	return cmd
 }
 

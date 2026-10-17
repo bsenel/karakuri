@@ -40,7 +40,7 @@ export function HealthPage() {
   }
 
   const bySlot = new Map<string, typeof h.adapters>();
-  for (const a of h.adapters) {
+  for (const a of h.adapters ?? []) {
     const cur = bySlot.get(a.slot) ?? [];
     cur.push(a);
     bySlot.set(a.slot, cur);
@@ -52,12 +52,17 @@ export function HealthPage() {
 
       <h2>Providers</h2>
       <div className="row" style={{ flexWrap: 'wrap' }}>
-        {Object.entries(h.providers).map(([name, ok]) => (
+        {Object.entries(h.providers ?? {}).map(([name, ok]) => (
           <span key={name} className={`pill ${ok ? 'green' : ''}`}>{name}: {ok ? 'up' : 'down'}</span>
         ))}
       </div>
+      {/* A bare heading over nothing reads as a page still loading. */}
+      {Object.keys(h.providers ?? {}).length === 0 && (
+        <p className="muted">No providers are configured.</p>
+      )}
 
       <h2>Adapters</h2>
+      {bySlot.size === 0 && <p className="muted">No adapters are configured.</p>}
       {Array.from(bySlot.entries()).map(([slot, list]) => (
         <div key={slot} className="card" style={{ marginBottom: 12 }}>
           <h3>{slot}</h3>

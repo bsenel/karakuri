@@ -37,12 +37,12 @@ func TestEmptyListsSaySo(t *testing.T) {
 		args []string
 		want string
 	}{
-		{[]string{"objective", "list"}, "No objectives.\n"},
-		{[]string{"twin", "list"}, "No twins.\n"},
+		{[]string{"objective", "list"}, "No objectives. Create one with: krk objective create\n"},
+		{[]string{"twin", "list"}, "No twins. Create one with: krk twin create\n"},
 		{[]string{"checkpoint", "list"}, "No pending checkpoints.\n"},
 		{[]string{"artifact", "list"}, "No artifacts.\n"},
 		{[]string{"objective", "templates"}, "No objective templates.\n"},
-		{[]string{"quota", "tiers"}, "No stored tier limits.\n"},
+		{[]string{"quota", "tiers"}, "No stored tier limits. Create one with: krk quota set\n"},
 		{[]string{"domain", "capabilities", "--domain", "nosuch"}, "No capabilities.\n"},
 	} {
 		for _, body := range []string{"null", "[]\n"} {

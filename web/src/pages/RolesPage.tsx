@@ -116,7 +116,13 @@ function Roles() {
                   const yes = held?.has(action) || held?.has('*');
                   return (
                     <td key={r.name} style={{ textAlign: 'center' }}>
-                      {yes ? <span className="pill green">✓</span> : <span className="muted">·</span>}
+                      {/* The tick and dot are glyphs; the label says in words
+                          what they mean for a screen reader. */}
+                      {yes ? (
+                        <span className="pill green" role="img" aria-label={`${r.name} can ${action}`}>✓</span>
+                      ) : (
+                        <span className="muted" role="img" aria-label={`${r.name} cannot ${action}`}>·</span>
+                      )}
                     </td>
                   );
                 })}
