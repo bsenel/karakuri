@@ -5,9 +5,12 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 
 	"github.com/tmc/langchaingo/llms"
 	"github.com/tmc/langchaingo/llms/anthropic"
+
+	coreerrors "github.com/bsenel/karakuri/internal/core/errors"
 )
 
 // ClaudeProvider wraps Anthropic's Claude models via LangChain Go's anthropic
@@ -79,7 +82,7 @@ func (c *ClaudeProvider) Complete(ctx context.Context, req CompletionRequest) (C
 			llms.WithMaxTokens(req.MaxTokens),
 		)
 		if err != nil {
-			return CompletionResponse{}, err
+			return CompletionResponse{}, classifyClaudeError(err)
 		}
 		return CompletionResponse{Content: resp, TokensUsed: len(resp) / 4}, nil
 	}
@@ -101,6 +104,36 @@ func (c *ClaudeProvider) Stream(ctx context.Context, req CompletionRequest) (<-c
 		ch <- CompletionChunk{Content: resp.Content, Done: true}
 	}()
 	return ch, nil
+}
+
+// classifyClaudeError names a Claude rate limit as the domain's
+// ErrProviderRateLimited (Phase 36); see classifyRateLimit.
+func classifyClaudeError(err error) error {
+	return classifyRateLimit("claude", err)
+}
+
+// rateLimitMarkers are the lowercase fragments a provider's refusal text holds
+// when it is a rate limit: the status code, the API's own wording, and the
+// CLIs' plan and quota messages.
+var rateLimitMarkers = []string{"429", "rate limit", "rate_limit", "quota exceeded", "usage limit"}
+
+// classifyRateLimit names a rate limit from provider as the domain's
+// ErrProviderRateLimited (Phase 36) and returns any other error unchanged, the
+// same value. langchaingo v0.1.14 reports a non-200 as text holding the status
+// code, which the provider's MapError may turn into an *llms.Error, and the
+// CLI fallbacks only have what the subprocess printed; none keeps a
+// Retry-After value, so RetryAfter stays zero.
+func classifyRateLimit(provider string, err error) error {
+	if llms.IsRateLimitError(err) {
+		return &coreerrors.ProviderRateLimitError{Provider: provider, Cause: err}
+	}
+	text := strings.ToLower(err.Error())
+	for _, m := range rateLimitMarkers {
+		if strings.Contains(text, m) {
+			return &coreerrors.ProviderRateLimitError{Provider: provider, Cause: err}
+		}
+	}
+	return err
 }
 
 func lastUserMessage(msgs []Message) string {

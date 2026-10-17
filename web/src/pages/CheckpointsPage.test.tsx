@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // vi.mock is hoisted above the imports, so the stub has to be created inside
@@ -62,5 +62,27 @@ describe('CheckpointsPage', () => {
       expect(screen.getByRole('alert')).toHaveTextContent('checkpoint:read is not granted'),
     );
     expect(screen.queryByRole('status')).not.toBeInTheDocument();
+  });
+
+  it('offers a retry when the queue could not be read, and loads it again', async () => {
+    get.mockRejectedValueOnce(new APIError(503, '{"message":"store unavailable"}'));
+    get.mockResolvedValueOnce([]);
+
+    render(<CheckpointsPage />);
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('store unavailable'));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    await waitFor(() => expect(screen.getByText(/No pending checkpoints/)).toBeInTheDocument());
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Retry' })).not.toBeInTheDocument();
+    expect(get).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not offer a retry once the queue has loaded', async () => {
+    get.mockResolvedValue([]);
+
+    render(<CheckpointsPage />);
+    await waitFor(() => expect(screen.getByText(/No pending checkpoints/)).toBeInTheDocument());
+    expect(screen.queryByRole('button', { name: 'Retry' })).not.toBeInTheDocument();
   });
 });

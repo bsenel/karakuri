@@ -39,4 +39,14 @@ describe('HealthPage', () => {
     expect(screen.getByText(/Trying again every 5 seconds/)).toBeInTheDocument();
     expect(screen.queryByText('Loading…')).not.toBeInTheDocument();
   });
+
+  it('says so when no providers or adapters are configured', async () => {
+    get.mockResolvedValue({ status: 'ok', adapters: [], providers: {} });
+
+    render(<HealthPage />);
+    await waitFor(() =>
+      expect(screen.getByText('No providers are configured.')).toBeInTheDocument(),
+    );
+    expect(screen.getByText('No adapters are configured.')).toBeInTheDocument();
+  });
 });

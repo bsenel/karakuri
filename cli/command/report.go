@@ -108,7 +108,7 @@ func reportListCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			printList(c, data, "digest schedules")
+			printList(c, data, "digest schedules", "krk report create")
 			return nil
 		},
 	}

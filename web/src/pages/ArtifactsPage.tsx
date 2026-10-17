@@ -30,6 +30,12 @@ export function ArtifactsPage() {
 
   useEffect(() => { void load(); }, []);
 
+  const retry = () => {
+    setErr(null);
+    setLoaded(null);
+    void load(filter || undefined);
+  };
+
   const runDiff = async () => {
     if (!sha1 || !sha2) return;
     try {
@@ -78,7 +84,12 @@ export function ArtifactsPage() {
             <tr><td colSpan={6} className="muted" role="status">Loading…</td></tr>
           )}
           {loaded === 'failed' && (
-            <tr><td colSpan={6} className="muted">Could not load artifacts.</td></tr>
+            <tr>
+              <td colSpan={6} className="muted">
+                <span>Could not load artifacts.</span>{' '}
+                <button onClick={retry}>Retry</button>
+              </td>
+            </tr>
           )}
           {loaded === 'ok' && items.length === 0 && (
             <tr><td colSpan={6} className="muted">No artifacts yet. Agents store them as objectives run.</td></tr>

@@ -205,6 +205,7 @@ type LoopStateModel struct {
 	CheckpointID string    `gorm:"column:checkpoint_id;not null;default:''"`
 	Outcome      string    `gorm:"column:outcome;not null;default:''"`
 	CriteriaJSON string    `gorm:"column:criteria_json;not null;default:'[]'"`
+	Error        string    `gorm:"column:error;not null;default:''"`
 	RequestJSON  string    `gorm:"column:request_json;not null;default:'{}'"`
 	CreatedAt    time.Time `gorm:"column:created_at;autoCreateTime"`
 	UpdatedAt    time.Time `gorm:"column:updated_at;autoUpdateTime"`

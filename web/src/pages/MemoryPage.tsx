@@ -45,25 +45,25 @@ export function MemoryPage() {
       <form onSubmit={submit} className="card col">
         <div className="row">
           <div className="grow">
-            <label>Agent ID</label>
-            <input value={agent} onChange={(e) => setAgent(e.target.value)} placeholder="(any)" />
+            <label htmlFor="memory-agent">Agent ID</label>
+            <input id="memory-agent" value={agent} onChange={(e) => setAgent(e.target.value)} placeholder="(any)" />
           </div>
           <div className="grow">
-            <label>Twin ID</label>
-            <input value={twin} onChange={(e) => setTwin(e.target.value)} placeholder="(any)" />
+            <label htmlFor="memory-twin">Twin ID</label>
+            <input id="memory-twin" value={twin} onChange={(e) => setTwin(e.target.value)} placeholder="(any)" />
           </div>
           <div>
-            <label>Top K</label>
-            <input type="number" min={1} value={topK} onChange={(e) => setTopK(Number(e.target.value))} />
+            <label htmlFor="memory-top-k">Top K</label>
+            <input id="memory-top-k" type="number" min={1} value={topK} onChange={(e) => setTopK(Number(e.target.value))} />
           </div>
         </div>
         <div>
-          <label>Query</label>
-          <input value={text} onChange={(e) => setText(e.target.value)} placeholder="search text…" />
+          <label htmlFor="memory-query">Query</label>
+          <input id="memory-query" value={text} onChange={(e) => setText(e.target.value)} placeholder="search text…" />
         </div>
         <div>
-          <label>Tiers</label>
-          <div className="row">
+          <label id="memory-tiers">Tiers</label>
+          <div className="row" role="group" aria-labelledby="memory-tiers">
             {TIERS.map((t) => (
               <label key={t} className="row small" style={{ display: 'inline-flex', margin: 0 }}>
                 <input

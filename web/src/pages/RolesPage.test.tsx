@@ -37,6 +37,21 @@ describe('RolesPage', () => {
     expect(screen.getAllByText('✓')).toHaveLength(3);
   });
 
+  it('names each grid cell in words, not only by its glyph', async () => {
+    get.mockImplementation((path: string) => {
+      if (path === '/auth/roles') {
+        return Promise.resolve([{ name: 'viewer', policies: [{ effect: 'allow', actions: ['twin:read'] }] }]);
+      }
+      return Promise.resolve([{ action: 'quota:approve', description: 'approve a raise' }]);
+    });
+
+    render(<RolesPage />);
+    await waitFor(() => expect(screen.getByText('twin:read')).toBeInTheDocument());
+
+    expect(screen.getByRole('img', { name: 'viewer can twin:read' })).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: 'viewer cannot quota:approve' })).toBeInTheDocument();
+  });
+
   it('does not render a deny as a grant', async () => {
     get.mockImplementation((path: string) => {
       if (path === '/auth/roles') {

@@ -66,8 +66,9 @@ func projectCmd() *cobra.Command {
 func containerCreateCmd(kind, short string, needsOrg bool) *cobra.Command {
 	var name, org string
 	cmd := &cobra.Command{
-		Use:   "create",
-		Short: short,
+		Use:     "create",
+		Short:   short,
+		Example: containerExample(kind, "create --name %s"),
 		RunE: func(_ *cobra.Command, _ []string) error {
 			body := map[string]any{"kind": kind, "name": name}
 			if needsOrg {
@@ -108,8 +109,9 @@ func containerCreateCmd(kind, short string, needsOrg bool) *cobra.Command {
 func containerListCmd(kind, short string) *cobra.Command {
 	var org string
 	cmd := &cobra.Command{
-		Use:   "list",
-		Short: short,
+		Use:     "list",
+		Short:   short,
+		Example: containerExample(kind, "list"),
 		RunE: func(c *cobra.Command, _ []string) error {
 			q := url.Values{"kind": {kind}}
 			if org != "" {
@@ -127,7 +129,7 @@ func containerListCmd(kind, short string) *cobra.Command {
 			if kind == "org" {
 				plural = "organisations" // the word the help and the web UI use
 			}
-			printList(c, data, plural)
+			printList(c, data, plural, "krk "+kind+" create")
 			return nil
 		},
 	}
@@ -140,9 +142,10 @@ func containerListCmd(kind, short string) *cobra.Command {
 func containerRenameCmd(kind, short string) *cobra.Command {
 	var org, name string
 	cmd := &cobra.Command{
-		Use:   "rename <name>",
-		Short: short,
-		Args:  cobra.ExactArgs(1),
+		Use:     "rename <name>",
+		Short:   short,
+		Example: containerExample(kind, "rename %s --to new-name"),
+		Args:    cobra.ExactArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
 			id, err := resolveIn(kind, args[0], org)
 			if err != nil {
@@ -167,9 +170,10 @@ func containerRenameCmd(kind, short string) *cobra.Command {
 func containerDeleteCmd(kind, short string) *cobra.Command {
 	var org string
 	cmd := &cobra.Command{
-		Use:   "delete <name>",
-		Short: short,
-		Args:  cobra.ExactArgs(1),
+		Use:     "delete <name>",
+		Short:   short,
+		Example: containerExample(kind, "delete %s"),
+		Args:    cobra.ExactArgs(1),
 		RunE: func(c *cobra.Command, args []string) error {
 			id, err := resolveIn(kind, args[0], org)
 			if err != nil {
@@ -201,15 +205,27 @@ func containerDeleteCmd(kind, short string) *cobra.Command {
 	return cmd
 }
 
+// containerExample fills in the Example shared by org, team and project. A
+// team is named inside its organisation, so its example adds --org.
+func containerExample(kind, args string) string {
+	name := map[string]string{"org": "acme", "team": "eng", "project": "launch"}[kind]
+	example := "  krk " + kind + " " + strings.ReplaceAll(args, "%s", name)
+	if kind == "team" {
+		example += " --org acme"
+	}
+	return example
+}
+
 // teamMoveCmd reparents a team, which the server allows only to somebody
 // holding both the old and the new organisation — otherwise moving a team would
 // be a way to walk resources out of a tenant you hold into one you do not.
 func teamMoveCmd() *cobra.Command {
 	var fromOrg, toOrg string
 	cmd := &cobra.Command{
-		Use:   "move <name>",
-		Short: "Move a team to another organisation",
-		Args:  cobra.ExactArgs(1),
+		Use:     "move <name>",
+		Short:   "Move a team to another organisation",
+		Example: "  krk team move eng --org acme --to-org globex",
+		Args:    cobra.ExactArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
 			id, err := resolveIn("team", args[0], fromOrg)
 			if err != nil {
@@ -240,14 +256,15 @@ func teamMoveCmd() *cobra.Command {
 func projectAddCmd() *cobra.Command {
 	var project, twin string
 	cmd := &cobra.Command{
-		Use:   "add-twin",
-		Short: "Share a twin into a project",
+		Use:     "add-twin",
+		Short:   "Share a twin into a project",
+		Example: "  krk project add-twin --project launch --twin <twin-id>",
 		RunE: func(_ *cobra.Command, _ []string) error {
 			return setTwinContainers(project, twin, true)
 		},
 	}
 	cmd.Flags().StringVar(&project, "project", "", "Project to share into")
-	cmd.Flags().StringVar(&twin, "twin", "", "Twin id")
+	cmd.Flags().StringVar(&twin, "twin", "", "Twin ID, from krk twin list")
 	_ = cmd.MarkFlagRequired("project")
 	_ = cmd.MarkFlagRequired("twin")
 	return cmd
@@ -256,14 +273,15 @@ func projectAddCmd() *cobra.Command {
 func projectRemoveCmd() *cobra.Command {
 	var project, twin string
 	cmd := &cobra.Command{
-		Use:   "remove-twin",
-		Short: "Stop sharing a twin into a project",
+		Use:     "remove-twin",
+		Short:   "Stop sharing a twin into a project",
+		Example: "  krk project remove-twin --project launch --twin <twin-id>",
 		RunE: func(_ *cobra.Command, _ []string) error {
 			return setTwinContainers(project, twin, false)
 		},
 	}
 	cmd.Flags().StringVar(&project, "project", "", "Project to remove it from")
-	cmd.Flags().StringVar(&twin, "twin", "", "Twin id")
+	cmd.Flags().StringVar(&twin, "twin", "", "Twin ID, from krk twin list")
 	_ = cmd.MarkFlagRequired("project")
 	_ = cmd.MarkFlagRequired("twin")
 	return cmd

@@ -55,6 +55,7 @@ func objectiveGetCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:     "get <id>",
 		Short:   "Get an objective by ID",
+		Long:    "Get an objective by ID. krk objective list shows each objective's ID,\nand krk objective create prints the ID of the one it creates.",
 		Example: `  krk objective get obj_123`,
 		Args:    cobra.ExactArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
@@ -89,7 +90,7 @@ func objectiveListCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			printList(c, data, "objectives")
+			printList(c, data, "objectives", "krk objective create")
 			return nil
 		},
 	}
@@ -102,12 +103,16 @@ func objectiveTemplatesCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "templates",
 		Short: "List available objective templates",
+		Long:  "List available objective templates. Pass a template's ID to\nkrk objective create --template to start an objective from it.",
+		Example: `  krk objective templates
+  krk objective create --title "Ship the export endpoint" --twin t_7f2a \
+      --template software.objective.delivery`,
 		RunE: func(c *cobra.Command, _ []string) error {
 			data, _, err := api.Get("/objectives/templates")
 			if err != nil {
 				return err
 			}
-			printList(c, data, "objective templates")
+			printList(c, data, "objective templates", "")
 			return nil
 		},
 	}

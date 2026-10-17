@@ -84,6 +84,7 @@ export function TwinDetailPage() {
                   <td className="mono small">{slot}</td>
                   <td>
                     <select
+                      aria-label={`Instance for ${slot}`}
                       value={draftBindings[slot] ?? ''}
                       onChange={(e) => setDraftBindings({ ...draftBindings, [slot]: e.target.value })}
                     >
@@ -97,6 +98,11 @@ export function TwinDetailPage() {
                 </tr>
               );
             })}
+            {/* Without this the table is a header over nothing, which reads as
+                a page that failed to load rather than a server with no adapters. */}
+            {slots.length === 0 && (
+              <tr><td colSpan={3} className="muted">No adapters are configured on this server, so there is nothing to bind.</td></tr>
+            )}
           </tbody>
         </table>
         <div className="row" style={{ marginTop: 12 }}>

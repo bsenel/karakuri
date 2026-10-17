@@ -45,6 +45,23 @@ describe('MemoryPage', () => {
     expect(screen.queryByText(/run a recall query/)).not.toBeInTheDocument();
   });
 
+  it('names each filter by its label and sends what was typed there', async () => {
+    post.mockResolvedValue([]);
+
+    render(<MemoryPage />);
+    fireEvent.change(screen.getByLabelText('Agent ID'), { target: { value: 'a_1' } });
+    fireEvent.change(screen.getByLabelText('Twin ID'), { target: { value: 't_7f2a' } });
+    fireEvent.change(screen.getByLabelText('Top K'), { target: { value: '3' } });
+    fireEvent.change(screen.getByLabelText('Query'), { target: { value: 'deploy' } });
+    expect(screen.getByRole('group', { name: 'Tiers' })).toBeInTheDocument();
+    recall();
+    await waitFor(() =>
+      expect(post).toHaveBeenCalledWith('/memory/recall', expect.objectContaining({
+        agent_id: 'a_1', twin_id: 't_7f2a', top_k: 3, query: 'deploy',
+      })),
+    );
+  });
+
   it('says it is recalling while the request is pending', async () => {
     post.mockReturnValue(new Promise(() => {}));
 

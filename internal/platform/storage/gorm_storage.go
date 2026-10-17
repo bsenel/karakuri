@@ -751,6 +751,7 @@ func (s *GORMStorage) SaveLoopState(ctx context.Context, st coreloop.State) erro
 		CheckpointID: st.CheckpointID,
 		Outcome:      string(st.Outcome),
 		CriteriaJSON: "[]",
+		Error:        st.Error,
 		RequestJSON:  st.RequestJSON,
 	}
 	if m.RequestJSON == "" {
@@ -810,6 +811,7 @@ func loopStateFromModel(m schema.LoopStateModel) coreloop.State {
 		Status:       objective.ObjectiveStatus(m.Status),
 		CriteriaMet:  m.CriteriaMet,
 		CheckpointID: m.CheckpointID,
+		Error:        m.Error,
 		RequestJSON:  m.RequestJSON,
 		CreatedAt:    m.CreatedAt,
 		UpdatedAt:    m.UpdatedAt,

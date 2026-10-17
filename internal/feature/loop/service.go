@@ -61,6 +61,7 @@ type loopState struct {
 	// at the replay's first decide so that checkpoint, and not a new one, is
 	// the one the runner reads the decision for.
 	answered bool
+	runErr   string // the text of the error the run ended with, persisted for reconcile
 	mu       sync.RWMutex
 }
 
@@ -100,6 +101,11 @@ type serviceImpl struct {
 	// tracer opens the invoke_agent and execute_tool spans. Nil means no
 	// tracing; read it through tracing() rather than directly.
 	tracer telemetry.Tracer
+
+	// sleep is handed to every stepContext as its wait before the one retry
+	// of a rate-limited agent call. Nil waits on the real clock; tests
+	// replace it (Phase 36).
+	sleep func(context.Context, time.Duration)
 
 	// checkpointTTL is how long a checkpoint this loop creates may wait for
 	// an answer. Zero means it carries no expiry.
@@ -323,6 +329,7 @@ func (s *serviceImpl) persistState(ctx context.Context, state *loopState, comple
 	result := state.result
 	outcome := state.outcome
 	criteria := state.criteria
+	runErr := state.runErr
 	state.mu.RUnlock()
 
 	reqJSON, _ := json.Marshal(req)
@@ -344,6 +351,7 @@ func (s *serviceImpl) persistState(ctx context.Context, state *loopState, comple
 		CheckpointID: cpID,
 		Outcome:      outcome,
 		Criteria:     criteria,
+		Error:        runErr,
 		RequestJSON:  string(reqJSON),
 	}
 	_ = s.store.SaveLoopState(ctx, persisted)
