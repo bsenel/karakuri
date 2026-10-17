@@ -21,6 +21,12 @@ exit 1
 exit 1
 `,
 		"is_error reply": `printf '{"is_error":true,"error":"rate limit exceeded, please try again later"}\n'`,
+		// What the CLI prints when the account's plan limit is hit: the reason
+		// is only in the JSON result on stdout, stderr is empty, exit is 1.
+		"session limit on stdout": `printf '{"type":"result","subtype":"success","is_error":true,"result":"You have hit your session limit \302\267 resets 9pm (Europe/Paris)"}\n'
+exit 1
+`,
+		"weekly limit reply": `printf '{"type":"result","subtype":"success","is_error":true,"result":"You have hit your weekly limit \302\267 resets Oct 14, 1pm (Europe/Paris)"}\n'`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			_, dir := writeStubBinary(t, "claude", body)
@@ -53,6 +59,11 @@ func TestClaudeCLICompleteLeavesOtherErrorsUnclassified(t *testing.T) {
 exit 1
 `, want: "auth required"},
 		"is_error reply": {body: `printf '{"is_error":true,"error":"prompt is too long"}\n'`, want: "prompt is too long"},
+		// The message is in result, not error: reading only error reported
+		// "unknown error" for every reply the CLI marks as failed.
+		"is_error result on stdout": {body: `printf '{"type":"result","is_error":true,"result":"Prompt is too long"}\n'
+exit 1
+`, want: "Prompt is too long"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			_, dir := writeStubBinary(t, "claude", tc.body)

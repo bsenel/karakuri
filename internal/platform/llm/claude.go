@@ -115,8 +115,8 @@ func classifyClaudeError(err error) error {
 
 // rateLimitMarkers are the lowercase fragments a provider's refusal text holds
 // when it is a rate limit: the API's own wording, and the CLIs' plan and quota
-// messages.
-var rateLimitMarkers = []string{"rate limit", "rate_limit", "quota exceeded", "usage limit"}
+// messages ("You've hit your session limit · resets 9pm" is the Claude CLI's).
+var rateLimitMarkers = []string{"rate limit", "rate_limit", "quota exceeded", "usage limit", "session limit", "weekly limit"}
 
 // rateLimitStatus matches the 429 status code as a number of its own. As a
 // substring it also matched a timeout of 4290ms or an ID like 14290, and a real
