@@ -96,7 +96,22 @@ Sources: [about protected branches](https://docs.github.com/en/repositories/conf
 3. Pinning the source of a result (the expected app) is GitHub's anti-spoofing rule; it matches D7's audit of which verifier produced each measurement and the rejection of third-party verifiers.
 4. A result applies only to the commit it was measured at. That supports D7's rule that each measurement records its commit.
 
-_Partly written; still to read: SonarQube quality gates._
+### SonarQube quality gates
+
+Sources: [quality gates (fudge factor)](https://docs.sonarsource.com/sonarqube-server/latest/instance-administration/analysis-functions/quality-gates/), [introduction to quality gates](https://docs.sonarsource.com/sonarqube-server/quality-standards-administration/managing-quality-gates/introduction-to-quality-gates) and [community thread 70588](https://community.sonarsource.com/t/quality-gates-passes-without-showing-code-coverage-for-some-of-the-pull-requests/70588), all read 2026-10-17. The first page covers only the fudge factor.
+- *Criterion.* A quality gate is a list of conditions. Each one "is a combination of" a metric, a comparison operator and an error value, for example Blocker issue `>` 0, "No blocker issues". Each condition applies "either to new code or overall code". The default gate, Sonar way, has four conditions, all on new code: no new issues, all new Security Hotspots reviewed, new-code coverage at least 80.0%, and new-code duplication at most 3.0% (https://docs.sonarsource.com/sonarqube-server/quality-standards-administration/managing-quality-gates/introduction-to-quality-gates, read 2026-10-17).
+- *Settled.* The gate passes or fails: "If one of the conditions is met, the quality gate fails." The condition states the failure, not the target. On a branch both kinds of condition apply. On a pull request "Only conditions defined on *new code* are applied" (https://docs.sonarsource.com/sonarqube-server/quality-standards-administration/managing-quality-gates/introduction-to-quality-gates, read 2026-10-17). Neither page mentions a warning state.
+- *Missing or noisy.* The fudge factor: conditions on duplication are ignored until there are at least 20 new lines, and conditions on coverage until there are at least 20 new lines to cover. It is on by default, can be turned off for the instance, and a project administrator can override it (https://docs.sonarsource.com/sonarqube-server/latest/instance-administration/analysis-functions/quality-gates/, read 2026-10-17). So a small change passes those conditions without being measured. Neither page says what happens with no analysis, an empty new code period, or a metric that was not computed.
+- *Baseline.* Built in through "new code". On a pull request, new code is "whatever has changed relative to the target branch". On a branch it is set by the branch's new code definition, which lives on a separate page I did not read (https://docs.sonarsource.com/sonarqube-server/quality-standards-administration/managing-quality-gates/introduction-to-quality-gates, read 2026-10-17). Conditions on new code are SonarQube's form of a relative target: they judge only the change, not the whole codebase.
+- *Partial success.* None. Every condition is a hard gate; there are no weights or scores.
+- *User-reported failure mode.* On SonarQube Cloud, some pull requests showed coverage as "–" instead of a percentage while their quality gate passed. Others in the same TypeScript project on CircleCI showed coverage and gated as expected. The reporter asked whether Sonar was "not receiving the test reports for some of the Pull requests". The only staff reply asks for a screenshot, so the cause is not confirmed (https://community.sonarsource.com/t/quality-gates-passes-without-showing-code-coverage-for-some-of-the-pull-requests/70588, read 2026-10-17). The search listing that led to this thread also shows titles such as "Sonar scan passes with 0 coverage on new code with QG asking for >90" and "New Code always 0 for PRs", but I read only their titles and one-line summaries.
+
+**Takeaways for the family (inference, not a source claim).**
+1. Measuring only the change (new code) is a simple, widely deployed form of relative target with no stored baseline number. It fits a delivery criterion ("coverage of changed lines at least N%") as well as D4's frozen `at_start` baseline does, and it cannot drift.
+2. The fudge factor is a minimum sample in all but name. SonarQube resolves too-few-lines as a pass, which is why a missing coverage report can look like success. D4's `min_samples` should yield `inconclusive: too_few_samples`, shown to the person as such.
+3. A metric shown as "–" and a gate shown as passed in the same view is the failure D1's states exist to prevent: the criterion state must say `inconclusive` whenever the value is absent.
+
+**Takeaways for section 3 (inference, not a source claim).** All three systems resolve some form of "not measured" as a pass by default: Codecov's `if_not_found: success`, GitHub's `if`-skipped job reported as success, and SonarQube's fudge factor. GitHub's path-skipped workflow fails the other way, blocking forever. None of them has a first-class inconclusive state, and the user reports above come from that gap. This is direct support for D1's `inconclusive` state with a reason, for D4's `min_samples` and frozen baseline, and for D7's rule that a verifier that did not run is never met.
 
 ## 4 Agent and LLM evaluation
 
@@ -187,7 +202,7 @@ All sources below were read on 2026-10-16.
 
 ## What this means for Karakuri
 
-Sections 2, 3, 5 and 6 hold the marker, so every decision below rests on sections 1, 4 and 7 only and is weaker for it: SLO error budgets, CI gate semantics (Codecov, SonarQube, GitHub required checks), agent frameworks' termination and acceptance-criteria practice were not read.
+Sections 2, 3, 5 and 6 held the marker when these decisions were written, so every decision below rests on sections 1, 4 and 7 only and is weaker for it: SLO error budgets, CI gate semantics (Codecov, SonarQube, GitHub required checks), agent frameworks' termination and acceptance-criteria practice were not read. Section 3 was written afterwards (2026-10-17); its takeaways support D1, D4 and D7, and the decisions have not been revised against it.
 
 ### D1 Criterion kinds and states
 
@@ -390,7 +405,9 @@ All but the Luo PDF were read through the summarising fetch tool. I read the Luo
 **Read first-hand on 2026-10-17** (Phase 41 research action 1, section 3), all through the summarising fetch tool:
 - Codecov: https://docs.codecov.com/docs/commit-status, https://docs.codecov.com/docs/comparing-commits and https://github.com/codecov/feedback/issues/861
 - GitHub: https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches/about-protected-branches and https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/collaborating-on-repositories-with-code-quality-features/troubleshooting-required-status-checks
+- SonarQube: https://docs.sonarsource.com/sonarqube-server/latest/instance-administration/analysis-functions/quality-gates/, https://docs.sonarsource.com/sonarqube-server/quality-standards-administration/managing-quality-gates/introduction-to-quality-gates and https://community.sonarsource.com/t/quality-gates-passes-without-showing-code-coverage-for-some-of-the-pull-requests/70588
 
 **Not read in section 3.**
 - The Codecov codecov.yml reference page; the page budget went to the comparing-commits page, which documents missing-base behaviour. Neither page read says which status Codecov posts when no base is found.
 - GitHub: the troubleshooting page at https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches/troubleshooting-required-status-checks returned 404 (it was read at its current path instead). No issue or community thread with a user report was read: the community discussion search returned only pinned posts.
+- SonarQube: the new code definition page (previous version, number of days, reference branch), and any statement of what the gate does with no analysis or a metric that was not computed. The other community threads in the search listing were read only as titles and one-line summaries.
