@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log/slog"
 	"sync"
+	"time"
 
 	"github.com/bsenel/karakuri/internal/core/capability"
 	corecheckpoint "github.com/bsenel/karakuri/internal/core/checkpoint"
@@ -78,6 +79,11 @@ type serviceImpl struct {
 	// tracer opens the invoke_agent and execute_tool spans. Nil means no
 	// tracing; read it through tracing() rather than directly.
 	tracer telemetry.Tracer
+
+	// sleep is handed to every stepContext as its wait before the one retry
+	// of a rate-limited agent call. Nil waits on the real clock; tests
+	// replace it (Phase 36).
+	sleep func(context.Context, time.Duration)
 
 	mu     sync.RWMutex
 	states map[string]*loopState // loopID → state

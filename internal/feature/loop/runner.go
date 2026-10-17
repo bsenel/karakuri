@@ -158,6 +158,7 @@ func (s *serviceImpl) runLoop(ctx context.Context, loopID string, req loop.Reque
 		twinID:   obj.TwinID,
 		svc:      s,
 		rung:     req.AutonomyRung,
+		sleep:    s.sleep,
 	}
 
 	var (
