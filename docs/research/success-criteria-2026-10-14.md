@@ -212,7 +212,25 @@ All sources below were read on 2026-10-16 through a fetch tool that summarises e
 
 ## 5 Agent frameworks' notions of done
 
-_Not reached in time; see Read and not read._
+All sources below were read on 2026-10-17 through a fetch tool that summarises each page against a question. A later action should confirm the exact wording before quoting.
+
+### CrewAI tasks and guardrails
+
+Sources: [Tasks](https://docs.crewai.com/en/concepts/tasks) and [crewAIInc/crewAI#7150](https://github.com/crewAIInc/crewAI/issues/7150), both read 2026-10-17.
+- *Criterion.* Two fields, and only one of them is checked. `expected_output` is a required string, "A detailed description of what the task's completion looks like"; the page does not say that anything compares the output with it. It is prose handed to the agent. The checked criterion is the guardrail. A function guardrail takes the task output as its one parameter and "Should return a tuple of `(bool, Any)`": `(True, value)` on success, `(False, "message")` on failure. A string passed to `guardrail` or `guardrails` becomes an `LLMGuardrail` run on the agent's LLM, which returns `(True, output)` or `(False, feedback)`. `guardrails` takes a list of functions and strings, runs them in order with each receiving the previous one's output, and when set it overrides `guardrail` (https://docs.crewai.com/en/concepts/tasks, read 2026-10-17).
+- *Settled.* By the guardrail's boolean. On failure "The error is sent back to the agent", which tries to fix the output, and the task "is retried up to `guardrail_max_retries` times". `guardrail_max_retries` is "Maximum number of retries when guardrail validation fails. Defaults to 3." `max_retries` is deprecated and "will be removed in v1.0.0" (https://docs.crewai.com/en/concepts/tasks, read 2026-10-17). The docs page does not say what happens when the retries run out. The issue below shows the error raised then, "ValueError: Agent's guardrail failed validation after 3 retries" (https://github.com/crewAIInc/crewAI/issues/7150, read 2026-10-17).
+- *Missing or noisy.* The docs page does not cover a guardrail that cannot run. Per the issue, `LLMGuardrail.__call__` "catches every exception and returns (False, "Error while validating the task output: ...")", so a provider outage looks like a failed validation, is fed back to the agent as feedback and spends a retry (https://github.com/crewAIInc/crewAI/issues/7150, read 2026-10-17).
+- *Baseline.* None on the page read. A guardrail judges one output by itself.
+- *Partial success.* None. A guardrail returns a boolean; the `Any` beside it carries the (possibly transformed) output or the feedback, not a score.
+- *Done against succeeded.* A task is done when the agent returns an answer that every guardrail accepts; the page gives no other definition of completion, and its callback runs "after the task is completed". With no guardrail, done means the agent stopped, and `expected_output` was never checked.
+- *User-reported failure mode.* A guardrail that could not run is reported as a failed one. The reporter says the caller cannot tell an outage from a bad output, and the final `ValueError` blames the output. They proposed a `GuardrailExecutionError` or an `errored: bool` field on `GuardrailResult`, neither appended to the conversation nor counted against `guardrail_max_retries`; another commenter suggested a three-state PASS/FAIL/UNVERIFIED contract. The issue was opened 2026-08-29 and closed as not planned on 2026-10-07 by a stale bot, with no maintainer comment on the page. A linked fix, PR #7151, is described by the author as open, but the page alone does not settle its state (https://github.com/crewAIInc/crewAI/issues/7150, read 2026-10-17).
+
+**Takeaways for the family (inference, not a source claim).**
+1. CrewAI's `expected_output` is a judged criterion with no judge: a description the agent reads, settled by nothing. Only a guardrail settles anything. That is the gap D3 closes by giving each criterion a verifier, and the reason a prose-only criterion should show as `inconclusive: not_run`, not as met.
+2. The guardrail retry is a loop inside the run: failure feedback goes back to the agent, up to a bound. That fits the loop's own convergence, not reconcile; the verdict reconcile reads is the one after the last retry.
+3. Collapsing "could not run" into "failed" is the same loss as Karakuri's `Met bool`, and the issue's proposed PASS/FAIL/UNVERIFIED states are D1's met, unmet and `inconclusive` with a reason. A verifier error must also not count as an attempt or reach the agent as feedback on its work.
+
+_Partly written; still to read: AutoGen AgentChat termination, LangGraph recursion limit and END._
 
 ## 6 Acceptance-criteria practice
 
@@ -487,3 +505,9 @@ All but the Luo PDF were read through the summarising fetch tool. I read the Luo
 - The Codecov codecov.yml reference page; the page budget went to the comparing-commits page, which documents missing-base behaviour. Neither page read says which status Codecov posts when no base is found.
 - GitHub: the troubleshooting page at https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches/troubleshooting-required-status-checks returned 404 (it was read at its current path instead). No issue or community thread with a user report was read: the community discussion search returned only pinned posts.
 - SonarQube: the new code definition page (previous version, number of days, reference branch), and any statement of what the gate does with no analysis or a metric that was not computed. The other community threads in the search listing were read only as titles and one-line summaries.
+
+**Read first-hand on 2026-10-17** (Phase 41 research action 4, section 5), all through the summarising fetch tool:
+- CrewAI: https://docs.crewai.com/en/concepts/tasks and https://github.com/crewAIInc/crewAI/issues/7150
+
+**Not read in section 5.**
+- CrewAI: linked PR #7151, and any docs statement of what a task does when `guardrail_max_retries` is exhausted. Other guardrail issues and PRs in the search listing (#5979/#5980, #7252, #6984, #7759) were read only as titles and one-line summaries.
