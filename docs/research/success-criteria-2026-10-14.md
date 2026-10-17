@@ -55,7 +55,27 @@ _Not reached in time; see Read and not read._
 
 ## 3 CI quality gates
 
-_Not reached in time; see Read and not read._
+All sources below were read on 2026-10-17 through a fetch tool that summarises each page against a question. A later action should confirm the exact wording before quoting.
+
+### Codecov status checks
+
+Sources: [commit status](https://docs.codecov.com/docs/commit-status), [comparing commits](https://docs.codecov.com/docs/comparing-commits) and [codecov/feedback#861](https://github.com/codecov/feedback/issues/861), all read 2026-10-17. The separate codecov.yml reference page was not read; see Read and not read.
+- *Criterion.* Two status checks are configured in `codecov.yml`. `codecov/project` "measures overall project coverage and compares it against the base of the pull request or parent commit". `codecov/patch` "only measures lines adjusted in the pull request", or in the single commit when there is no pull request. Each takes a `target` and a `threshold`, and can be scoped by `branches`, `flags` and `paths` (paths and flags are listed for patch on that page) (https://docs.codecov.com/docs/commit-status, read 2026-10-17).
+- *Settled.* `target` is either `auto` (the default) or a number such as `75%`. `auto` "will use the coverage from the base commit (pull request base or parent commit)", so the check fails if coverage drops below the base. `threshold` lets coverage "drop by `<number>%`" and still post `success`. `if_ci_failed` is `error` by default, which sets success only if CI passed; `success` ignores the CI result. The page contradicts itself here: the text lists `success` and `error`, but a YAML comment lists `success, failure, error, ignore`. The `base` option is marked "Deprecated as of July 2020" with no replacement described (https://docs.codecov.com/docs/commit-status, read 2026-10-17).
+- *Missing or noisy.* There are three separate cases:
+  - **No report for the head commit.** `if_not_found` defaults to `success`, so a commit with no uploaded coverage passes the check unless the author sets `failure` (https://docs.codecov.com/docs/commit-status, read 2026-10-17).
+  - **Flag coverage not uploaded on this commit.** `flag_coverage_not_uploaded_behavior` is `include` (process normally, which with carryforward means checking carried-forward numbers), `exclude` (send no check) or `pass` (pass automatically) (https://docs.codecov.com/docs/commit-status, read 2026-10-17).
+  - **No report for the base commit.** "Codecov only chooses commits that have successful CI builds" as a base. When the git base has no coverage (a `[ci skip]` commit, a merge commit), Codecov "will seek a parent commit and offset the report to get an approximate base report", a pseudo-comparison. With `allow_pseudo_compare: False` it instead renders "an error in the UI" (https://docs.codecov.com/docs/comparing-commits, read 2026-10-17). Neither page says what the status check itself reports when no base can be found.
+- *Baseline.* Relative by default: `target: auto` compares against the base commit's coverage, and `threshold` is the tolerance on the drop. The base is the pull request base, moved forward after a rebase, or the nearest ancestor with a successful build. It is not a frozen baseline: it moves with the base branch (https://docs.codecov.com/docs/comparing-commits, read 2026-10-17).
+- *Partial success.* None. Each status is pass or fail, plus a separate "changes" status for coverage changes outside the diff. `informational: true` posts a status that "will pass no matter what the coverage is", the same shadow mode as Argo's `dryRun` and promptfoo's `weight: 0` (https://docs.codecov.com/docs/commit-status, read 2026-10-17).
+- *User-reported failure mode.* After a 40-PR batch merged to main, an upload showed "Missing base commit" and a flag's coverage was not carried forward from the nearest covered ancestor. The reporter calls it intermittent and tied to "merge-heavy batches + partial/intermittent flag uploads"; another user said they were "currently experiencing this". The issue is open with no maintainer explanation (https://github.com/codecov/feedback/issues/861, read 2026-10-17). It does not say which status the checks posted.
+
+**Takeaways for the family (inference, not a source claim).**
+1. Codecov's defaults make "not measured" a pass: `if_not_found: success` for a missing head report and `pass` as an option for missing flag uploads. That is the opposite of SWE-bench (section 4), where a missing test is a failure. D4 should not copy these defaults.
+2. A relative target needs a defined base. Codecov's base moves and is sometimes approximated (pseudo-comparison), and users hit "Missing base commit" in practice. This supports D4's frozen `baseline: at_start` and an `inconclusive` state when no baseline exists.
+3. Gating coverage on the CI result (`if_ci_failed: error`) is the default: a measurement from a failed build is not trusted.
+
+_Partly written; still to read: GitHub required status checks, SonarQube quality gates._
 
 ## 4 Agent and LLM evaluation
 
@@ -345,3 +365,9 @@ All but the Luo PDF were read through the summarising fetch tool. I read the Luo
 - Section 6, left with its marker:
   - The Cucumber Gherkin reference (Given/When/Then, Scenario Outline with Examples)
   - The Google re:Work guide to OKRs (measurable key results, graded 0.0 to 1.0, the 0.6 to 0.7 expectation)
+
+**Read first-hand on 2026-10-17** (Phase 41 research action 1, section 3), all through the summarising fetch tool:
+- Codecov: https://docs.codecov.com/docs/commit-status, https://docs.codecov.com/docs/comparing-commits and https://github.com/codecov/feedback/issues/861
+
+**Not read in section 3.**
+- The Codecov codecov.yml reference page; the page budget went to the comparing-commits page, which documents missing-base behaviour. Neither page read says which status Codecov posts when no base is found.
