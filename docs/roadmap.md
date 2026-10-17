@@ -46,7 +46,7 @@ Phases 27–32 were proposed from two kinds of evidence: what this repository de
 | 33    | MCP After the Handshake                    | **Completed** |
 | 34    | Karakuri's Own Tools in Its Agents' Hands  | **Completed** |
 | 35    | An Unanswered Checkpoint Ends              | **Completed** |
-| 36    | A Provider's Refusal Is Not a Plan         | **Planned**   |
+| 36    | A Provider's Refusal Is Not a Plan         | **Completed** |
 | 37    | Any Run Can Be Stopped at Any Time         | **Planned**   |
 | 38    | What Was Required and Not Done             | **Planned**   |
 | 40    | Streams That Run Without a Coordinator     | **Planned**   |
@@ -3860,7 +3860,7 @@ the two issues above.
 
 ---
 
-## Phase 36 — A Provider's Refusal Is Not a Plan (Planned)
+## Phase 36 — A Provider's Refusal Is Not a Plan (Completed)
 
 This is a **demand phase**, proposed by the discovery cycle of 2026-10-08
 (`docs/research/discovery-2026-10-08.md`, 'Fit and bets', rank 2). It has two
@@ -3937,6 +3937,84 @@ provider failover, a queue, or a change to Karakuri's own quotas and budgets.
 The loop does not learn to keep trying: one bounded retry, then it ends. It
 does not charge for failed calls, and it does not explain a provider's quota
 to the user beyond passing on what the provider's answer said.
+
+**Shipped (step 1).** `ErrProviderRateLimited` and `*ProviderRateLimitError`
+(`Provider`, `RetryAfter`, `Cause`; `Is` matches the sentinel, `Unwrap`
+returns the cause) in `internal/core/errors/errors.go`, with no vendor import.
+What langchaingo returns for a 429 is in the comment on `rateLimitShapes` in
+`internal/platform/llm/claude_ratelimit_test.go`: v0.1.14's anthropic client
+turns a non-200 into text holding the status code, which `anthropic.MapError`
+may turn into an `*llms.Error` with `ErrCodeRateLimit`; neither keeps the
+Retry-After header, so a 429 can be told apart but `RetryAfter` stays zero.
+`classifyRateLimit` in `internal/platform/llm/claude.go` recognises
+`llms.IsRateLimitError` or the lowercase markers `429`, `rate limit`,
+`rate_limit`, `quota exceeded` and `usage limit` in the error text, wraps it
+with the provider name, and returns any other error unchanged; the claude CLI
+fallback (`claude_cli.go`) runs its stderr and its JSON error result through
+the same function. In `stepReason` (`internal/feature/loop/reason.go`) that
+error alone gets one wait (the retry-after capped at 30s, or 5s when there is
+none) and one retry; a second rate limit sets `plan.endReason` and `endErr`
+(`model provider rate limit: <provider error>`) and no `reason.plan`
+placeholder. `runLoop` (`runner.go`) ends the run through `finalizeLoop` with
+that error before decide, so no checkpoint is raised and nothing is acted on.
+The error text is kept on the loop row as `loop.State.Error`
+(`internal/core/loop/state.go`, `schema.LoopStateModel.Error`, written and read
+in `internal/platform/storage/gorm_storage.go`) and in the terminal event's
+`error` payload. The wait is `stepContext.sleep`, nil in production (the real
+clock, cut short by the context) and replaced in tests.
+
+**Shipped (step 2).** Gemini's `Complete` (`internal/platform/llm/gemini.go`)
+and the gemini CLI fallback's stderr path (`gemini_cli.go`) call
+`classifyRateLimit("gemini", ...)`. The step 2 text above records what was
+read: neither the agent factory nor the CLI fallbacks retry, and Copilot and
+Cursor are stubs with nothing to classify.
+
+**Shipped (step 3).** `reconcileNow` in `internal/feature/reconcile/run.go`
+files a loop that ended failed with `ErrProviderRateLimited`'s text in its
+`Error` as `Outcome.Deferred = "provider_rate_limited"` with no
+`DeferredUntil`, and publishes `reconcile_deferred` with the loop's error as
+`detail`. `finish` gives such an outcome its own case: the phase goes idle and
+`LastReconciledAt` is set so the cadence measures from it, and neither the
+failure count nor the score streak moves. The value is documented on
+`Outcome.Deferred` in `internal/core/reconcile/reconcile.go`.
+
+**Shipped (acceptance).** Clause by clause:
+
+- *Rate-limited twice: one bounded wait, one retry, no `reason.plan`, no
+  checkpoint, ended with a reason naming the provider and the limit.*
+  `TestStepReasonEndsTheIterationWhenRateLimitedTwice` in
+  `internal/feature/loop/reason_ratelimit_test.go`, and
+  `TestRunLoopEndsFailedOnRepeatedProviderRateLimit` in
+  `runner_ratelimit_test.go`, which also checks no pending checkpoint, no
+  checkpoint event, no act iteration, no environment `Act`, and the error on
+  the loop row read back from a SQLite store.
+- *Fails once, then succeeds: the normal plan.*
+  `TestStepReasonRetriesOnceAfterARateLimitAndPlans` and
+  `TestRunLoopProceedsAfterOneProviderRateLimit`.
+- *Any other provider error behaves as today.*
+  `TestStepReasonOtherErrorsStillBecomeThePlaceholder`;
+  `TestClaudeCompleteLeavesOtherErrorsUnclassified`,
+  `TestClaudeCLICompleteLeavesOtherErrorsUnclassified`,
+  `TestGeminiCompleteLeavesOtherErrorsUnclassified` and
+  `TestGeminiCLICompleteLeavesOtherErrorsUnclassified` under
+  `internal/platform/llm/`; and `TestOtherLoopFailuresAreStillFailures` in
+  `internal/feature/reconcile/ratelimit_test.go`.
+- *Reconcile.* `TestRateLimitedPassIsRecordedAsADeferral`,
+  `TestRateLimitedPassesDoNotTripTheBreaker` and
+  `TestRateLimitedPassesDoNotCountAsAStall`.
+- *No langchaingo import outside `internal/platform/`.*
+  `scripts/check_langchaingo_imports.sh` passed.
+
+Not verified: no real HTTP 429 from a live provider was observed; every test
+uses scripted providers, a failing langchaingo model or a fake CLI, so the
+error shapes are the ones read from langchaingo v0.1.14's source, not ones
+seen on the wire. A second rate limit ends the whole run, not only the
+iteration, so a loop with iterations left does not reach them. Reconcile tells
+a rate limit from another failure by the text `provider rate limited` in the
+loop row, not by the error value. A CLI that exits non-zero with an empty
+stderr is not classified. The `error` column was added by AutoMigrate on SQLite
+only, not PostgreSQL. Only the changed packages were tested; the full
+`go test ./...` was not run for this section.
 
 ---
 
