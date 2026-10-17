@@ -129,7 +129,7 @@ func twinListCmd() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&kind, "kind", "", "Filter by kind")
-	cmd.Flags().StringVar(&domain, "domain", "", "Filter by domain")
+	cmd.Flags().StringVar(&kind, "kind", "", "Filter by kind: person|team|organization")
+	cmd.Flags().StringVar(&domain, "domain", "", "Filter by domain (see: krk domain list)")
 	return cmd
 }

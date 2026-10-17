@@ -12,7 +12,8 @@ export function Layout() {
   return (
     <div className="layout">
       <nav className="topnav" aria-label="Main">
-        <span className="brand">⌬ Karakuri</span>
+        {/* The glyph is decoration; a screen reader may read out its Unicode name. */}
+        <span className="brand"><span aria-hidden="true">⌬</span> Karakuri</span>
         {links.map((entry) => (
           <NavLink
             key={entry.to}

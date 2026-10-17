@@ -31,6 +31,16 @@ func TestCreateHelp(t *testing.T) {
 	}
 }
 
+// A filter flag that takes a twin ID should say where the ID comes from.
+func TestTwinFilterSaysWhereIDComesFrom(t *testing.T) {
+	for _, cmd := range []*cobra.Command{costReportCmd(), evalCalibrateCmd()} {
+		requireExample(t, cmd)
+		if usage := cmd.Flags().Lookup("twin").Usage; !strings.Contains(usage, "krk twin list") {
+			t.Errorf("%s --twin usage %q does not say where a twin ID comes from", cmd.Name(), usage)
+		}
+	}
+}
+
 // A wrong argument count has to show what the command expects: with
 // SilenceUsage set, cobra's "accepts 1 arg(s), received 0" is all the user gets.
 func TestMissingArgumentShowsUsage(t *testing.T) {
@@ -86,6 +96,23 @@ func TestCheckpointHelp(t *testing.T) {
 func TestGetAndListHelp(t *testing.T) {
 	for _, cmd := range []*cobra.Command{objectiveGetCmd(), objectiveListCmd(), twinGetCmd(), twinListCmd()} {
 		requireExample(t, cmd)
+	}
+}
+
+// A list command's filter flags say as much as the create flags they mirror:
+// where a twin ID comes from and which kinds and domains exist.
+func TestListFiltersMatchCreateFlags(t *testing.T) {
+	for _, cmd := range []*cobra.Command{objectiveListCmd(), checkpointListCmd()} {
+		if usage := cmd.Flags().Lookup("twin").Usage; !strings.Contains(usage, "krk twin list") {
+			t.Errorf("%s --twin usage %q does not say where a twin ID comes from", cmd.Name(), usage)
+		}
+	}
+	flags := twinListCmd().Flags()
+	if usage := flags.Lookup("kind").Usage; !strings.Contains(usage, "person|team|organization") {
+		t.Errorf("twin list --kind usage %q does not name the kinds", usage)
+	}
+	if usage := flags.Lookup("domain").Usage; !strings.Contains(usage, "krk domain list") {
+		t.Errorf("twin list --domain usage %q does not say where a domain comes from", usage)
 	}
 }
 

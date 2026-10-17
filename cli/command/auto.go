@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"os/signal"
@@ -113,12 +114,14 @@ func streamSSE(url, token string) error {
 	httpClient := &http.Client{}
 	resp, err := httpClient.Do(req)
 	if err != nil {
-		return fmt.Errorf("connect to event stream: %w", err)
+		return fmt.Errorf("cannot connect to the event stream at %s: %w\nIs the server running? Point the CLI at another one with --api-url", url, err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("event stream returned status %d", resp.StatusCode)
+		// The body carries the server's reason; a bare status code does not.
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return fmt.Errorf("event stream at %s returned status %d: %s\nThe objective was created; check it with `krk objective list`", url, resp.StatusCode, strings.TrimSpace(string(body)))
 	}
 
 	done := make(chan struct{})

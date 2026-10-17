@@ -34,7 +34,7 @@ func checkpointListCmd() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&twinID, "twin", "", "Filter by twin ID")
+	cmd.Flags().StringVar(&twinID, "twin", "", "Filter by twin ID (see: krk twin list)")
 	return cmd
 }
 
