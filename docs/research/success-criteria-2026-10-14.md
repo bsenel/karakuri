@@ -75,7 +75,28 @@ Sources: [commit status](https://docs.codecov.com/docs/commit-status), [comparin
 2. A relative target needs a defined base. Codecov's base moves and is sometimes approximated (pseudo-comparison), and users hit "Missing base commit" in practice. This supports D4's frozen `baseline: at_start` and an `inconclusive` state when no baseline exists.
 3. Gating coverage on the CI result (`if_ci_failed: error`) is the default: a measurement from a failed build is not trusted.
 
-_Partly written; still to read: GitHub required status checks, SonarQube quality gates._
+### GitHub required status checks
+
+Sources: [about protected branches](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches/about-protected-branches) and [troubleshooting required status checks](https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/collaborating-on-repositories-with-code-quality-features/troubleshooting-required-status-checks), both read 2026-10-17. The troubleshooting page returned 404 at its old path under `managing-protected-branches/` and was read at the path above.
+- *Criterion.* A branch protection rule names required checks, each a check run or a commit status, by name. Optionally it names the app expected to set each one: if "the status is set by any other person or integration, merging won't be allowed" (https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches/about-protected-branches, read 2026-10-17).
+- *Settled.* Required checks "must have a `successful`, `skipped`, or `neutral` status" before a merge. In strict mode ("Require branches to be up to date before merging") the branch must also be up to date with the base; in loose mode it need not be, and the page warns that checks "may fail after you merge" (https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches/about-protected-branches, read 2026-10-17). Checks must pass on the latest commit: "Checks from earlier commits don't satisfy the requirement". When a check and a commit status share a name, both must pass (https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/collaborating-on-repositories-with-code-quality-features/troubleshooting-required-status-checks, read 2026-10-17).
+- *Missing or noisy.* A required check that never reports blocks the merge indefinitely, shown as "Waiting for status to be reported". The troubleshooting page gives these causes:
+  - a workflow skipped by path filtering, branch filtering or commit message, whose checks "stay in a "Pending" state and block merging";
+  - a run from an ineligible trigger: a `workflow_dispatch` run does not count even when it passes;
+  - a merge queue without the `merge_group` trigger, where the check is never reported and the merge fails.
+
+  A job skipped by a job-level `if` condition is the opposite case: "The job reports "Success"" and does not block. A job skipped because a job it depends on failed "may not block merging". The page's advice is "Avoid requiring workflows that can be skipped" and to use `always()` with `needs` for a required job (https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/collaborating-on-repositories-with-code-quality-features/troubleshooting-required-status-checks, read 2026-10-17). Neither page covers flaky checks or reruns.
+- *Baseline.* None. A check is a verdict on one commit (or on the test merge commit when that commit has a status); any comparison with the base happens inside the check, as in Codecov above.
+- *Partial success.* None. Every required check must be in a passing state; there are no weights.
+- *User-reported failure mode.* Not read from an issue thread: a search of GitHub community discussions returned only pinned posts. The troubleshooting page itself describes the reported symptom: a pull request that touches only root files is blocked forever because a required workflow limited to `scripts/**` never runs. The same page shows the silent-pass twin: a required job whose `if` is false reports success without running anything.
+
+**Takeaways for the family (inference, not a source claim).**
+1. GitHub has two behaviours for "did not run", depending on how the skip happened: pending forever (blocks) or `skipped` counted as a pass. A verifier that did not run must have one state, `inconclusive: not_run` (D7), whatever the reason, and it must never count as met.
+2. "Never reports" needs a bound. Waiting forever is how GitHub fails safe, but it leaves the pull request stuck; reconcile needs a timeout that turns a missing measurement into a reported `inconclusive` with a reason, not a silent wait.
+3. Pinning the source of a result (the expected app) is GitHub's anti-spoofing rule; it matches D7's audit of which verifier produced each measurement and the rejection of third-party verifiers.
+4. A result applies only to the commit it was measured at. That supports D7's rule that each measurement records its commit.
+
+_Partly written; still to read: SonarQube quality gates._
 
 ## 4 Agent and LLM evaluation
 
@@ -368,6 +389,8 @@ All but the Luo PDF were read through the summarising fetch tool. I read the Luo
 
 **Read first-hand on 2026-10-17** (Phase 41 research action 1, section 3), all through the summarising fetch tool:
 - Codecov: https://docs.codecov.com/docs/commit-status, https://docs.codecov.com/docs/comparing-commits and https://github.com/codecov/feedback/issues/861
+- GitHub: https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches/about-protected-branches and https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/collaborating-on-repositories-with-code-quality-features/troubleshooting-required-status-checks
 
 **Not read in section 3.**
 - The Codecov codecov.yml reference page; the page budget went to the comparing-commits page, which documents missing-base behaviour. Neither page read says which status Codecov posts when no base is found.
+- GitHub: the troubleshooting page at https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches/troubleshooting-required-status-checks returned 404 (it was read at its current path instead). No issue or community thread with a user report was read: the community discussion search returned only pinned posts.
