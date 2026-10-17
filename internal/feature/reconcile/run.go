@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	coreagent "github.com/bsenel/karakuri/internal/core/agent"
+	coreerrors "github.com/bsenel/karakuri/internal/core/errors"
 	"github.com/bsenel/karakuri/internal/core/event"
 	coreloop "github.com/bsenel/karakuri/internal/core/loop"
 	"github.com/bsenel/karakuri/internal/core/objective"
@@ -309,6 +311,18 @@ func (s *Service) reconcileNow(
 		// objective on the deployment to babysit one question.
 		st.ActiveLoopID = res.LoopID
 		st.Phase = reconcile.PhaseWaiting
+	case final.Status == objective.StatusFailed && strings.Contains(final.Error, coreerrors.ErrProviderRateLimited.Error()):
+		// The model provider refused, twice, and the loop ended rather than
+		// plan from it (Phase 36). Filed like a spent budget: nothing here
+		// misbehaved, so it is not a failure. No DeferredUntil, because no
+		// retry-after survives the provider's answer; the cadence decides
+		// when the next pass runs.
+		outcome.Deferred = "provider_rate_limited"
+		s.publish(ctx, event.TypeReconcileDeferred, obj, map[string]any{
+			"reason":  "provider_rate_limited",
+			"detail":  final.Error,
+			"loop_id": res.LoopID,
+		})
 	case final.Status == objective.StatusFailed:
 		outcome.Error = failureReason(final)
 	default:
@@ -482,6 +496,15 @@ func (s *Service) finish(
 		// attempt, and counting looks as attempts would trip the stall
 		// detector on an objective that is simply quiet.
 		st.Phase = reconcile.PhaseIdle
+
+	case outcome.Deferred != "":
+		// A loop the provider refused never planned, so it is neither a
+		// failure for the breaker nor a stall, and no counter moves. It was
+		// an attempt, though: the cadence measures from it, or with no
+		// DeferredUntil to floor it the objective would be due again on
+		// the next tick and ask the refusing provider every thirty seconds.
+		st.Phase = reconcile.PhaseIdle
+		st.LastReconciledAt = &now
 
 	case outcome.Escalated:
 		// Neither a success nor a failure: the loop did exactly what a

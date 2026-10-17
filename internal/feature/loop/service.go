@@ -56,6 +56,7 @@ type loopState struct {
 	// at the replay's first decide so that checkpoint, and not a new one, is
 	// the one the runner reads the decision for.
 	answered bool
+	runErr   string // the text of the error the run ended with, persisted for reconcile
 	mu       sync.RWMutex
 }
 
@@ -321,6 +322,7 @@ func (s *serviceImpl) persistState(ctx context.Context, state *loopState, comple
 	status := state.status
 	req := state.request
 	result := state.result
+	runErr := state.runErr
 	state.mu.RUnlock()
 
 	reqJSON, _ := json.Marshal(req)
@@ -340,6 +342,7 @@ func (s *serviceImpl) persistState(ctx context.Context, state *loopState, comple
 		Status:       result.Status,
 		CriteriaMet:  status.CriteriaMet,
 		CheckpointID: cpID,
+		Error:        runErr,
 		RequestJSON:  string(reqJSON),
 	}
 	_ = s.store.SaveLoopState(ctx, persisted)

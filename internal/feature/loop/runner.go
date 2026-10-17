@@ -499,6 +499,9 @@ func (s *serviceImpl) finalizeLoop(ctx context.Context, state *loopState, obj ob
 	state.mu.Lock()
 	state.result = result
 	state.status.Step = loop.StepLearn
+	if runErr != nil {
+		state.runErr = runErr.Error()
+	}
 	state.mu.Unlock()
 
 	// Persist the terminal state (Phase 11): Completed=true keeps it out of
