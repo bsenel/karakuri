@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"regexp"
 	"strings"
 
 	"github.com/tmc/langchaingo/llms"
@@ -113,9 +114,14 @@ func classifyClaudeError(err error) error {
 }
 
 // rateLimitMarkers are the lowercase fragments a provider's refusal text holds
-// when it is a rate limit: the status code, the API's own wording, and the
-// CLIs' plan and quota messages.
-var rateLimitMarkers = []string{"429", "rate limit", "rate_limit", "quota exceeded", "usage limit"}
+// when it is a rate limit: the API's own wording, and the CLIs' plan and quota
+// messages.
+var rateLimitMarkers = []string{"rate limit", "rate_limit", "quota exceeded", "usage limit"}
+
+// rateLimitStatus matches the 429 status code as a number of its own. As a
+// substring it also matched a timeout of 4290ms or an ID like 14290, and a real
+// failure was then filed as a deferral the breaker never counts.
+var rateLimitStatus = regexp.MustCompile(`\b429\b`)
 
 // classifyRateLimit names a rate limit from provider as the domain's
 // ErrProviderRateLimited (Phase 36) and returns any other error unchanged, the
@@ -128,6 +134,9 @@ func classifyRateLimit(provider string, err error) error {
 		return &coreerrors.ProviderRateLimitError{Provider: provider, Cause: err}
 	}
 	text := strings.ToLower(err.Error())
+	if rateLimitStatus.MatchString(text) {
+		return &coreerrors.ProviderRateLimitError{Provider: provider, Cause: err}
+	}
 	for _, m := range rateLimitMarkers {
 		if strings.Contains(text, m) {
 			return &coreerrors.ProviderRateLimitError{Provider: provider, Cause: err}
