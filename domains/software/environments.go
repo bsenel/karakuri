@@ -118,7 +118,9 @@ func softwareEnvironmentFactories(reg *tools.Registry) []environment.Factory {
 				}
 				env := &cliEnv{id: "software.env.cli_agent", cli: cli, twinID: ctx.TwinID}
 				if reg != nil {
-					env.attachMCP, env.mcpURL = cliMCPOptions(reg.CLIAgents.Options(ctx.AdapterBindings["cli_agents"]))
+					opts := reg.CLIAgents.Options(ctx.AdapterBindings["cli_agents"])
+					env.attachMCP, env.mcpURL = cliMCPOptions(opts)
+					env.timeoutSeconds = cliTimeoutSeconds(opts)
 				}
 				return env, nil
 			},
@@ -602,6 +604,9 @@ type cliEnv struct {
 	attachMCP bool
 	mcpURL    string
 	issuer    delegationIssuer
+	// timeoutSeconds is the instance's timeout_seconds option: how long one
+	// delegation may run before it is killed. Zero means the default.
+	timeoutSeconds int
 }
 
 // DelegationCredential is what one delegation carries to Karakuri's own MCP
@@ -625,6 +630,27 @@ type delegationIssuer interface {
 func cliMCPOptions(options map[string]any) (attach bool, url string) {
 	attach, _ = options["attach_karakuri_mcp"].(bool)
 	return attach, config.InstanceConfig{Options: options}.OptString("karakuri_mcp_url")
+}
+
+// defaultDelegationTimeoutSeconds is how long one delegation may run when the
+// cli_agents instance sets no timeout_seconds.
+const defaultDelegationTimeoutSeconds = 600
+
+// cliTimeoutSeconds reads timeout_seconds off a cli_agents instance's options;
+// zero when it is unset or not a positive number, which means the default.
+func cliTimeoutSeconds(options map[string]any) int {
+	if n := (config.InstanceConfig{Options: options}).OptInt("timeout_seconds"); n > 0 {
+		return n
+	}
+	return 0
+}
+
+// delegationTimeoutSeconds is how long this environment lets one delegation run.
+func (e *cliEnv) delegationTimeoutSeconds() int {
+	if e.timeoutSeconds > 0 {
+		return e.timeoutSeconds
+	}
+	return defaultDelegationTimeoutSeconds
 }
 
 // revokeTimeout bounds the revoke that follows a delegation, which runs even
@@ -680,7 +706,7 @@ func (e *cliEnv) Act(ctx context.Context, a environment.Action) (environment.Act
 	in := cliagent.DelegateInput{
 		Prompt:         prompt,
 		WorktreePath:   worktree,
-		TimeoutSeconds: 600,
+		TimeoutSeconds: e.delegationTimeoutSeconds(),
 	}
 	if files, ok := a.Params["files"].([]any); ok {
 		for _, f := range files {
