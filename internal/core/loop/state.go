@@ -27,6 +27,9 @@ type State struct {
 	Status       objective.ObjectiveStatus `json:"status,omitempty"`
 	CriteriaMet  float64                   `json:"criteria_met"`
 	CheckpointID string                    `json:"checkpoint_id,omitempty"`
+	// Error is the text of the error a failed loop ended on, empty when it
+	// ended without one.
+	Error string `json:"error,omitempty"`
 
 	// RequestJSON is the full marshalled Request as supplied to Run(); enough
 	// to reconstruct the loop's parameters on a cold start.

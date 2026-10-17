@@ -39,8 +39,11 @@ type fakeLoop struct {
 	status      objective.ObjectiveStatus
 	paused      bool
 	checkpoint  string
-	authority   coreagent.AuthorityBounds
-	rung        objective.AutonomyLevel
+	// loopError is the error the loop ends on, written to the row the way
+	// the runner records the error a failed loop ended with.
+	loopError string
+	authority coreagent.AuthorityBounds
+	rung      objective.AutonomyLevel
 }
 
 func (f *fakeLoop) Run(ctx context.Context, req coreloop.Request) (coreloop.Result, error) {
@@ -63,6 +66,7 @@ func (f *fakeLoop) Run(ctx context.Context, req coreloop.Request) (coreloop.Resu
 		Status:       f.status,
 		CriteriaMet:  f.criteriaMet,
 		CheckpointID: f.checkpoint,
+		Error:        f.loopError,
 	}
 	if err := f.store.SaveLoopState(ctx, st); err != nil {
 		return coreloop.Result{}, err
