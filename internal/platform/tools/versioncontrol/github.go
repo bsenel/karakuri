@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 )
@@ -80,8 +81,10 @@ func (g *GitHub) ListPRs(ctx context.Context, repo string, since time.Time) ([]P
 		Number    int       `json:"number"`
 		Title     string    `json:"title"`
 		HTMLURL   string    `json:"html_url"`
+		CreatedAt time.Time `json:"created_at"`
 		UpdatedAt time.Time `json:"updated_at"`
 		Head      struct {
+			Ref string `json:"ref"`
 			SHA string `json:"sha"`
 		} `json:"head"`
 		User struct {
@@ -98,8 +101,10 @@ func (g *GitHub) ListPRs(ctx context.Context, repo string, since time.Time) ([]P
 		}
 		s := PRSummary{
 			ID: fmt.Sprintf("%d", r.Number), Title: r.Title, URL: r.HTMLURL,
-			Author:    r.User.Login,
-			OwnAuthor: g.ownAuthors[strings.ToLower(r.User.Login)],
+			Author:     r.User.Login,
+			OwnAuthor:  g.ownAuthors[strings.ToLower(r.User.Login)],
+			HeadBranch: r.Head.Ref, HeadSHA: r.Head.SHA,
+			CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
 		}
 		s.CheckState, s.FailingChecks = g.checkState(ctx, repo, r.Head.SHA)
 		out = append(out, s)
@@ -195,15 +200,70 @@ func (g *GitHub) GetCommits(ctx context.Context, repo string, since time.Time) (
 	return out, nil
 }
 
-// ListChecks is not wired to the check-runs endpoint yet (Phase 41 step 2).
-func (g *GitHub) ListChecks(_ context.Context, _, _ string) ([]CheckRun, error) {
-	return nil, fmt.Errorf("github: checks: %w", ErrUnsupported)
+// ListChecks reads the check runs on ref. Only check runs: a repository that
+// reports CI through the older commit statuses has none, which a verifier
+// reads as no data rather than as green.
+func (g *GitHub) ListChecks(ctx context.Context, repo, ref string) ([]CheckRun, error) {
+	if repo == "" {
+		repo = g.repo
+	}
+	if repo == "" {
+		return nil, fmt.Errorf("github: no repo configured")
+	}
+	var raw struct {
+		TotalCount int `json:"total_count"`
+		CheckRuns  []struct {
+			Name       string `json:"name"`
+			HeadSHA    string `json:"head_sha"`
+			Status     string `json:"status"`
+			Conclusion string `json:"conclusion"`
+		} `json:"check_runs"`
+	}
+	path := fmt.Sprintf("/repos/%s/commits/%s/check-runs?per_page=100", repo, url.PathEscape(ref))
+	if err := g.do(ctx, "GET", path, nil, &raw); err != nil {
+		return nil, err
+	}
+	// A partial list could leave out the one failing check, so more than one
+	// page is an error rather than a verdict over the first.
+	if raw.TotalCount > len(raw.CheckRuns) {
+		return nil, fmt.Errorf("github: checks: %d check runs on %s, more than one page", raw.TotalCount, ref)
+	}
+	out := make([]CheckRun, 0, len(raw.CheckRuns))
+	for _, c := range raw.CheckRuns {
+		out = append(out, CheckRun{Name: c.Name, HeadSHA: c.HeadSHA, Status: c.Status, Conclusion: c.Conclusion})
+	}
+	return out, nil
 }
 
-// ChangedFiles is not wired to the pull request files endpoint yet (Phase 41
-// step 2).
-func (g *GitHub) ChangedFiles(_ context.Context, _, _ string) ([]string, error) {
-	return nil, fmt.Errorf("github: changed files: %w", ErrUnsupported)
+// changedFilesMaxPages is GitHub's own limit: the files endpoint lists at most
+// 3000 files, a hundred a page.
+const changedFilesMaxPages = 30
+
+// ChangedFiles reads the paths a pull request's diff touches, every page.
+func (g *GitHub) ChangedFiles(ctx context.Context, repo, prID string) ([]string, error) {
+	if repo == "" {
+		repo = g.repo
+	}
+	if repo == "" {
+		return nil, fmt.Errorf("github: no repo configured")
+	}
+	var out []string
+	for page := 1; page <= changedFilesMaxPages; page++ {
+		var raw []struct {
+			Filename string `json:"filename"`
+		}
+		path := fmt.Sprintf("/repos/%s/pulls/%s/files?per_page=100&page=%d", repo, url.PathEscape(prID), page)
+		if err := g.do(ctx, "GET", path, nil, &raw); err != nil {
+			return nil, err
+		}
+		for _, f := range raw {
+			out = append(out, f.Filename)
+		}
+		if len(raw) < 100 {
+			return out, nil
+		}
+	}
+	return nil, fmt.Errorf("github: changed files: pull request %s touches more files than GitHub lists", prID)
 }
 
 func (g *GitHub) do(ctx context.Context, method, path string, body any, out any) error {
