@@ -214,3 +214,35 @@ gate, and authority is expressed by what is written into the bounds.
 **Trusting the planner to report which evidence it relied on.** The plan's
 `reasoning` field is written by the same model the untrusted material is
 steering. Asking the suspect.
+
+## Addendum, 2026-10-10: a delegated result that used Karakuri tools
+
+Phase 34 lets a coding agent call Karakuri's own MCP tools during one
+delegation. What those tools return can hold a stranger's prose: an audit row
+carries a pull-request title, a checkpoint carries a note.
+
+**What is labelled.** The `ActionResult` of a `cli_agent` delegation sets
+`Trust: environment.TrustThirdParty` when the run called at least one Karakuri
+MCP tool. The whole result is labelled, not the one tool result inside it: the
+summary and raw output were written by an agent that had already read what the
+tool returned. A run that failed is labelled the same way, because its error
+text is the run's text.
+
+**From what.** From the run's reported tool calls, `DelegateOutput.ToolUses`: a
+name beginning `mcp__karakuri__`. It is decided in `cliEnv.Act`
+(`domains/software/environments.go`), from what the payload holds, per Decision
+1. It is not decided from the attachment: a run that was given the tools and
+called none of them, and a delegation that asked for none, keep the label they
+had before. Nothing is inferred in the loop.
+
+**What is not covered.**
+
+- Text that reached the agent through a Karakuri tool and was then paraphrased
+  into a commit, a file or a pull-request description is not tracked. The label
+  is on the action's result; what the agent wrote into the worktree carries no
+  label of its own.
+- The label is only as good as the CLI's report of its tool calls. A run whose
+  adapter reports no tool uses cannot be labelled this way.
+- A delegation that called no Karakuri tool is still the zero value, although
+  the agent may have read third-party text by other means (a file in the
+  repository, a web page). That was true before this phase and is unchanged.

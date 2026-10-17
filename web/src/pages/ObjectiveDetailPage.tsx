@@ -71,8 +71,18 @@ export function ObjectiveDetailPage() {
     }
   };
 
-  if (err) return <p className="pill red">{err}</p>;
-  if (!obj) return <p className="muted">Loading…</p>;
+  if (!obj) {
+    if (!err) return <p className="muted" role="status">Loading…</p>;
+    return (
+      <>
+        <p className="muted small"><Link to="/objectives">← Objectives</Link></p>
+        <p className="pill red" role="alert">Could not load this objective: {err}</p>
+        <div className="row" style={{ marginTop: 12 }}>
+          <button onClick={() => void load()}>Retry</button>
+        </div>
+      </>
+    );
+  }
 
   // Weighted-score progress: derived from the latest verify event payload OR
   // the status object when polling kicks in.
@@ -82,6 +92,8 @@ export function ObjectiveDetailPage() {
   return (
     <>
       <p className="muted small"><Link to="/objectives">← Objectives</Link></p>
+      {/* A loop that fails to start keeps the page, so the timeline is not lost. */}
+      {err && <p className="pill red" role="alert">{err}</p>}
       <h1>{obj.title}</h1>
       <div className="row" style={{ marginBottom: 16 }}>
         <span className="pill accent">{obj.domain}</span>
@@ -94,12 +106,15 @@ export function ObjectiveDetailPage() {
         <button className="primary" onClick={() => void startLoop()} disabled={!!loopID && !status?.completed}>
           {!loopID ? 'Start loop' : status?.completed ? 'Run again' : 'Running…'}
         </button>
-        {status && (
-          <span className="small muted">
-            iteration {status.iteration} · {status.paused ? 'paused' : status.completed ? 'completed' : 'running'}
-            {status.last_step && <> · last step: {status.last_step}</>}
-          </span>
-        )}
+        {/* Always mounted, so a screen reader hears each poll's change of state. */}
+        <span className="small muted" role="status">
+          {status && (
+            <>
+              iteration {status.iteration} · {status.paused ? 'paused' : status.completed ? 'completed' : 'running'}
+              {status.last_step && <> · last step: {status.last_step}</>}
+            </>
+          )}
+        </span>
       </div>
 
       <StandingPanel objectiveID={id} budget={obj?.budget} />

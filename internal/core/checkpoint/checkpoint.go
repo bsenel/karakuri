@@ -51,6 +51,9 @@ type Checkpoint struct {
 	Decision   *Decision        `json:"decision,omitempty"`
 	CreatedAt  time.Time        `json:"created_at"`
 	ResolvedAt *time.Time       `json:"resolved_at,omitempty"`
+	// ExpiresAt is the instant after which a checkpoint nobody answered is
+	// rejected by system:timeout. Nil means it waits without limit.
+	ExpiresAt *time.Time `json:"expires_at,omitempty"`
 }
 
 // Modifications carries the structured edits a reviewer applies when they

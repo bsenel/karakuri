@@ -97,7 +97,7 @@ function Orgs() {
 
       {error && <p className="error" role="alert">{error}</p>}
 
-      {mayWrite && <CreateRow kinds={['org']} onCreate={(name) => create('org', name, '')} label="New organisation" />}
+      {mayWrite && <CreateRow noun="organisation" onCreate={(name) => create('org', name, '')} />}
 
       {orgs.length === 0 && <p className="muted">No organisations yet.</p>}
 
@@ -138,8 +138,7 @@ function Orgs() {
 
           {mayWrite && (
             <CreateRow
-              kinds={['team']}
-              label="New team"
+              noun="team"
               onCreate={(name) => create('team', name, org.id)}
             />
           )}
@@ -151,7 +150,7 @@ function Orgs() {
         A project can hold twins from more than one organisation, which is why it sits
         beside the tree rather than inside it.
       </p>
-      {mayWrite && <CreateRow kinds={['project']} label="New project" onCreate={(name) => create('project', name, '')} />}
+      {mayWrite && <CreateRow noun="project" onCreate={(name) => create('project', name, '')} />}
       {projects.length === 0 && <p className="muted">No projects.</p>}
       <ul>
         {projects.map((p) => (
@@ -171,15 +170,16 @@ function Orgs() {
   );
 }
 
+// Three of these share a page, so each button names what it adds.
 function CreateRow({
-  label,
+  noun,
   onCreate,
 }: {
-  kinds: string[];
-  label: string;
+  noun: string;
   onCreate: (name: string) => void | Promise<void>;
 }) {
   const [name, setName] = useState('');
+  const label = `New ${noun}`;
   return (
     <div className="row" style={{ marginTop: 8 }}>
       <input
@@ -195,7 +195,7 @@ function CreateRow({
           setName('');
         }}
       >
-        Add
+        Add {noun}
       </button>
     </div>
   );
