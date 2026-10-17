@@ -372,3 +372,61 @@ func TestCLIEnvIsBuiltForItsTwin(t *testing.T) {
 	}
 	t.Fatal("no software.env.cli_agent factory")
 }
+
+// timeout_seconds is read as a positive number of seconds; anything else is
+// the default.
+func TestCLITimeoutSecondsOption(t *testing.T) {
+	for name, tc := range map[string]struct {
+		opts map[string]any
+		want int
+	}{
+		"nil":      {nil, 0},
+		"absent":   {map[string]any{"binary": "claude"}, 0},
+		"int":      {map[string]any{"timeout_seconds": 1800}, 1800},
+		"float":    {map[string]any{"timeout_seconds": 1800.0}, 1800},
+		"zero":     {map[string]any{"timeout_seconds": 0}, 0},
+		"negative": {map[string]any{"timeout_seconds": -5}, 0},
+		"string":   {map[string]any{"timeout_seconds": "1800"}, 0},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if got := cliTimeoutSeconds(tc.opts); got != tc.want {
+				t.Errorf("cliTimeoutSeconds = %d, want %d", got, tc.want)
+			}
+		})
+	}
+}
+
+// The configured limit is what the adapter is handed and what the delegation's
+// credential is issued for; unset, both stay at the default 600s.
+func TestTimeoutOptionChangesTheDelegation(t *testing.T) {
+	run := func(opts map[string]any) (cliagent.DelegateInput, time.Duration) {
+		t.Helper()
+		cli, iss := &recordingCLI{}, newRecordingIssuer()
+		env := attachingEnv(cli, iss)
+		env.timeoutSeconds = cliTimeoutSeconds(opts)
+		res, err := env.Act(context.Background(), delegateAction("audit_list"))
+		if err != nil {
+			t.Fatalf("act: %v", err)
+		}
+		if !res.Success || len(cli.calls) != 1 || len(iss.timeouts) != 1 {
+			t.Fatalf("delegation: success = %v, calls = %d, issued = %d", res.Success, len(cli.calls), len(iss.timeouts))
+		}
+		return cli.calls[0], iss.timeouts[0]
+	}
+
+	in, cred := run(nil)
+	if in.TimeoutSeconds != 600 {
+		t.Errorf("default: TimeoutSeconds = %d, want 600", in.TimeoutSeconds)
+	}
+	if cred <= 0 || cred > 600*time.Second {
+		t.Errorf("default: credential timeout = %s, want within 600s", cred)
+	}
+
+	in, cred = run(map[string]any{"timeout_seconds": 1800})
+	if in.TimeoutSeconds != 1800 {
+		t.Errorf("configured: TimeoutSeconds = %d, want 1800", in.TimeoutSeconds)
+	}
+	if cred <= 600*time.Second || cred > 1800*time.Second {
+		t.Errorf("configured: credential timeout = %s, want above 600s and within 1800s", cred)
+	}
+}
