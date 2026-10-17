@@ -390,6 +390,10 @@ tools:
   # timeout_seconds bounds one delegation; the agent is killed when it runs out
   # (default 600). Raise it when the work and the tests it runs take longer.
   #
+  # allowed_tools is the tool list a delegation gets when its action names none.
+  # claude_code runs headless and denies every tool not listed, so with no list
+  # on the action and none here the action is refused before the agent starts.
+  #
   # A delegation may ask for Karakuri's own MCP tools (params.karakuri_tools).
   # That needs attach_karakuri_mcp (default false) and karakuri_mcp_url, this
   # deployment's MCP endpoint as the CLI reaches it; claude_code only.
@@ -402,6 +406,7 @@ tools:
   #         # attach_karakuri_mcp: true
   #         # karakuri_mcp_url: https://karakuri.example.com/api/v1/mcp
   #         # timeout_seconds: 1800  # how long one delegation may run (default 600)
+  #         # allowed_tools: [Read, Edit, Write, Glob, Grep, "Bash(git:*)", "Bash(go:*)"]
   cli_agents:
     default: ""
     instances: {}

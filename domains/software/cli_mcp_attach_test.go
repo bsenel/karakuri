@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/bsenel/karakuri/config"
 	"github.com/bsenel/karakuri/internal/core/environment"
 	"github.com/bsenel/karakuri/internal/platform/tools"
 	"github.com/bsenel/karakuri/internal/platform/tools/cliagent"
@@ -23,9 +24,17 @@ const (
 type recordingCLI struct {
 	calls []cliagent.DelegateInput
 	err   error
+	// name stands in for a real adapter's name, which decides whether an empty
+	// tool list is refused; empty is "recording".
+	name string
 }
 
-func (*recordingCLI) Name() string { return "recording" }
+func (c *recordingCLI) Name() string {
+	if c.name != "" {
+		return c.name
+	}
+	return "recording"
+}
 func (*recordingCLI) Active() bool { return true }
 func (c *recordingCLI) Delegate(_ context.Context, in cliagent.DelegateInput) (cliagent.DelegateOutput, error) {
 	c.calls = append(c.calls, in)
@@ -429,4 +438,132 @@ func TestTimeoutOptionChangesTheDelegation(t *testing.T) {
 	if cred <= 600*time.Second || cred > 1800*time.Second {
 		t.Errorf("configured: credential timeout = %s, want above 600s and within 1800s", cred)
 	}
+}
+
+// delegateActionWithTools is a delegation whose params name its own tool list.
+func delegateActionWithTools(allowedTools ...string) environment.Action {
+	a := delegateAction()
+	list := make([]any, 0, len(allowedTools))
+	for _, t := range allowedTools {
+		list = append(list, t)
+	}
+	a.Params["allowed_tools"] = list
+	return a
+}
+
+// An action's own list wins over the instance's, so a plan can narrow the
+// tools for one task.
+func TestActionToolListWinsOverTheInstanceDefault(t *testing.T) {
+	cli := &recordingCLI{name: "claude_code"}
+	env := &cliEnv{id: "software.env.cli_agent", cli: cli, allowedTools: []string{"Read", "Edit", "Bash(git:*)"}}
+
+	res, err := env.Act(context.Background(), delegateActionWithTools("Read"))
+	if err != nil {
+		t.Fatalf("act: %v", err)
+	}
+	if !res.Success || len(cli.calls) != 1 {
+		t.Fatalf("success = %v, calls = %d; want one delegation", res.Success, len(cli.calls))
+	}
+	if got := cli.calls[0].AllowedTools; !reflect.DeepEqual(got, []string{"Read"}) {
+		t.Errorf("AllowedTools = %v, want the action's [Read]", got)
+	}
+}
+
+// A plan that forgot the field still gets the instance's list instead of an
+// agent that is denied every tool.
+func TestInstanceToolListAppliesWhenTheActionNamesNone(t *testing.T) {
+	cli := &recordingCLI{name: "claude_code"}
+	env := &cliEnv{id: "software.env.cli_agent", cli: cli, allowedTools: []string{"Read", "Edit"}}
+
+	res, err := env.Act(context.Background(), delegateAction())
+	if err != nil {
+		t.Fatalf("act: %v", err)
+	}
+	if !res.Success || len(cli.calls) != 1 {
+		t.Fatalf("success = %v, calls = %d; want one delegation", res.Success, len(cli.calls))
+	}
+	if got := cli.calls[0].AllowedTools; !reflect.DeepEqual(got, []string{"Read", "Edit"}) {
+		t.Errorf("AllowedTools = %v, want the instance's [Read Edit]", got)
+	}
+}
+
+// Claude Code denies every unlisted tool, so with no list anywhere the action
+// is refused before the agent starts: no delegation, no credential, and an
+// error that names the missing field.
+func TestClaudeCodeWithNoToolListIsRefusedBeforeItStarts(t *testing.T) {
+	cli, iss := &recordingCLI{name: "claude_code"}, newRecordingIssuer()
+	env := &cliEnv{id: "software.env.cli_agent", cli: cli, twinID: "twin-1",
+		attachMCP: true, mcpURL: testMCPURL, issuer: iss}
+
+	res, err := env.Act(context.Background(), delegateAction("audit_list"))
+	if err != nil {
+		t.Fatalf("act: %v", err)
+	}
+	if res.Success {
+		t.Fatal("delegation succeeded, want a refusal")
+	}
+	if len(cli.calls) != 0 {
+		t.Errorf("adapter calls = %d, want 0: the agent must not start", len(cli.calls))
+	}
+	if len(iss.twins) != 0 {
+		t.Errorf("credentials issued = %d, want 0", len(iss.twins))
+	}
+	if !strings.Contains(res.Error, "allowed_tools") {
+		t.Errorf("Error = %q, want it to name allowed_tools", res.Error)
+	}
+}
+
+// Adapters that apply their own defaults or ignore the list keep running
+// without one, as before.
+func TestOtherAdaptersRunWithoutAToolList(t *testing.T) {
+	for _, name := range []string{"cursor_cli", "gemini_cli", "copilot_cli"} {
+		t.Run(name, func(t *testing.T) {
+			cli := &recordingCLI{name: name}
+			env := &cliEnv{id: "software.env.cli_agent", cli: cli}
+
+			res, err := env.Act(context.Background(), delegateAction())
+			if err != nil {
+				t.Fatalf("act: %v", err)
+			}
+			if !res.Success || len(cli.calls) != 1 {
+				t.Errorf("success = %v, calls = %d; want one delegation", res.Success, len(cli.calls))
+			}
+		})
+	}
+}
+
+// The instance options reach the environment the factory builds; an option
+// read in Act but never set at build time would pass every test above.
+func TestCLIEnvReadsToolsAndTimeoutFromTheInstance(t *testing.T) {
+	reg := tools.NewRegistryFromConfig(config.ToolsConfig{CLIAgents: config.SlotConfig{
+		Default: "claude",
+		Instances: map[string]config.InstanceConfig{
+			"claude": {Type: "claude_code", Options: map[string]any{
+				"allowed_tools":   []any{"Read", "Edit"},
+				"timeout_seconds": 1800,
+			}},
+		},
+	}})
+
+	for _, f := range softwareEnvironmentFactories(reg) {
+		if f.EnvID != "software.env.cli_agent" {
+			continue
+		}
+		built, err := f.Build(environment.BuildContext{TwinID: "twin-7"})
+		if err != nil {
+			t.Fatalf("build: %v", err)
+		}
+		env, ok := built.(*cliEnv)
+		if !ok {
+			t.Fatalf("built %T, want *cliEnv", built)
+		}
+		if !reflect.DeepEqual(env.allowedTools, []string{"Read", "Edit"}) {
+			t.Errorf("allowedTools = %v, want [Read Edit]", env.allowedTools)
+		}
+		if env.timeoutSeconds != 1800 {
+			t.Errorf("timeoutSeconds = %d, want 1800", env.timeoutSeconds)
+		}
+		return
+	}
+	t.Fatal("no software.env.cli_agent factory")
 }

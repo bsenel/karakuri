@@ -39,7 +39,9 @@ func softwarePlannerHints() []domain.PlannerHint {
 			Condition: "capability.id in ['software.act.write_code', 'software.act.write_test', 'software.act.delegate_to_cli']",
 			Guidance: "put the task in params.prompt. The worktree is provisioned for you and arrives in " +
 				"params.worktree_path; never write to the checked-out tree. Routing is automatic — " +
-				"env_id is not needed for these.",
+				"env_id is not needed for these. List the tools the agent needs in params.allowed_tools " +
+				"(e.g. Read, Edit, Write, Bash(git:*), Bash(go:*)): a headless agent is denied every tool not listed. " +
+				"Omitted, the cli_agents instance's allowed_tools applies; with neither, the action is refused.",
 			Priority: 10,
 		},
 		{

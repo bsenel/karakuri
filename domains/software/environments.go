@@ -121,6 +121,7 @@ func softwareEnvironmentFactories(reg *tools.Registry) []environment.Factory {
 					opts := reg.CLIAgents.Options(ctx.AdapterBindings["cli_agents"])
 					env.attachMCP, env.mcpURL = cliMCPOptions(opts)
 					env.timeoutSeconds = cliTimeoutSeconds(opts)
+					env.allowedTools = config.InstanceConfig{Options: opts}.OptStrings("allowed_tools")
 				}
 				return env, nil
 			},
@@ -607,6 +608,9 @@ type cliEnv struct {
 	// timeoutSeconds is the instance's timeout_seconds option: how long one
 	// delegation may run before it is killed. Zero means the default.
 	timeoutSeconds int
+	// allowedTools is the instance's allowed_tools option: the tool list a
+	// delegation gets when its action names none.
+	allowedTools []string
 }
 
 // DelegationCredential is what one delegation carries to Karakuri's own MCP
@@ -643,6 +647,14 @@ func cliTimeoutSeconds(options map[string]any) int {
 		return n
 	}
 	return 0
+}
+
+// deniesUnlistedTools reports whether a coding-agent CLI refuses every tool its
+// allow-list does not name. Claude Code in headless print mode does, so a run
+// with an empty list can neither edit, commit nor push; Cursor falls back to its
+// own defaults, and Gemini and Copilot ignore the list.
+func deniesUnlistedTools(adapterName string) bool {
+	return adapterName == "claude_code"
 }
 
 // delegationTimeoutSeconds is how long this environment lets one delegation run.
@@ -721,6 +733,21 @@ func (e *cliEnv) Act(ctx context.Context, a environment.Action) (environment.Act
 				in.AllowedTools = append(in.AllowedTools, s)
 			}
 		}
+	}
+	// The action's own list wins, so a plan can narrow it for one task; the
+	// instance's list is the floor a plan that forgot the field still gets.
+	if len(in.AllowedTools) == 0 {
+		in.AllowedTools = e.allowedTools
+	}
+	// Refused before the agent starts: run with no tools, it would spend its
+	// whole time limit and the quota being denied, then report a vague failure
+	// (AGENTS.md rule 10, blind, not quiet).
+	if len(in.AllowedTools) == 0 && deniesUnlistedTools(e.cli.Name()) {
+		return environment.ActionResult{
+			Success: false,
+			Error: fmt.Sprintf("%s has no allowed_tools: %s denies every tool not listed, so the agent could neither edit, commit nor push; "+
+				"set params.allowed_tools or the cli_agents instance's allowed_tools", a.CapabilityID, e.cli.Name()),
+		}, nil
 	}
 
 	// karakuri_tools: the Karakuri MCP tools the agent may call during this
