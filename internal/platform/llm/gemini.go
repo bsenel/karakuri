@@ -66,7 +66,7 @@ func (g *GeminiProvider) Complete(ctx context.Context, req CompletionRequest) (C
 		}
 		resp, err := llms.GenerateFromSinglePrompt(ctx, g.model, prompt, opts...)
 		if err != nil {
-			return CompletionResponse{}, err
+			return CompletionResponse{}, classifyRateLimit("gemini", err)
 		}
 		return CompletionResponse{Content: resp, TokensUsed: len(resp) / 4}, nil
 	}

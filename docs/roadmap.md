@@ -3686,7 +3686,10 @@ different ceiling and is not changed here.
 2. **The other providers.** Apply the same classification to the remaining
    providers under `internal/platform/llm/`, after reading whether
    `internal/platform/agent/factory.go` or the CLI-fallback providers already
-   retry; neither was opened by the feasibility pass.
+   retry; neither was opened by the feasibility pass. Neither does: the
+   factory returns the provider's error unchanged and the CLI fallbacks run
+   their subprocess once. Copilot and Cursor are stubs that never call a
+   provider, so they have no rate limit to classify.
 3. **Reconcile decides whether to try again.** Read whether the reconcile
    circuit breaker counts such a pass as a failure, and make a rate-limited
    pass visible as that in the reconcile history. Whether and when the next

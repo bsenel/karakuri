@@ -118,6 +118,13 @@ func classifyClaudeError(err error) error {
 	return err
 }
 
+// classifyRateLimit is where classifyClaudeError is generalised for the other
+// providers (Phase 36 step 2). Scaffolding only: it returns err unchanged until
+// the classification lands.
+func classifyRateLimit(_ string, err error) error {
+	return err
+}
+
 func lastUserMessage(msgs []Message) string {
 	for i := len(msgs) - 1; i >= 0; i-- {
 		if msgs[i].Role == "user" {
