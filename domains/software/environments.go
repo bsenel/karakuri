@@ -57,6 +57,10 @@ func softwareEnvironmentFactories(reg *tools.Registry) []environment.Factory {
 				// the adapter that holds the commits and PRs is bound here.
 				"software.observe.fetch_commits",
 				"software.observe.fetch_prs",
+				// The stream verifiers read the same forge.
+				CapStreamPR,
+				CapCIGreen,
+				CapPathsDeclared,
 			},
 			Build: func(ctx environment.BuildContext) (environment.Environment, error) {
 				var vc versioncontrol.VersionControlAdapter = versioncontrol.NewNoOp()
@@ -383,6 +387,11 @@ func (e *gitEnv) Act(ctx context.Context, a environment.Action) (environment.Act
 		// active adapter" for the step the hint made mandatory. It is a draft
 		// like the two above and is recorded the same way.
 		return recordDraft(a, "design")
+	}
+	// The stream verifiers settle inconclusive, not noopAct's failure, when no
+	// forge is bound, so they check the adapter themselves.
+	if res, ok := e.streamVerify(ctx, a); ok {
+		return res, nil
 	}
 
 	adapter := e.vc

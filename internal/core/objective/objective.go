@@ -193,6 +193,16 @@ type InconclusiveReason string
 // completion without saying anything about the work.
 const ReasonVerifierError InconclusiveReason = "verifier_error"
 
+// The other reasons a verifier settles nothing. ReasonNoData is a world with
+// nothing to judge, ReasonNotRun a check that did not run as far as the
+// verifier can tell, and ReasonUnsupported a source that cannot answer the
+// question at all (AGENTS.md rule 10).
+const (
+	ReasonNoData      InconclusiveReason = "no_data"
+	ReasonNotRun      InconclusiveReason = "not_run"
+	ReasonUnsupported InconclusiveReason = "unsupported"
+)
+
 // IsRequired reports whether the criterion gates completion.
 func (c Criterion) IsRequired() bool {
 	return c.Required == nil || *c.Required
