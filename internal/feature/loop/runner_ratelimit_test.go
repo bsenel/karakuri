@@ -207,6 +207,11 @@ func TestRunLoopEndsFailedOnRepeatedProviderRateLimit(t *testing.T) {
 	if !persisted.Completed || persisted.Status != objective.StatusFailed {
 		t.Errorf("persisted state completed=%v status=%q, want a completed failure", persisted.Completed, persisted.Status)
 	}
+	// Reconcile reads the row, not the error value (Phase 36 step 3), so the
+	// row has to say the provider refused.
+	if !strings.Contains(persisted.Error, "claude") || !strings.Contains(persisted.Error, coreerrors.ErrProviderRateLimited.Error()) {
+		t.Errorf("persisted error = %q, want the provider and the limit", persisted.Error)
+	}
 	stored, err := svc.store.GetObjective(context.Background(), obj.ID)
 	if err != nil {
 		t.Fatalf("get objective: %v", err)
