@@ -106,22 +106,33 @@ func (c *ClaudeProvider) Stream(ctx context.Context, req CompletionRequest) (<-c
 	return ch, nil
 }
 
-// classifyClaudeError names a rate limit as the domain's
-// ErrProviderRateLimited (Phase 36) and returns any other error unchanged.
-// langchaingo v0.1.14's anthropic client reports a non-200 as text holding the
-// status code, which anthropic.MapError may turn into an *llms.Error; neither
-// keeps the Retry-After header, so RetryAfter stays zero.
+// classifyClaudeError names a Claude rate limit as the domain's
+// ErrProviderRateLimited (Phase 36); see classifyRateLimit.
 func classifyClaudeError(err error) error {
-	if llms.IsRateLimitError(err) || strings.Contains(err.Error(), "status code: 429") {
-		return &coreerrors.ProviderRateLimitError{Provider: "claude", Cause: err}
-	}
-	return err
+	return classifyRateLimit("claude", err)
 }
 
-// classifyRateLimit is where classifyClaudeError is generalised for the other
-// providers (Phase 36 step 2). Scaffolding only: it returns err unchanged until
-// the classification lands.
-func classifyRateLimit(_ string, err error) error {
+// rateLimitMarkers are the lowercase fragments a provider's refusal text holds
+// when it is a rate limit: the status code, the API's own wording, and the
+// CLIs' plan and quota messages.
+var rateLimitMarkers = []string{"429", "rate limit", "rate_limit", "quota exceeded", "usage limit"}
+
+// classifyRateLimit names a rate limit from provider as the domain's
+// ErrProviderRateLimited (Phase 36) and returns any other error unchanged, the
+// same value. langchaingo v0.1.14 reports a non-200 as text holding the status
+// code, which the provider's MapError may turn into an *llms.Error, and the
+// CLI fallbacks only have what the subprocess printed; none keeps a
+// Retry-After value, so RetryAfter stays zero.
+func classifyRateLimit(provider string, err error) error {
+	if llms.IsRateLimitError(err) {
+		return &coreerrors.ProviderRateLimitError{Provider: provider, Cause: err}
+	}
+	text := strings.ToLower(err.Error())
+	for _, m := range rateLimitMarkers {
+		if strings.Contains(text, m) {
+			return &coreerrors.ProviderRateLimitError{Provider: provider, Cause: err}
+		}
+	}
 	return err
 }
 

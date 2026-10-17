@@ -66,9 +66,11 @@ func (c *claudeCLI) complete(ctx context.Context, req CompletionRequest) (Comple
 	out, err := cmd.Output()
 	if err != nil {
 		// `cmd.Output()` populates *exec.ExitError.Stderr on non-zero exit;
-		// surface it so callers see why the CLI rejected the request.
+		// surface it so callers see why the CLI rejected the request, and
+		// name a rate limit there as one.
 		if ee, ok := err.(*exec.ExitError); ok && len(ee.Stderr) > 0 {
-			return CompletionResponse{}, fmt.Errorf("claude CLI exited %w: %s", err, strings.TrimSpace(string(ee.Stderr)))
+			return CompletionResponse{}, classifyRateLimit("claude",
+				fmt.Errorf("claude CLI exited %w: %s", err, strings.TrimSpace(string(ee.Stderr))))
 		}
 		return CompletionResponse{}, fmt.Errorf("claude CLI exited: %w", err)
 	}
@@ -90,7 +92,7 @@ parsed:
 		if msg == "" {
 			msg = "unknown error"
 		}
-		return CompletionResponse{}, fmt.Errorf("claude CLI returned error: %s", msg)
+		return CompletionResponse{}, classifyRateLimit("claude", fmt.Errorf("claude CLI returned error: %s", msg))
 	}
 
 	used := resp.Usage.InputTokens + resp.Usage.OutputTokens

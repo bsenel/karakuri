@@ -36,7 +36,8 @@ func (g *geminiCLI) complete(ctx context.Context, req CompletionRequest) (Comple
 	out, err := cmd.Output()
 	if err != nil {
 		if ee, ok := err.(*exec.ExitError); ok && len(ee.Stderr) > 0 {
-			return CompletionResponse{}, fmt.Errorf("gemini CLI exited %w: %s", err, strings.TrimSpace(string(ee.Stderr)))
+			return CompletionResponse{}, classifyRateLimit("gemini",
+				fmt.Errorf("gemini CLI exited %w: %s", err, strings.TrimSpace(string(ee.Stderr))))
 		}
 		return CompletionResponse{}, fmt.Errorf("gemini CLI exited: %w", err)
 	}
