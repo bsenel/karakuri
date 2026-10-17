@@ -195,6 +195,17 @@ func (g *GitHub) GetCommits(ctx context.Context, repo string, since time.Time) (
 	return out, nil
 }
 
+// ListChecks is not wired to the check-runs endpoint yet (Phase 41 step 2).
+func (g *GitHub) ListChecks(_ context.Context, _, _ string) ([]CheckRun, error) {
+	return nil, fmt.Errorf("github: checks: %w", ErrUnsupported)
+}
+
+// ChangedFiles is not wired to the pull request files endpoint yet (Phase 41
+// step 2).
+func (g *GitHub) ChangedFiles(_ context.Context, _, _ string) ([]string, error) {
+	return nil, fmt.Errorf("github: changed files: %w", ErrUnsupported)
+}
+
 func (g *GitHub) do(ctx context.Context, method, path string, body any, out any) error {
 	var reader io.Reader
 	if body != nil {

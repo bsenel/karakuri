@@ -136,6 +136,12 @@ func (w *windowVC) GetCommits(_ context.Context, _ string, since time.Time) ([]v
 	w.sinceCommits = since
 	return nil, nil
 }
+func (w *windowVC) ListChecks(context.Context, string, string) ([]versioncontrol.CheckRun, error) {
+	return nil, versioncontrol.ErrUnsupported
+}
+func (w *windowVC) ChangedFiles(context.Context, string, string) ([]string, error) {
+	return nil, versioncontrol.ErrUnsupported
+}
 
 // Every byte here is re-serialised into the reason prompt of every iteration of
 // every loop watching the repository. An unfiltered read pulled the adapter's
