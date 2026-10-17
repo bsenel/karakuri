@@ -25,7 +25,13 @@ func twinBindingsCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "bindings <twin-id>",
 		Short: "Get or set a twin's adapter bindings (slot=instance pairs)",
-		Args:  cobra.ExactArgs(1),
+		Long: `Get or set a twin's adapter bindings (slot=instance pairs).
+
+Without --set, prints the twin with its current bindings. With --set, applies
+the given slot=instance pairs. <twin-id> is an ID shown by 'krk twin list'.`,
+		Example: `  krk twin bindings t_7f2a
+  krk twin bindings t_7f2a --set versioncontrol=acme_github --set email=acme_outlook`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
 			if len(set) == 0 {
 				data, _, err := api.Get("/twins/" + args[0])
@@ -124,7 +130,7 @@ func twinListCmd() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&kind, "kind", "", "Filter by kind")
-	cmd.Flags().StringVar(&domain, "domain", "", "Filter by domain")
+	cmd.Flags().StringVar(&kind, "kind", "", "Filter by kind: person|team|organization")
+	cmd.Flags().StringVar(&domain, "domain", "", "Filter by domain (see: krk domain list)")
 	return cmd
 }

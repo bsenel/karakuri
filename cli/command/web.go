@@ -19,6 +19,14 @@ func webCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "web",
 		Short: "Launch the React dev server (web/) — proxies to :8080",
+		Long: `Runs 'npm run dev' in web/, so it must be started from the Karakuri repo
+root and needs Node 18+. The dev server proxies /api to the Karakuri API on
+:8080, so start the server first.
+
+Pass --install the first time, or after web/package.json changes, to run
+'npm install' before starting.`,
+		Example: `  krk web --install
+  krk web`,
 		RunE: func(_ *cobra.Command, _ []string) error {
 			if install {
 				if err := run("npm", "install"); err != nil {
@@ -28,7 +36,7 @@ func webCmd() *cobra.Command {
 			return run("npm", "run", "dev")
 		},
 	}
-	cmd.Flags().BoolVar(&install, "install", false, "Run `npm install` before starting the dev server")
+	cmd.Flags().BoolVar(&install, "install", false, "Run 'npm install' in web/ before starting the dev server")
 	return cmd
 }
 

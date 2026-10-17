@@ -36,6 +36,9 @@ func (c *CopilotCLI) Name() string { return "copilot_cli" }
 func (c *CopilotCLI) Active() bool { return binaryAvailable(c.bin) }
 
 func (c *CopilotCLI) Delegate(ctx context.Context, in DelegateInput) (DelegateOutput, error) {
+	if in.MCP != nil {
+		return DelegateOutput{}, fmt.Errorf("copilot_cli: cannot attach an MCP server for one run")
+	}
 	mode := strings.ToLower(in.Env["COPILOT_MODE"])
 	if mode == "" {
 		mode = "suggest"

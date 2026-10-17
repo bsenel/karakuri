@@ -135,7 +135,7 @@ func NewApp(
 		tracer = otel
 	}
 	agentFactory := platformagent.NewFactory(providers, hub, otel, tracer)
-	loopSvc := featureloop.NewService(store, agentFactory, capReg, envReg, memSvc, cpSvc, artSvc, wt, hub, otel, domReg, quotaDeps, tracer)
+	loopSvc := featureloop.NewService(store, agentFactory, capReg, envReg, memSvc, cpSvc, artSvc, wt, hub, otel, domReg, quotaDeps, tracer, cfg.Reconcile.CheckpointTTLDuration())
 	// Closes the cycle: the loop raises checkpoints, and resolving one has to
 	// reach back into the loop that is blocked on it. Constructor injection
 	// cannot express that in either direction, so the second edge is wired
@@ -150,6 +150,11 @@ func NewApp(
 		DefaultMinInterval: cfg.Reconcile.DefaultMinIntervalDuration(),
 		MaxBackoff:         cfg.Reconcile.MaxBackoffDuration(),
 	})
+	// Only with a duration configured: without one no checkpoint carries an
+	// expiry, and the tick stays exactly the tick it was.
+	if cfg.Reconcile.CheckpointTTLDuration() > 0 {
+		reconcileSvc.WithCheckpointSweeper(cpSvc)
+	}
 
 	reportSvc := featurereport.NewService(store, toolReg, agentFactory, quotaDeps, featurereport.Config{
 		Enabled:  cfg.Reports.Enabled,
@@ -240,7 +245,8 @@ func NewApp(
 		Scopes:     authDeps.Authorizer,
 		Containers: containerSvc,
 	}
-	audH := &handler.AuditHandler{Store: store, Export: audit.NewExporter(store, auditKeep, templates)}
+	auditExport := audit.NewExporter(store, auditKeep, templates)
+	audH := &handler.AuditHandler{Store: store, Export: auditExport}
 	evalH := &handler.EvalHandler{Scopes: authDeps.Authorizer}
 	// Calibration judges each objective with the agent the loop would use, and
 	// records what it spends. The probe below only decides availability: with
@@ -264,9 +270,15 @@ func NewApp(
 		Reports:    reportSvc,
 		Reconcile:  reconcileSvc,
 		Telemetry:  envReg.Telemetry(),
-		Enforcer:   authDeps.Enforcer,
-		Scopes:     authDeps.Authorizer,
-		Containers: containerSvc,
+		// The audit tools read through what the audit routes read through.
+		Audit:       store,
+		AuditExport: auditExport,
+		// And the checkpoint and cost tools through what cpH and quotaH do.
+		Checkpoints: cpSvc,
+		Quota:       quotaDeps,
+		Enforcer:    authDeps.Enforcer,
+		Scopes:      authDeps.Authorizer,
+		Containers:  containerSvc,
 	}
 	contH := &handler.ContainerHandler{Containers: containerSvc, Authorizer: authDeps.Authorizer}
 	quotaH := &handler.QuotaHandler{

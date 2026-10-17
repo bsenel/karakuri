@@ -34,6 +34,8 @@ and environment overrides and defaults both apply.
 
 The response carries ` + "`configured`" + ` beside the limits in force, so the two can be
 compared without reading the file the server was started with.`,
+		Example: `  krk quota config
+  krk quota config --output json`,
 		RunE: func(_ *cobra.Command, _ []string) error {
 			data, _, err := api.Get("/quota")
 			if err != nil {
@@ -53,6 +55,7 @@ func quotaShowCmd() *cobra.Command {
 		Long: `Reports how much of each daily tier a twin has consumed, and when it resets.
 
 Reading usage does not consume any of it.`,
+		Example: `  krk quota show --twin t_7f2a`,
 		RunE: func(_ *cobra.Command, _ []string) error {
 			data, _, err := api.Get("/quota/usage?twin=" + url.QueryEscape(twin))
 			if err != nil {
@@ -62,7 +65,7 @@ Reading usage does not consume any of it.`,
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&twin, "twin", "", "twin ID (required)")
+	cmd.Flags().StringVar(&twin, "twin", "", "twin ID, from 'krk twin list' (required)")
 	_ = cmd.MarkFlagRequired("twin")
 	return cmd
 }
@@ -77,6 +80,8 @@ budget, and tomorrow starts clean either way.
 
 Without --capability this clears the twin-wide tiers; with one it clears that
 capability's daily count.`,
+		Example: `  krk quota reset --twin t_7f2a
+  krk quota reset --twin t_7f2a --capability <capability-id>`,
 		RunE: func(_ *cobra.Command, _ []string) error {
 			data, _, err := api.Post("/quota/reset", map[string]string{
 				"twin":       twin,
@@ -89,8 +94,8 @@ capability's daily count.`,
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&twin, "twin", "", "twin ID (required)")
-	cmd.Flags().StringVar(&capability, "capability", "", "reset one capability's daily count instead of the twin-wide tiers")
+	cmd.Flags().StringVar(&twin, "twin", "", "twin ID, from 'krk twin list' (required)")
+	cmd.Flags().StringVar(&capability, "capability", "", "capability ID from 'krk domain capabilities'; resets only its daily count (default: the twin-wide tiers)")
 	_ = cmd.MarkFlagRequired("twin")
 	return cmd
 }

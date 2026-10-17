@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"os/signal"
@@ -18,6 +19,14 @@ func autoCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "auto",
 		Short: "Create a watcher twin, start watch mode, and stream events",
+		Long: `Create a watcher twin, start watch mode, and stream events.
+
+Each run creates a new twin named "watcher" and a new objective titled
+"Autonomous watch", starts a loop for them in watch mode, then prints the
+objective's events until Ctrl+C. Ctrl+C ends the stream; the twin and the
+objective stay and are shown by 'krk twin list' and 'krk objective list'.`,
+		Example: `  krk auto
+  krk auto --domain software --kind person`,
 		RunE: func(_ *cobra.Command, _ []string) error {
 			// 1. Create a watcher twin
 			twinData, _, err := api.Post("/twins", map[string]string{
@@ -80,8 +89,8 @@ func autoCmd() *cobra.Command {
 			return streamSSE(api.BaseURL+"/objectives/"+objResp.ID+"/events", token)
 		},
 	}
-	cmd.Flags().StringVar(&domain, "domain", "software", "Domain for the watcher twin")
-	cmd.Flags().StringVar(&kind, "kind", "team", "Twin kind")
+	cmd.Flags().StringVar(&domain, "domain", "software", "Domain ID for the watcher twin and its objective (see: krk domain list)")
+	cmd.Flags().StringVar(&kind, "kind", "team", "Kind of the watcher twin: person|team|organization")
 	return cmd
 }
 
@@ -105,12 +114,14 @@ func streamSSE(url, token string) error {
 	httpClient := &http.Client{}
 	resp, err := httpClient.Do(req)
 	if err != nil {
-		return fmt.Errorf("connect to event stream: %w", err)
+		return fmt.Errorf("cannot connect to the event stream at %s: %w\nIs the server running? Point the CLI at another one with --api-url", url, err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("event stream returned status %d", resp.StatusCode)
+		// The body carries the server's reason; a bare status code does not.
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return fmt.Errorf("event stream at %s returned status %d: %s\nThe objective was created; check it with `krk objective list`", url, resp.StatusCode, strings.TrimSpace(string(body)))
 	}
 
 	done := make(chan struct{})

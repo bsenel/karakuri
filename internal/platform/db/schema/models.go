@@ -128,6 +128,9 @@ type CheckpointModel struct {
 	DecisionJSON   string     `gorm:"column:decision_json"`
 	CreatedAt      time.Time  `gorm:"column:created_at;autoCreateTime"`
 	ResolvedAt     *time.Time `gorm:"column:resolved_at"`
+	// ExpiresAt is when an unanswered checkpoint lapses into a rejection
+	// (Phase 35). Null for no limit and for older rows.
+	ExpiresAt *time.Time `gorm:"column:expires_at"`
 }
 
 func (CheckpointModel) TableName() string { return "checkpoints" }

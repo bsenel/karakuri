@@ -173,7 +173,7 @@ func (s *serviceImpl) pauseIfBudgetExhausted(ctx context.Context, sc *stepContex
 	cp, err := s.cpSvc.Create(ctx, sc.obj.ID, sc.twinID,
 		budgetExhaustedReason, summary,
 		[]string{"approve", "reject"},
-		featurecp.CreateOptions{},
+		featurecp.CreateOptions{ExpiresAt: s.checkpointExpiry()},
 	)
 	cpID := ""
 	if err != nil {

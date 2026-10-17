@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
   Bar,
   BarChart,
@@ -9,7 +9,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
-import { useFetch } from '@/api/useApi';
+import { useFetch, type Fetched } from '@/api/useApi';
 import { streamAll } from '@/api/sse';
 import { Actions } from '@/auth/permissions';
 import { DataTable } from '@/components/DataTable';
@@ -140,16 +140,13 @@ function Cost() {
         </span>
       </div>
 
-      {byDay.error && <p className="error">{byDay.error}</p>}
-
       <div className="card">
         <h3>Per day</h3>
-        {dayRows.length === 0 ? (
-          <p className="muted">
-            Nothing recorded in this range. A deployment with no database records no
-            spend, and neither does one that has not run a loop yet.
-          </p>
-        ) : (
+        <ChartState
+          fetched={byDay}
+          empty={dayRows.length === 0}
+          emptyText="Nothing recorded in this range. A deployment with no database records no spend, and neither does one that has not run a loop yet."
+        >
           <div className="chart">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={dayRows}>
@@ -168,14 +165,16 @@ function Cost() {
               </BarChart>
             </ResponsiveContainer>
           </div>
-        )}
+        </ChartState>
       </div>
 
       <div className="card" style={{ marginTop: 12 }}>
         <h3>Per provider</h3>
-        {providerRows.length === 0 ? (
-          <p className="muted">Nothing to attribute.</p>
-        ) : (
+        <ChartState
+          fetched={byProvider}
+          empty={providerRows.length === 0}
+          emptyText="Nothing to attribute."
+        >
           <div className="chart">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={providerRows} layout="vertical">
@@ -201,7 +200,7 @@ function Cost() {
               </BarChart>
             </ResponsiveContainer>
           </div>
-        )}
+        </ChartState>
       </div>
 
       <h2>Per model</h2>
@@ -229,6 +228,40 @@ function Cost() {
       />
     </>
   );
+}
+
+/**
+ * ChartState renders a chart card's body, or says why there is no chart.
+ *
+ * Without it a card read "Nothing recorded" while its request was in flight
+ * and again after it failed, which claims no spend when none is known.
+ */
+export function ChartState({
+  fetched,
+  empty,
+  emptyText,
+  children,
+}: {
+  fetched: Fetched<unknown>;
+  empty: boolean;
+  emptyText: string;
+  children: ReactNode;
+}) {
+  if (fetched.error) {
+    return (
+      <>
+        <p className="error" role="alert">{fetched.error}</p>
+        <button onClick={fetched.reload}>Retry</button>
+      </>
+    );
+  }
+  // Only the first load: a live cost event refetches, and the chart already
+  // drawn should stay up rather than blink to "Loading…".
+  if (fetched.loading && fetched.data === null) {
+    return <p className="muted" role="status">Loading…</p>;
+  }
+  if (empty) return <p className="muted">{emptyText}</p>;
+  return <>{children}</>;
 }
 
 function round(n: number): number {

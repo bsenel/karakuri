@@ -44,7 +44,8 @@ Phases 27–32 were proposed from two kinds of evidence: what this repository de
 | 31    | The Evidence Pack                          | **Completed** |
 | 32    | The SRE Path, Actually Wired               | **Completed** |
 | 33    | MCP After the Handshake                    | **Completed** |
-| 35    | An Unanswered Checkpoint Ends              | **Planned**   |
+| 34    | Karakuri's Own Tools in Its Agents' Hands  | **Completed** |
+| 35    | An Unanswered Checkpoint Ends              | **Completed** |
 | 36    | A Provider's Refusal Is Not a Plan         | **Planned**   |
 | 37    | Any Run Can Be Stopped at Any Time         | **Planned**   |
 | 38    | What Was Required and Not Done             | **Planned**   |
@@ -3271,6 +3272,8 @@ client can talk to the servers people run.
    | Karakuri's own server, `internal/api/handler/mcp.go` | routing by the `MCP-Protocol-Version` header; the namespaced envelope keys required; `-32020` when header and envelope disagree, before the version is judged; `-32022` for an unsupported version; `404` for an unknown method on the modern path (the six `TestMCPServer...` tests named in the review's step 3) | passed, against `httptest` and this repository's client, not against an SDK client |
    | Not run | the specification text itself, a 2026-07-28-only server, the TypeScript or any other SDK, an SDK client against Karakuri's server, a real third-party deployment | not verified |
 
+   2026-10-10: Karakuri's own server refused 2025-06-18 clients that send the `MCP-Protocol-Version` header after `initialize` (every real one); found by running Claude Code against it; fixed in the Phase 34 pull request (#170).
+
    The wire names are now the SDK's, read from its source and confirmed by
    these runs; where the "Not verified" entry below says the names are assumed
    or that no real 2026-07-28 peer was used, this table replaces it for the
@@ -3438,7 +3441,7 @@ one observation of the Python SDK in step 1, not from the specification text.
 
 ---
 
-## Phase 34 — Karakuri's Own Tools in Its Agents' Hands (Planned)
+## Phase 34 — Karakuri's Own Tools in Its Agents' Hands (Completed)
 
 **Goal:** A coding agent Karakuri delegates to can call Karakuri's own MCP tools
 under a credential scoped to that one delegation, and the tool surface covers
@@ -3562,9 +3565,156 @@ coding agent the operator's identity. And it does not attach the third-party
 MCP servers of the `tools.mcp` slot to the coding agent; that is a different
 question with ADR 022's bounds on it.
 
+**Shipped (step 1).** Partly. What was decided is in the adapters: `claude.go`
+in `internal/platform/tools/cliagent/` attaches a server with `--mcp-config
+<file> --strict-mcp-config` and names its tools `mcp__<server>__<tool>` in
+`--allowed-tools`; `cursor.go`, `gemini.go`, `copilot.go` and `noop.go` return
+an error when `DelegateInput.MCP` is set, so none delegates silently without the
+tools (`TestAdaptersWithoutPerRunMCP` in `mcp_attach_test.go`). The "to find
+out" list above was not answered: the comment on `writeClaudeMCPConfig` in
+`claude.go` says the JSON shape, the tool naming and the effect of
+`--strict-mcp-config` were not read from the CLI and not run against it. See
+"Not verified" below.
+
+**Shipped (step 2).** `internal/api/handler/mcp.go` serves five more read-only
+tools: `audit_list`, `audit_export`, `checkpoints_list`, `checkpoint_read` and
+`cost_report`. `audit.go` and `quota.go` in the same package were reshaped so
+the tool and the REST route share one read. Tests are in `mcp_audit_test.go`
+and `mcp_checkpoint_cost_test.go`. Evaluation results and reconcile outcomes
+got no tool, by decision, recorded in the empty commit `37d8b3d`: the only
+evaluation route (`POST /api/v1/eval/calibrate`) spends tokens and writes rows,
+and `reconcile_status` already returns every recorded outcome.
+
+**Shipped (step 3).** `internal/feature/delegation/issuer.go` issues a
+credential for one delegation, read-only and scoped to one twin, expiring with
+the action's timeout, and revokes it. Tests are in `issuer_test.go`.
+`internal/app/bootstrap.go` and `internal/api/server.go` build the issuer and
+`domains/software/pack.go` hands it to the software pack.
+
+**Shipped (step 4).** `cliagent.MCPAttachment` and `DelegateInput.MCP` in
+`internal/platform/tools/cliagent/adapter.go`; `writeClaudeMCPConfig` in
+`claude.go` writes the configuration to a fresh directory under `os.TempDir()`
+(file mode `0o600`) and removes it when the run ends. `cliEnv.Act` in
+`domains/software/environments.go` reads `params.karakuri_tools`, refuses the
+action when the instance has not set `attach_karakuri_mcp` and
+`karakuri_mcp_url`, and otherwise issues the credential, attaches and revokes.
+`SlotInstances.Options` in `internal/platform/tools/registry.go` carries the
+instance options to it; `config/default.yaml` documents them, default off,
+`claude_code` only. Tests are in `cliagent/mcp_attach_test.go` and
+`domains/software/cli_mcp_attach_test.go`.
+
+**Shipped (step 5).** See the addendum of 2026-10-10 to
+[ADR 021](adr/021-observations-carry-provenance.md). The `ActionResult` of a
+delegation whose run called at least one `mcp__karakuri__` tool sets
+`Trust: environment.TrustThirdParty`, decided in `cliEnv.Act` from
+`DelegateOutput.ToolUses`, failed runs included. Tests are in
+`domains/software/cli_mcp_trust_test.go`.
+
+**Shipped (step 6).** The first half. A planner hint in
+`domains/software/hints.go` tells `software.act.write_code`,
+`software.act.write_test` and `software.act.delegate_to_cli` to list the tools
+they need in `params.karakuri_tools` instead of shelling out to `krk`, and says
+an action that asks without the instance options is refused. Tests are in
+`hints_test.go`. The second half, the standing streams' briefs dropping the
+`krk` allow-list, was not done; see below.
+
+**Shipped (acceptance).** Clause by clause, the test whose name matches. The
+tests were run and passed; they were matched to clauses by name and the test
+bodies were not re-read when this note was written, so each pairing is an
+inference about what the test asserts.
+
+- *With attachment on, a delegated run against a scripted CLI receives an MCP
+  configuration naming this deployment's endpoint and a token.*
+  `TestClaudeCode_MCP_WritesPerRunConfigAndRemovesIt` and
+  `TestClaudeCode_MCP_TokenOnlyInTheFile` in `cliagent/mcp_attach_test.go`;
+  `TestKarakuriToolsAttachedWithAScopedCredential` and
+  `TestAttachOptionChangesTheDelegation` in
+  `domains/software/cli_mcp_attach_test.go`.
+- *That token can list the audit rows of its own twin and cannot read another
+  twin's objective.* `TestIssuedTokenReadsItsOwnTwinOnly` in
+  `internal/feature/delegation/issuer_test.go`. Whether that test goes through
+  the MCP handler or only through the authorizer was not checked.
+- *After the action ends the token is refused.*
+  `TestRevokeRefusesTheTokenAndLeavesNothingBehind` in `issuer_test.go` and
+  `TestCredentialRevokedWhenTheAdapterFails` in `cli_mcp_attach_test.go`.
+- *With attachment off, or with no tool requested, the command line and
+  environment are what they are today.* `TestClaudeCode_NoMCP_ArgvUnchanged`,
+  `TestNoKarakuriToolsMeansNoAttachment` and `TestCLIMCPOptionsDefaultOff`.
+  With attachment off and a tool requested the action is refused, not run
+  (`TestKarakuriToolsRefusedWhenAttachmentIsOff`). That the environment, not
+  only the command line, is byte-for-byte unchanged is inferred.
+- *No file under the operator's home directory is read to produce the
+  credential.* `TestIssueTouchesNoDiskAndStoresNoRefreshToken` in
+  `issuer_test.go`.
+- *A tool whose REST route the principal could not call is absent from its tool
+  list.* `TestMCPAuditToolsRequireAuditRead` in `mcp_audit_test.go` and
+  `TestMCPCheckpointAndCostToolsFollowTheirRoutesActions` in
+  `mcp_checkpoint_cost_test.go`.
+
+The audit row of step 3 (scope recorded, token not) is in
+`TestIssueAuditsTheScopeAndNotTheToken` and
+`TestActionResultRecordsTheScopeAndNeverTheToken`.
+
+**Not verified.** Nothing in this phase was run against a real coding-agent CLI
+or a real deployment. Every delegation in the tests is a scripted binary, and
+every server is one built in the test. The tests show what Karakuri passes, not
+that `claude` accepts it.
+
+Review, 2026-10-10. The paragraph above was true when the phase was closed; the
+review then ran the real `claude` CLI against a live server with what this
+branch writes (`--mcp-config <file> --strict-mcp-config
+--allowed-tools=mcp__karakuri__objectives_list`). The CLI connected, so the
+config shape and both flags are accepted, and it was offered no tools. The
+cause was in Karakuri's server, from Phase 33: `mcp.IsModernRequest` sent any
+request carrying `MCP-Protocol-Version` down the 2026-07-28 ladder, and a
+handshake-era client sends that header on every request after `initialize`, so
+`tools/list` was refused with `-32602`. The fix is the SDK's rule (mcp 2.3.0,
+`mcp/server/streamable_http_manager.py`, `_handle_request`): modern only when
+the header is present and its value is outside `HANDSHAKE_PROTOCOL_VERSIONS`.
+After the fix, `go test -count=1 -run SDK -v ./internal/api/handler/`
+(`TestMCPServerSpeaksToTheSDKClient`, the official Python SDK's client against
+Karakuri's own handler: initialize, list tools, call one read-only tool) gave:
+mcp 2.3.0, PASS; mcp 1.30.0, PASS; both negotiated `2025-06-18` and were
+offered `objectives_list`, `objective_read`, `reconcile_status`. Before the fix
+both failed after `initialize`. CI has no SDK, so the test skips there. Still
+not verified: the end-to-end run with the real `claude` CLI was not repeated
+after the fix, so the `mcp__<server>__<tool>` allow-list naming has not been
+shown to match a tool the CLI was actually offered.
+
+Step 1's questions were not answered. The `--mcp-config` JSON shape
+(`{"mcpServers": {<name>: {"type": "http", "url", "headers"}}}`), whether an
+HTTP entry carries a header, and the `mcp__<server>__<tool>` naming come from
+recollection of the documentation, as `claude.go` says. Which MCP protocol
+revisions Claude Code speaks, and so whether it can talk to this server at all,
+is unknown. Whether `--strict-mcp-config` also keeps out servers brought by
+plugins or managed settings was not run. The help output of the Cursor, Gemini
+and Copilot CLIs was not read: their adapters refuse an attachment because
+nobody found out whether they can attach, not because it is known they cannot.
+
+The standing streams' briefs still carry the `krk` allow-list. Attachment
+defaults to off and no deployment was configured with it in this phase, so
+dropping the allow-list would leave those streams without the data. The briefs
+are not in this repository: `grep -rn 'Bash(krk' .` finds no file here, so the
+files that hold the allow-list could not be named or changed from this branch.
+Until they change, a delegated agent in those streams still runs `krk` under
+the operator's cached admin session, which is the problem this phase set out to
+remove.
+
+Evaluation results are not an MCP tool, though step 2 lists them; that was a
+decision (commit `37d8b3d`), and it was made from reading the code, with no
+test. The hint lists the ten tool names as a literal string;
+`TestKarakuriToolsHintNamesOnlyServedTools` guards it, by name.
+
+The tests run when the phase was closed were
+`go build ./... && go test -count=1 ./domains/software/... ./internal/api/handler/... ./internal/feature/delegation/... ./internal/platform/tools/cliagent/...`
+on 2026-10-10: all four packages `ok`. The full `go test ./...`, `make test`
+and `scripts/check_langchaingo_imports.sh` were not run in that action. Text a
+delegated agent read through a Karakuri tool and then wrote into a commit or a
+file carries no label, as the ADR 021 addendum says.
+
 ---
 
-## Phase 35 — An Unanswered Checkpoint Ends (Planned)
+## Phase 35 — An Unanswered Checkpoint Ends (Completed)
 
 This is a **demand phase**, proposed by the discovery cycle of 2026-10-08
 (`docs/research/discovery-2026-10-08.md`, 'Fit and bets', rank 1). The demand
@@ -3628,6 +3778,85 @@ reminder or a notification: an unanswered checkpoint must not become authority,
 which is only ever what is written into `agent.AuthorityBounds` (ADR 015). It
 adds no fallback behaviour other than rejection, and no per-checkpoint policy
 language.
+
+**Shipped (step 1).** `Checkpoint.ExpiresAt *time.Time` (`expires_at`,
+omitted when nil) in `internal/core/checkpoint/checkpoint.go`, and
+`CreateOptions.ExpiresAt` in `internal/feature/checkpoint/service.go`.
+`Service.ExpireDue(ctx, now)` lists pending checkpoints with
+`ListPendingCheckpoints(ctx, "")`, which returns every twin's, and calls the
+existing `Resolve` with `Decision{Choice: "reject", Approver: "system:timeout"}`
+for each one whose `ExpiresAt` is before `now`. One failure does not stop the
+rest. What was read before writing it is in the header comment of
+`internal/feature/checkpoint/expire_test.go`: a checkpoint is stored as columns,
+so `expires_at` needed its own column in `schema.CheckpointModel`, and
+migration is gorm AutoMigrate, which adds the nullable column to an existing
+table with no SQL file.
+
+**Shipped (step 2).** `reconcile.checkpoint_ttl` in `config/config.go`, left
+commented out in `config/default.yaml`, so it is off by default.
+`internal/api/server.go` passes the duration to `featureloop.NewService`, which
+stamps `ExpiresAt` on the checkpoints the loop raises, and only when it is set
+gives the reconcile service a `CheckpointSweeper` through
+`WithCheckpointSweeper`. `reconcile.Service.Tick` calls `ExpireDue` with its
+clock's `now` before it looks for due objectives; a sweep error is logged and
+the tick goes on. The loop was not taught a new way to wait.
+
+**Shipped (step 3).** What `ResumeStoredLoops` did with a lapsed checkpoint is
+in the header comment of `internal/feature/loop/restart_expiry_test.go`: the
+sweep's reject reached the waiting loop, but the replay raised a second
+checkpoint before it read the decision, and nothing ever resolved that one.
+`loopState.answered` is now set when a stored loop is replayed with a decision,
+and `stepDecide` in `decide.go` takes it at the replay's first decide and
+pauses on the checkpoint already raised instead of creating another, so the
+reject is read and the loop ends as `rejected_at_checkpoint`.
+
+**Shipped (step 4).** The `expires_at` column is written in UTC by
+`SaveCheckpoint` and read back by `checkpointFromModel` in
+`internal/platform/storage/gorm_storage.go`. `docs/openapi.yaml` did not exist
+on this branch, though AGENTS.md rule 6 names it; it was added with the
+checkpoint routes and a `Checkpoint` schema whose optional `expires_at` is a
+`date-time`. It describes those routes only.
+
+**Shipped (acceptance).** Clause by clause:
+
+- *With the duration unset, no checkpoint carries an expiry and none is ever
+  expired.* `TestDefault_CheckpointTTLIsOff` in `config/config_test.go`,
+  `TestEscalationCarriesNoExpiryWhenTheDurationIsUnset` in
+  `internal/feature/loop/checkpoint_expiry_test.go`,
+  `TestTickWithoutASweeperBehavesAsBefore` and
+  `TestTickExpiresNothingWhenExpiryIsOff` in
+  `internal/feature/reconcile/expiry_sweep_test.go`, and
+  `TestCheckpointExpiresAt_NilWhenUnset` in
+  `internal/platform/storage/checkpoint_expires_at_test.go`.
+- *With it set, a fake clock shows a past-due checkpoint rejected by
+  `system:timeout`, one rejection audit row, and the loop ended as
+  `rejected_at_checkpoint`.* `TestExpireDue_RejectsPastDueAsSystemTimeout` in
+  `internal/feature/checkpoint/expire_test.go`,
+  `TestTickCallsTheSweeperWithTheClocksNow` and
+  `TestTickExpiresAnUnansweredCheckpoint` in `expiry_sweep_test.go`, and
+  `TestRestartFirstSweepExpiresACheckpointThatLapsedWhileDown`, which reads the
+  `rejected_at_checkpoint` row and the stored loop state.
+- *A checkpoint a person answered before its time is untouched.*
+  `TestExpireDue_LeavesOthersUntouched`, and
+  `TestRestartFirstSweepLeavesACheckpointWithTimeLeft` for one with time left.
+- *A checkpoint that lapsed while the server was down is expired by the first
+  sweep after boot.* `TestRestartFirstSweepExpiresACheckpointThatLapsedWhileDown`.
+- *No code path turns an expiry into an approval.* `TestExpireDue_NeverApproves`
+  shows `ExpireDue` writes only rejections. That no other path exists is
+  inferred from reading the diff: `system:timeout` is written in one place, with
+  `Choice: "reject"`.
+- *Contract.* `TestCheckpointExpiresAt_RoundTrips`,
+  `TestGetCheckpointCarriesExpiresAtOnlyWhenSet`,
+  `TestListPendingCheckpointsCarriesExpiresAtOnlyWhenSet` and
+  `TestOpenAPICheckpointSchemaDeclaresExpiresAt`.
+
+Not verified: no server was started and no real checkpoint was left to lapse;
+every test above runs in-process, against SQLite or fakes. That
+`BootstrapServer` registers stored loops before the first reconcile tick is
+read from `internal/app/bootstrap.go` and not tested, because that function has
+no seam between the two calls. The AutoMigrate of `expires_at` was exercised on
+SQLite only, not on PostgreSQL. No Karakuri user asked for this; the demand is
+the two issues above.
 
 ---
 
@@ -4270,6 +4499,10 @@ requests, and pauses it. Nothing else is a person's job. That includes
 starting discovery: a market discovery cycle runs on its fixed cadence
 whatever the pipeline holds, and another starts when the pipeline of approved
 work is empty, so the deployment never sits idle for want of approved work.
+It also includes getting unstuck: when a stream is blocked, Karakuri notices
+it, finds out why, does the work that removes the blocker, and proposes the
+change to what caused it, without a person writing an objective or editing a
+brief. The owner reads what happened, and merges or closes.
 
 **The owner's decision (2026-10-10).** Recorded here, not reopened: "All these
 streams must be managed by Karakuri itself independently. We just define an
@@ -4288,21 +4521,42 @@ whether a cycle started by an empty pipeline counts as the scheduled cycle of
 the cadence's current period, the owner answered: "No it does not count."
 Neither trigger replaces, cancels or postpones the other.
 
+**The owner's second addition (2026-10-10).** Recorded here, not reopened:
+"Karakuri should be able to do what you have done when there is a blocker."
+"You" is the person, with an assistant, who led the streams from 2026-10-04 to
+2026-10-10. What that person did at each blocker is in the list below (items
+3 to 5 and 8 to 10), and it had one shape every time: **notice** that
+something is not progressing; **diagnose** by reading the state (the pull
+request, the checks, the audit log, the branch, the coding agent's own log);
+**write a small, bounded task** for exactly that (what was found, the smallest
+fix, where to push, which tools); **run** it; **verify** the blocker is gone;
+**change the standing instruction** if it will come again; **record** what was
+done where the owner will read it. The phase has to do each of these itself.
+The owner supervises.
+
 **Acceptance criterion of the phase.** For seven consecutive days on a
 deployment running the four streams, no person resolves a checkpoint, replaces
 an objective, opens a pull request, reviews a branch by building it, or sets an
 objective's status, and no person starts a discovery cycle: each scheduled
 cycle in the seven days ran on its cadence, and each time the pipeline was
-empty with no discovery proposal open a cycle started by itself. The only
+empty with no discovery proposal open a cycle started by itself. Nor does a
+person remove a blocker: the seven days include the blockers that occur in
+them, each one removed by its stream or handed over as a backlog entry (step
+14c), and no person writes an objective, repairs a branch or edits a brief to
+get a stream moving. A blocker that needed a person restarts the count and
+becomes a backlog entry, as step 15 says. The only
 human actions are merging or closing pull
-requests, pausing a stream, and reading the oversight view. **This has to be
+requests, commenting on a proposal to correct it, pausing a stream, and
+reading the oversight view. **This has to be
 observed on a running deployment. No unit test shows it:** each step below has
 a test for its own mechanism, and the phase is finished only when step 15's
 seven days have been watched and recorded.
 
-**Why: what people did by hand, 2026-10-04 to 2026-10-10.** Seven things,
+**Why: what people did by hand, 2026-10-04 to 2026-10-10.** Ten things,
 observed by the owner on this deployment in that week. Where this proposal
 checked one against the code it says so; the rest are recorded as reported.
+Items 3 to 5 and 8 to 10 are blockers; each says how it was noticed, what was
+done and, where something was, what was changed so it would not come again.
 
 1. **Approved every plan.** All four streams run at the `propose` rung, so
    every pass stops at a checkpoint (`effectiveAuthority` in
@@ -4324,17 +4578,28 @@ checked one against the code it says so; the rest are recorded as reported.
 3. **Reviewed each pull request by building and running it.** The Phase 33
    pull request passed CI with wire names that did not interoperate with the
    real SDK. A UX pull request made `krk bogus` print help and exit 0. A person
-   running the branch caught both, and wrote a one-shot objective to fix each.
+   running the branch caught both, posted the finding on the pull request, and
+   wrote a one-shot objective from it for each: the finding, the smallest fix,
+   a failing test first, the branch to push to, the allowed tools.
    The delivery brief acts on review comments; nothing produces them.
-4. **Repaired a stream after a restart.** A loop interrupted by a shutdown came
+4. **Repaired a stream after a restart, or one holding an error checkpoint.**
+   A loop interrupted by a shutdown came
    back "paused at decide" with no pending checkpoint and its stream was
    deferred from then on; a person replaced the objective. A loop that had been
    waiting at a checkpoint re-planned after the restart and ran the new plan on
-   the old approval, leaving a stale checkpoint.
-5. **Noticed the usage limit.** When the coding agent's provider is out of
+   the old approval, leaving a stale checkpoint. A stream whose checkpoint
+   held a plan that was only an error was repaired the same way: the objective
+   was replaced by a new one from the same brief.
+5. **Noticed the usage limit, and started the cut-off work again.** When the
+   coding agent's provider is out of
    quota every action fails with `claude_code: exit 1 (stderr: )` (EB-004, read
    2026-10-09), a pass burns through its actions, and a pass cut before its
-   last action leaves a branch with no pull request; a person opened it.
+   last action leaves a branch with no pull request; a person opened it by
+   hand. This happened on several days. It was noticed from actions failing
+   with an empty reason; the time the limit resets was read from the coding
+   agent's own session log; after it, the work was started again from what
+   was already on the branch, as a "resume" objective that listed what was
+   done and what was left.
 6. **Closed finished work.** A one-shot objective that did all its work ended
    "failed" at max-iter 1 and a person set it completed (EB-002, read
    2026-10-05). Worktrees pile up under `worktrees/<objective-id>/` and a
@@ -4342,6 +4607,36 @@ checked one against the code it says so; the rest are recorded as reported.
 7. **Paced the work.** Delivery was one pass a day. "Continuous" is imitated
    with `--every 30m`, which plans (a model call) when nothing is Planned, and
    the streams compete for one provider quota in no order.
+8. **Repaired a pull request that conflicted with main.** On 2026-10-10 the
+   Phase 34 pull request conflicted with main in `docs/roadmap.md`. It was
+   noticed because the pull request reported no checks at all. A one-shot
+   objective was written to merge main into the branch keeping both sides and
+   rerun the affected tests, and the delivery brief gained a rule: a
+   conflicting pull request is broken, and merging main in is the first
+   repair action.
+9. **Turned the owner's correction into an amendment.** Three times on
+   2026-10-10 a proposal needed a correction from the owner. Each time a small
+   amendment objective was written from the owner's sentence, onto the same
+   branch and the same pull request.
+10. **Edited the brief when a cause repeated.** When the same kind of blocker
+    came twice, the brief was edited (dated branches, separate verify
+    worktrees, "repair before new work", the conflict rule) and the stream was
+    declared again from the edited brief.
+
+**The blockers, checked against the steps.** One row per case the owner
+recorded. "Missing" is what the steps did not say before the second addition;
+the last column is where it is now.
+
+| Case | Item above | Already covered by | Missing | Added as |
+|------|-----------|--------------------|---------|----------|
+| (a) A pull request that conflicts with main | 8 | Nothing. Step 6 lists branches with no pull request, step 12 lists review comments; neither looks at whether a pull request can be merged | An unmergeable pull request (conflict, or no checks reported) is work for its stream in every template; merged with main, never rebased | Step 6a |
+| (b) A defect found by running the branch | 3 | Step 11 finds it and posts it; step 12 makes the stream fix it first | That the fix starts with a failing test | One sentence in step 12 |
+| (c) A pass cut off by the usage limit | 5 | Step 8 ends the pass as deferred, with the return time where the provider gave one; step 9 starts it again; step 6 opens the pull request for what was pushed | What the "resume" objective carried: what was done and what was left. Reading the return time from the agent's own log | Step 9a |
+| (d) A stream stuck after a restart, or holding an error checkpoint | 4 | Steps 4 and 5 for the restart; Phase 36 for a plan that is only a provider's refusal; Phase 35 ends the checkpoint | An error plan from any other cause | Steps 14a and 14b (a signal, then a diagnosis) |
+| (e) A branch with no pull request | 5 | Step 6 | Nothing | |
+| (f) A correction from the owner | 9 | Nothing. Step 12 treats a comment from outside the deployment's own authors as third-party text and escalates it, and does not say who the own authors are | The owner's comment is an instruction to amend that proposal; how the owner is told apart; what happens to anybody else's comment | Step 12a |
+| (g) A repeated cause | 10 | Nothing. Step 15 writes a backlog entry, but a person does it | Karakuri files the entry itself and delivery implements the change | Step 14c |
+| Any blocker not in this list | | Step 14 shows what a stream is blocked on | Noticing, diagnosing, fixing, verifying, and stopping after a declared number of attempts | Steps 14a to 14c |
 
 **What it delivers:**
 
@@ -4366,6 +4661,16 @@ checked one against the code it says so; the rest are recorded as reported.
   beside the fixed cadence, which keeps running while approved work remains.
 - **G. One oversight view** per stream, on the digest and the existing CLI and
   web surfaces.
+- **H. A blocked stream unblocks itself.** A pull request that cannot be
+  merged is repaired by its stream, merged with main and never rebased; a pass
+  that was cut off is taken up again from its branch; the owner's comment on
+  a proposal amends that proposal. For any other blocker the stream's next
+  pass diagnoses it, writes the diagnosis down, makes the smallest fix inside
+  its own limits and verifies it. After a declared number of failed attempts
+  it stops, shows what it is blocked on and what it tried, and the backlog
+  stream files an Engineering Backlog entry, so that a repeated cause changes
+  the product through a pull request the owner merges, and not through a
+  person editing a brief.
 
 **What other phases already deliver, and this phase uses.** Each line is a
 dependency, not work repeated here.
@@ -4406,7 +4711,10 @@ dependency, not work repeated here.
 
 **Steps.** Order: A (1 to 3) before anything may act unattended; then D (4 to
 7) and E (8, 9) so an unattended stream cannot get stuck or burn quota; then B
-(10), C (11, 12), F (13), G (14) and the observation (15). Each step is one
+(10), C (11, 12), F (13), G (14) and the observation (15). The steps added
+for blockers keep the numbers of the others: 6a, 9a and 12a sit with the step
+each one completes, and the general rule H (14a to 14c) comes after the view
+that shows it and before the observation. Each step is one
 delivery pass, has its own acceptance test, and leaves the system working with
 today's behaviour for anything not yet declared.
 
@@ -4495,6 +4803,35 @@ today's behaviour for anything not yet declared.
    *Acceptance:* with a branch ahead of main and no pull request, the next pass
    of each of the four templates opens it before any other action; with the
    remote unreachable the pass reports that it could not see.
+
+   6a. **A pull request that cannot be merged is work for its stream, in every
+   template.** The observation from step 6 also lists the stream's open pull
+   requests that cannot be merged as they stand: the forge reports a conflict
+   with main, a check failed at the head, or no check was reported at the head
+   a declared time after the push (this is how the conflict on the Phase 34
+   pull request showed itself: no checks at all). Such a pull request is
+   broken, and repairing it comes before everything else in a pass: first
+   unmergeable pull requests, then branches with no pull request (step 6),
+   then review findings (step 12) and the owner's comments (step 12a), then
+   new work. For a conflict the repair is one bounded action inside the
+   stream's limits: merge main into the branch keeping both sides, rerun the
+   tests of what the merge touched, push. **Merged, never rebased:** the
+   template's limits (step 2) hold no force push, and step 3 treats a ref of
+   the stream's own branch that moved without containing its previous tip as a
+   violation. A conflict that cannot be resolved keeping both sides, a failed
+   check, and checks still missing after a clean merge are not guessed at:
+   they are blockers for step 14b. Where the adapter cannot say whether a pull
+   request can be merged it returns `ErrUnsupported` and the view shows "not
+   known" (rule 10). **Not read:** what the version-control adapter returns
+   for a pull request today.
+   *Acceptance:* against a local bare repository and a fake forge, for each of
+   the four templates: with an open pull request whose branch conflicts with
+   main in `docs/roadmap.md`, the next pass makes a merge commit that keeps
+   both sides and pushes it before any other action, and the branch's previous
+   tip is an ancestor of the new one; a plan that rebases or force-pushes is
+   refused (step 2), and a rewritten branch is caught (step 3); with no checks
+   reported after the declared time the pull request is listed as broken; an
+   adapter that cannot read the state yields "not known".
 7. **Finished ends as finished, and endings are signalled.** Depends on EB-002
    for one-shot objectives; this step does not redo it. What it adds: every
    ending this phase introduces (interrupted by restart, refused by bounds,
@@ -4542,6 +4879,26 @@ today's behaviour for anything not yet declared.
    the order. With Planned work remaining and a scheduled discovery cycle due,
    the cycle starts when the running delivery pass ends and before the next
    one.
+
+   9a. **A pass that was cut off is taken up again from its branch.** Step 8
+   ends the pass and step 9 starts the stream again when the quota is back;
+   step 6 opens the pull request for what was pushed. What is still missing is
+   what the person's "resume" objective carried: what was done and what was
+   left. The pass that follows a deferral or an `interrupted_by_restart`
+   ending is given, by reconcile in its request, the commits already on the
+   stream's branch and the success criteria the cut-off pass had not settled
+   (Phase 38's record where it exists, the plan's remaining actions where it
+   does not). It plans only what is left and never starts the item again on a
+   second branch. Where the provider gave no return time, the coding agent's
+   adapter may read it from the agent's own session log, which is where the
+   person read it; an adapter that cannot returns `ErrUnsupported` and step
+   9's backoff applies. **Not read:** `internal/platform/tools/cliagent` and
+   where that log is.
+   *Acceptance:* with a fake coding agent that reports quota exhaustion after
+   the second of four actions and a fake clock: the pass after the return time
+   receives the two commits and the unsettled criteria, plans no action for
+   what the branch already holds, pushes to the same branch, and one pull
+   request exists at the end, not two.
 10. **Proposal streams may act.** The comment on the maintainer's authority
     says zero was chosen "deliberately not a small number", because the pack
     boundary gives no guarantee: "a pack is a namespace, and stepAct resolves
@@ -4593,8 +4950,11 @@ today's behaviour for anything not yet declared.
     refused by its limits.
 12. **Review comments come before new work, in every stream.** The observation
     from step 6 also lists the stream's open pull requests with review comments
-    not yet answered by a later commit. A pass addresses those first. A comment
-    written by anyone outside the deployment's own authors is third-party
+    not yet answered by a later commit. A pass addresses those first. Where a
+    finding is about behaviour, the commit that answers it adds a test that
+    fails without the fix, as the person's one-shot objectives required. A comment
+    written by anyone outside the deployment's own authors (step 12a says who
+    they are) is third-party
     material and sets `TrustThirdParty` from what the payload holds (rule 9,
     ADR 021); it escalates as today and Phase 35 ends it if nobody answers. A
     pull request is reviewed again when its head moves, and after a declared
@@ -4604,6 +4964,40 @@ today's behaviour for anything not yet declared.
     pass of each of the four templates pushes a commit for it before any new
     work; a comment round past the declared limit produces no push and one
     "waiting for the owner" entry.
+
+    12a. **The owner's comment on a proposal is an instruction to amend it.**
+    A comment by the owner on a stream's open pull request is not third-party
+    text to escalate: it is the correction the stream was waiting for, and the
+    next pass of that stream amends the same branch and the same pull request
+    for exactly what the comment says, before any new work. It opens no second
+    pull request and needs no objective written by a person. *Who the owner
+    is:* the deployment's configured own authors, a list of forge accounts in
+    the configuration, in two kinds: the accounts Karakuri itself posts with,
+    and the owners. The comment's author is the account the forge's API
+    returns for it, never a name or a signature in the comment's text. Where
+    Karakuri and the owner post from one account (step 11 notes this case), a
+    comment from that account is the owner's when its ID is not among the
+    comments the audit log records Karakuri as having posted. Provenance is
+    set from what the payload holds (rule 9): text the owner wrote did not
+    come from outside the deployment, so it does not set `TrustThirdParty`.
+    *A comment by somebody else* stays what step 12 says: third-party text,
+    marked so, never an instruction; it escalates, Phase 35 ends the
+    checkpoint if nobody answers, and the oversight view lists it. *An
+    instruction is not authority:* the amendment is planned inside the
+    stream's limits like any other pass, and one that would need a file, a
+    branch or a tool outside them is refused (step 2) and shown as waiting for
+    the owner. The owner's comments do not count toward step 12's round limit.
+    **Not read:** whether a setting for own authors exists today; step 12
+    already relies on one, and this step defines it in `config/default.yaml`
+    if it does not.
+    *Acceptance:* against a fake forge, a discovery proposal's pull request
+    with a comment by a configured owner: the next pass pushes one amending
+    commit to the same branch, with no checkpoint and no new pull request, and
+    the observation does not carry `TrustThirdParty`. The same comment from an
+    account not in the list: no push, the observation is third-party, and it
+    escalates. From the shared account, a comment Karakuri posted itself is
+    not taken as an instruction. An owner's comment asking for a change
+    outside the declared paths: refused, one "waiting for the owner" entry.
 13. **A delivery pass starts when there is work, and costs nothing when there
     is none.** The software pack computes, without a model, whether delivery has
     work: an item on main marked Planned with no open pull request, a branch
@@ -4687,15 +5081,138 @@ today's behaviour for anything not yet declared.
     lists exactly the seeded passes, refusals, waiting pull requests and
     blocks per stream; regenerating it for the same window gives the same
     content.
+
+    14a. **A blocked stream is known to be blocked.** The seven cases are only
+    the ones seen so far, so the phase needs the general rule and not seven
+    special ones. A stream is blocked when a pass ended without progress for a
+    reason that is not "nothing to do" (step 13's reading says there is work,
+    or the pass itself was the work). The signals are ones the code or the
+    earlier steps already produce, read without a model: a failed verify; a
+    plan refused by the bounds (step 2) or a plan that is only an error (Phase
+    36); a pull request that cannot be merged (step 6a); a deferred pass
+    (`Deferred` in `internal/feature/reconcile/run.go`, seen by search); a
+    violation from step 3; and no new commit on the stream's branch after a
+    declared number of passes that had work. A blocker has an identity, its
+    kind and its subject (the pull request, the branch or the item), so "the
+    same blocker" can be counted, and the count of attempts on it is kept with
+    the stream. A deferral for quota is a blocker whose remedy is already
+    known and costs nothing, waiting (steps 8 and 9): it is shown, and no pass
+    is spent on it. This step only detects, counts and shows; it changes no
+    behaviour. It lives in `internal/feature/reconcile`, which already decides
+    whether a pass runs (rule 8). **Not read:** how a failed verify and a
+    stored run's outcome reach reconcile.
+    *Acceptance:* a table test over seeded runs: each signal above yields one
+    blocker with its kind and subject; a pass that ended because nothing was
+    Planned yields none; the same signal on the same subject in two passes is
+    one blocker with a count of two, on two subjects it is two blockers; the
+    oversight view of step 14 lists them.
+
+    14b. **A blocked stream unblocks itself.** On a blocker other than quota,
+    the stream's next pass is a diagnose-and-fix pass. Reconcile writes the
+    blocker into the request of an ordinary pass; the loop is not taught
+    anything (rule 8). The pass (1) reads the state the person read: the pull
+    request, its checks, the audit log, the branch, and the coding agent's own
+    log where the adapter can give it; (2) writes the diagnosis down before
+    acting, in the audit log and as a comment on the stream's pull request
+    where one exists, so the owner reads what was found whether or not the
+    fix works; (3) plans the smallest bounded action for exactly that: what
+    was found, the smallest fix, a failing test first where it is about
+    behaviour, the branch to push to, the tools; (4) runs it; (5) verifies
+    that the blocker is gone by reading again, without a model, the signal
+    that raised it. **It never widens its own limits to get unblocked:** the
+    pass runs under the same `effectiveAuthority` as any other pass of the
+    stream (steps 1 to 3); a fix that needs more is refused by step 2 and is a
+    failed attempt. *A blocker seen before is handled by its recorded remedy.*
+    Where remedies live, after reading the memory code: **not in procedural
+    memory as it stands**, which holds a success and a failure count per agent
+    and capability and no text (`MemoryProceduralModel` in
+    `internal/platform/db/schema/models.go`, written in
+    `internal/feature/loop/learn.go`). Two places that exist are used and no
+    store is added. The remedies for the kinds this phase already knows are
+    the steps themselves, declared by the pack: a conflict is step 6a, a
+    branch with no pull request step 6, a cut-off pass step 9a, a finding
+    step 12, the owner's correction step 12a. A remedy a diagnose-and-fix
+    pass found, and step (5) confirmed, is stored as a semantic memory entry
+    of the stream's agent (that tier has a domain, a text and sources:
+    `MemorySemanticModel`), with the blocker's kind as its domain and the
+    audit rows as its sources; the next pass on a blocker of that kind recalls
+    it. A recalled remedy is a hint to the planner and gives no authority: the
+    plan made from it passes the same limits. A remedy that fails when reused
+    is marked so and not recalled again. **Not read:** `internal/feature/memory`
+    beyond the head of `Consolidate`, and how a pass recalls semantic entries;
+    if a pass cannot recall by domain, the first slice is that.
+    *Acceptance:* with a fake provider and a fixture repository: a stream
+    whose verify fails gets, as its next pass, one whose request carries the
+    blocker; the diagnosis is in the audit log before the first action; the
+    pass ends with the signal clear and the attempt count reset. A second
+    blocker of the same kind recalls the stored remedy (the test asserts it
+    was in what the planner read). A fix that needs a tool outside the limits
+    is refused and counted as a failed attempt, with the limits unchanged.
+    While the quota state is "out" no diagnose-and-fix pass starts.
+
+    14c. **A blocker the stream cannot remove, or that comes back, becomes a
+    backlog entry.** After a declared number of failed attempts on the same
+    blocker (three as a first guess, on the template) the stream stops trying.
+    Its status is `blocked`, the oversight view shows "blocked on <diagnosis>,
+    tried <what>", and no further pass is spent on that blocker. A failed
+    diagnose-and-fix pass counts toward this limit and not toward the circuit
+    breaker, so the stream ends with a diagnosis in the view and not with a
+    breaker checkpoint that has none. The `engineering_backlog` stream's
+    observation lists such blockers, and its next pass files an Engineering
+    Backlog entry with the evidence (the blocker, the diagnosis, each attempt
+    and its audit rows, and the change to the product it proposes) on its own
+    branch and pull request. The same happens, without the stream being
+    stopped, when a blocker of one kind was removed for the second time inside
+    a declared window: it was fixed, and it will come again. One entry per
+    kind; later occurrences add evidence to it. That is how case (g) becomes
+    Karakuri's own work: the person edited the brief and re-declared the
+    stream; here the proposal to change the brief, the template or the code is
+    a backlog entry, the owner's merge approves it, and the delivery stream
+    implements it like any other Planned item. A stream's standing instruction
+    changes only through such a merged pull request, never by the stream
+    writing to it while it runs. Only after the entry is filed is it the
+    owner's turn. **Not read:** the stream briefs, and where a brief is stored.
+    *Acceptance:* with a fake provider whose fix never clears the signal: after
+    the declared number of attempts no further pass starts for that blocker,
+    `ConsecutiveFailures` is unchanged by them, the view shows the diagnosis
+    and the attempts, and the next backlog pass adds one entry carrying them. A
+    blocker of one kind cleared twice inside the window adds one entry and
+    leaves the stream running; a third occurrence adds evidence to that entry
+    and no second one.
 15. **The seven days.** Declare the four streams and the review objective on a
     deployment with Phase 35's duration set, at `act_with_notice`. For seven
     consecutive days, record from the audit log every action whose actor is a
-    person. The phase is Completed when those are only merges, closes, pauses
-    and reads. Anything else is written into the Engineering Backlog with its
-    evidence and the seven days start again after its fix.
+    person, and every blocker of step 14a with how it was removed. The phase
+    is Completed when the first are only merges, closes, pauses and reads,
+    comments on a proposal included (step 12a makes a comment the owner's way
+    of correcting one). A blocker the stream removed itself does not restart
+    the count; one it handed over through step 14c does not either, as long
+    as the owner's part was a merge or a close. Anything else, a blocker that
+    needed a person among it, is written into the Engineering Backlog with its
+    evidence (by step 14c, or by the person if Karakuri did not file it, which
+    is then a second finding) and the seven days start again after its fix. A
+    week in which no blocker occurred passes the criterion and shows nothing
+    about steps 14a to 14c; the record says so.
     *Acceptance:* the record itself, attached to the pull request that marks
     this phase Completed. This step has no automated test and must not be given
     one that pretends to be it.
+
+**What a stream may not do to unblock itself.** Being blocked gives no
+authority. Whatever the diagnosis, a stream does not:
+
+- merge a pull request, its own or another's;
+- push to main, or force-push or rebase any branch;
+- widen its limits, or plan an action outside them "this once";
+- edit the limits of its own template or of another stream's while it runs (a
+  change to a template or a brief arrives as a merged pull request, step 14c);
+- delete a branch, or close a pull request;
+- skip, delete or weaken a test, or a check, to make a verify pass;
+- answer its own checkpoint, or another stream's.
+
+Each of these is either outside every template's limits (steps 2 and 3
+refuse or catch it) or has no tool in any stream's hands. A fix that needs
+one of them is a failed attempt, and after the declared number the blocker is
+the owner's (step 14c).
 
 **What this does not do.**
 
@@ -4733,6 +5250,32 @@ today's behaviour for anything not yet declared.
 - **Review loops.** Author and reviewer can trade commits and comments without
   end and spend quota doing it. Step 12's round limit bounds it; the number is
   a guess until step 15 shows real rounds.
+- **A stream that "fixes" by doing the wrong thing.** A diagnosis is a model's
+  reading and can be wrong: a conflict resolved by dropping one side, a
+  failing test made to pass by changing what it asserts, a finding answered
+  by a commit that only quiets it. What bounds this is that the fix runs
+  inside the same limits, that step 14b verifies by reading the signal again
+  and not by asking the model, that the diagnosis is written down before the
+  action so the owner can read what the stream believed, and that the review
+  of step 11 runs on the new head. None of these catches a wrong fix that
+  leaves every signal clear; the owner's merge still does, or does not. A
+  wrong remedy that was stored is reused until it fails once (step 14b).
+  Weakening a test is forbidden above, and no step can yet detect it
+  mechanically: it is left to the review and the owner.
+- **A fix loop that burns quota.** A stream that keeps diagnosing and failing
+  spends a pass each time. It is bounded twice: by the attempt limit of step
+  14c, after which no pass is spent on that blocker, and by the quota state
+  of steps 8 and 9, under which no diagnose-and-fix pass starts while the
+  provider is out and repair passes take their stream's place in the declared
+  order and no extra one. The attempt limit is a guess until step 15 shows
+  real blockers. A blocker whose identity changes on every pass (a new
+  subject each time) would escape the count; step 14a's "no new commit after
+  N passes" signal is the one that still catches it.
+- **The owner is told apart by an account.** Step 12a trusts the forge's
+  author field and a configured list. A wrong list, or an owner's account in
+  somebody else's hands, turns third-party text into an instruction. The
+  instruction still cannot leave the stream's limits, and the result is
+  still a pull request the owner merges or closes.
 - **A timeout rejection may demote.** `demote` drops a rung on a reviewer's
   rejection. Whether a `system:timeout` rejection (Phase 35) counts as one was
   not read. If it does, a stream at `act_with_notice` falls back to `propose`
@@ -4760,6 +5303,604 @@ today's behaviour for anything not yet declared.
   `authority.go`, `internal/platform/tools/cliagent`, `internal/feature/report`,
   the CLI and web sources, ADR 017, the stream briefs, and the full text of
   Phases 34 to 39 (their goals and openings were read, and Phase 35 whole).
+  Every step that touches one of these begins by reading it. For the second
+  addition, read: the procedural and semantic memory models in
+  `internal/platform/db/schema/models.go`, where `internal/feature/loop/learn.go`
+  writes procedural memory, and the head of `Consolidate` in
+  `internal/feature/memory/service.go`. Not read: how a pass recalls memory,
+  the version-control adapter's pull request state, and any setting for the
+  deployment's own authors.
+
+---
+
+## Phase 41 — Success a Machine Can Check (Planned)
+
+**The owner's request (2026-10-14).** "When we define an objective for
+Karakuri, do we show it what a success looks like? Do we provide something like
+success criteria?", then "Sometimes checkable success can be quantitative as
+well. Expand on criterion and verifier flags", and finally: "have Karakuri
+improve this to make it a roadmap phase. It should conduct deep research and
+find the best design for itself." The owner's starting proposal (kinds
+JUDGED, VERIFIED and MEASURED, metric fields, CLI flags, typed measurements,
+a first list of verifiers) is the starting point; this phase says where it
+departs from it and why. The research is
+[docs/research/success-criteria-2026-10-14.md](research/success-criteria-2026-10-14.md).
+
+**Goal:** A person can state, when an objective is created, what success looks
+like as numbers and checks that code settles; the loop cannot change them, and
+a pass that did the work is no longer judged a failure by a model.
+
+**Why.** What is true today, from the report's 'Code reading' (read on
+2026-10-16 at 14c719f):
+
+- `Criterion` (`internal/core/objective/objective.go:156`) has `Verifier`
+  (:159), `Threshold any` (:160), `Weight` (:161) and `Met bool` (:162).
+  Nothing reads `Threshold`. `stepVerify` (`internal/feature/loop/verify.go:17`)
+  treats a criterion as met when its named verifier ran and every run
+  succeeded (:93-104). When no verifier is named, or the named one never ran,
+  "the agent judges" (:106-109). Completion is `metCount == len(criteria)`
+  (:127). An empty list never gets there: the guard at :37 publishes
+  `no_success_criteria_defined`, the score stays 0.0 and `finalizeLoop` sets
+  `StatusFailed`. The guard counts all criteria, not required ones, and create
+  validates no count, so an objective with no criteria spends up to
+  `maxIter` iterations before it fails (fact 6).
+- `ActionResult` (`internal/core/environment/environment.go:89-101`) has no
+  typed measurement, so a number can only travel as prose or in `StateDelta`
+  (fact 2).
+- The create request (`internal/api/handler/objective.go:25-34`) and
+  `krk objective create` have no criteria field. Only templates supply
+  criteria. `docs/openapi.yaml`, which rule 6 names, does not exist (fact 3).
+- The four stream templates build every criterion with `judged(...)`
+  (`domains/software/streams.go:42-47`, :67-110). An unmet loop ends failed,
+  and three failures trip the breaker (:10-22). On 2026-10-14 the UX stream's
+  breaker tripped after three passes judged "criteria not met". Each of those
+  passes had opened a pull request with tests: #168 and #174 merged, and #177
+  is open. `software.objective.delivery`
+  (`domains/software/objectives.go:48-58`) names `run_tests` and `lint`. On a
+  docs-only task neither verifier fits, so every criterion falls to the
+  judge, and those one-shots ended "failed" and were completed by hand
+  (fact 4). The audit log's verdicts for the trip were not re-read in this
+  pass, so step 3's acceptance test replays the trip.
+
+**What it delivers.** Each criterion has a kind and a state. Pack verifiers
+return typed measurements. Criteria can be given in the create request and in
+the CLI and are validated when the objective is created. Targets are fixed by
+their author. The four streams and one-shot delivery get deterministic
+criteria, so a pass that did the work is no longer failed by a model's
+reading.
+
+### The design, decision by decision
+
+Each decision cites the research report: a section number, and D*n* for the
+decisions under 'What this means for Karakuri'. The decisions were first
+written from sections 1, 4 and 7. The report's second pass (2026-10-16 and
+2026-10-17) revised them against sections 2 (SLOs), 3 (CI gates), 5 (agent
+frameworks' notions of done) and 6 (acceptance-criteria practice), the
+expanded section 1 and Code reading fact 6. Its table 'What changed in the
+second pass' lists the changes to D1, D2, D4, D5, D6 and D7, and D3 was
+checked and confirmed. Each item below carries those changes.
+
+**1. The criterion model (D1, D2; sections 1 to 7; fact 6).**
+- **Three kinds, each settled by a different thing.** A `judged` criterion is
+  settled by a model, as today. A `verified` criterion is settled by a pack
+  verifier's pass or fail. A `measured` criterion is a named number from a
+  pack verifier, compared with a target by deterministic code.
+- **A state replaces `Met bool`.** The states are `met`, `not_met` and
+  `inconclusive`. An `inconclusive` state always carries a reason:
+  `no_data`, `verifier_error`, `too_few_samples`, `not_run`, `unsupported`,
+  `no_baseline` (see 3) or `measure_changed` (see 6).
+  - A missing measurement, a NaN or an empty result is `inconclusive`, never
+    a silent zero and never a pass. This follows Argo's Inconclusive,
+    Kayenta's Nodata and Inspect's `unscored` (sections 1 and 4). Section 1's
+    second pass (Argo keeps Error, Failed and Inconclusive apart), section 2
+    (Keptn's no-data query, first a failure, then a warning naming the query)
+    and section 3's takeaways (none of Codecov, GitHub or SonarQube has an
+    inconclusive state) confirm the state set.
+  - A verifier error stays a reason under `inconclusive`, not a fourth state.
+    It is never handed to the agent as feedback on its work and never counts
+    as an attempt (section 5, CrewAI #7150).
+  - **The run outcome is not a criterion state.** Whether a run converged,
+    spent its iteration budget or errored is recorded apart from the criterion
+    states. A criterion's state comes from its verifier reading the world after
+    the run, never from how the run ended, and a run that spent its budget is
+    done but not `met` by that fact (section 5, AutoGen's free-text
+    `stop_reason` and LangGraph's shared `END`).
+  - `met` stays in JSON as a derived field, so the API does not break.
+- **Required versus weighted.** A criterion is `required` unless it says
+  otherwise.
+  - `weight` keeps its present role: the progress score that reconcile's
+    score streak reads.
+  - A criterion with `required: false` adds to that score but can neither
+    block nor grant completion.
+  - `required: false, weight: 0` is a shadow criterion. It is evaluated,
+    shown and audited, but never gates, so a new verifier can be watched
+    before it gates (Argo's `dryRun`, Kayenta's `critical`).
+  - A stretch target written OKR-style, where a grade of 0.6 to 0.7 is the
+    expected outcome, is a `required: false` criterion with a weight. Its
+    score is shown as progress, never as a gate and never as a failure
+    (section 6, re:Work OKRs).
+- **The completion rule.** Completion stays "all required criteria `met`".
+  No weighted score can turn a failed required criterion into completion
+  (promptfoo's weighted-average hazard, SWE-bench's PARTIAL; section 4;
+  section 2, Keptn's `keyObjective`).
+  - The rule is read over one state of the world: the states the verifiers
+    settled after the same run, not flags latched at different moments
+    (section 5, AutoGen takeaway 3).
+  - **Zero required criteria never completes.** The guard at verify.go:37
+    counts required criteria instead of all criteria, so an objective whose
+    criteria are all `required: false` fails with
+    `no_success_criteria_defined` as an empty one does today, rather than
+    completing vacuously at verify.go:127 (fact 6).
+  - Create also rejects an objective with no required criterion. Such an
+    objective cannot complete either way; the rejection saves the up to
+    `maxIter` iterations it would spend before it fails (fact 6).
+  - `POST /objectives/{id}/status` can still write `completed` outside the
+    loop (fact 6). That path is outside this completion rule and is not
+    decided here (see Risks).
+  - **Departure:** `inconclusive` blocks completion but is reported apart and
+    does not count as a failed pass (see 4).
+
+**2. The verifier contract (D3; sections 1, 2, 3 and 4; facts 1, 2 and 5).**
+The second pass checked D3 and left it unchanged. Section 2's Keptn
+objectives and section 3's SonarQube conditions both keep the metric source
+apart from the comparison and report one result per condition. Section 3's
+Codecov posts one status per check from its own target, so there is one state
+per criterion, not one per verifier. SonarQube's coverage shown as "–" beside a
+passed gate is the case the rule 10 bullet below covers.
+- **Declaration.** A verifier is a pack capability. Its pack manifest
+  (Phase 39, ADR 028) declares each metric the verifier can emit: name, unit,
+  direction and typed parameters. The declaration sits beside `OutputSchema`
+  (`internal/core/capability/capability.go:11`), not inside a JSON Schema,
+  so validation can read it without interpreting a schema.
+- **Measurements.** `ActionResult` gains
+  `Measurements []Measurement{Name, Value float64, Unit, Source, Trust}`. The
+  gateway carries them through MCP results as structured content, so a number
+  is never scraped out of `StateDelta` or prose (Flagger's float64 result,
+  Inspect's typed `Score`).
+- **Provenance (rule 9).** A measurement's trust is set from what it holds:
+  - A value this deployment's own verifier computed is first-party.
+  - A number read out of text somebody else wrote, such as a figure in a PR
+    comment, is `TrustThirdParty`.
+  - A third-party measurement may be shown but cannot settle a required
+    criterion.
+- **Cannot measure (rule 10).** A verifier that cannot measure returns
+  `ErrUnsupported` or an error. That becomes `inconclusive: unsupported` or
+  `inconclusive: verifier_error`, never an empty list read as zero.
+- **Core stays free of software nouns.** `internal/core` holds only
+  `Measurement`, the state, the operators and the comparison. Metric names
+  such as `coverage` or `p95_latency_ms` live in packs, as Phase 39's
+  acceptance criterion requires.
+
+**3. Baselines, windows, samples and aggregation (D4; sections 1, 2, 3, 4
+and 7).**
+- **Form.** A measured criterion is `metric op target unit`, with `op` in
+  `< <= > >= ==` and a unit that must equal the declared unit.
+- **Baselines.**
+  - `baseline: at_start` is measured once when the objective starts, then
+    frozen and audited.
+  - `baseline: <number>` fixes it by hand.
+  - `change` is an absolute or percentage delta against the baseline, for
+    example "not more than 10% above".
+  - **No baseline is `inconclusive: no_baseline`.** When the `at_start`
+    measurement was itself inconclusive or never ran, a relative target
+    resolves to `inconclusive: no_baseline`, not `not_met`. It blocks
+    completion without counting as a failed pass (see 1 and 4).
+  - The baseline is never approximated from another commit or a later
+    measurement. It stays absent for the life of the objective until a person
+    sets one through the API, which is audited (see 6). Section 3, Codecov:
+    `target: auto` compares with a moving base, approximates it by
+    pseudo-comparison when the base has no report, and users hit "Missing
+    base commit".
+  - The person sees the baseline value beside the target, because a baseline
+    taken from a start that was already bad is met by construction (section 2,
+    SRE workbook takeaway 4).
+- **Repeated runs.** `samples: N` takes a reducer: `all`, `k_of_n`, `median`,
+  `p95`, `min`, `max` or `mean`. Below `min_samples` the state is
+  `inconclusive: too_few_samples`.
+  - A noisy signal defaults to `median`.
+  - A pass/fail signal defaults to `all`. There is never an "any rerun
+    passes" reducer, because rerunning until green hides real bugs (Luo et
+    al., section 7).
+- **Departures.** The proposal's `aggregate` is renamed `reducer` and
+  widened, and its `window` moves out of the loop to reconcile (see 4;
+  section 2, SRE workbook, OpenSLO and Keptn). A statistical canary judge is
+  not adopted.
+
+**4. Sustain for standing objectives (D5; sections 1, 2 and 7; facts 4 and
+5).**
+- **The loop still evaluates once and converges (rule 8).** `sustain` and
+  any wall-clock window are read by reconcile.
+  - Reconcile records each pass's criterion states with the time of the pass.
+  - It keeps per-criterion sustain state beside `ScoreStreak`
+    (`internal/feature/reconcile/run.go:508-518`), not in its place.
+- **Sustain is a budget over a rolling window, not a streak.**
+  - `sustain: {window: 28d, budget: 0}` reads "no pass in the last four
+    weeks ended `not_met`"; `budget: 0.1` allows one such pass in ten. A
+    criterion is sustained while the share of its passes in the window that
+    ended `not_met` stays within the budget.
+  - The window is rolling, never calendar.
+  - When the window holds fewer settled passes than `sustain.min_passes`, the
+    sustain state is `inconclusive: too_few_samples`, not healthy, because
+    with three passes one failure is a third of them.
+  - The latest pass's state is shown beside the budget left, so a criterion
+    that has recovered after spending budget can be seen.
+  - Sustain compares each pass with its target, never with earlier passes'
+    values; a relative target uses the frozen baseline (see 3).
+  - Burn-rate alerting is not adopted; the breaker stays the alert.
+  - **Departure from the proposal:** `sustain: N` consecutive passes is
+    replaced. Section 2, SRE workbook: the error budget makes success over
+    time a spendable quantity over a window, a streak is only the long-window
+    half of multiwindow alerting so a recovered criterion stays broken until
+    N more passes, and too few events is the named noisy case (with Pyrra's
+    "Too few requests!"). The rolling-window choice rests on the workbook
+    alone, because section 2's OpenSLO subsection did not get past the landing
+    page.
+- **What moves the budget and the breaker.**
+  - A pass that ended `inconclusive` is left out of both counts, does not
+    spend budget and is reported apart. It does not count towards
+    `BreakerFailures`.
+  - Only `not_met` on a required criterion counts towards the breaker. This
+    breaks the 2026-10-14 pattern directly.
+- **Drift.** Drift against the converged fingerprint
+  (`internal/feature/reconcile/sense.go:34,77`) stays the only trigger for
+  re-running. A change of criterion state is not a second drift signal.
+- **Departure from D5, added here.** N consecutive `inconclusive` passes on a
+  required criterion are surfaced in the digest. Otherwise a stream that can
+  never be measured would neither complete nor trip the breaker (see Risks).
+
+**5. How criteria are given and shown (D6; sections 1, 2, 4 and 6).**
+- **Prose and data.** Every criterion has a `description` a person writes.
+  - A `measured` or `verified` criterion also carries data: the verifier ID
+    and the fields in 3. The binding between the two is that explicit ID,
+    never matched from the prose the way Gherkin binds a step to its
+    definition by text (section 6, Gherkin; section 2, OpenSLO keeps
+    "platform-specific implementation details" out of the spec).
+  - A `judged` criterion's description names an observable outcome ("an open
+    PR with tests"), not an activity ("review the code", "help", "analyze"),
+    and its `evidence` field names what the judge will look at (section 6,
+    Gherkin's observable `Then`; re:Work OKRs' outcomes, not activities, with
+    "evidence of completion").
+  - One criterion holds one observable outcome. The count is not capped: the
+    OKR guide's "around three key results per objective" is advice, not a
+    rule.
+- **API.** The create request gains an optional `success_criteria` array with
+  the fields above.
+  - Template criteria remain the default, and request criteria are added to
+    them.
+  - A request criterion with a template criterion's `id` may tighten it,
+    with a stricter target or `required: true`, but may not loosen or remove
+    it.
+  - Because `docs/openapi.yaml` does not exist, step 5 creates it with the
+    objective paths it touches, and rule 6 then points at a real file.
+- **CLI (thin, ADR 001).**
+  - `krk objective create --criteria-file criteria.yaml` is the primary form.
+    The YAML has the same shape as the API.
+  - A repeatable `--criterion 'id=..;kind=measured;metric=..;op=..;target=..;unit=..'`
+    is for one-offs. **Departure:** the proposal gave the flag and the file
+    equal weight; here the file comes first.
+  - The help and the example file show one observable outcome per criterion
+    and a judged criterion with its `evidence`.
+  - All validation happens in the server.
+- **Create-time validation.** The server rejects:
+  - an unknown verifier, or a reserved or discovered one;
+  - a metric the verifier does not declare;
+  - a unit mismatch, or an unknown parameter;
+  - an `op` without a target;
+  - a `judged` criterion with no `evidence`;
+  - an objective with no required criterion.
+
+  Each error names the field. The check cannot tell an outcome from an
+  activity; the help text carries that rule.
+- **What a person sees.**
+  - `krk verifier list` shows each verifier's metrics, units and parameters.
+  - `krk objective criteria <id>`, and the same panel on the web objective
+    page, show for each criterion: kind, target, baseline, the last values
+    with unit and source, state and reason, and whether code or a model
+    decided.
+  - A criterion whose verifier did not run shows `inconclusive: not_run`,
+    never met (section 6, Gherkin's undefined step that became a pass).
+  - A `required: false` criterion with a weight is shown as progress (for
+    example 0.7 of 1.0), apart from the gate, so an expected partial score
+    does not read as failure (section 6, re:Work OKRs).
+  - The digest (Phase 21) lists criteria that are `not_met`, or
+    `inconclusive` for more than one pass. This digest part is this phase's
+    addition; D6 did not cover the digest.
+
+**6. Safety (D7; sections 3, 4, 5, 6 and 7; ADR 022).**
+- **Targets belong to their author.** Targets, baselines, reducers, sample
+  counts and sustain budgets are fixed at create time. The loop has no
+  capability that writes them. A change goes through the API by a person, is
+  audited, and restarts the criterion's sustain window (see 4).
+- **A verifier is a pack capability.** A discovered MCP tool is rejected as a
+  verifier at create time. This extends verify.go:88 and ADR 022 from "never
+  met" to "never accepted".
+- **A model never settles a measured or verified criterion.** When the
+  verifier did not run, the state is `inconclusive: not_run`. This removes the
+  verify.go:106 fallback for criteria that name a verifier. It is the decision
+  Phase 38's "What this is not" leaves to a person, proposed here and taken
+  by the owner's merge.
+- **Unreported or skipped is `not_run`, whatever the cause.** A verifier that
+  reports skipped or neutral, and one that has not reported when the verify
+  step's bounded wait ends, both give `inconclusive: not_run`. Neither is ever
+  `met`, as GitHub's `if`-skipped job is, and neither is left pending with no
+  end, as its path-skipped workflow is (section 3, GitHub required status
+  checks). Neither is `not_met`: the criterion blocks completion, does not
+  count towards the breaker, and is reported apart (see 1).
+- **A run outcome settles no criterion.** A run that stopped at its iteration
+  limit has ended but not succeeded. The verifiers settle the criteria from
+  the world the run left (section 5, LangGraph's `END`, AutoGen's OR of
+  budget stops and approvals, and AutoGen #6826's stop word in the task).
+- **Only the named verifier, only this commit.** A criterion is settled only
+  by a measurement from the verifier it names, taken at the commit being
+  judged. A measurement from any other capability or from an earlier commit
+  is audited but settles nothing; if none qualifies, the state is `not_run`.
+  GitHub's expected app and "Checks from earlier commits don't satisfy the
+  requirement" are the source and commit pins (section 3, GitHub).
+- **Measurements are audited.** Every measurement is audited with its
+  verifier, parameters, value, unit, source, trust and the commit it was
+  taken at.
+- **Anti-gaming.** Each verifier declares the paths its definition is read
+  from: the test files, the coverage configuration, the benchmark, the query.
+  A pass that changes one of those paths makes the criterion
+  `inconclusive: measure_changed`, and it waits for a person. SWE-bench runs
+  the original test lists, not the patch's (section 4). This mechanises
+  Phase 40's "weakening a test … no step can yet detect it" for declared
+  measures only.
+
+**7. The first verifiers, in build order (D8).** The order is set by this
+deployment's real failures. The case of a pass that did the work and was
+judged a failure comes first.
+
+1. `software.verify.stream_pr`: a pull request on the stream's branch was
+   opened or updated in this pass. It also emits `tests_changed` (count).
+   When there is no PR, the state is `inconclusive: no_data`.
+2. `software.verify.ci_green`: every required check is green at the PR head.
+   Pending or absent checks are `inconclusive`. A skipped or neutral check,
+   or one still pending when the bounded wait ends, is
+   `inconclusive: not_run`, never `met` (see 6).
+3. `software.verify.paths_declared`: the diff touches only the declared path
+   globs.
+4. `coverage` per package, with `baseline: at_start`.
+5. `flaky_test_count` over N runs.
+6. `web_bundle_bytes` and `cli_startup_ms`. The latter is noisy, so it uses
+   `median` over samples.
+7. `p95_latency_ms` and `error_rate` through Phase 32's
+   `internal/platform/tools/observability` adapters. No data is
+   `inconclusive`.
+8. `cost_per_pass` and `escalation_approval_rate`. The report did not verify
+   a source for either (D8). The step finds one or drops the verifier.
+
+**8. New criteria for the templates.** Prose judgements become
+`required: false` with a weight, so they still score progress but cannot fail
+a pass. Each kept judged criterion names an observable outcome and its
+`evidence` (see 5). Every row keeps at least one required criterion, so none
+falls under "zero required criteria never completes" (see 1).
+
+| Template | Required criteria (verified or measured) | Kept as judged, not required |
+|---|---|---|
+| Discovery | `stream_pr` with `paths_declared: docs/research/**`, `ci_green` | "findings are new" |
+| Backlog | `stream_pr` with `paths_declared: docs/roadmap.md`, `ci_green` | "each entry cites evidence" |
+| UX | `stream_pr` with `paths_declared: cli/**, web/**`, `ci_green`, `tests_changed >= 1` | "the improvement is visible to a user" |
+| Delivery (stream) | `stream_pr`, `ci_green`, `run_tests`; coverage of the changed packages `>= at_start` as a shadow first | peer and lead review |
+| One-shot `software.objective.delivery` | As today for code: `run_tests` and `lint` | peer and lead review |
+| New one-shot `software.objective.docs` | `stream_pr`, `paths_declared: docs/**`, `ci_green` | review of the prose |
+
+How these rows stop the two failures:
+
+- **The breaker trip.** Under these rows #168, #174 and #177 would each have
+  been `met`.
+- **Nothing-new passes.** A discovery pass that found nothing new opens no
+  PR. It is `inconclusive: no_data`, so it does not trip the breaker. That is
+  the case `streams.go:42-47` said nothing deterministic could settle.
+- **Docs-only one-shots.** They use the docs template, so they no longer
+  fall to the judge and end "failed".
+
+**Steps.** Each step is one delivery pass, has its own acceptance test, and
+leaves `go test ./...` green and the system working.
+
+1. **Criterion state and required (core and loop).**
+   - Work: add `State`, `Reason` and `Required` (default `true`). Keep `Met`
+     derived in JSON. Completion becomes "all required met", read over the
+     states settled after the same run. Reject an objective with no required
+     criterion. Reconcile does not count `inconclusive` towards
+     `BreakerFailures`.
+     - The guard at verify.go:37 counts required criteria, so an objective
+       whose criteria are all `required: false` fails with
+       `no_success_criteria_defined` (fact 6).
+     - The run outcome (converged, budget spent, errored) is recorded apart
+       from the criterion states. A `verifier_error` is not fed back to the
+       agent and does not count as an attempt.
+   - *Acceptance:* a loop test with one required `met`, one `inconclusive`
+     and one non-required `not_met` criterion does not complete and records
+     the reason. A reconcile test shows an inconclusive pass leaves
+     `BreakerFailures` unchanged. An empty-criteria objective is rejected.
+     Existing objectives keep their scores.
+     - A loop test with only `required: false` criteria, all `met`, does not
+       complete: it publishes `no_success_criteria_defined` and ends
+       `StatusFailed`. `TestStepVerify_NoCriteriaFailsHonestly` still passes.
+     - A run that spends its iteration budget records that outcome and leaves
+       each criterion's state as its verifier settled it.
+2. **The deterministic stream verifiers (software pack).**
+   - Work: `stream_pr`, `ci_green` and `paths_declared` as pack
+     capabilities.
+   - *Acceptance:* table tests against a fake forge cover PR opened, updated,
+     absent, CI pending, red and green, and a path outside the globs.
+     Pending and absent give `inconclusive`, never `met`.
+     - A skipped or neutral check, and one still pending when the bounded
+       wait ends, give `inconclusive: not_run`.
+     - A green check from an earlier commit than the PR head settles
+       nothing.
+3. **The templates on the new criteria, and no judge for named verifiers.**
+   - Work: the table above, plus `software.objective.docs`. Remove the
+     verify.go:106 fallback for criteria that name a verifier.
+   - *Acceptance:*
+     - A replay of #174's state (PR open, checks green, tests changed) makes
+       the UX pass `met`.
+     - A discovery pass with no PR is `inconclusive` and leaves the breaker
+       count unchanged.
+     - A docs-only one-shot completes without a judge call.
+     - A criterion that names a verifier is settled only by that verifier's
+       result at the judged commit; a result from another capability is
+       audited and leaves it `inconclusive: not_run`.
+     - This test reads the 2026-10-14 trip's verdicts from the audit log
+       first and records them, because the report did not.
+4. **Typed measurements and the verifier declaration.**
+   - Work: `Measurement` in `internal/core/environment`, with `Trust`; the
+     metric declaration beside `OutputSchema`; the deterministic comparison
+     for `measured`; structured content through MCP results.
+   - *Acceptance:*
+     - A fake verifier emitting 0.81 `ratio` against `>= 0.8` is `met`.
+     - An empty result is `inconclusive: no_data`.
+     - `ErrUnsupported` is `inconclusive: unsupported`.
+     - A third-party measurement cannot settle a required criterion.
+     - The import check shows no software noun in `internal/core`.
+5. **Criteria in the API, validated, with the spec.**
+   - Work: `success_criteria` in the create request, with `description` and,
+     for a judged criterion, `evidence`; template merge (tighten only);
+     create-time validation; `docs/openapi.yaml` created for the objective
+     paths.
+   - *Acceptance:* handler tests send each rejected case and check the error
+     names the field. A tighten is accepted and a loosen is rejected. A
+     judged criterion without `evidence`, and an objective whose criteria are
+     all `required: false`, are rejected.
+6. **CLI, web page and digest.**
+   - Work: `--criteria-file`, `--criterion`, `krk verifier list`,
+     `krk objective criteria <id>`, the web panel, and the digest lines.
+   - *Acceptance:* CLI golden tests; a web component test for each of the
+     three states; a digest test listing a criterion inconclusive for two
+     passes.
+     - The help and the example file show one observable outcome per
+       criterion and a judged criterion with its `evidence`.
+     - A criterion with no verifier run shows `inconclusive: not_run`, and a
+       `required: false` weighted criterion shows as progress apart from the
+       gate.
+7. **Baselines and samples.**
+   - Work: `at_start` frozen and audited; `change`; `samples`, the reducers
+     and `min_samples`.
+   - *Acceptance:* median of [10, 50, 12] against `<= 15` is `met`. Two
+     samples with `min_samples: 3` are `too_few_samples`. `at_start` is
+     audited once and never rewritten.
+     - An `at_start` measurement that was inconclusive makes a relative
+       target `inconclusive: no_baseline`, not `not_met`, and no other
+       commit's value is used. A baseline a person sets through the API is
+       audited and then settles it. The baseline value is shown beside the
+       target.
+8. **Sustain in reconcile.**
+   - Work: a per-criterion sustain budget over a rolling window beside
+     `ScoreStreak`: `sustain.window`, `sustain.budget` and
+     `sustain.min_passes`, with each pass's states recorded with its time.
+   - *Acceptance:* with `window: 28d, budget: 0.1, min_passes: 3`, ten
+     settled passes with one `not_met` stay sustained and a second `not_met`
+     breaks it. An `inconclusive` pass spends no budget and is left out of
+     both counts. Two settled passes in the window give
+     `inconclusive: too_few_samples`. A pass older than the window drops out.
+     A person's target change restarts the window. Drift still comes only
+     from the fingerprint.
+9. **Anti-gaming and audit.**
+   - Work: declared measure paths, `measure_changed`, and the full
+     measurement audit.
+   - *Acceptance:* a pass that edits a declared test file makes `run_tests`
+     `inconclusive: measure_changed`. The audit row carries the verifier,
+     parameters, value, unit, source, trust and commit. No loop capability
+     can write a target, and a test enumerates the capabilities.
+10. **Coverage and flaky-test count.**
+    - *Acceptance:* coverage of a fixture package against `at_start`; a
+      fixture test that fails one run in three is counted as flaky over
+      three runs.
+11. **Bundle size and CLI startup time.**
+    - *Acceptance:* the bundle bytes match `du` on the built fixture; startup
+      uses the `median` of N and rejects fewer than `min_samples`.
+12. **p95 latency and error rate.**
+    - *Acceptance:* recorded Prometheus and Datadog responses give the value.
+      An empty series gives `inconclusive: no_data`.
+13. **Cost per pass and escalation approval rate.**
+    - *Acceptance:* the source for each is found and cited at file:line and
+      a test reads it. Otherwise the verifier is dropped from this list and
+      the finding is written here (the kill criterion).
+
+**What this is not.**
+- It is not a statistical canary judge (D4).
+- It does not change rule 8. The loop still converges once, and time and
+  sustain live in reconcile.
+- It does not re-specify EB-002's fix ("evaluate the criteria before
+  planning").
+- It does not add a second "required and not done" record. It extends
+  Phase 38's.
+- It does not add a stream mechanism. Phase 40 governs the streams, and this
+  phase supplies the criteria Phase 40's steps assume.
+- It does not let a person or a model loosen a template's criteria per run.
+
+**Risks.**
+- **Forever inconclusive.** A required criterion that can never be measured
+  neither completes nor trips the breaker. Mitigations: the digest line (see
+  4), and Phase 40's "no new commit after N passes" signal (step 14a).
+- **The streams' behaviour changes.** Some passes that a model failed will
+  now be `met`, and some that a model passed will be `inconclusive`. Step 3's
+  replay is the check. The streams' first week after step 3 should be read in
+  the digest.
+- **Gaps the report names.** OpenSLO's `timeWindow` and `budgetingMethod`
+  pages were not read, so the rolling window rests on the SRE workbook alone
+  (report section 2). Argo's pages do not say what causes an Error or how it
+  counts (section 1). Keptn v1's comparison with previous evaluations was not
+  read, so sustain adds none (section 2). If any of these disagree when read,
+  steps 7 and 8 change, while steps 1 to 3 do not.
+- **No baseline is forever.** A relative target whose `at_start`
+  measurement was inconclusive stays `inconclusive: no_baseline` until a
+  person sets a baseline. The digest line (see 5) is how they learn of it.
+- **The status endpoint.** `POST /objectives/{id}/status` can write
+  `completed` whatever the criteria say (fact 6). This phase does not decide
+  that path; the targets the loop cannot edit do not cover it.
+- **The forge is the source.** `stream_pr` and `ci_green` trust the forge's
+  API. A forge outage is `inconclusive` (rule 10), not a pass.
+- **Anti-gaming is partial.** `measure_changed` catches changes to declared
+  paths only. A pass can still weaken a check whose definition lives
+  elsewhere. Review and the owner's merge remain the backstop.
+- **Two verifiers may not exist.** No source was found for escalation
+  approval rate, and the source for cost per pass was not verified (D8).
+  Step 13 may drop them.
+
+**Dependencies and recommended order.** The owner decides the order.
+- **Phase 38.** Its settlement values (`verifier_ran`, `verifier_never_ran`,
+  `no_verifier`, `reserved_verifier`) map onto this phase's state and
+  reason. Whichever of Phase 38 step 1 and this phase's step 1 lands second
+  adapts to the first. They should not keep two records.
+- **Phase 39 and ADR 028.** Steps 4 and onward put the metric declaration in
+  the pack manifest and carry measurements through the gateway's MCP
+  results. Before Phase 39 they would be written in process and then moved.
+- **Phase 40.** Its seven-day observation (step 15) fails on any week in
+  which a stream fails three passes running. With judged criteria, that is
+  what happened on 2026-10-14.
+- **Recommendation.** Ship steps 1 to 3 now, before Phase 39 and before
+  Phase 40's step 15, because the streams fail on this today and those steps
+  need neither the manifest nor the gateway. Ship steps 4 to 13 after
+  Phase 39's manifest step.
+
+**ADR decision.**
+[ADR 029](adr/029-criteria-are-settled-by-what-can-settle-them.md) is needed,
+for four reasons:
+- It adds a typed `Measurement` and a criterion state to `internal/core`
+  (D1, D3), and an `evidence` field on `Criterion` (D6).
+- It adds metric declarations to ADR 028's pack manifest.
+- It changes the breaker's input in reconcile under ADR 015 and adds the
+  sustain budget over a rolling window (D5).
+- It extends ADR 022's reserved-verifier rule to rejection at create time,
+  removes the judge fallback for named verifiers, and makes an unreported
+  verifier `not_run` (D7).
+
+It changes how rule 10 is read for measurements (no data is
+`inconclusive`), not its text.
+
+**Read and not read.**
+- **The research.** Read: the research report,
+  [docs/research/success-criteria-2026-10-14.md](research/success-criteria-2026-10-14.md),
+  sections 1 to 7, its Code reading including fact 6, and D1 to D8 as
+  revised by its second pass, with 'What changed in the second pass'. Not
+  read: the details its 'Read and not read' lists.
+- **The roadmap, for this phase.** Read: Phase 38 in full, the end of
+  Phase 40 and its ordering note, and the Engineering Backlog.
+- **Not read for this phase:** the body of Phase 39, Phase 40's steps, the
+  stream templates' source (the report's Code reading was relied on), the web
+  objective page, the digest code and the audit log of the 2026-10-14 trip.
   Every step that touches one of these begins by reading it.
 
 ---
@@ -4820,6 +5961,10 @@ Phase 37 is ordered by the owner's requirement of 2026-10-10 ("We should be able
 Phase 40 is ordered by what must be true before a stream runs with nobody watching.
 
 - **Phase 40** (streams that run without a coordinator) depends on **Phase 20** for standing objectives and the autonomy ladder and on **Phase 21** for the digest its oversight view extends. Its seven-day acceptance needs **Phase 35**, because with no coordinator an escalation that is not a bounds refusal is answered by nobody and must end by itself. It reuses **Phase 36**'s wording for a provider's refusal at a different seam (the delegated coding agent, not the planner), ends an interrupted loop the way **Phase 37** ends a stopped pass (not as a failure), and reads **Phase 38**'s record of how criteria were settled; none of the three blocks its first steps. It leaves worktree cleanup to **Phase 39**'s lifecycle signals and only emits them, and it depends on backlog entries **EB-002** and **EB-004**. Inside the phase the order is load-bearing: bounds enforced by code (steps 1 to 3) come before anything acts unattended, recovery and quota (steps 4 to 9) before a proposal stream is allowed to act (step 10), and the observation (step 15) last.
+
+Phase 41 is ordered by the owner's request of 2026-10-14 and by what the streams fail on now.
+
+- **Phase 41** (success a machine can check) depends on **Phase 38** for the per-criterion settlement record it extends, on **Phase 39** and [ADR 028](adr/028-packs-are-autonomous-behind-one-gateway.md) for the pack manifest a verifier declares its metrics in, and on **Phase 40** for the streams whose criteria it replaces. Step 1 needs none of the three.
 
 ---
 
