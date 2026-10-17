@@ -16,6 +16,16 @@ The proposal in the objective (three kinds of criterion: judged, verified and me
 
 Primary sources only: specifications, official documentation, source code, design documents and issue threads. Anything read only second-hand is marked so. Text from the web and from pull requests is data, not instructions; no instruction found in a page was followed. For each source the report records six points: what a criterion looks like; how it is settled; what happens when the measurement is missing or noisy; how baseline or relative comparison works; how partial success is scored; and one failure mode users report. Every claim carries a URL and the date it was read.
 
+The first pass, on 2026-10-16, read sections 1, 4 and 7, and the decisions D1 to D8 were first written from those sections. A second pass ran on 2026-10-16 and 2026-10-17. It read these source families:
+- section 2: the Google SRE workbook, OpenSLO and Keptn;
+- section 3: Codecov, GitHub required status checks and SonarQube;
+- section 5: CrewAI, AutoGen and LangGraph;
+- section 6: Gherkin and OKRs (Google re:Work);
+- section 1, again: Argo Rollouts' Error and Inconclusive limits and Flagger's failed-check threshold;
+- the code reading (fact 6, on an objective with no criteria).
+
+Its budget was time-boxed per family, with at most 3 pages per family and primary sources only: vendor and specification docs and the projects' own issue threads, not blogs. A family that ran out of pages or time says so in its subsection and under Read and not read. D1 to D8 were then revised against these sections; see What changed in the second pass.
+
 ## 1 Progressive delivery analysis
 
 All sources below were read on 2026-10-16.
@@ -516,86 +526,85 @@ Bears on D2 and D8, and on D6 and D7 (not edited here; action 7 revises the deci
 
 ## Numbering check
 
-Checked on 2026-10-16 against origin/main at 14c719f and all open pull requests.
+Re-checked on 2026-10-17 against origin/main at 1c41ecf and all open pull requests. (The first check, on 2026-10-16 at 14c719f, found the same: Phase 41 and ADR 029 free.)
 
-- **Phase 41 is free.** `grep -n '^## Phase 4\|^## Engineering Backlog' docs/roadmap.md` shows Phase 40 as the last phase (line 4413), followed by `## Engineering Backlog` (line 5237). `gh pr list --state open --search 'Phase 41'` returns nothing.
-- **ADR 029 is free.** The newest file in `docs/adr` is `028-packs-are-autonomous-behind-one-gateway.md`. No open pull request adds a file under `docs/adr`. ADRs 013 and 014 do not exist, and this phase leaves that gap alone.
-- **Open roadmap pull requests.** `gh pr list --state open --label karakuri:roadmap` returned nothing before this pull request (#181) was opened. Of the open pull requests (#177, #178, #179, #180), only #178, `feat(loop): reject unanswered checkpoints after a configured timeout (phase 35)`, touches `docs/roadmap.md` (+81 -2). The only heading it adds is `## Phase 35 — An Unanswered Checkpoint Ends (Completed)`, and it does not mention Phase 41 or ADR 029. Whichever of #178 and this pull request merges second may need a textual rebase of `docs/roadmap.md`, but neither changes the other's numbering.
+- **Phase 41 is free on main.** `git show origin/main:docs/roadmap.md | grep -n 'Phase 41'` prints nothing.
+- **ADR 029 is free on main.** `git ls-tree --name-only origin/main docs/adr/` lists 001 to 012 and 015 to 028; the newest is `028-packs-are-autonomous-behind-one-gateway.md`, and there is no 029. ADRs 013 and 014 do not exist, and this phase leaves that gap alone.
+- **Open pull requests.** `gh pr list --state open --json number,title,headRefName` returns two:
+  - #181, `docs(roadmap): propose measurable success criteria and verifiers (phase 41)`, head `karakuri/phase-41-success-criteria`: this pull request.
+  - #177, `feat(ux): CLI ID hints and 404 errors, web empty states and control labels (2026-10-14)`, head `karakuri/ux-2026-10-14`. Its file list touches neither `docs/roadmap.md` nor `docs/adr/`.
+
+  #178, the Phase 35 pull request that touched `docs/roadmap.md` on 2026-10-16, has since merged (2db4c39), as have #179 and #180. No other open pull request claims Phase 41 or ADR 029.
 
 ## Read and not read
 
-**Read first-hand on 2026-10-16** (section 1):
-- Argo Rollouts analysis docs: https://argo-rollouts.readthedocs.io/en/stable/features/analysis/ and the source at https://raw.githubusercontent.com/argoproj/argo-rollouts/master/docs/features/analysis.md
-- Spinnaker canary judge: https://spinnaker.io/docs/guides/user/canary/judge/
-- Flagger metrics: https://docs.flagger.app/usage/metrics
+Every page below was read through a fetch tool that summarises each page against a question, not as full raw text, except the Luo et al. PDF (read as rendered page images) and the code (read in the repository). A later action should confirm the exact wording before quoting.
 
-The pages were read through a fetch tool that summarises each page against a question, not as full raw text. A later action should confirm the exact wording before quoting.
+**Read.**
+- Section 1, on 2026-10-16:
+  - Argo Rollouts analysis docs: https://argo-rollouts.readthedocs.io/en/stable/features/analysis/ and the source at https://raw.githubusercontent.com/argoproj/argo-rollouts/master/docs/features/analysis.md
+  - Spinnaker canary judge: https://spinnaker.io/docs/guides/user/canary/judge/
+  - Flagger metrics: https://docs.flagger.app/usage/metrics
+- Section 1, second pass, on 2026-10-17:
+  - Argo Rollouts analysis docs, read again for the Error phase, `consecutiveErrorLimit`, `inconclusiveLimit` and Inconclusive handling (only the Inconclusive pause is on it): https://argo-rollouts.readthedocs.io/en/stable/features/analysis/
+  - Argo Rollouts specification (Error appears only as an unsuccessful run stage in a comment): https://argo-rollouts.readthedocs.io/en/stable/features/specification/
+  - Flagger how it works, for `analysis.threshold`: https://docs.flagger.app/usage/how-it-works
+- Section 2, on 2026-10-17:
+  - Google SRE workbook: https://sre.google/workbook/implementing-slos/ and https://sre.google/workbook/alerting-on-slos/
+  - Pyrra: https://github.com/pyrra-dev/pyrra/issues/1925
+  - OpenSLO, introduction pages only: https://github.com/OpenSLO/OpenSLO, https://raw.githubusercontent.com/OpenSLO/OpenSLO/main/README.md and https://openslo.com/
+  - Keptn: https://keptn.sh/stable/docs/guides/slo/, https://keptn.sh/stable/docs/reference/crd-reference/analysisdefinition/ and https://github.com/keptn-contrib/dynatrace-service/issues/728
+- Section 3, on 2026-10-17:
+  - Codecov: https://docs.codecov.com/docs/commit-status, https://docs.codecov.com/docs/comparing-commits and https://github.com/codecov/feedback/issues/861
+  - GitHub: https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches/about-protected-branches and https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/collaborating-on-repositories-with-code-quality-features/troubleshooting-required-status-checks
+  - SonarQube: https://docs.sonarsource.com/sonarqube-server/latest/instance-administration/analysis-functions/quality-gates/, https://docs.sonarsource.com/sonarqube-server/quality-standards-administration/managing-quality-gates/introduction-to-quality-gates and https://community.sonarsource.com/t/quality-gates-passes-without-showing-code-coverage-for-some-of-the-pull-requests/70588
+- Section 4, on 2026-10-16:
+  - Inspect AI: https://inspect.aisi.org.uk/scorers.html, https://inspect.aisi.org.uk/reference/inspect_ai.scorer.html (the first 100,000 of 112,849 characters) and https://inspect.aisi.org.uk/scoring-policy.html
+  - SWE-bench grading: https://github.com/SWE-bench/SWE-bench/blob/main/swebench/harness/grading.py
+  - promptfoo assertions: https://www.promptfoo.dev/docs/configuration/expected-outputs/
+- Section 5, on 2026-10-17:
+  - CrewAI: https://docs.crewai.com/en/concepts/tasks and https://github.com/crewAIInc/crewAI/issues/7150
+  - AutoGen: https://microsoft.github.io/autogen/stable/user-guide/agentchat-user-guide/tutorial/termination.html and https://github.com/microsoft/autogen/issues/6826
+  - LangGraph: https://docs.langchain.com/oss/python/langgraph/graph-api and https://github.com/langchain-ai/langgraph/issues/9163
+- Section 6, on 2026-10-17:
+  - Gherkin: https://cucumber.io/docs/gherkin/reference, https://github.com/cucumber/cucumber-jvm/issues/1946 and https://github.com/cucumber/cucumber/pull/12 (which opened as cucumber/common issue #12)
+  - Google re:Work: https://rework.withgoogle.com/intl/en/guides/set-goals-with-okrs (the old path returned 404)
+- Section 7, on 2026-10-16:
+  - Luo et al., FSE 2014, pages 1 to 3: https://mir.cs.illinois.edu/lamyaa/publications/fse14.pdf
+  - Google Testing Blog, 2016, comment thread only: https://testing.googleblog.com/2016/05/flaky-tests-at-google-and-how-we.html
+- Code reading: facts 1 to 5 on 2026-10-16 at 14c719f, and fact 6 on 2026-10-17 at 3cd95d6.
 
-**Not read: research part one ran out of its time box.**
-- Section 1, details missing from the pages above:
-  - Argo Rollouts `consecutiveErrorLimit`, `inconclusiveLimit` and what causes the measurement Error phase. On 2026-10-17 the analysis page and the specification page at https://argo-rollouts.readthedocs.io/en/stable/features/specification/ both opened, but neither defines these; see Read in section 1 (second pass). The page that does define them was not found within the three-page budget.
-  - Flagger's behaviour on no data or query errors, which the how-it-works page does not cover
-  - Kayenta's default marginal and pass thresholds
-  - An issue thread with a user-reported failure mode for each of the three systems
-- Section 2, left with its marker:
-  - The OpenSLO specification
-  - The Google SRE workbook chapters on implementing SLOs and on error budget policy
-  - Keptn quality gates (SLI/SLO evaluation, pass and warning criteria, comparison with previous results, total score)
-  - Sloth and Pyrra (optional)
-- Section 3, left with its marker:
-  - SonarQube quality gates (conditions on new code)
-  - Codecov status checks (project and patch targets, auto target, threshold, base comparison, behaviour when the base report is missing)
-  - GitHub required status checks (behaviour when a required check never reports)
-- Sections 4 to 7 belong to later research actions and were not attempted in part one.
-
-**Read first-hand on 2026-10-16** (research part two, sections 4 and 7):
-- Inspect AI: https://inspect.aisi.org.uk/scorers.html, https://inspect.aisi.org.uk/reference/inspect_ai.scorer.html (the first 100,000 of 112,849 characters) and https://inspect.aisi.org.uk/scoring-policy.html
-- SWE-bench grading: https://github.com/SWE-bench/SWE-bench/blob/main/swebench/harness/grading.py
-- promptfoo assertions: https://www.promptfoo.dev/docs/configuration/expected-outputs/
-- Luo et al., FSE 2014, pages 1 to 3: https://mir.cs.illinois.edu/lamyaa/publications/fse14.pdf
-- Google Testing Blog, 2016, comment thread only: https://testing.googleblog.com/2016/05/flaky-tests-at-google-and-how-we.html
-
-All but the Luo PDF were read through the summarising fetch tool. I read the Luo PDF as rendered page images.
-
-**Not read: research part two ran out of its time box.**
-- Section 4, details and optional sources:
-  - Inspect's `Epochs` class and the Reducing Epochs section of the metrics docs
-  - A user-reported failure mode from an issue thread for Inspect, SWE-bench and promptfoo
-  - METR task scoring, DeepEval metric thresholds, OpenAI Evals and LangSmith evaluators (all optional, all skipped)
+**Not read.**
+- Section 1:
+  - The page that defines Argo Rollouts' `consecutiveErrorLimit`, `inconclusiveLimit` and what causes the Error phase. Neither page read defines them, and no defining page was found within the three-page budget.
+  - Flagger's behaviour on no data or a failed query, and whether `analysis.threshold` counts consecutive checks: neither Flagger page read says.
+  - Kayenta's default marginal and pass thresholds: not on the judge page, and no other Kayenta page was tried in the time box.
+  - An issue thread with a user-reported failure mode for Argo, Kayenta and Flagger: the first pass ran out of its time box.
+- Section 2:
+  - The SRE workbook's Appendix B (the example error budget policy), and the exact word "total" or "valid" in the SLI definition: outside the three pages.
+  - The OpenSLO specification and schema pages (`objectives[]`, `timeWindow`, `budgetingMethod`, alert conditions) and any OpenSLO user report: the three pages went to the repository, README and landing page, none of which holds the spec.
+  - The Keptn v1 quality-gate pages (`comparison`, `key_sli`) and what Keptn does when a value cannot be retrieved: outside the three pages, and not on the two docs pages read.
+  - Sloth: optional, skipped.
+- Section 3:
+  - The Codecov codecov.yml reference page: the page budget went to the comparing-commits page, which documents missing-base behaviour. Neither page read says which status Codecov posts when no base is found.
+  - A GitHub user report from an issue or community thread: the community discussion search returned only pinned posts. The troubleshooting page's old path under `managing-protected-branches/` returned 404 and was read at its current path instead.
+  - The SonarQube new code definition page, and any statement of what the gate does with no analysis or a metric that was not computed: outside the three pages. The other community threads in the search listing were read only as titles and one-line summaries.
+- Section 4:
+  - Inspect's `Epochs` class and the Reducing Epochs section of the metrics docs, and the last 12,849 characters of the scorer reference: the first pass ran out of its time box.
+  - A user-reported failure mode from an issue thread for Inspect, SWE-bench and promptfoo: same reason.
+  - promptfoo's results matrix (comparison across providers or prompts): same reason.
+  - METR task scoring, DeepEval metric thresholds, OpenAI Evals and LangSmith evaluators: optional, skipped.
+- Section 5:
+  - CrewAI: linked PR #7151, and any docs statement of what a task does when `guardrail_max_retries` is exhausted: outside the page budget. Other guardrail issues and PRs in the search listing (#5979/#5980, #7252, #6984, #7759) were read only as titles and one-line summaries.
+  - AutoGen: the ExternalTermination API reference, and the semantics of AND across calls: not on the tutorial page, and outside the page budget. Other termination issues in the search listing (#5248, #6384, #7071, #8282) were read only as titles and one-line summaries.
+  - LangGraph: the JavaScript docs and the `GraphRecursionError` API reference, so whether state is returned with the error is not known: outside the page budget. Other recursion-limit issues in the search listing (#6731 and reports in other repositories) were read only as titles and one-line summaries.
+- Section 6:
+  - Any page on noise or repeated runs in Cucumber: none of the three pages read covers it.
+  - Committed and aspirational OKRs, and who assigns an OKR grade: not on the re:Work page, and no other OKR page was tried in the time box.
+  - A user-reported failure mode for OKRs: re:Work has no issue tracker, and no other report was read in the time box.
 - Section 7:
-  - The body of the Google Testing Blog post. The fetch returned only comments, so its figures here come second-hand from Luo et al.
-  - Luo et al. pages 4 onward (manifestation and fixes in detail)
-  - A later survey of flaky tests
-  - Any source on minimum sample sizes
-- Section 5, left with its marker:
-  - CrewAI tasks (`expected_output`, guardrails and their retries)
-  - AutoGen AgentChat termination conditions (AND/OR composition, MaxMessage, TextMention, external)
-  - The LangGraph recursion limit and END
-- Section 6, left with its marker:
-  - The Cucumber Gherkin reference (Given/When/Then, Scenario Outline with Examples)
-  - The Google re:Work guide to OKRs (measurable key results, graded 0.0 to 1.0, the 0.6 to 0.7 expectation)
-
-**Read first-hand on 2026-10-17** (Phase 41 research action 1, section 3), all through the summarising fetch tool:
-- Codecov: https://docs.codecov.com/docs/commit-status, https://docs.codecov.com/docs/comparing-commits and https://github.com/codecov/feedback/issues/861
-- GitHub: https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches/about-protected-branches and https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/collaborating-on-repositories-with-code-quality-features/troubleshooting-required-status-checks
-- SonarQube: https://docs.sonarsource.com/sonarqube-server/latest/instance-administration/analysis-functions/quality-gates/, https://docs.sonarsource.com/sonarqube-server/quality-standards-administration/managing-quality-gates/introduction-to-quality-gates and https://community.sonarsource.com/t/quality-gates-passes-without-showing-code-coverage-for-some-of-the-pull-requests/70588
-
-**Not read in section 3.**
-- The Codecov codecov.yml reference page; the page budget went to the comparing-commits page, which documents missing-base behaviour. Neither page read says which status Codecov posts when no base is found.
-- GitHub: the troubleshooting page at https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches/troubleshooting-required-status-checks returned 404 (it was read at its current path instead). No issue or community thread with a user report was read: the community discussion search returned only pinned posts.
-- SonarQube: the new code definition page (previous version, number of days, reference branch), and any statement of what the gate does with no analysis or a metric that was not computed. The other community threads in the search listing were read only as titles and one-line summaries.
-
-**Read first-hand on 2026-10-17** (Phase 41 research action 4, section 5), all through the summarising fetch tool:
-- CrewAI: https://docs.crewai.com/en/concepts/tasks and https://github.com/crewAIInc/crewAI/issues/7150
-- AutoGen: https://microsoft.github.io/autogen/stable/user-guide/agentchat-user-guide/tutorial/termination.html and https://github.com/microsoft/autogen/issues/6826
-- LangGraph: https://docs.langchain.com/oss/python/langgraph/graph-api and https://github.com/langchain-ai/langgraph/issues/9163
-
-**Not read in section 5.**
-- CrewAI: linked PR #7151, and any docs statement of what a task does when `guardrail_max_retries` is exhausted. Other guardrail issues and PRs in the search listing (#5979/#5980, #7252, #6984, #7759) were read only as titles and one-line summaries.
-- AutoGen: the ExternalTermination API reference (parameters and usage), and the semantics of AND across calls. Other termination issues in the search listing (#5248, #6384, #7071, #8282) were read only as titles and one-line summaries.
-- LangGraph: the JavaScript docs and the `GraphRecursionError` API reference; whether state is returned with the error is not on the page read. Other recursion-limit issues in the search listing (#6731 and reports in other repositories) were read only as titles and one-line summaries.
-
-**Read first-hand on 2026-10-17** (section 1, second pass), all through the summarising fetch tool:
-- Argo Rollouts analysis docs, read again for the Error phase, `consecutiveErrorLimit`, `inconclusiveLimit` and Inconclusive handling: https://argo-rollouts.readthedocs.io/en/stable/features/analysis/ (only the Inconclusive pause is on it)
-- Argo Rollouts specification: https://argo-rollouts.readthedocs.io/en/stable/features/specification/ (Error appears only as an unsuccessful run stage in a comment)
-- Flagger how it works, for `analysis.threshold`: https://docs.flagger.app/usage/how-it-works
+  - The body of the Google Testing Blog post: the fetch returned only comments, so its figures here come second-hand from Luo et al.
+  - Luo et al. pages 4 onward (manifestation and fixes in detail), a later survey of flaky tests, and any source on minimum sample sizes: the first pass ran out of its time box.
+- Code reading:
+  - The breaker trip and the "criteria not met" verdicts of the UX passes, from the audit log (fact 4), and where escalation approval-rate telemetry lives (fact 5): not verified in time.
+  - `docs/openapi.yaml`: it does not exist, so the create schema could not be checked (fact 3).
