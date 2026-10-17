@@ -38,8 +38,10 @@ type plan struct {
 	model    string
 
 	// endReason is set when the iteration ends without a plan, and says why
-	// (Phase 36: the provider's rate limit).
+	// (Phase 36: the provider's rate limit). endErr is the same as an error
+	// that wraps the provider's, for the loop to end its run with.
 	endReason string
+	endErr    error
 }
 
 func stepReason(ctx context.Context, sc *stepContext, ws loop.WorldState) plan {
@@ -101,7 +103,8 @@ func stepReason(ctx context.Context, sc *stepContext, ws loop.WorldState) plan {
 		sc.waitBeforeRetry(ctx, rateLimitWait(err))
 		output, err = sc.agent.Run(ctx, input)
 		if errors.Is(err, coreerrors.ErrProviderRateLimited) {
-			p.endReason = "model provider rate limit: " + err.Error()
+			p.endErr = fmt.Errorf("model provider rate limit: %w", err)
+			p.endReason = p.endErr.Error()
 			p.Reasoning = p.endReason
 		}
 	}

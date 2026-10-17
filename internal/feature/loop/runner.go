@@ -252,6 +252,15 @@ func (s *serviceImpl) runLoop(ctx context.Context, loopID string, req loop.Reque
 			Timestamp: time.Now().UTC(),
 		})
 
+		// No plan to decide on: the provider refused twice. End the run with
+		// its error rather than asking a human to approve an empty plan; the
+		// next pass is reconcile's decision, not the loop's.
+		if p.endReason != "" {
+			span.End()
+			s.finalizeLoop(ctx, state, obj, iterations, false, p.endErr)
+			return
+		}
+
 		// decide
 		state.mu.Lock()
 		state.status.Step = loop.StepDecide
@@ -497,10 +506,14 @@ func (s *serviceImpl) finalizeLoop(ctx context.Context, state *loopState, obj ob
 	s.persistState(ctx, state, true)
 
 	if obj.ID != "" {
+		payload := map[string]any{"loop_id": state.id, "criteria_met": criteriaMet}
+		if runErr != nil {
+			payload["error"] = runErr.Error()
+		}
 		s.hub.Publish(ctx, event.Event{
 			Type:        evtType,
 			ObjectiveID: string(obj.ID),
-			Payload:     map[string]any{"loop_id": state.id, "criteria_met": criteriaMet},
+			Payload:     payload,
 			Timestamp:   time.Now().UTC(),
 		})
 	}
