@@ -28,6 +28,7 @@ export function DataTable<T>({
   loading,
   error,
   empty,
+  label,
 }: {
   columns: Column<T>[];
   rows: T[];
@@ -36,6 +37,8 @@ export function DataTable<T>({
   error?: string | null;
   /** Shown when there are no rows and nothing went wrong. */
   empty?: ReactNode;
+  /** Names the table, for a page that has more than one. */
+  label?: string;
 }) {
   if (error) {
     return (
@@ -51,7 +54,7 @@ export function DataTable<T>({
 
   return (
     <div className="tablewrap">
-      <table>
+      <table aria-label={label}>
         <thead>
           <tr>
             {columns.map((c) => (

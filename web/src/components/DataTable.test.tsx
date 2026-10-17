@@ -36,4 +36,14 @@ describe('DataTable', () => {
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     expect(screen.queryByRole('status')).not.toBeInTheDocument();
   });
+
+  it('names the table when the page gives it a label', () => {
+    render(
+      <DataTable columns={columns} rows={[{ id: 'a', name: 'alpha' }]} keyOf={keyOf} label="Raises in force" />,
+    );
+
+    // Two tables on one page are both just "table" in a screen reader's list
+    // unless each carries a name.
+    expect(screen.getByRole('table', { name: 'Raises in force' })).toBeInTheDocument();
+  });
 });

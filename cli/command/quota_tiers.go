@@ -121,12 +121,12 @@ func quotaTiersCmd() *cobra.Command {
 
 An empty list means every tier comes from configuration, which is the state a
 fresh deployment is in.`,
-		RunE: func(_ *cobra.Command, _ []string) error {
+		RunE: func(c *cobra.Command, _ []string) error {
 			data, _, err := api.Get("/quota/tiers")
 			if err != nil {
 				return err
 			}
-			client.PrintOutput(data, output)
+			printList(c, data, "stored tier limits")
 			return nil
 		},
 	}

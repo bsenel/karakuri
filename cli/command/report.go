@@ -94,6 +94,11 @@ func reportListCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List digest schedules",
+		Example: `  # Every schedule you may see, with the IDs that send and delete take.
+  krk report list
+
+  # Only the schedules of one twin.
+  krk report list --twin twin_1`,
 		RunE: func(c *cobra.Command, _ []string) error {
 			path := "/reports"
 			if twinID != "" {
@@ -107,7 +112,7 @@ func reportListCmd() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&twinID, "twin", "", "Filter by twin ID")
+	cmd.Flags().StringVar(&twinID, "twin", "", "Show only this twin's schedules, by twin ID from 'krk twin list' (default: all twins)")
 	return cmd
 }
 
@@ -121,6 +126,11 @@ func reportPreviewCmd() *cobra.Command {
 Worth doing before committing somebody to a daily mail: the digest is built
 from records that already exist, so a preview over the last day is exactly what
 tomorrow's would have looked like.`,
+		Example: `  # What a digest over the last day would say.
+  krk report preview --twin twin_1
+
+  # The same over the last week.
+  krk report preview --twin twin_1 --window 168h`,
 		RunE: func(_ *cobra.Command, _ []string) error {
 			path := "/reports/preview?twin_id=" + url.QueryEscape(twinID)
 			if window != "" {
@@ -144,7 +154,13 @@ func reportSendCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "send <id>",
 		Short: "Send a digest now, outside its cadence",
-		Args:  cobra.ExactArgs(1),
+		Long: `Send the digest of one schedule now, without waiting for its cadence.
+
+<id> is the schedule's ID, as shown by 'krk report list'.`,
+		Example: `  # Find the schedule's ID, then send its digest.
+  krk report list
+  krk report send <id>`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
 			data, _, err := api.Post("/reports/"+args[0]+"/send", map[string]any{})
 			if err != nil {
@@ -160,7 +176,13 @@ func reportDeleteCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "delete <id>",
 		Short: "Delete a digest schedule",
-		Args:  cobra.ExactArgs(1),
+		Long: `Delete a digest schedule, so that no further digests are sent for it.
+
+<id> is the schedule's ID, as shown by 'krk report list'.`,
+		Example: `  # Find the schedule's ID, then delete it.
+  krk report list
+  krk report delete <id>`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(c *cobra.Command, args []string) error {
 			if _, _, err := api.Delete("/reports/" + args[0]); err != nil {
 				return err

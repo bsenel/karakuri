@@ -375,7 +375,7 @@ func resolveContainer(kind, name, parentID string) (string, error) {
 	}
 	switch len(found) {
 	case 0:
-		return "", fmt.Errorf("no %s called %q", kind, name)
+		return "", fmt.Errorf("no %s called %q\nRun 'krk %s list' to see the names that exist", kind, name, kind)
 	case 1:
 		return found[0].ID, nil
 	default:

@@ -1,3 +1,7 @@
+<!-- Title: `<type>(<scope>): <summary>`, e.g. `fix(cli): shift audit export window to the requested hours (EB-003)`; `!` before the colon if breaking.
+     It becomes the squash commit on main, and the version is derived from it: feat is minor, fix and perf are patch.
+     Checked by `PR title` (.github/workflows/pr-title.yml); try one with `go run ./cmd/prtitle '<title>'`. -->
+
 ## Summary
 
 <!-- 1-3 bullets describing what changed and why. Link the issue or roadmap phase. -->

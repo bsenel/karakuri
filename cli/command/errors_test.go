@@ -24,6 +24,24 @@ func TestParseDSNErrorShowsExample(t *testing.T) {
 	}
 }
 
+// A name that matches nothing is usually a typo; the error names the command
+// that lists the names that do exist.
+func TestResolveContainerMissingNamePointsAtList(t *testing.T) {
+	twoTenants(t)
+
+	for _, kind := range []string{"org", "team", "project"} {
+		_, err := resolveContainer(kind, "widgets", "")
+		if err == nil {
+			t.Fatalf("resolveContainer(%s, widgets) = nil error, want one", kind)
+		}
+		for _, want := range []string{"no " + kind + ` called "widgets"`, "krk " + kind + " list"} {
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("resolveContainer(%s, widgets) error %q does not contain %q", kind, err, want)
+			}
+		}
+	}
+}
+
 func TestTwinBindingsSetErrorShowsExample(t *testing.T) {
 	cmd := twinBindingsCmd()
 	cmd.SetArgs([]string{"t_7f2a", "--set", "versioncontrol"})

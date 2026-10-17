@@ -43,6 +43,41 @@ func softwarePlannerHints() []domain.PlannerHint {
 			Priority: 10,
 		},
 		{
+			// The delegated capabilities are named alongside create_pr
+			// because that is where a title is usually written: a delegated
+			// run pushes its branch and runs `gh pr create` itself. The form
+			// is decided by ValidPullRequestTitle, which CI runs on every
+			// pull request.
+			Condition: "capability.id in ['software.act.create_pr', 'software.act.write_code', 'software.act.write_test', 'software.act.delegate_to_cli']",
+			Guidance: "title a pull request `" + prTitleForm + "`: it becomes the squash commit the version is derived from. " +
+				"Types: feat (minor), fix and perf (patch), docs, refactor, test, build, ci, chore (no release); " +
+				"`!` before the colon marks a breaking change. Choose the type by what the change does to a user. " +
+				"Summary: lower-case imperative, no full stop, at most 72 characters, phase or backlog ID last. " +
+				"E.g. `feat(mcp): attach karakuri tools to delegated agent runs (phase 34)`, " +
+				"`fix(cli): shift audit export window to the requested hours (EB-003)`.",
+			Priority: 9,
+		},
+		{
+			// The deployment's own data — audit log, checkpoints, cost,
+			// reconcile status — is served as MCP tools a delegated agent can
+			// be handed for one action (Phase 34). This hint is the only place
+			// a model learns the field exists; without it a plan writes
+			// "run `krk audit list`" into the prompt and the agent shells out
+			// with whatever credential is lying around.
+			//
+			// cliEnv refuses an action that asks when the instance has not
+			// opted in, so the hint says so rather than "always ask". The
+			// names are the ones internal/api/handler/mcp.go serves.
+			Condition: "capability.id in ['software.act.write_code', 'software.act.write_test', 'software.act.delegate_to_cli']",
+			Guidance: "when the task needs this deployment's own data, list the Karakuri MCP tools it needs in " +
+				"params.karakuri_tools instead of telling the agent to shell out to `krk`. The tools are read-only: " +
+				"objectives_list, objective_read, digest_read, reconcile_status, telemetry_read, audit_list, " +
+				"audit_export, checkpoints_list, checkpoint_read, cost_report. They are attached only when the " +
+				"cli_agents instance sets attach_karakuri_mcp and karakuri_mcp_url; an action that asks without " +
+				"them is refused, not run without the tools, so leave the field out when the task does not need the data.",
+			Priority: 7,
+		},
+		{
 			Condition: "objective.template == 'software.objective.incident_response'",
 			Guidance: "fetch evidence first (observe.fetch_logs / observe.fetch_metrics), name the observed alert_id " +
 				"in software.act.run_remediation, and end with software.verify.alerts_resolved for the same alert_ids",

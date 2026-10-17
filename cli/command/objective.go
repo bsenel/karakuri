@@ -102,12 +102,12 @@ func objectiveTemplatesCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "templates",
 		Short: "List available objective templates",
-		RunE: func(_ *cobra.Command, _ []string) error {
+		RunE: func(c *cobra.Command, _ []string) error {
 			data, _, err := api.Get("/objectives/templates")
 			if err != nil {
 				return err
 			}
-			client.PrintOutput(data, output)
+			printList(c, data, "objective templates")
 			return nil
 		},
 	}
