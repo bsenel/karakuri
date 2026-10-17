@@ -4,12 +4,18 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/bsenel/karakuri/internal/core/objective"
 	"github.com/bsenel/karakuri/internal/platform/storage"
 )
+
+// ErrNoRequiredCriterion rejects an objective that could never complete: with
+// no required criterion, the verify step fails it after spending every
+// iteration it is given.
+var ErrNoRequiredCriterion = errors.New("objective has no required success criterion")
 
 type CreateRequest struct {
 	Title             string

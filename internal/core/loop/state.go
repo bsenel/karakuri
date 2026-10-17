@@ -28,6 +28,13 @@ type State struct {
 	CriteriaMet  float64                   `json:"criteria_met"`
 	CheckpointID string                    `json:"checkpoint_id,omitempty"`
 
+	// Outcome is how the run ended, kept apart from Criteria: a run that spent
+	// its budget has ended, and that says nothing about whether it succeeded.
+	Outcome RunOutcome `json:"outcome,omitempty"`
+	// Criteria are the states the last verify step settled, all read over the
+	// same state of the world.
+	Criteria []objective.Criterion `json:"criteria,omitempty"`
+
 	// RequestJSON is the full marshalled Request as supplied to Run(); enough
 	// to reconstruct the loop's parameters on a cold start.
 	RequestJSON string `json:"request_json,omitempty"`
@@ -35,3 +42,13 @@ type State struct {
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
+
+// RunOutcome is how a run ended. It is never a criterion state: the verifiers
+// settle those from the world the run left.
+type RunOutcome string
+
+const (
+	RunConverged   RunOutcome = "converged"
+	RunBudgetSpent RunOutcome = "budget_spent"
+	RunErrored     RunOutcome = "errored"
+)

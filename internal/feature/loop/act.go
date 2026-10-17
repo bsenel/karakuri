@@ -35,6 +35,12 @@ type actionOutcome struct {
 	CapabilityID string
 	EnvID        string
 	Result       environment.ActionResult
+
+	// Errored is true when the action could not be carried out at all — the
+	// environment returned an error, or nothing could take it — as distinct
+	// from one that ran and reported failure. For a verifier it is a
+	// verifier_error, which says nothing about the work.
+	Errored bool
 }
 
 // results extracts the bare results, for the callers that genuinely do not

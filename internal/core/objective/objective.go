@@ -165,6 +165,37 @@ type Criterion struct {
 	// when multiple packs offer the same capability ID. Cross-domain
 	// objectives use this to keep per-pack acceptance criteria isolated.
 	Domain string `json:"domain,omitempty"`
+
+	// Required says whether the criterion gates completion. Nil is required,
+	// so every criterion written before the field existed still gates. Read
+	// it through IsRequired.
+	Required *bool `json:"required,omitempty"`
+	// State is what the last verify step settled, and Reason says why when
+	// the state is inconclusive.
+	State  CriterionState     `json:"state,omitempty"`
+	Reason InconclusiveReason `json:"reason,omitempty"`
+}
+
+// CriterionState is what a verify step settled about one criterion.
+type CriterionState string
+
+const (
+	CriterionMet          CriterionState = "met"
+	CriterionNotMet       CriterionState = "not_met"
+	CriterionInconclusive CriterionState = "inconclusive"
+)
+
+// InconclusiveReason says why a criterion could not be settled.
+type InconclusiveReason string
+
+// ReasonVerifierError is a named verifier that could not run. It blocks
+// completion without saying anything about the work.
+const ReasonVerifierError InconclusiveReason = "verifier_error"
+
+// IsRequired reports whether the criterion gates completion.
+func (c Criterion) IsRequired() bool {
+	// Phase 41 Step 1: not implemented yet.
+	return false
 }
 
 // VerifierIsReserved reports whether this criterion names a verifier from the
