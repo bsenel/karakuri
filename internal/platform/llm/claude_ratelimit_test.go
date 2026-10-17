@@ -84,3 +84,28 @@ func TestClaudeCompleteLeavesOtherErrorsUnclassified(t *testing.T) {
 		}
 	}
 }
+
+// 429 is matched as a status code, a number of its own: as a substring it
+// classified a timeout or an ID as a rate limit, and reconcile then filed a
+// real failure as a deferral the breaker never counts.
+func TestClassifyRateLimitMatches429OnlyAsAStatusCode(t *testing.T) {
+	for _, text := range []string{
+		"API returned unexpected status code: 429: This request would exceed your organization's rate limit",
+		`API Error: 429 {"type":"error"}`,
+		"[API Error: got status: 429 Too Many Requests]",
+		"googleapi: Error 429: Resource has been exhausted",
+	} {
+		if err := classifyRateLimit("claude", errors.New(text)); !errors.Is(err, coreerrors.ErrProviderRateLimited) {
+			t.Errorf("classifyRateLimit(%q) is not a rate limit", text)
+		}
+	}
+	for _, text := range []string{
+		"context deadline exceeded after 4290ms",
+		"request 14290 failed: connection reset",
+		"worktree wt-4291 is locked",
+	} {
+		if err := classifyRateLimit("claude", errors.New(text)); errors.Is(err, coreerrors.ErrProviderRateLimited) {
+			t.Errorf("classifyRateLimit(%q) is a rate limit, want the error unchanged", text)
+		}
+	}
+}
