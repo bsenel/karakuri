@@ -3,6 +3,7 @@ package command
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/bsenel/karakuri/cli/client"
 	"github.com/spf13/cobra"
@@ -78,13 +79,18 @@ func NewRoot() *cobra.Command {
 // the flag but not what it takes or where the examples are.
 //
 // A command group with no Args of its own keeps it nil: cobra runs its
-// `unknown command "bogus" for "krk"` check only while Args is nil.
+// `unknown command "bogus" for "krk"` check only while Args is nil. That check
+// covers the root alone: `krk objective show` used to print the objective help
+// and exit 0, so a nested group gets a Run that rejects what it does not know.
 func explainArgs(cmd *cobra.Command) {
 	for _, sub := range cmd.Commands() {
 		explainArgs(sub)
 	}
 	validate := cmd.Args
 	if validate == nil && cmd.HasSubCommands() {
+		if cmd.HasParent() && !cmd.Runnable() {
+			cmd.RunE = unknownSubcommand
+		}
 		return
 	}
 	cmd.Args = func(c *cobra.Command, args []string) error {
@@ -98,4 +104,28 @@ func explainArgs(cmd *cobra.Command) {
 		}
 		return nil
 	}
+}
+
+// unknownSubcommand runs a command group: with no argument it shows the help,
+// as before; with one it names the subcommand that does not exist and the ones
+// that do.
+func unknownSubcommand(c *cobra.Command, args []string) error {
+	if len(args) == 0 {
+		return c.Help()
+	}
+	var names []string
+	for _, sub := range c.Commands() {
+		if sub.IsAvailableCommand() {
+			names = append(names, sub.Name())
+		}
+	}
+	msg := fmt.Sprintf("unknown command %q for %q", args[0], c.CommandPath())
+	// Cobra sets the distance only on the root it suggests for; 2 is its default.
+	if c.SuggestionsMinimumDistance <= 0 {
+		c.SuggestionsMinimumDistance = 2
+	}
+	if suggestions := c.SuggestionsFor(args[0]); len(suggestions) > 0 {
+		msg += fmt.Sprintf("\nDid you mean %s?", strings.Join(suggestions, " or "))
+	}
+	return fmt.Errorf("%s\nAvailable commands: %s\nRun '%s --help' for details", msg, strings.Join(names, ", "), c.CommandPath())
 }

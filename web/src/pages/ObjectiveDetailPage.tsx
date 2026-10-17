@@ -106,12 +106,15 @@ export function ObjectiveDetailPage() {
         <button className="primary" onClick={() => void startLoop()} disabled={!!loopID && !status?.completed}>
           {!loopID ? 'Start loop' : status?.completed ? 'Run again' : 'Running…'}
         </button>
-        {status && (
-          <span className="small muted">
-            iteration {status.iteration} · {status.paused ? 'paused' : status.completed ? 'completed' : 'running'}
-            {status.last_step && <> · last step: {status.last_step}</>}
-          </span>
-        )}
+        {/* Always mounted, so a screen reader hears each poll's change of state. */}
+        <span className="small muted" role="status">
+          {status && (
+            <>
+              iteration {status.iteration} · {status.paused ? 'paused' : status.completed ? 'completed' : 'running'}
+              {status.last_step && <> · last step: {status.last_step}</>}
+            </>
+          )}
+        </span>
       </div>
 
       <StandingPanel objectiveID={id} budget={obj?.budget} />

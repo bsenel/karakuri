@@ -22,6 +22,39 @@ func TestUnknownCommandIsAnError(t *testing.T) {
 	}
 }
 
+// Cobra's unknown-subcommand check covers the root only, so `krk objective
+// show` printed the objective help and exit 0.
+func TestUnknownSubcommandOfAGroupIsAnError(t *testing.T) {
+	root := NewRoot()
+	root.SetArgs([]string{"objective", "lis"})
+	root.SetOut(io.Discard)
+	root.SetErr(io.Discard)
+	err := root.Execute()
+	if err == nil {
+		t.Fatal("krk objective lis: expected an error")
+	}
+	for _, want := range []string{`unknown command "lis" for "krk objective"`, "Did you mean list?", "Available commands: create, get, list", "Run 'krk objective --help' for details"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q does not contain %q", err, want)
+		}
+	}
+}
+
+// A group with no argument still shows its help and succeeds.
+func TestBareGroupShowsHelp(t *testing.T) {
+	root := NewRoot()
+	root.SetArgs([]string{"objective"})
+	var out strings.Builder
+	root.SetOut(&out)
+	root.SetErr(io.Discard)
+	if err := root.Execute(); err != nil {
+		t.Fatalf("krk objective: %v", err)
+	}
+	if !strings.Contains(out.String(), "Available Commands:") {
+		t.Errorf("krk objective printed %q, want its help", out.String())
+	}
+}
+
 // Leaving Args alone on the command groups must not cost the leaf commands
 // their usage lines.
 func TestLeafCommandsKeepUsageLines(t *testing.T) {

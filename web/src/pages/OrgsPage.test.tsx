@@ -39,6 +39,18 @@ describe('OrgsPage', () => {
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
+  it('names what each add button adds', async () => {
+    get.mockResolvedValue([{ id: 'o1', kind: 'org', name: 'Acme' }]);
+
+    render(<OrgsPage />);
+    await waitFor(() => expect(screen.getByText('Acme')).toBeInTheDocument());
+    expect(screen.getByRole('button', { name: 'Add organisation' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Add team' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Add project' })).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: 'New team' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Add' })).not.toBeInTheDocument();
+  });
+
   it('says the tree could not be loaded, with a retry', async () => {
     get.mockRejectedValue(new APIError(500, '{"message":"database is locked"}'));
 
