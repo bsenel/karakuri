@@ -189,6 +189,7 @@ func (s *GORMStorage) SaveReconcileOutcome(ctx context.Context, o reconcile.Outc
 		Escalated:    o.Escalated,
 		CheckpointID: o.CheckpointID,
 		Error:        o.Error,
+		Inconclusive: o.Inconclusive,
 		Deferred:     o.Deferred,
 		DeferredUntil: func() *time.Time {
 			if o.DeferredUntil.IsZero() {
@@ -232,6 +233,7 @@ func (s *GORMStorage) ListReconcileOutcomes(ctx context.Context, objectiveID obj
 			Escalated:    m.Escalated,
 			CheckpointID: m.CheckpointID,
 			Error:        m.Error,
+			Inconclusive: m.Inconclusive,
 			Deferred:     m.Deferred,
 			DeferredUntil: func() time.Time {
 				if m.DeferredUntil == nil {

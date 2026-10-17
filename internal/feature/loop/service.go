@@ -51,6 +51,11 @@ type loopState struct {
 	result     loop.Result
 	decisionCh chan corecheckpoint.Decision
 	request    loop.Request // captured for durable replay on server restart
+	// outcome is how the run ended, set when it is finalized, and criteria
+	// are the states the last verify step settled. Persisted apart, so one is
+	// never read as the other.
+	outcome  loop.RunOutcome
+	criteria []objective.Criterion
 	// answered is set when a loop that was paused before a restart is replayed
 	// with the decision on the checkpoint it raised then. stepDecide takes it
 	// at the replay's first decide so that checkpoint, and not a new one, is
@@ -316,6 +321,8 @@ func (s *serviceImpl) persistState(ctx context.Context, state *loopState, comple
 	status := state.status
 	req := state.request
 	result := state.result
+	outcome := state.outcome
+	criteria := state.criteria
 	state.mu.RUnlock()
 
 	reqJSON, _ := json.Marshal(req)
@@ -335,6 +342,8 @@ func (s *serviceImpl) persistState(ctx context.Context, state *loopState, comple
 		Status:       result.Status,
 		CriteriaMet:  status.CriteriaMet,
 		CheckpointID: cpID,
+		Outcome:      outcome,
+		Criteria:     criteria,
 		RequestJSON:  string(reqJSON),
 	}
 	_ = s.store.SaveLoopState(ctx, persisted)

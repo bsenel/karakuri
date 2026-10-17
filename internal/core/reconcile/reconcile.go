@@ -114,7 +114,8 @@ type Outcome struct {
 	Autonomy objective.AutonomyLevel `json:"autonomy,omitempty"`
 
 	// CriteriaMet is the weighted score the loop reached, and Converged is
-	// whether it reached 1.0. A sense-only pass carries the previous score
+	// whether every required criterion was met (for a loop that recorded no
+	// criterion states, whether the score reached 1.0). A sense-only pass carries the previous score
 	// and reports Converged from the state it did not change.
 	CriteriaMet float64 `json:"criteria_met"`
 	Converged   bool    `json:"converged"`
@@ -125,6 +126,11 @@ type Outcome struct {
 
 	// Error is why the pass failed, empty when it did not.
 	Error string `json:"error,omitempty"`
+
+	// Inconclusive is true when the loop ended with a required criterion
+	// nobody could settle and none settled not_met. It is not a failure, so
+	// the circuit breaker does not count it, and not a convergence either.
+	Inconclusive bool `json:"inconclusive,omitempty"`
 
 	// Deferred names why a pass that was due did not spend — a budget
 	// exhausted, a quiet window — and is empty when it went ahead.

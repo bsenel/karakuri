@@ -80,6 +80,9 @@ func (s *Service) Create(ctx context.Context, req CreateRequest) (objective.Obje
 			}
 		}
 	}
+	if !hasRequiredCriterion(o.SuccessCriteria) {
+		return objective.Objective{}, ErrNoRequiredCriterion
+	}
 	if err := s.store.SaveObjective(ctx, o); err != nil {
 		return objective.Objective{}, fmt.Errorf("save objective: %w", err)
 	}
@@ -113,6 +116,15 @@ func (s *Service) ListTemplates() []objective.Template {
 		out = append(out, t)
 	}
 	return out
+}
+
+func hasRequiredCriterion(criteria []objective.Criterion) bool {
+	for _, c := range criteria {
+		if c.IsRequired() {
+			return true
+		}
+	}
+	return false
 }
 
 func newID() (string, error) {

@@ -203,6 +203,8 @@ type LoopStateModel struct {
 	Status       string    `gorm:"column:status;not null;default:''"`
 	CriteriaMet  float64   `gorm:"column:criteria_met;not null;default:0.0"`
 	CheckpointID string    `gorm:"column:checkpoint_id;not null;default:''"`
+	Outcome      string    `gorm:"column:outcome;not null;default:''"`
+	CriteriaJSON string    `gorm:"column:criteria_json;not null;default:'[]'"`
 	RequestJSON  string    `gorm:"column:request_json;not null;default:'{}'"`
 	CreatedAt    time.Time `gorm:"column:created_at;autoCreateTime"`
 	UpdatedAt    time.Time `gorm:"column:updated_at;autoUpdateTime"`
@@ -295,6 +297,7 @@ type ReconcileOutcomeModel struct {
 	Escalated    bool   `gorm:"column:escalated;not null;default:false"`
 	CheckpointID string `gorm:"column:checkpoint_id;not null;default:''"`
 	Error        string `gorm:"column:error;not null;default:''"`
+	Inconclusive bool   `gorm:"column:inconclusive;not null;default:false"`
 
 	StartedAt     time.Time  `gorm:"column:started_at;index:idx_reconcile_outcomes_objective_time,priority:2,sort:desc"`
 	EndedAt       time.Time  `gorm:"column:ended_at"`

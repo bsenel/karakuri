@@ -97,6 +97,7 @@ func stepAct(ctx context.Context, sc *stepContext, p plan) []actionOutcome {
 					Success: false,
 					Error:   "capability quota exhausted for the day",
 				},
+				Errored: true,
 			})
 			continue
 		}
@@ -142,6 +143,9 @@ func stepAct(ctx context.Context, sc *stepContext, p plan) []actionOutcome {
 		}
 
 		var result environment.ActionResult
+		// Whether the action could not be carried out at all, as opposed to
+		// ran and reported failure.
+		errored := true
 		if provisionErr != nil {
 			// The environment would refuse for want of a worktree anyway; say
 			// why there is none instead.
@@ -169,6 +173,7 @@ func stepAct(ctx context.Context, sc *stepContext, p plan) []actionOutcome {
 					Error:   err.Error(),
 				}
 			}
+			errored = err != nil
 			if !result.Success {
 				span.SetError(result.Error)
 			}
@@ -319,6 +324,7 @@ func stepAct(ctx context.Context, sc *stepContext, p plan) []actionOutcome {
 			CapabilityID: action.CapabilityID,
 			EnvID:        envAdapter,
 			Result:       result,
+			Errored:      errored,
 		})
 	}
 
