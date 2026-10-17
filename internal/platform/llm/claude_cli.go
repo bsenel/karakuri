@@ -72,27 +72,22 @@ func (c *claudeCLI) complete(ctx context.Context, req CompletionRequest) (Comple
 			return CompletionResponse{}, classifyRateLimit("claude",
 				fmt.Errorf("claude CLI exited %w: %s", err, strings.TrimSpace(string(ee.Stderr))))
 		}
+		// A refused reply, the account's usage limit among them, comes back
+		// as the JSON result on stdout with stderr empty; without reading it
+		// every such exit read as a bare "exit status 1".
+		if resp, perr := parseClaudeCLIResponse(out); perr == nil && resp.IsError {
+			return CompletionResponse{}, classifyRateLimit("claude",
+				fmt.Errorf("claude CLI exited %w: %s", err, resp.errorMessage()))
+		}
 		return CompletionResponse{}, fmt.Errorf("claude CLI exited: %w", err)
 	}
 
-	var resp claudeCLIResponse
-	if jerr := json.Unmarshal(out, &resp); jerr != nil {
-		// The CLI sometimes emits a banner on first run; try parsing only
-		// the last line as JSON before giving up.
-		if line := lastJSONLine(out); line != "" {
-			if jerr2 := json.Unmarshal([]byte(line), &resp); jerr2 == nil {
-				goto parsed
-			}
-		}
-		return CompletionResponse{}, fmt.Errorf("claude CLI: parse JSON: %w (raw: %.200s)", jerr, string(out))
+	resp, err := parseClaudeCLIResponse(out)
+	if err != nil {
+		return CompletionResponse{}, err
 	}
-parsed:
 	if resp.IsError {
-		msg := resp.Error
-		if msg == "" {
-			msg = "unknown error"
-		}
-		return CompletionResponse{}, classifyRateLimit("claude", fmt.Errorf("claude CLI returned error: %s", msg))
+		return CompletionResponse{}, classifyRateLimit("claude", fmt.Errorf("claude CLI returned error: %s", resp.errorMessage()))
 	}
 
 	used := resp.Usage.InputTokens + resp.Usage.OutputTokens
@@ -105,6 +100,35 @@ parsed:
 		InputTokens:  resp.Usage.InputTokens,
 		OutputTokens: resp.Usage.OutputTokens,
 	}, nil
+}
+
+// errorMessage is why the CLI marked its reply as failed. The CLI puts it in
+// result; error is read first for older replies that set it.
+func (r claudeCLIResponse) errorMessage() string {
+	if r.Error != "" {
+		return r.Error
+	}
+	if msg := strings.TrimSpace(r.Result); msg != "" {
+		return msg
+	}
+	return "unknown error"
+}
+
+// parseClaudeCLIResponse reads the CLI's JSON reply from out. The CLI
+// sometimes emits a banner on first run, so the last JSON line is tried
+// before giving up.
+func parseClaudeCLIResponse(out []byte) (claudeCLIResponse, error) {
+	var resp claudeCLIResponse
+	jerr := json.Unmarshal(out, &resp)
+	if jerr == nil {
+		return resp, nil
+	}
+	if line := lastJSONLine(out); line != "" {
+		if json.Unmarshal([]byte(line), &resp) == nil {
+			return resp, nil
+		}
+	}
+	return claudeCLIResponse{}, fmt.Errorf("claude CLI: parse JSON: %w (raw: %.200s)", jerr, string(out))
 }
 
 // lastJSONLine returns the final non-empty line of out, trimmed. Used to

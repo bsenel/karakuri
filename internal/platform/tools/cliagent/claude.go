@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"unicode/utf8"
 )
 
 // ClaudeCode is a CLIAgentAdapter that delegates tasks to the Claude Code CLI.
@@ -51,7 +52,7 @@ func (c *ClaudeCode) Delegate(ctx context.Context, in DelegateInput) (DelegateOu
 			}
 		case "error":
 			if chunk.Err != nil {
-				return out, chunk.Err
+				return out, withOutputTail(chunk.Err, out.Summary)
 			}
 		}
 	}
@@ -167,6 +168,28 @@ func writeClaudeMCPConfig(m *MCPAttachment) (dir, path string, err error) {
 //
 // Unknown shapes are silently swallowed so a CLI format change degrades the
 // adapter rather than crashing the loop.
+// exitOutputTailBytes bounds how much of a failed run's output its error
+// carries: enough for the CLI's closing message, short enough for one audit row.
+const exitOutputTailBytes = 500
+
+// withOutputTail adds the end of what the run printed to its error. A usage
+// limit exits 1 with nothing on stderr; its reason is only in the output, and
+// without this the audit log said "exit 1 (stderr: )".
+func withOutputTail(err error, output string) error {
+	tail := strings.TrimSpace(output)
+	if tail == "" {
+		return err
+	}
+	if len(tail) > exitOutputTailBytes {
+		start := len(tail) - exitOutputTailBytes
+		for start < len(tail) && !utf8.RuneStart(tail[start]) {
+			start++
+		}
+		tail = "..." + tail[start:]
+	}
+	return fmt.Errorf("%w; last output: %s", err, tail)
+}
+
 func parseClaudeStreamLine(line string, ch chan<- DelegateChunk) {
 	line = strings.TrimSpace(line)
 	if line == "" {
