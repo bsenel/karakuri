@@ -487,15 +487,15 @@ func TestInstanceToolListAppliesWhenTheActionNamesNone(t *testing.T) {
 	}
 }
 
-// Claude Code denies every unlisted tool, so with no list anywhere the action
-// is refused before the agent starts: no delegation, no credential, and an
-// error that names the missing field.
+// Claude Code denies every unlisted edit, shell command and web fetch, so with
+// no list anywhere and no Karakuri tools the action is refused before the agent
+// starts: no delegation, no credential, and an error that names the field.
 func TestClaudeCodeWithNoToolListIsRefusedBeforeItStarts(t *testing.T) {
 	cli, iss := &recordingCLI{name: "claude_code"}, newRecordingIssuer()
 	env := &cliEnv{id: "software.env.cli_agent", cli: cli, twinID: "twin-1",
 		attachMCP: true, mcpURL: testMCPURL, issuer: iss}
 
-	res, err := env.Act(context.Background(), delegateAction("audit_list"))
+	res, err := env.Act(context.Background(), delegateAction())
 	if err != nil {
 		t.Fatalf("act: %v", err)
 	}
@@ -510,6 +510,39 @@ func TestClaudeCodeWithNoToolListIsRefusedBeforeItStarts(t *testing.T) {
 	}
 	if !strings.Contains(res.Error, "allowed_tools") {
 		t.Errorf("Error = %q, want it to name allowed_tools", res.Error)
+	}
+}
+
+// Karakuri tools alone are a working read-only delegation (Phase 34): the agent
+// is allowed exactly those tools, so it is not refused for having no built-in
+// list.
+func TestKarakuriToolsAloneAreNotRefused(t *testing.T) {
+	cli, iss := &recordingCLI{name: "claude_code"}, newRecordingIssuer()
+
+	res, err := attachingEnv(cli, iss).Act(context.Background(), delegateAction("audit_list"))
+	if err != nil {
+		t.Fatalf("act: %v", err)
+	}
+	if !res.Success || len(cli.calls) != 1 {
+		t.Fatalf("success = %v (%s), calls = %d; want one delegation", res.Success, res.Error, len(cli.calls))
+	}
+	if in := cli.calls[0]; len(in.AllowedTools) != 0 || in.MCP == nil {
+		t.Errorf("AllowedTools = %v, MCP = %v; want no built-in list and the Karakuri MCP server", in.AllowedTools, in.MCP)
+	}
+}
+
+// The instance list is copied into each delegation, so one run changing its
+// input cannot change what the next run is handed.
+func TestInstanceToolListIsNotSharedBetweenDelegations(t *testing.T) {
+	cli := &recordingCLI{name: "claude_code"}
+	env := &cliEnv{id: "software.env.cli_agent", cli: cli, allowedTools: []string{"Read", "Edit"}}
+
+	if _, err := env.Act(context.Background(), delegateAction()); err != nil {
+		t.Fatalf("act: %v", err)
+	}
+	cli.calls[0].AllowedTools[0] = "Bash"
+	if env.allowedTools[0] != "Read" {
+		t.Errorf("instance list = %v after a delegation changed its copy, want it unchanged", env.allowedTools)
 	}
 }
 
@@ -532,19 +565,35 @@ func TestOtherAdaptersRunWithoutAToolList(t *testing.T) {
 	}
 }
 
-// The instance options reach the environment the factory builds; an option
-// read in Act but never set at build time would pass every test above.
+// The instance options reach the environment the factory builds, for every
+// CLI type; an option read in Act but never set at build time would pass every
+// test above.
 func TestCLIEnvReadsToolsAndTimeoutFromTheInstance(t *testing.T) {
-	reg := tools.NewRegistryFromConfig(config.ToolsConfig{CLIAgents: config.SlotConfig{
-		Default: "claude",
-		Instances: map[string]config.InstanceConfig{
-			"claude": {Type: "claude_code", Options: map[string]any{
-				"allowed_tools":   []any{"Read", "Edit"},
-				"timeout_seconds": 1800,
-			}},
-		},
-	}})
+	for _, typeName := range []string{"claude_code", "cursor_cli", "gemini_cli", "copilot_cli"} {
+		t.Run(typeName, func(t *testing.T) {
+			reg := tools.NewRegistryFromConfig(config.ToolsConfig{CLIAgents: config.SlotConfig{
+				Default: "agent",
+				Instances: map[string]config.InstanceConfig{
+					"agent": {Type: typeName, Options: map[string]any{
+						"allowed_tools":   []any{"Read", "Edit"},
+						"timeout_seconds": 1800,
+					}},
+				},
+			}})
+			env := buildCLIEnv(t, reg)
+			if !reflect.DeepEqual(env.allowedTools, []string{"Read", "Edit"}) {
+				t.Errorf("allowedTools = %v, want [Read Edit]", env.allowedTools)
+			}
+			if env.timeoutSeconds != 1800 {
+				t.Errorf("timeoutSeconds = %d, want 1800", env.timeoutSeconds)
+			}
+		})
+	}
+}
 
+// buildCLIEnv builds the software.env.cli_agent environment from reg.
+func buildCLIEnv(t *testing.T, reg *tools.Registry) *cliEnv {
+	t.Helper()
 	for _, f := range softwareEnvironmentFactories(reg) {
 		if f.EnvID != "software.env.cli_agent" {
 			continue
@@ -557,13 +606,8 @@ func TestCLIEnvReadsToolsAndTimeoutFromTheInstance(t *testing.T) {
 		if !ok {
 			t.Fatalf("built %T, want *cliEnv", built)
 		}
-		if !reflect.DeepEqual(env.allowedTools, []string{"Read", "Edit"}) {
-			t.Errorf("allowedTools = %v, want [Read Edit]", env.allowedTools)
-		}
-		if env.timeoutSeconds != 1800 {
-			t.Errorf("timeoutSeconds = %d, want 1800", env.timeoutSeconds)
-		}
-		return
+		return env
 	}
 	t.Fatal("no software.env.cli_agent factory")
+	return nil
 }

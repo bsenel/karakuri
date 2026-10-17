@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -649,10 +650,11 @@ func cliTimeoutSeconds(options map[string]any) int {
 	return 0
 }
 
-// deniesUnlistedTools reports whether a coding-agent CLI refuses every tool its
-// allow-list does not name. Claude Code in headless print mode does, so a run
-// with an empty list can neither edit, commit nor push; Cursor falls back to its
-// own defaults, and Gemini and Copilot ignore the list.
+// deniesUnlistedTools reports whether a coding-agent CLI refuses every tool that
+// needs permission unless its allow-list names it. Claude Code in headless
+// print mode does, so a run with an empty list can read files but can neither
+// edit, commit nor push; Cursor falls back to its own defaults, and Gemini and
+// Copilot ignore the list.
 func deniesUnlistedTools(adapterName string) bool {
 	return adapterName == "claude_code"
 }
@@ -736,18 +738,9 @@ func (e *cliEnv) Act(ctx context.Context, a environment.Action) (environment.Act
 	}
 	// The action's own list wins, so a plan can narrow it for one task; the
 	// instance's list is the floor a plan that forgot the field still gets.
+	// Cloned, because concurrent delegations share the environment.
 	if len(in.AllowedTools) == 0 {
-		in.AllowedTools = e.allowedTools
-	}
-	// Refused before the agent starts: run with no tools, it would spend its
-	// whole time limit and the quota being denied, then report a vague failure
-	// (AGENTS.md rule 10, blind, not quiet).
-	if len(in.AllowedTools) == 0 && deniesUnlistedTools(e.cli.Name()) {
-		return environment.ActionResult{
-			Success: false,
-			Error: fmt.Sprintf("%s has no allowed_tools: %s denies every tool not listed, so the agent could neither edit, commit nor push; "+
-				"set params.allowed_tools or the cli_agents instance's allowed_tools", a.CapabilityID, e.cli.Name()),
-		}, nil
+		in.AllowedTools = slices.Clone(e.allowedTools)
 	}
 
 	// karakuri_tools: the Karakuri MCP tools the agent may call during this
@@ -761,6 +754,19 @@ func (e *cliEnv) Act(ctx context.Context, a environment.Action) (environment.Act
 				karakuriTools = append(karakuriTools, s)
 			}
 		}
+	}
+	// Refused before the agent starts or a credential is issued: with no list
+	// and no Karakuri tools it could only read files, so it would spend its
+	// whole time limit and the quota being denied, then report a vague failure
+	// (AGENTS.md rule 10, blind, not quiet). Karakuri tools alone are a working
+	// read-only delegation (Phase 34), so they are not refused.
+	if len(in.AllowedTools) == 0 && len(karakuriTools) == 0 && deniesUnlistedTools(e.cli.Name()) {
+		return environment.ActionResult{
+			Success: false,
+			Error: fmt.Sprintf("%s has no allowed_tools: %s denies every edit, shell command and web fetch not listed, "+
+				"so the agent could only read files; set params.allowed_tools or the cli_agents instance's allowed_tools",
+				a.CapabilityID, e.cli.Name()),
+		}, nil
 	}
 	// scrub keeps the delegation token out of anything the result carries.
 	scrub := func(s string) string { return s }

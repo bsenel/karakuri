@@ -391,8 +391,9 @@ tools:
   # (default 600). Raise it when the work and the tests it runs take longer.
   #
   # allowed_tools is the tool list a delegation gets when its action names none.
-  # claude_code runs headless and denies every tool not listed, so with no list
-  # on the action and none here the action is refused before the agent starts.
+  # claude_code runs headless and denies every edit, shell command and web fetch
+  # not listed, so with no list on the action, none here and no karakuri_tools,
+  # the action is refused before the agent starts.
   #
   # A delegation may ask for Karakuri's own MCP tools (params.karakuri_tools).
   # That needs attach_karakuri_mcp (default false) and karakuri_mcp_url, this
