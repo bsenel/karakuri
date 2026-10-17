@@ -323,10 +323,15 @@ func (s *Service) reconcileNow(
 			"detail":  final.Error,
 			"loop_id": res.LoopID,
 		})
+	case inconclusivePass(final):
+		// Checked before failure: the loop ends failed when it cannot
+		// complete, and one that could not settle a required criterion has not
+		// failed at the work.
+		outcome.Inconclusive = true
 	case final.Status == objective.StatusFailed:
 		outcome.Error = failureReason(final)
 	default:
-		outcome.Converged = final.CriteriaMet >= 1.0
+		outcome.Converged = metRequired(final)
 	}
 	return s.finish(ctx, st, obj, cadence, outcome, &fp)
 }
@@ -436,7 +441,7 @@ func (s *Service) settleActiveLoop(ctx context.Context, st *reconcile.State, obj
 		return true, false, s.store.SaveReconcileState(ctx, *st)
 	}
 
-	if ls.CriteriaMet >= 1.0 {
+	if metRequired(ls) {
 		st.LastConvergedAt = &now
 		st.ScoreStreak = 0
 		s.applyCleanRun(ctx, st, obj, decl)
@@ -511,6 +516,15 @@ func (s *Service) finish(
 		// bounded agent should do. The counters wait for the human.
 		st.LastError = ""
 		st.LastReconciledAt = &now
+
+	case outcome.Inconclusive:
+		// Neither either: a required criterion could not be settled, so
+		// nothing is known about the work. The failure count stays where it
+		// was — a verifier that is down must not trip the breaker on work
+		// that may well be done — and so does the stall count.
+		st.LastError = ""
+		st.LastReconciledAt = &now
+		st.Phase = reconcile.PhaseIdle
 
 	default:
 		st.ConsecutiveFailures = 0
@@ -712,6 +726,38 @@ func backoff(failures int, max time.Duration) time.Duration {
 // status but not the cause, so a rejected checkpoint is named as such and
 // everything else is reported as what it is: unexplained here, and explained
 // in the audit log the loop already wrote.
+// metRequired reports whether a finished loop met every required criterion. A
+// loop that recorded no criterion states — one from before they existed —
+// met them when its score reached 1.0, as it always did.
+func metRequired(ls coreloop.State) bool {
+	if len(ls.Criteria) == 0 {
+		return ls.CriteriaMet >= 1.0
+	}
+	return objective.AllRequiredMet(ls.Criteria)
+}
+
+// inconclusivePass reports whether a loop that ran to its end left a required
+// criterion inconclusive and none not_met. Only a required not_met is a failed
+// pass; an errored run is a failure whatever its criteria say.
+func inconclusivePass(ls coreloop.State) bool {
+	if ls.Outcome == coreloop.RunErrored {
+		return false
+	}
+	inconclusive := false
+	for _, c := range ls.Criteria {
+		if !c.IsRequired() {
+			continue
+		}
+		switch c.State {
+		case objective.CriterionNotMet:
+			return false
+		case objective.CriterionInconclusive:
+			inconclusive = true
+		}
+	}
+	return inconclusive
+}
+
 func failureReason(ls coreloop.State) string {
 	if ls.CheckpointID != "" {
 		return "loop ended failed after checkpoint " + ls.CheckpointID

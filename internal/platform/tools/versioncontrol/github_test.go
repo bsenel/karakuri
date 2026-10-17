@@ -72,3 +72,91 @@ func TestListPRsCarriesTheAuthorAndWhetherItIsTheDeploymentsOwn(t *testing.T) {
 		}
 	}
 }
+
+// The pull request carries what the stream verifiers read: its head branch and
+// commit, and when it was opened and last updated.
+func TestListPRsCarriesTheHeadAndTimes(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "/check-runs") {
+			_, _ = w.Write([]byte(`{"check_runs":[]}`))
+			return
+		}
+		_, _ = w.Write([]byte(`[{"number":7,"created_at":"2026-10-16T09:00:00Z","updated_at":"2026-10-17T10:00:00Z",
+			"head":{"ref":"karakuri/ux","sha":"c2"},"user":{"login":"x"}}]`))
+	}))
+	defer srv.Close()
+	g := NewGitHub("t", "acme/api")
+	g.client = &http.Client{Transport: toServer{srv}}
+
+	prs, err := g.ListPRs(context.Background(), "", time.Time{})
+	if err != nil || len(prs) != 1 {
+		t.Fatalf("prs %v, err %v", prs, err)
+	}
+	pr := prs[0]
+	if pr.HeadBranch != "karakuri/ux" || pr.HeadSHA != "c2" ||
+		!pr.CreatedAt.Equal(time.Date(2026, 10, 16, 9, 0, 0, 0, time.UTC)) ||
+		!pr.UpdatedAt.Equal(time.Date(2026, 10, 17, 10, 0, 0, 0, time.UTC)) {
+		t.Errorf("got %+v", pr)
+	}
+}
+
+// Every check run on the ref, with the commit it ran on; more than one page is
+// an error, because the page left out could hold the failing check.
+func TestListChecks(t *testing.T) {
+	body := `{"total_count":2,"check_runs":[
+		{"name":"build","head_sha":"c2","status":"completed","conclusion":"success"},
+		{"name":"test","head_sha":"c2","status":"in_progress","conclusion":null}]}`
+	var gotPath string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		_, _ = w.Write([]byte(body))
+	}))
+	defer srv.Close()
+	g := NewGitHub("t", "acme/api")
+	g.client = &http.Client{Transport: toServer{srv}}
+
+	checks, err := g.ListChecks(context.Background(), "", "c2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []CheckRun{{"build", "c2", "completed", "success"}, {"test", "c2", "in_progress", ""}}
+	if gotPath != "/repos/acme/api/commits/c2/check-runs" || len(checks) != 2 || checks[0] != want[0] || checks[1] != want[1] {
+		t.Errorf("path %s, checks %+v", gotPath, checks)
+	}
+
+	body = `{"total_count":101,"check_runs":[{"name":"build","head_sha":"c2","status":"completed","conclusion":"success"}]}`
+	if _, err := g.ListChecks(context.Background(), "", "c2"); err == nil {
+		t.Error("a partial page of checks was returned as the whole list")
+	}
+}
+
+// Every changed path, across pages.
+func TestChangedFilesReadsEveryPage(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/repos/acme/api/pulls/7/files" {
+			http.NotFound(w, r)
+			return
+		}
+		page := r.URL.Query().Get("page")
+		n := 100
+		if page == "2" {
+			n = 1
+		}
+		files := make([]string, 0, n)
+		for range n {
+			files = append(files, `{"filename":"docs/p`+page+`.md"}`)
+		}
+		_, _ = w.Write([]byte("[" + strings.Join(files, ",") + "]"))
+	}))
+	defer srv.Close()
+	g := NewGitHub("t", "acme/api")
+	g.client = &http.Client{Transport: toServer{srv}}
+
+	files, err := g.ChangedFiles(context.Background(), "", "7")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(files) != 101 || files[100] != "docs/p2.md" {
+		t.Errorf("got %d files: %v", len(files), files)
+	}
+}

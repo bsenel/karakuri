@@ -749,11 +749,20 @@ func (s *GORMStorage) SaveLoopState(ctx context.Context, st coreloop.State) erro
 		Status:       string(st.Status),
 		CriteriaMet:  st.CriteriaMet,
 		CheckpointID: st.CheckpointID,
+		Outcome:      string(st.Outcome),
+		CriteriaJSON: "[]",
 		Error:        st.Error,
 		RequestJSON:  st.RequestJSON,
 	}
 	if m.RequestJSON == "" {
 		m.RequestJSON = "{}"
+	}
+	if len(st.Criteria) > 0 {
+		b, err := json.Marshal(st.Criteria)
+		if err != nil {
+			return err
+		}
+		m.CriteriaJSON = string(b)
 	}
 	return s.db.WithContext(ctx).Save(&m).Error
 }
@@ -783,7 +792,14 @@ func (s *GORMStorage) DeleteLoopState(ctx context.Context, loopID string) error 
 }
 
 func loopStateFromModel(m schema.LoopStateModel) coreloop.State {
+	// A row that cannot be read back loses its criterion states, never the
+	// loop: a reader with no states falls back to the score, as for a row
+	// written before they were recorded.
+	var criteria []objective.Criterion
+	_ = json.Unmarshal([]byte(m.CriteriaJSON), &criteria)
 	return coreloop.State{
+		Outcome:      coreloop.RunOutcome(m.Outcome),
+		Criteria:     criteria,
 		LoopID:       m.LoopID,
 		ObjectiveID:  objective.ObjectiveID(m.ObjectiveID),
 		TwinID:       m.TwinID,

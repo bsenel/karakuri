@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"slices"
 	"time"
 
 	coreagent "github.com/bsenel/karakuri/internal/core/agent"
@@ -360,6 +361,7 @@ func (s *serviceImpl) runLoop(ctx context.Context, loopID string, req loop.Reque
 
 		state.mu.Lock()
 		state.status.CriteriaMet = score
+		state.criteria = slices.Clone(sc.obj.SuccessCriteria)
 		state.mu.Unlock()
 
 		// learn
@@ -374,7 +376,9 @@ func (s *serviceImpl) runLoop(ctx context.Context, loopID string, req loop.Reque
 		s.persistState(ictx, state, false)
 
 		span.End()
-		if score >= 1.0 {
+		// Every required criterion met, which an optional one beside them can
+		// leave short of a 1.0 score.
+		if criteriaMet {
 			break
 		}
 	}
@@ -475,6 +479,18 @@ func (s *serviceImpl) finalizeLoop(ctx context.Context, state *loopState, obj ob
 		evtType = event.TypeObjectiveFailed
 	}
 
+	// How the run ended, recorded apart from the criterion states: a run that
+	// stopped without meeting its criteria — out of iterations, or at its
+	// per-pass ceiling — has ended, and its verifiers' states stand as they
+	// settled them.
+	outcome := loop.RunBudgetSpent
+	switch {
+	case runErr != nil:
+		outcome = loop.RunErrored
+	case criteriaMet:
+		outcome = loop.RunConverged
+	}
+
 	// A standing objective has no terminal state to be put into. "Completed"
 	// would say the work is over on something whose whole point is that it
 	// never is, and "failed" would say the same about a single unlucky pass.
@@ -498,6 +514,7 @@ func (s *serviceImpl) finalizeLoop(ctx context.Context, state *loopState, obj ob
 
 	state.mu.Lock()
 	state.result = result
+	state.outcome = outcome
 	state.status.Step = loop.StepLearn
 	if runErr != nil {
 		state.runErr = runErr.Error()

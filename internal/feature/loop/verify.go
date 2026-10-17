@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 	"unicode"
@@ -34,7 +35,11 @@ func stepVerify(ctx context.Context, sc *stepContext, outcomes []actionOutcome) 
 	// no-ops: no criteria, trivial pass, falsified status. Honest
 	// failure: returns 0.0/false so the loop iterates (or finalizes
 	// as Failed) and operators add criteria before retrying.
-	if len(criteria) == 0 {
+	//
+	// Counted over required criteria, not all of them: an objective whose
+	// criteria are all optional has nothing that can grant completion, and
+	// would otherwise complete vacuously once they happened to be met.
+	if !hasRequired(criteria) {
 		sc.svc.hub.Publish(ctx, event.Event{
 			Type:        event.TypeLoopStepCompleted,
 			ObjectiveID: string(sc.obj.ID),
@@ -71,7 +76,6 @@ func stepVerify(ctx context.Context, sc *stepContext, outcomes []actionOutcome) 
 			domainTotal[criterion.Domain] += weight
 		}
 
-		met := false
 		verifier := string(criterion.Verifier)
 
 		// A criterion naming a verifier is settled by the action that ran that
@@ -84,6 +88,8 @@ func stepVerify(ctx context.Context, sc *stepContext, outcomes []actionOutcome) 
 		// hard-coded substrings. Everything else went to a model that was
 		// shown no results at all.
 		ran := outcomesFor(outcomes, verifier)
+		state := objective.CriterionNotMet
+		var reason objective.InconclusiveReason
 		switch {
 		case criterion.VerifierIsReserved():
 			// A tool a third party controls never settles whether this
@@ -91,26 +97,20 @@ func stepVerify(ctx context.Context, sc *stepContext, outcomes []actionOutcome) 
 			// objective — boot only warns about templates, so this is the
 			// place that refuses (ADR 022). Not met, and not handed to the
 			// agent either: its judgement would be read off that tool's output.
-			met = false
 		case verifier != "" && len(ran) > 0:
-			// Every run of it has to have succeeded. One failing test run is
-			// a failing test run, however many passed beside it.
-			met = true
-			for _, o := range ran {
-				if !o.Result.Success {
-					met = false
-					break
-				}
-			}
+			state, reason = settleByVerifier(ran)
 		default:
 			// No verifier declared, or the declared one never ran. The agent
 			// judges — now from the actual outcomes, which is the difference
 			// between a judgement and a guess.
-			met = evaluateWithAgent(ctx, sc, criterion, outcomes)
+			if evaluateWithAgent(ctx, sc, criterion, outcomes) {
+				state = objective.CriterionMet
+			}
 		}
 
-		criteria[i].Met = met
-		if met {
+		criteria[i].State = state
+		criteria[i].Reason = reason
+		if state == objective.CriterionMet {
 			metWeight += weight
 			metCount++
 			if criterion.Domain != "" {
@@ -119,18 +119,23 @@ func stepVerify(ctx context.Context, sc *stepContext, outcomes []actionOutcome) 
 		}
 	}
 
-	// 3. Compute weighted score
+	// 3. Compute weighted score. Optional criteria count towards it, as
+	// progress; only the required ones decide completion, and they are read
+	// over the states just settled from this one set of outcomes.
 	score := 0.0
 	if totalWeight > 0 {
 		score = metWeight / totalWeight
 	}
-	allMet := metCount == len(criteria)
+	allMet := objective.AllRequiredMet(criteria)
 
 	// 4. Emit step completed
 	payload := map[string]any{
 		"step":               string(loop.StepVerify),
 		"criteria_met_count": metCount,
 		"weighted_score":     score,
+		// The states themselves, so why the objective did or did not
+		// complete outlives the in-memory objective.
+		"criteria": slices.Clone(criteria),
 	}
 	if len(domainTotal) > 0 {
 		perDomain := make(map[string]float64, len(domainTotal))
@@ -149,6 +154,52 @@ func stepVerify(ctx context.Context, sc *stepContext, outcomes []actionOutcome) 
 	})
 
 	return score, allMet
+}
+
+// settleByVerifier reads the runs of a criterion's named verifier.
+//
+// Every run that reported has to have succeeded: one failing test run is a
+// failing test run, however many passed beside it. A run that could not be
+// carried out at all reported nothing, so it is left out, and when no run
+// reported the criterion is inconclusive — never not_met, and never handed to
+// the judge: an adapter refusing the call says nothing about the work.
+//
+// A verifier that settles its own state says so in StateDelta "state" and
+// "reason". An inconclusive run is left out like one that could not run, and
+// its reason is the criterion's when no run settled anything; read as a plain
+// failure it would be not_met, and a pass with no data would trip the breaker.
+func settleByVerifier(ran []actionOutcome) (objective.CriterionState, objective.InconclusiveReason) {
+	reported := 0
+	reason := objective.ReasonVerifierError
+	for _, o := range ran {
+		if o.Errored {
+			continue
+		}
+		if state, _ := o.Result.StateDelta["state"].(string); state == string(objective.CriterionInconclusive) {
+			if r, _ := o.Result.StateDelta["reason"].(string); r != "" {
+				reason = objective.InconclusiveReason(r)
+			}
+			continue
+		}
+		reported++
+		if !o.Result.Success {
+			return objective.CriterionNotMet, ""
+		}
+	}
+	if reported == 0 {
+		return objective.CriterionInconclusive, reason
+	}
+	return objective.CriterionMet, ""
+}
+
+// hasRequired reports whether any criterion gates completion.
+func hasRequired(criteria []objective.Criterion) bool {
+	for _, c := range criteria {
+		if c.IsRequired() {
+			return true
+		}
+	}
+	return false
 }
 
 // evaluateWithAgent asks the agent whether a criterion is met, given what the

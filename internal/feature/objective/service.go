@@ -4,12 +4,18 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/bsenel/karakuri/internal/core/objective"
 	"github.com/bsenel/karakuri/internal/platform/storage"
 )
+
+// ErrNoRequiredCriterion rejects an objective that could never complete: with
+// no required criterion, the verify step fails it after spending every
+// iteration it is given.
+var ErrNoRequiredCriterion = errors.New("objective has no required success criterion")
 
 type CreateRequest struct {
 	Title             string
@@ -74,6 +80,9 @@ func (s *Service) Create(ctx context.Context, req CreateRequest) (objective.Obje
 			}
 		}
 	}
+	if !hasRequiredCriterion(o.SuccessCriteria) {
+		return objective.Objective{}, ErrNoRequiredCriterion
+	}
 	if err := s.store.SaveObjective(ctx, o); err != nil {
 		return objective.Objective{}, fmt.Errorf("save objective: %w", err)
 	}
@@ -107,6 +116,15 @@ func (s *Service) ListTemplates() []objective.Template {
 		out = append(out, t)
 	}
 	return out
+}
+
+func hasRequiredCriterion(criteria []objective.Criterion) bool {
+	for _, c := range criteria {
+		if c.IsRequired() {
+			return true
+		}
+	}
+	return false
 }
 
 func newID() (string, error) {

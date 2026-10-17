@@ -2,6 +2,7 @@ package handler
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 
 	"github.com/bsenel/karakuri/auth"
@@ -46,6 +47,12 @@ func (h *ObjectiveHandler) Create(w http.ResponseWriter, r *http.Request) {
 		TwinID:            req.TwinID,
 		TemplateID:        req.TemplateID,
 	})
+	if errors.Is(err, featureobj.ErrNoRequiredCriterion) {
+		// The caller's mistake, and one they can fix: name a template whose
+		// criteria include a required one.
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
