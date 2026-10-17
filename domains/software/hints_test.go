@@ -229,3 +229,18 @@ func TestPullRequestTitleHintStaysShort(t *testing.T) {
 		t.Errorf("Guidance is %d characters, want at most 600", n)
 	}
 }
+
+// The planner learns the field exists only from this hint; without it a plan
+// leaves allowed_tools out and relies on the instance default being set.
+func TestWriteActionHintNamesAllowedTools(t *testing.T) {
+	for _, h := range softwarePlannerHints() {
+		if !strings.Contains(h.Guidance, "params.prompt") {
+			continue
+		}
+		if !strings.Contains(h.Guidance, "params.allowed_tools") {
+			t.Errorf("Guidance %q does not name params.allowed_tools", h.Guidance)
+		}
+		return
+	}
+	t.Fatal("no hint tells the planner where the task goes")
+}
