@@ -59,6 +59,7 @@ paths:
             application/json:
               schema:
                 type: array
+                nullable: true
                 items:
                   $ref: '#/components/schemas/Artifact'
         '401':
@@ -67,18 +68,27 @@ paths:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: The principal lacks the permission.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '429':
           description: Over the caller's rate or quota limit.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RateLimitError'
     post:
       operationId: writeArtifact
       tags:
@@ -91,6 +101,7 @@ paths:
           application/json:
             schema:
               type: object
+              additionalProperties: false
               properties:
                 objective_id:
                   type: string
@@ -115,24 +126,36 @@ paths:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '401':
           description: Missing or invalid credential.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: The principal lacks the permission.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '429':
           description: Over the caller's rate or quota limit.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RateLimitError'
   /artifacts/{sha}:
     get:
       operationId: getArtifact
@@ -161,24 +184,36 @@ paths:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: The principal lacks the permission.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '404':
           description: No such resource.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '429':
           description: Over the caller's rate or quota limit.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RateLimitError'
   /artifacts/{sha}/diff/{other}:
     get:
       operationId: diffArtifacts
@@ -206,6 +241,7 @@ paths:
             application/json:
               schema:
                 type: object
+                additionalProperties: false
                 properties:
                   diff:
                     type: string
@@ -215,18 +251,27 @@ paths:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: The principal lacks the permission.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '429':
           description: Over the caller's rate or quota limit.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RateLimitError'
   /audit:
     get:
       operationId: listAuditEvents
@@ -296,6 +341,7 @@ paths:
             application/json:
               schema:
                 type: array
+                nullable: true
                 items:
                   $ref: '#/components/schemas/AuditEvent'
         '401':
@@ -304,18 +350,27 @@ paths:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: The principal lacks the permission.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '429':
           description: Over the caller's rate or quota limit.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RateLimitError'
   /audit/export:
     get:
       operationId: exportAuditWindow
@@ -342,32 +397,43 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                additionalProperties: true
+                $ref: '#/components/schemas/AuditExport'
         '400':
           description: 'Bad request: the body or a parameter could not be read.'
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '401':
           description: Missing or invalid credential.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: The principal lacks the permission.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '429':
           description: Over the caller's rate or quota limit.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RateLimitError'
   /audit/{id}:
     get:
       operationId: getAuditEvent
@@ -395,24 +461,36 @@ paths:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: The principal lacks the permission.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '404':
           description: No such resource.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '429':
           description: Over the caller's rate or quota limit.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RateLimitError'
   /auth/bindings:
     get:
       operationId: listBindings
@@ -434,6 +512,7 @@ paths:
             application/json:
               schema:
                 type: array
+                nullable: true
                 items:
                   $ref: '#/components/schemas/RoleBinding'
         '401':
@@ -442,18 +521,27 @@ paths:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: The principal lacks the permission.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '429':
           description: Over the caller's rate or quota limit.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RateLimitError'
     post:
       operationId: createBinding
       tags:
@@ -466,6 +554,7 @@ paths:
           application/json:
             schema:
               type: object
+              additionalProperties: false
               properties:
                 principal_id:
                   type: string
@@ -489,30 +578,45 @@ paths:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '401':
           description: Missing or invalid credential.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: The principal lacks the permission.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '404':
           description: No such resource.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '429':
           description: Over the caller's rate or quota limit.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RateLimitError'
   /auth/bindings/{id}:
     delete:
       operationId: deleteBinding
@@ -536,24 +640,36 @@ paths:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: The principal lacks the permission.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '404':
           description: No such resource.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '429':
           description: Over the caller's rate or quota limit.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RateLimitError'
   /auth/catalog:
     get:
       operationId: listPermissionCatalog
@@ -568,27 +684,36 @@ paths:
             application/json:
               schema:
                 type: array
+                nullable: true
                 items:
-                  type: object
-                  additionalProperties: true
+                  $ref: '#/components/schemas/CatalogEntry'
         '401':
           description: Missing or invalid credential.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: The principal lacks the permission.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '429':
           description: Over the caller's rate or quota limit.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RateLimitError'
   /auth/check:
     post:
       operationId: checkPermission
@@ -602,6 +727,7 @@ paths:
           application/json:
             schema:
               type: object
+              additionalProperties: false
               properties:
                 principal:
                   type: string
@@ -627,30 +753,45 @@ paths:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '401':
           description: Missing or invalid credential.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: The principal lacks the permission.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '404':
           description: No such resource.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '429':
           description: Over the caller's rate or quota limit.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RateLimitError'
   /auth/me:
     get:
       operationId: getMe
@@ -663,26 +804,34 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                additionalProperties: true
+                $ref: '#/components/schemas/MeResponse'
         '401':
           description: Missing or invalid credential.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: The principal lacks the permission.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '429':
           description: Over the caller's rate or quota limit.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RateLimitError'
   /auth/policies:
     get:
       operationId: listPolicies
@@ -699,34 +848,51 @@ paths:
           type: string
       responses:
         '200':
-          description: Grants.
+          description: A principal's grants, or each role's policies.
           content:
             application/json:
               schema:
-                oneOf:
+                anyOf:
                 - type: array
+                  nullable: true
                   items:
                     $ref: '#/components/schemas/Grant'
-                - type: object
-                  additionalProperties: true
+                - type: array
+                  nullable: true
+                  items:
+                    type: object
+                    additionalProperties: false
+                    properties:
+                      role:
+                        type: string
+                      policy: {}
         '401':
           description: Missing or invalid credential.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: The principal lacks the permission.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '429':
           description: Over the caller's rate or quota limit.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RateLimitError'
   /auth/refresh:
     post:
       operationId: refreshToken
@@ -740,6 +906,7 @@ paths:
           application/json:
             schema:
               type: object
+              additionalProperties: false
               properties:
                 refresh_token:
                   type: string
@@ -750,7 +917,7 @@ paths:
           content:
             application/json:
               schema:
-                oneOf:
+                anyOf:
                 - $ref: '#/components/schemas/TokenPair'
                 - $ref: '#/components/schemas/SessionResponse'
         '400':
@@ -759,18 +926,27 @@ paths:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '401':
           description: Missing or invalid credential.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '429':
           description: Over the caller's rate or quota limit.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RateLimitError'
   /auth/revoke:
     post:
       operationId: revokeToken
@@ -783,6 +959,7 @@ paths:
           application/json:
             schema:
               type: object
+              additionalProperties: false
               properties:
                 refresh_token:
                   type: string
@@ -793,28 +970,34 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  status:
-                    type: string
+                $ref: '#/components/schemas/StatusMessage'
         '401':
           description: Missing or invalid credential.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: The principal lacks the permission.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '429':
           description: Over the caller's rate or quota limit.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RateLimitError'
   /auth/roles:
     get:
       operationId: listRoles
@@ -829,6 +1012,7 @@ paths:
             application/json:
               schema:
                 type: array
+                nullable: true
                 items:
                   $ref: '#/components/schemas/Role'
         '401':
@@ -837,18 +1021,27 @@ paths:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: The principal lacks the permission.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '429':
           description: Over the caller's rate or quota limit.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RateLimitError'
   /auth/saml/acs:
     post:
       operationId: samlACS
@@ -865,18 +1058,27 @@ paths:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '401':
           description: Missing or invalid credential.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '404':
           description: No such resource.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /auth/saml/metadata:
     get:
       operationId: getSAMLMetadata
@@ -897,6 +1099,9 @@ paths:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /auth/sso/callback:
     get:
       operationId: finishSSOLogin
@@ -913,18 +1118,27 @@ paths:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '401':
           description: Missing or invalid credential.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '404':
           description: No such resource.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /auth/sso/config:
     get:
       operationId: getSSOConfig
@@ -938,8 +1152,7 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                additionalProperties: true
+                $ref: '#/components/schemas/SSOConfig'
   /auth/sso/exchange:
     post:
       operationId: exchangeSSOCode
@@ -953,6 +1166,7 @@ paths:
           application/json:
             schema:
               type: object
+              additionalProperties: false
               properties:
                 code:
                   type: string
@@ -967,20 +1181,25 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                additionalProperties: true
+                $ref: '#/components/schemas/SSOExchangeResponse'
         '400':
           description: 'Bad request: the body or a parameter could not be read.'
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '401':
           description: Missing or invalid credential.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /auth/sso/login:
     get:
       operationId: startSSOLogin
@@ -1010,12 +1229,18 @@ paths:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '404':
           description: No such resource.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /auth/token:
     post:
       operationId: issueToken
@@ -1029,6 +1254,7 @@ paths:
           application/json:
             schema:
               type: object
+              additionalProperties: false
               properties:
                 id:
                   type: string
@@ -1046,7 +1272,7 @@ paths:
           content:
             application/json:
               schema:
-                oneOf:
+                anyOf:
                 - $ref: '#/components/schemas/TokenPair'
                 - $ref: '#/components/schemas/SessionResponse'
         '400':
@@ -1055,18 +1281,27 @@ paths:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '401':
           description: Missing or invalid credential.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '429':
           description: Over the caller's rate or quota limit.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RateLimitError'
   /auth/users:
     get:
       operationId: listUsers
@@ -1081,6 +1316,7 @@ paths:
             application/json:
               schema:
                 type: array
+                nullable: true
                 items:
                   $ref: '#/components/schemas/Principal'
         '401':
@@ -1089,18 +1325,27 @@ paths:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: The principal lacks the permission.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '429':
           description: Over the caller's rate or quota limit.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RateLimitError'
     post:
       operationId: createUser
       tags:
@@ -1113,6 +1358,7 @@ paths:
           application/json:
             schema:
               type: object
+              additionalProperties: false
               properties:
                 id:
                   type: string
@@ -1120,6 +1366,7 @@ paths:
                   type: string
                 roles:
                   type: array
+                  nullable: true
                   items:
                     type: string
                 scope:
@@ -1140,38 +1387,52 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                additionalProperties: true
+                $ref: '#/components/schemas/CreateUserResponse'
         '400':
           description: 'Bad request: the body or a parameter could not be read.'
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '401':
           description: Missing or invalid credential.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: The principal lacks the permission.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '409':
           description: Conflict with the resource's current state.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '429':
           description: Over the caller's rate or quota limit.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RateLimitError'
   /auth/users/{id}:
     delete:
       operationId: deleteUser
@@ -1189,30 +1450,51 @@ paths:
       responses:
         '204':
           description: Deleted.
+        '400':
+          description: 'Bad request: the body or a parameter could not be read.'
+          content:
+            text/plain:
+              schema:
+                type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '401':
           description: Missing or invalid credential.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: The principal lacks the permission.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '404':
           description: No such resource.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '429':
           description: Over the caller's rate or quota limit.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RateLimitError'
   /checkpoints:
     get:
       operationId: listPendingCheckpoints
@@ -1234,6 +1516,7 @@ paths:
             application/json:
               schema:
                 type: array
+                nullable: true
                 items:
                   $ref: '#/components/schemas/Checkpoint'
         '401':
@@ -1242,18 +1525,27 @@ paths:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: The principal lacks the permission.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '429':
           description: Over the caller's rate or quota limit.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RateLimitError'
   /checkpoints/{id}:
     get:
       operationId: getCheckpoint
@@ -1281,24 +1573,36 @@ paths:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: The principal lacks the permission.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '404':
           description: No such resource.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '429':
           description: Over the caller's rate or quota limit.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RateLimitError'
   /checkpoints/{id}/resolve:
     post:
       operationId: resolveCheckpoint
@@ -1319,6 +1623,7 @@ paths:
           application/json:
             schema:
               type: object
+              additionalProperties: false
               properties:
                 decision:
                   type: string
@@ -1338,34 +1643,43 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  status:
-                    type: string
+                $ref: '#/components/schemas/StatusMessage'
         '400':
           description: 'Bad request: the body or a parameter could not be read.'
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '401':
           description: Missing or invalid credential.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: The principal lacks the permission.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '429':
           description: Over the caller's rate or quota limit.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RateLimitError'
   /containers:
     post:
       operationId: createContainer
@@ -1379,6 +1693,7 @@ paths:
           application/json:
             schema:
               type: object
+              additionalProperties: false
               properties:
                 kind:
                   type: string
@@ -1402,30 +1717,45 @@ paths:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '401':
           description: Missing or invalid credential.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: The principal lacks the permission.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '409':
           description: Conflict with the resource's current state.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '429':
           description: Over the caller's rate or quota limit.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RateLimitError'
     get:
       operationId: listContainers
       tags:
@@ -1464,6 +1794,7 @@ paths:
             application/json:
               schema:
                 type: array
+                nullable: true
                 items:
                   $ref: '#/components/schemas/Container'
         '401':
@@ -1472,18 +1803,27 @@ paths:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: The principal lacks the permission.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '429':
           description: Over the caller's rate or quota limit.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RateLimitError'
   /containers/resources:
     get:
       operationId: getResourceContainers
@@ -1510,32 +1850,43 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                additionalProperties: true
+                $ref: '#/components/schemas/ResourcePlacement'
         '400':
           description: 'Bad request: the body or a parameter could not be read.'
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '401':
           description: Missing or invalid credential.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: The principal lacks the permission.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '429':
           description: Over the caller's rate or quota limit.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RateLimitError'
     post:
       operationId: setResourceContainers
       tags:
@@ -1548,6 +1899,7 @@ paths:
           application/json:
             schema:
               type: object
+              additionalProperties: false
               properties:
                 resource_type:
                   type: string
@@ -1555,6 +1907,7 @@ paths:
                   type: string
                 container_ids:
                   type: array
+                  nullable: true
                   items:
                     type: string
               required:
@@ -1567,32 +1920,43 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                additionalProperties: true
+                $ref: '#/components/schemas/ResourcePlacement'
         '400':
           description: 'Bad request: the body or a parameter could not be read.'
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '401':
           description: Missing or invalid credential.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: The principal lacks the permission.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '429':
           description: Over the caller's rate or quota limit.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RateLimitError'
   /containers/{id}:
     get:
       operationId: getContainer
@@ -1620,24 +1984,36 @@ paths:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: The principal lacks the permission.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '404':
           description: No such resource.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '429':
           description: Over the caller's rate or quota limit.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RateLimitError'
     delete:
       operationId: deleteContainer
       tags:
@@ -1660,30 +2036,45 @@ paths:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: The principal lacks the permission.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '404':
           description: No such resource.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '409':
           description: Conflict with the resource's current state.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '429':
           description: Over the caller's rate or quota limit.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RateLimitError'
   /containers/{id}/name:
     post:
       operationId: renameContainer
@@ -1704,6 +2095,7 @@ paths:
           application/json:
             schema:
               type: object
+              additionalProperties: false
               properties:
                 name:
                   type: string
@@ -1722,36 +2114,54 @@ paths:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '401':
           description: Missing or invalid credential.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: The principal lacks the permission.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '404':
           description: No such resource.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '409':
           description: Conflict with the resource's current state.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '429':
           description: Over the caller's rate or quota limit.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RateLimitError'
   /containers/{id}/parent:
     post:
       operationId: reparentContainer
@@ -1772,6 +2182,7 @@ paths:
           application/json:
             schema:
               type: object
+              additionalProperties: false
               properties:
                 parent_id:
                   type: string
@@ -1790,36 +2201,54 @@ paths:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '401':
           description: Missing or invalid credential.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: The principal lacks the permission.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '404':
           description: No such resource.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '409':
           description: Conflict with the resource's current state.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '429':
           description: Over the caller's rate or quota limit.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RateLimitError'
   /cost:
     get:
       operationId: getCostReport
@@ -1877,6 +2306,7 @@ paths:
             application/json:
               schema:
                 type: array
+                nullable: true
                 items:
                   $ref: '#/components/schemas/CostBucket'
         '400':
@@ -1885,24 +2315,36 @@ paths:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '401':
           description: Missing or invalid credential.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: The principal lacks the permission.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '429':
           description: Over the caller's rate or quota limit.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RateLimitError'
   /domains:
     get:
       operationId: listDomains
@@ -1917,27 +2359,36 @@ paths:
             application/json:
               schema:
                 type: array
+                nullable: true
                 items:
-                  type: object
-                  additionalProperties: true
+                  $ref: '#/components/schemas/DomainInfo'
         '401':
           description: Missing or invalid credential.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: The principal lacks the permission.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '429':
           description: Over the caller's rate or quota limit.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RateLimitError'
   /domains/capabilities:
     get:
       operationId: listCapabilities
@@ -1959,6 +2410,7 @@ paths:
             application/json:
               schema:
                 type: array
+                nullable: true
                 items:
                   $ref: '#/components/schemas/Capability'
         '401':
@@ -1967,18 +2419,27 @@ paths:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: The principal lacks the permission.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '429':
           description: Over the caller's rate or quota limit.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RateLimitError'
   /domains/{id}/conformance:
     get:
       operationId: runConformance
@@ -2000,6 +2461,7 @@ paths:
             application/json:
               schema:
                 type: array
+                nullable: true
                 items:
                   $ref: '#/components/schemas/ConformanceResult'
         '401':
@@ -2008,24 +2470,36 @@ paths:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: The principal lacks the permission.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '404':
           description: No such resource.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '429':
           description: Over the caller's rate or quota limit.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RateLimitError'
   /eval/calibrate:
     post:
       operationId: calibrateJudge
@@ -2039,6 +2513,7 @@ paths:
           application/json:
             schema:
               type: object
+              additionalProperties: false
               properties:
                 twin:
                   type: string
@@ -2061,24 +2536,36 @@ paths:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '401':
           description: Missing or invalid credential.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: The principal lacks the permission.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '429':
           description: Over the caller's rate or quota limit.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RateLimitError'
   /events:
     get:
       operationId: streamEvents
@@ -2099,18 +2586,27 @@ paths:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: The principal lacks the permission.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '429':
           description: Over the caller's rate or quota limit.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RateLimitError'
   /health:
     get:
       operationId: getHealth
@@ -2124,8 +2620,7 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                additionalProperties: true
+                $ref: '#/components/schemas/HealthResponse'
   /loops:
     post:
       operationId: startLoop
@@ -2139,6 +2634,7 @@ paths:
           application/json:
             schema:
               type: object
+              additionalProperties: false
               properties:
                 objective_id:
                   type: string
@@ -2164,24 +2660,36 @@ paths:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '401':
           description: Missing or invalid credential.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: The principal lacks the permission.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '429':
           description: Over the caller's rate or quota limit.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RateLimitError'
   /loops/{id}/resume:
     post:
       operationId: resumeLoop
@@ -2202,6 +2710,7 @@ paths:
           application/json:
             schema:
               type: object
+              additionalProperties: false
               properties:
                 decision:
                   type: string
@@ -2227,24 +2736,36 @@ paths:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '401':
           description: Missing or invalid credential.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: The principal lacks the permission.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '429':
           description: Over the caller's rate or quota limit.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RateLimitError'
   /loops/{id}/status:
     get:
       operationId: getLoopStatus
@@ -2272,24 +2793,36 @@ paths:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: The principal lacks the permission.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '404':
           description: No such resource.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '429':
           description: Over the caller's rate or quota limit.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RateLimitError'
   /mcp:
     post:
       operationId: mcp
@@ -2320,24 +2853,36 @@ paths:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '401':
           description: Missing or invalid credential.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: The principal lacks the permission.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '429':
           description: Over the caller's rate or quota limit.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RateLimitError'
         '202':
           description: A notification was accepted (no response body).
   /memory/forget:
@@ -2359,34 +2904,43 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  status:
-                    type: string
+                $ref: '#/components/schemas/StatusMessage'
         '400':
           description: 'Bad request: the body or a parameter could not be read.'
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '401':
           description: Missing or invalid credential.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: The principal lacks the permission.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '429':
           description: Over the caller's rate or quota limit.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RateLimitError'
   /memory/recall:
     post:
       operationId: recallMemory
@@ -2407,6 +2961,7 @@ paths:
             application/json:
               schema:
                 type: array
+                nullable: true
                 items:
                   $ref: '#/components/schemas/MemoryEntry'
         '400':
@@ -2415,24 +2970,36 @@ paths:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '401':
           description: Missing or invalid credential.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: The principal lacks the permission.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '429':
           description: Over the caller's rate or quota limit.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RateLimitError'
   /memory/store:
     post:
       operationId: storeMemory
@@ -2452,34 +3019,43 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  status:
-                    type: string
+                $ref: '#/components/schemas/StatusMessage'
         '400':
           description: 'Bad request: the body or a parameter could not be read.'
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '401':
           description: Missing or invalid credential.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: The principal lacks the permission.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '429':
           description: Over the caller's rate or quota limit.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RateLimitError'
   /objectives:
     post:
       operationId: createObjective
@@ -2493,6 +3069,7 @@ paths:
           application/json:
             schema:
               type: object
+              additionalProperties: false
               properties:
                 title:
                   type: string
@@ -2502,6 +3079,7 @@ paths:
                   type: string
                 additional_domains:
                   type: array
+                  nullable: true
                   items:
                     type: string
                 priority:
@@ -2527,24 +3105,36 @@ paths:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '401':
           description: Missing or invalid credential.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: The principal lacks the permission.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '429':
           description: Over the caller's rate or quota limit.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RateLimitError'
     get:
       operationId: listObjectives
       tags:
@@ -2571,6 +3161,7 @@ paths:
             application/json:
               schema:
                 type: array
+                nullable: true
                 items:
                   $ref: '#/components/schemas/Objective'
         '401':
@@ -2579,18 +3170,27 @@ paths:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: The principal lacks the permission.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '429':
           description: Over the caller's rate or quota limit.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RateLimitError'
   /objectives/templates:
     get:
       operationId: listObjectiveTemplates
@@ -2605,6 +3205,7 @@ paths:
             application/json:
               schema:
                 type: array
+                nullable: true
                 items:
                   $ref: '#/components/schemas/ObjectiveTemplate'
         '401':
@@ -2613,18 +3214,27 @@ paths:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: The principal lacks the permission.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '429':
           description: Over the caller's rate or quota limit.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RateLimitError'
   /objectives/{id}:
     get:
       operationId: getObjective
@@ -2652,24 +3262,36 @@ paths:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: The principal lacks the permission.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '404':
           description: No such resource.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '429':
           description: Over the caller's rate or quota limit.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RateLimitError'
   /objectives/{id}/events:
     get:
       operationId: streamObjectiveEvents
@@ -2697,18 +3319,27 @@ paths:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: The principal lacks the permission.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '429':
           description: Over the caller's rate or quota limit.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RateLimitError'
   /objectives/{id}/pause:
     post:
       operationId: pauseObjective
@@ -2729,6 +3360,7 @@ paths:
           application/json:
             schema:
               type: object
+              additionalProperties: false
               properties:
                 reason:
                   type: string
@@ -2745,24 +3377,36 @@ paths:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: The principal lacks the permission.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '404':
           description: No such resource.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '429':
           description: Over the caller's rate or quota limit.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RateLimitError'
   /objectives/{id}/reconcile:
     get:
       operationId: getReconcileState
@@ -2789,38 +3433,43 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  state:
-                    $ref: '#/components/schemas/ReconcileState'
-                  history:
-                    type: array
-                    items:
-                      $ref: '#/components/schemas/ReconcileOutcome'
+                $ref: '#/components/schemas/ReconcileStateResponse'
         '401':
           description: Missing or invalid credential.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: The principal lacks the permission.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '404':
           description: No such resource.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '429':
           description: Over the caller's rate or quota limit.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RateLimitError'
     post:
       operationId: triggerReconcile
       tags:
@@ -2841,6 +3490,7 @@ paths:
             application/json:
               schema:
                 type: object
+                additionalProperties: false
                 properties:
                   objective_id:
                     type: string
@@ -2852,24 +3502,36 @@ paths:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: The principal lacks the permission.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '409':
           description: Conflict with the resource's current state.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '429':
           description: Over the caller's rate or quota limit.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RateLimitError'
   /objectives/{id}/resume:
     post:
       operationId: resumeObjective
@@ -2897,24 +3559,36 @@ paths:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: The principal lacks the permission.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '404':
           description: No such resource.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '429':
           description: Over the caller's rate or quota limit.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RateLimitError'
   /objectives/{id}/standing:
     put:
       operationId: declareStanding
@@ -2935,6 +3609,7 @@ paths:
           application/json:
             schema:
               type: object
+              additionalProperties: false
               properties:
                 cadence:
                   $ref: '#/components/schemas/Cadence'
@@ -2955,30 +3630,45 @@ paths:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '401':
           description: Missing or invalid credential.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: The principal lacks the permission.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '404':
           description: No such resource.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '429':
           description: Over the caller's rate or quota limit.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RateLimitError'
     delete:
       operationId: undeclareStanding
       tags:
@@ -3001,24 +3691,36 @@ paths:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: The principal lacks the permission.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '404':
           description: No such resource.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '429':
           description: Over the caller's rate or quota limit.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RateLimitError'
   /objectives/{id}/status:
     post:
       operationId: setObjectiveStatus
@@ -3039,6 +3741,7 @@ paths:
           application/json:
             schema:
               type: object
+              additionalProperties: false
               properties:
                 status:
                   type: string
@@ -3050,34 +3753,43 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  status:
-                    type: string
+                $ref: '#/components/schemas/StatusMessage'
         '400':
           description: 'Bad request: the body or a parameter could not be read.'
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '401':
           description: Missing or invalid credential.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: The principal lacks the permission.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '429':
           description: Over the caller's rate or quota limit.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RateLimitError'
   /quota:
     get:
       operationId: getQuotaConfig
@@ -3091,26 +3803,34 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                additionalProperties: true
+                $ref: '#/components/schemas/QuotaConfig'
         '401':
           description: Missing or invalid credential.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: The principal lacks the permission.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '429':
           description: Over the caller's rate or quota limit.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RateLimitError'
   /quota/overrides:
     get:
       operationId: listQuotaOverrides
@@ -3125,6 +3845,7 @@ paths:
             application/json:
               schema:
                 type: array
+                nullable: true
                 items:
                   $ref: '#/components/schemas/QuotaOverride'
         '401':
@@ -3133,18 +3854,27 @@ paths:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: The principal lacks the permission.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '429':
           description: Over the caller's rate or quota limit.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RateLimitError'
   /quota/overrides/{subject}/{name}:
     delete:
       operationId: revokeQuotaOverride
@@ -3174,24 +3904,36 @@ paths:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: The principal lacks the permission.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '404':
           description: No such resource.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '429':
           description: Over the caller's rate or quota limit.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RateLimitError'
   /quota/requests:
     get:
       operationId: listQuotaRequests
@@ -3225,6 +3967,7 @@ paths:
             application/json:
               schema:
                 type: array
+                nullable: true
                 items:
                   $ref: '#/components/schemas/QuotaRequest'
         '401':
@@ -3233,18 +3976,27 @@ paths:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: The principal lacks the permission.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '429':
           description: Over the caller's rate or quota limit.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RateLimitError'
     post:
       operationId: submitQuotaRequest
       tags:
@@ -3257,6 +4009,7 @@ paths:
           application/json:
             schema:
               type: object
+              additionalProperties: false
               properties:
                 tier:
                   type: string
@@ -3289,24 +4042,36 @@ paths:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '401':
           description: Missing or invalid credential.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: The principal lacks the permission.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '429':
           description: Over the caller's rate or quota limit.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RateLimitError'
   /quota/requests/{id}/decide:
     post:
       operationId: decideQuotaRequest
@@ -3327,6 +4092,7 @@ paths:
           application/json:
             schema:
               type: object
+              additionalProperties: false
               properties:
                 approve:
                   type: boolean
@@ -3347,36 +4113,54 @@ paths:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '401':
           description: Missing or invalid credential.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: The principal lacks the permission.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '404':
           description: No such resource.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '409':
           description: Conflict with the resource's current state.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '429':
           description: Over the caller's rate or quota limit.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RateLimitError'
   /quota/reset:
     post:
       operationId: resetQuota
@@ -3390,6 +4174,7 @@ paths:
           application/json:
             schema:
               type: object
+              additionalProperties: false
               properties:
                 twin:
                   type: string
@@ -3404,6 +4189,7 @@ paths:
             application/json:
               schema:
                 type: object
+                additionalProperties: false
                 properties:
                   twin_id:
                     type: string
@@ -3417,24 +4203,36 @@ paths:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '401':
           description: Missing or invalid credential.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: The principal lacks the permission.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '429':
           description: Over the caller's rate or quota limit.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RateLimitError'
   /quota/tiers:
     get:
       operationId: listQuotaTiers
@@ -3448,32 +4246,34 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  stored:
-                    type: array
-                    items:
-                      $ref: '#/components/schemas/QuotaTier'
-                  editable:
-                    type: boolean
+                $ref: '#/components/schemas/QuotaTiers'
         '401':
           description: Missing or invalid credential.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: The principal lacks the permission.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '429':
           description: Over the caller's rate or quota limit.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RateLimitError'
   /quota/tiers/{name}:
     put:
       operationId: setQuotaTier
@@ -3494,6 +4294,7 @@ paths:
           application/json:
             schema:
               type: object
+              additionalProperties: false
               properties:
                 cap:
                   type: integer
@@ -3517,24 +4318,36 @@ paths:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '401':
           description: Missing or invalid credential.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: The principal lacks the permission.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '429':
           description: Over the caller's rate or quota limit.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RateLimitError'
     delete:
       operationId: resetQuotaTier
       tags:
@@ -3551,24 +4364,42 @@ paths:
       responses:
         '204':
           description: Reset.
+        '400':
+          description: 'Bad request: the body or a parameter could not be read.'
+          content:
+            text/plain:
+              schema:
+                type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '401':
           description: Missing or invalid credential.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: The principal lacks the permission.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '429':
           description: Over the caller's rate or quota limit.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RateLimitError'
   /quota/usage:
     get:
       operationId: getQuotaUsage
@@ -3589,37 +4420,43 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  twin_id:
-                    type: string
-                  tiers:
-                    type: object
-                    additionalProperties: true
+                $ref: '#/components/schemas/QuotaUsage'
         '400':
           description: 'Bad request: the body or a parameter could not be read.'
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '401':
           description: Missing or invalid credential.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: The principal lacks the permission.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '429':
           description: Over the caller's rate or quota limit.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RateLimitError'
   /reports:
     get:
       operationId: listReportSchedules
@@ -3641,6 +4478,7 @@ paths:
             application/json:
               schema:
                 type: array
+                nullable: true
                 items:
                   $ref: '#/components/schemas/ReportSchedule'
         '401':
@@ -3649,18 +4487,27 @@ paths:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: The principal lacks the permission.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '429':
           description: Over the caller's rate or quota limit.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RateLimitError'
     post:
       operationId: createReportSchedule
       tags:
@@ -3673,6 +4520,7 @@ paths:
           application/json:
             schema:
               type: object
+              additionalProperties: false
               properties:
                 twin_id:
                   type: string
@@ -3704,24 +4552,36 @@ paths:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '401':
           description: Missing or invalid credential.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: The principal lacks the permission.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '429':
           description: Over the caller's rate or quota limit.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RateLimitError'
   /reports/preview:
     get:
       operationId: previewDigest
@@ -3755,24 +4615,36 @@ paths:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '401':
           description: Missing or invalid credential.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: The principal lacks the permission.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '429':
           description: Over the caller's rate or quota limit.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RateLimitError'
   /reports/{id}:
     delete:
       operationId: deleteReportSchedule
@@ -3796,18 +4668,27 @@ paths:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: The principal lacks the permission.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '429':
           description: Over the caller's rate or quota limit.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RateLimitError'
   /reports/{id}/send:
     post:
       operationId: sendDigest
@@ -3828,34 +4709,43 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  status:
-                    type: string
+                $ref: '#/components/schemas/StatusMessage'
         '401':
           description: Missing or invalid credential.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: The principal lacks the permission.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '404':
           description: No such resource.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '429':
           description: Over the caller's rate or quota limit.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RateLimitError'
         '502':
           description: The messaging adapter refused the send.
           content:
@@ -3875,6 +4765,7 @@ paths:
           application/json:
             schema:
               type: object
+              additionalProperties: false
               properties:
                 twin_id:
                   type: string
@@ -3886,6 +4777,7 @@ paths:
                   type: string
                 sources:
                   type: array
+                  nullable: true
                   items:
                     type: string
                 depth:
@@ -3905,24 +4797,36 @@ paths:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '401':
           description: Missing or invalid credential.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: The principal lacks the permission.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '429':
           description: Over the caller's rate or quota limit.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RateLimitError'
   /twins:
     post:
       operationId: createTwin
@@ -3936,6 +4840,7 @@ paths:
           application/json:
             schema:
               type: object
+              additionalProperties: false
               properties:
                 name:
                   type: string
@@ -3960,24 +4865,36 @@ paths:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '401':
           description: Missing or invalid credential.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: The principal lacks the permission.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '429':
           description: Over the caller's rate or quota limit.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RateLimitError'
     get:
       operationId: listTwins
       tags:
@@ -4004,6 +4921,7 @@ paths:
             application/json:
               schema:
                 type: array
+                nullable: true
                 items:
                   $ref: '#/components/schemas/Twin'
         '401':
@@ -4012,18 +4930,27 @@ paths:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: The principal lacks the permission.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '429':
           description: Over the caller's rate or quota limit.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RateLimitError'
   /twins/{id}:
     get:
       operationId: getTwin
@@ -4051,24 +4978,36 @@ paths:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: The principal lacks the permission.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '404':
           description: No such resource.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '429':
           description: Over the caller's rate or quota limit.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RateLimitError'
     put:
       operationId: updateTwin
       tags:
@@ -4088,6 +5027,7 @@ paths:
           application/json:
             schema:
               type: object
+              additionalProperties: false
               properties:
                 name:
                   type: string
@@ -4110,30 +5050,45 @@ paths:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '401':
           description: Missing or invalid credential.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: The principal lacks the permission.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '404':
           description: No such resource.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '429':
           description: Over the caller's rate or quota limit.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RateLimitError'
   /twins/{id}/bindings:
     put:
       operationId: setTwinBindings
@@ -4154,6 +5109,7 @@ paths:
           application/json:
             schema:
               type: object
+              additionalProperties: false
               properties:
                 adapter_bindings:
                   type: object
@@ -4174,30 +5130,45 @@ paths:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '401':
           description: Missing or invalid credential.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: The principal lacks the permission.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '404':
           description: No such resource.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '429':
           description: Over the caller's rate or quota limit.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RateLimitError'
   /twins/{id}/events:
     get:
       operationId: streamTwinEvents
@@ -4225,18 +5196,27 @@ paths:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: The principal lacks the permission.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '429':
           description: Over the caller's rate or quota limit.
           content:
             text/plain:
               schema:
                 type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RateLimitError'
 components:
   securitySchemes:
     bearerAuth:
@@ -4248,383 +5228,733 @@ components:
       in: cookie
       name: karakuri_access
   schemas:
-    Artifact:
-      type: object
+    AdapterStatus:
+      additionalProperties: false
       properties:
-        sha:
+        active:
+          type: boolean
+        instance:
           type: string
-        objective_id:
+        is_default:
+          type: boolean
+        slot:
           type: string
+        type:
+          type: string
+      type: object
+    Artifact:
+      additionalProperties: false
+      properties:
         agent_id:
           type: string
         capability:
           type: string
         content_type:
           type: string
-        size:
-          type: integer
         created_at:
-          type: string
           format: date-time
-    AuditEvent:
-      type: object
-      properties:
-        id:
           type: string
         objective_id:
           type: string
-        agent_id:
+        sha:
           type: string
-        capability:
-          type: string
+        size:
+          type: integer
+      type: object
+    AuditEvent:
+      additionalProperties: false
+      properties:
         adapter:
           type: string
-        success:
-          type: boolean
-        confidence:
-          type: number
-        payload_json:
-          type: string
-        kind:
-          type: string
-        escalation_reason:
+        agent_id:
           type: string
         approver:
           type: string
+        autonomy_rung:
+          type: string
         bounds_violation:
           type: boolean
-        provider:
+        capability:
+          type: string
+        confidence:
+          type: number
+        created_at:
+          format: date-time
+          type: string
+        escalation_reason:
+          type: string
+        id:
+          type: string
+        kind:
           type: string
         model:
           type: string
+        objective_id:
+          type: string
+        payload_json:
+          type: string
+        provider:
+          type: string
+        success:
+          type: boolean
         template_id:
           type: string
-        autonomy_rung:
-          type: string
-        created_at:
-          type: string
-          format: date-time
-    AuthDecision:
       type: object
+    AuditExport:
+      additionalProperties: false
       properties:
-        allowed:
-          type: boolean
-        effect:
+        autonomy_changes:
+          items:
+            additionalProperties: false
+            properties:
+              adapter:
+                type: string
+              agent_definition_id:
+                type: string
+              agent_id:
+                type: string
+              approver:
+                type: string
+              autonomy_rung:
+                type: string
+              bounds:
+                additionalProperties: false
+                nullable: true
+                properties:
+                  confidence_threshold:
+                    type: number
+                  effective_threshold:
+                    type: number
+                  max_autonomous:
+                    type: integer
+                  requires_approval_for:
+                    items:
+                      type: string
+                    nullable: true
+                    type: array
+                type: object
+              bounds_violation:
+                type: boolean
+              capability:
+                type: string
+              checkpoint_id:
+                type: string
+              confidence:
+                type: number
+              created_at:
+                type: string
+              escalation_reason:
+                type: string
+              id:
+                type: string
+              kind:
+                type: string
+              model:
+                type: string
+              modifications: {}
+              objective_id:
+                type: string
+              payload: {}
+              provider:
+                type: string
+              reasoning_strategy:
+                type: string
+              risk_class:
+                type: string
+              success:
+                type: boolean
+              template_id:
+                type: string
+            type: object
+          nullable: true
+          type: array
+        counts_by_kind:
+          items:
+            additionalProperties: false
+            properties:
+              count:
+                type: integer
+              kind:
+                type: string
+            type: object
+          nullable: true
+          type: array
+        decisions:
+          additionalProperties: false
+          properties:
+            rows:
+              items:
+                additionalProperties: false
+                properties:
+                  adapter:
+                    type: string
+                  agent_definition_id:
+                    type: string
+                  agent_id:
+                    type: string
+                  approver:
+                    type: string
+                  autonomy_rung:
+                    type: string
+                  bounds:
+                    additionalProperties: false
+                    nullable: true
+                    properties:
+                      confidence_threshold:
+                        type: number
+                      effective_threshold:
+                        type: number
+                      max_autonomous:
+                        type: integer
+                      requires_approval_for:
+                        items:
+                          type: string
+                        nullable: true
+                        type: array
+                    type: object
+                  bounds_violation:
+                    type: boolean
+                  capability:
+                    type: string
+                  checkpoint_id:
+                    type: string
+                  confidence:
+                    type: number
+                  created_at:
+                    type: string
+                  escalation_reason:
+                    type: string
+                  id:
+                    type: string
+                  kind:
+                    type: string
+                  model:
+                    type: string
+                  modifications: {}
+                  objective_id:
+                    type: string
+                  payload: {}
+                  provider:
+                    type: string
+                  reasoning_strategy:
+                    type: string
+                  risk_class:
+                    type: string
+                  success:
+                    type: boolean
+                  template_id:
+                    type: string
+                type: object
+              nullable: true
+              type: array
+            without_provenance:
+              type: integer
+          type: object
+        not_a_certification:
           type: string
-        principal_id:
-          type: string
+        oversight:
+          additionalProperties: false
+          properties:
+            checkpoints_raised:
+              type: integer
+            checkpoints_resolved:
+              type: integer
+            interventions:
+              items:
+                additionalProperties: false
+                properties:
+                  adapter:
+                    type: string
+                  agent_definition_id:
+                    type: string
+                  agent_id:
+                    type: string
+                  approver:
+                    type: string
+                  autonomy_rung:
+                    type: string
+                  bounds:
+                    additionalProperties: false
+                    nullable: true
+                    properties:
+                      confidence_threshold:
+                        type: number
+                      effective_threshold:
+                        type: number
+                      max_autonomous:
+                        type: integer
+                      requires_approval_for:
+                        items:
+                          type: string
+                        nullable: true
+                        type: array
+                    type: object
+                  bounds_violation:
+                    type: boolean
+                  capability:
+                    type: string
+                  checkpoint_id:
+                    type: string
+                  confidence:
+                    type: number
+                  created_at:
+                    type: string
+                  escalation_reason:
+                    type: string
+                  id:
+                    type: string
+                  kind:
+                    type: string
+                  model:
+                    type: string
+                  modifications: {}
+                  objective_id:
+                    type: string
+                  payload: {}
+                  provider:
+                    type: string
+                  reasoning_strategy:
+                    type: string
+                  risk_class:
+                    type: string
+                  success:
+                    type: boolean
+                  template_id:
+                    type: string
+                type: object
+              nullable: true
+              type: array
+            person_consulted:
+              type: boolean
+            statement:
+              type: string
+          type: object
+        pending_checkpoints:
+          items:
+            additionalProperties: false
+            properties:
+              id:
+                type: string
+              objective_id:
+                type: string
+              raised_at:
+                type: string
+            type: object
+          nullable: true
+          type: array
+        retention:
+          additionalProperties: false
+          properties:
+            floor_days:
+              type: integer
+            note:
+              type: string
+            retention_days:
+              type: integer
+            window_precedes_retention:
+              type: boolean
+          type: object
+        schema_version:
+          type: integer
+        templates:
+          items:
+            additionalProperties: false
+            properties:
+              domain:
+                type: string
+              id:
+                type: string
+              risk_class:
+                type: string
+            type: object
+          nullable: true
+          type: array
+        window:
+          additionalProperties: false
+          properties:
+            from:
+              type: string
+            to:
+              type: string
+          type: object
+      type: object
+    AuthDecision:
+      additionalProperties: false
+      properties:
         action:
           type: string
-        resource:
-          type: string
-        matched_policy:
-          type: string
-        via_role:
-          type: string
+        allowed:
+          type: boolean
         binding_scope:
           type: string
         conditions:
-          type: array
           items:
-            type: object
+            additionalProperties: false
             properties:
               condition:
-                type: object
+                additionalProperties: false
                 properties:
-                  kind:
-                    type: string
                   key:
                     type: string
+                  kind:
+                    type: string
                   values:
-                    type: array
                     items:
                       type: string
-              satisfied:
-                type: boolean
+                    nullable: true
+                    type: array
+                type: object
               detail:
                 type: string
-        reason:
-          type: string
-        considered_roles:
+              satisfied:
+                type: boolean
+            type: object
+          nullable: true
           type: array
+        considered_roles:
           items:
             type: string
-    Autonomy:
-      type: object
-      properties:
-        level:
+          nullable: true
+          type: array
+        effect:
           type: string
+        matched_policy:
+          type: string
+        principal_id:
+          type: string
+        reason:
+          type: string
+        resource:
+          type: string
+        via_role:
+          type: string
+      type: object
+    Autonomy:
+      additionalProperties: false
+      properties:
         ceiling:
+          type: string
+        demote_on_failure:
+          type: boolean
+        level:
           type: string
         promote_after:
           type: integer
-        demote_on_failure:
-          type: boolean
-    Budget:
       type: object
+    Budget:
+      additionalProperties: false
       properties:
         daily:
           type: number
         per_reconcile:
           type: number
-    Cadence:
       type: object
+    Cadence:
+      additionalProperties: false
       properties:
-        sense:
-          type: string
-        every:
-          type: string
         cron:
           type: string
         daily_at:
           type: string
-        timezone:
-          type: string
-        resync:
+        every:
           type: string
         min_interval:
           type: string
         quiet:
-          type: array
           items:
             type: string
-    CalibrationReport:
+          nullable: true
+          type: array
+        resync:
+          type: string
+        sense:
+          type: string
+        timezone:
+          type: string
       type: object
+    CalibrationReport:
+      additionalProperties: false
       properties:
-        TwinID:
-          type: string
-        Since:
-          type: string
-          format: date-time
-        Until:
-          type: string
-          format: date-time
-        N:
-          type: integer
         Agreed:
-          type: integer
-        Skipped:
           type: integer
         Agreement:
           type: number
-        Replayable:
-          type: integer
-        Confusion:
-          type: object
-          properties:
-            JudgePassHumanApprove:
-              type: integer
-            JudgePassHumanReject:
-              type: integer
-            JudgeFailHumanApprove:
-              type: integer
-            JudgeFailHumanReject:
-              type: integer
         ByDecision:
-          type: object
           additionalProperties:
-            type: object
+            additionalProperties: false
             properties:
-              N:
-                type: integer
               Agreed:
                 type: integer
               JudgePass:
                 type: integer
-        Items:
-          type: array
-          items:
+              N:
+                type: integer
             type: object
+          nullable: true
+          type: object
+        Confusion:
+          additionalProperties: false
+          properties:
+            JudgeFailHumanApprove:
+              type: integer
+            JudgeFailHumanReject:
+              type: integer
+            JudgePassHumanApprove:
+              type: integer
+            JudgePassHumanReject:
+              type: integer
+          type: object
+        Items:
+          items:
+            additionalProperties: false
             properties:
+              Actions:
+                type: string
+              Agreed:
+                type: boolean
               CheckpointID:
                 type: string
-              ObjectiveID:
-                type: string
               Choice:
+                type: string
+              Criterion:
+                type: string
+              Error:
                 type: string
               HumanApprove:
                 type: boolean
               JudgePass:
                 type: boolean
-              Agreed:
-                type: boolean
-              Reply:
+              ObjectiveID:
                 type: string
-              Error:
+              Reply:
                 type: string
               Title:
                 type: string
-              Criterion:
-                type: string
-              Actions:
-                type: string
-    Capability:
-      type: object
-      properties:
-        id:
+            type: object
+          nullable: true
+          type: array
+        N:
+          type: integer
+        Replayable:
+          type: integer
+        Since:
+          format: date-time
           type: string
-        name:
+        Skipped:
+          type: integer
+        TwinID:
+          type: string
+        Until:
+          format: date-time
+          type: string
+      type: object
+    Capability:
+      additionalProperties: false
+      properties:
+        description:
           type: string
         domain:
           type: string
-        description:
-          type: string
-        input_schema:
-          type: object
-          properties:
-            type:
-              type: string
-            properties:
-              type: object
-              additionalProperties:
-                type: object
-                properties:
-                  type:
-                    type: string
-                  description:
-                    type: string
-                  enum:
-                    type: array
-                    items:
-                      type: string
-            required:
-              type: array
-              items:
-                type: string
-        output_schema:
-          type: object
-          properties:
-            type:
-              type: string
-            properties:
-              type: object
-              additionalProperties:
-                type: object
-                properties:
-                  type:
-                    type: string
-                  description:
-                    type: string
-                  enum:
-                    type: array
-                    items:
-                      type: string
-            required:
-              type: array
-              items:
-                type: string
-        verifiable:
-          type: boolean
-        llm_hints:
-          type: object
-          properties:
-            preferred_provider:
-              type: string
-            fallback_provider:
-              type: string
-            temperature_min:
-              type: number
-            temperature_max:
-              type: number
-        needs_workspace:
-          type: boolean
-    Checkpoint:
-      type: object
-      properties:
         id:
           type: string
-        objective_id:
+        input_schema:
+          additionalProperties: false
+          properties:
+            properties:
+              additionalProperties:
+                additionalProperties: false
+                properties:
+                  description:
+                    type: string
+                  enum:
+                    items:
+                      type: string
+                    nullable: true
+                    type: array
+                  type:
+                    type: string
+                type: object
+              nullable: true
+              type: object
+            required:
+              items:
+                type: string
+              nullable: true
+              type: array
+            type:
+              type: string
+          type: object
+        llm_hints:
+          additionalProperties: false
+          properties:
+            fallback_provider:
+              type: string
+            preferred_provider:
+              type: string
+            temperature_max:
+              type: number
+            temperature_min:
+              type: number
+          type: object
+        name:
           type: string
-        twin_id:
+        needs_workspace:
+          type: boolean
+        output_schema:
+          additionalProperties: false
+          properties:
+            properties:
+              additionalProperties:
+                additionalProperties: false
+                properties:
+                  description:
+                    type: string
+                  enum:
+                    items:
+                      type: string
+                    nullable: true
+                    type: array
+                  type:
+                    type: string
+                type: object
+              nullable: true
+              type: object
+            required:
+              items:
+                type: string
+              nullable: true
+              type: array
+            type:
+              type: string
+          type: object
+        verifiable:
+          type: boolean
+      type: object
+    CatalogEntry:
+      type: object
+      additionalProperties: false
+      properties:
+        action:
           type: string
-        reason:
+        description:
           type: string
-        summary:
-          type: string
-        options:
-          type: array
+    Checkpoint:
+      additionalProperties: false
+      properties:
+        actions:
           items:
-            type: string
+            additionalProperties: false
+            properties:
+              capability:
+                type: string
+              env_id:
+                type: string
+              params:
+                additionalProperties: {}
+                nullable: true
+                type: object
+              reason:
+                type: string
+            type: object
+          nullable: true
+          type: array
+        audit_event_id:
+          type: string
         capability:
           type: string
         confidence:
           type: number
-        actions:
-          type: array
+        created_at:
+          format: date-time
+          type: string
+        decision:
+          additionalProperties: false
+          nullable: true
+          properties:
+            approver:
+              type: string
+            choice:
+              type: string
+            modifications:
+              allOf:
+              - $ref: '#/components/schemas/CheckpointModifications'
+              nullable: true
+            note:
+              type: string
+          type: object
+        expires_at:
+          format: date-time
+          nullable: true
+          type: string
+        id:
+          type: string
+        objective_id:
+          type: string
+        options:
           items:
-            type: object
-            properties:
-              capability:
-                type: string
-              params:
-                type: object
-                additionalProperties: {}
-              reason:
-                type: string
-              env_id:
-                type: string
-        audit_event_id:
+            type: string
+          nullable: true
+          type: array
+        reason:
+          type: string
+        resolved_at:
+          format: date-time
+          nullable: true
           type: string
         status:
           type: string
-        decision:
-          type: object
-          properties:
-            choice:
-              type: string
-            note:
-              type: string
-            approver:
-              type: string
-            modifications:
-              $ref: '#/components/schemas/CheckpointModifications'
-        created_at:
+        summary:
           type: string
-          format: date-time
-        resolved_at:
+        twin_id:
           type: string
-          format: date-time
-        expires_at:
-          type: string
-          format: date-time
+      type: object
     CheckpointModifications:
-      type: object
+      additionalProperties: false
       properties:
-        removed_actions:
-          type: array
-          items:
-            type: string
         added_constraints:
-          type: array
           items:
             type: string
+          nullable: true
+          type: array
+        removed_actions:
+          items:
+            type: string
+          nullable: true
+          type: array
         revised_confidence:
+          nullable: true
           type: number
-    ConformanceResult:
       type: object
+    ConformanceResult:
+      additionalProperties: false
       properties:
         check:
           type: string
-        passed:
-          type: boolean
         message:
           type: string
+        passed:
+          type: boolean
         warning:
           type: boolean
-    Constraint:
       type: object
+    Constraint:
+      additionalProperties: false
       properties:
-        id:
-          type: string
         description:
+          type: string
+        expression:
           type: string
         hard:
           type: boolean
-        expression:
+        id:
           type: string
-    Container:
       type: object
+    Container:
+      additionalProperties: false
       properties:
+        created_at:
+          format: date-time
+          type: string
         id:
           type: string
         kind:
@@ -4633,93 +5963,85 @@ components:
           type: string
         parent_id:
           type: string
-        created_at:
-          type: string
-          format: date-time
         updated_at:
-          type: string
           format: date-time
-    CostBucket:
+          type: string
       type: object
+    CostBucket:
+      additionalProperties: false
       properties:
-        key:
-          type: array
-          items:
-            type: string
-        units:
-          type: number
         cost:
           type: number
         events:
           type: integer
-    Criterion:
+        key:
+          items:
+            type: string
+          nullable: true
+          type: array
+        units:
+          type: number
       type: object
+    CreateUserResponse:
+      type: object
+      additionalProperties: false
       properties:
-        id:
+        principal:
+          $ref: '#/components/schemas/Principal'
+        roles:
+          type: array
+          nullable: true
+          items:
+            type: string
+        scope:
           type: string
+        access_token:
+          type: string
+        refresh_token:
+          type: string
+    Criterion:
+      additionalProperties: false
+      properties:
         description:
           type: string
-        verifier:
-          type: string
-        threshold: {}
-        weight:
-          type: number
-        met:
-          type: boolean
         domain:
           type: string
-    Digest:
+        id:
+          type: string
+        met:
+          type: boolean
+        threshold: {}
+        verifier:
+          type: string
+        weight:
+          type: number
       type: object
+    Digest:
+      additionalProperties: false
       properties:
-        twin_id:
-          type: string
-        twin_name:
-          type: string
-        since:
-          type: string
-          format: date-time
-        until:
-          type: string
-          format: date-time
-        objectives:
-          type: array
+        autonomy_changes:
           items:
-            type: object
+            additionalProperties: false
             properties:
-              id:
+              at:
+                format: date-time
                 type: string
-              title:
+              from:
                 type: string
-              status:
+              objective_id:
                 type: string
-              senses:
-                type: integer
-              reconciles:
-                type: integer
-              drift_detected:
-                type: integer
-              converged:
-                type: integer
-              escalations:
-                type: integer
-              failures:
-                type: integer
-              actions:
-                type: integer
-              autonomy:
+              objective_title:
                 type: string
-              criteria_met:
-                type: number
-              paused:
-                type: boolean
-              paused_why:
+              reason:
                 type: string
-              last_error:
+              to:
                 type: string
-        decisions:
-          type: array
-          items:
             type: object
+          nullable: true
+          type: array
+        decisions:
+          items:
+            additionalProperties: false
             properties:
               checkpoint_id:
                 type: string
@@ -4727,653 +6049,1028 @@ components:
                 type: string
               objective_title:
                 type: string
+              options:
+                items:
+                  type: string
+                nullable: true
+                type: array
+              proposed:
+                items:
+                  type: string
+                nullable: true
+                type: array
               reason:
                 type: string
               summary:
                 type: string
-              options:
-                type: array
-                items:
-                  type: string
-              proposed:
-                type: array
-                items:
-                  type: string
               waiting_since:
-                type: string
                 format: date-time
-        spend:
-          type: object
-          properties:
-            cost:
-              type: number
-            by_provider:
-              type: object
-              additionalProperties:
-                type: number
-            priced:
-              type: boolean
-        exhausted:
-          type: array
-          items:
+                type: string
             type: object
+          nullable: true
+          type: array
+        exhausted:
+          items:
+            additionalProperties: false
             properties:
+              ceiling:
+                type: number
+              interrupted_by:
+                type: string
               objective_id:
                 type: string
               objective_title:
+                type: string
+              resumes_at:
+                format: date-time
                 type: string
               times:
                 type: integer
-              ceiling:
-                type: number
-              resumes_at:
-                type: string
-                format: date-time
-              interrupted_by:
-                type: string
-        autonomy_changes:
-          type: array
-          items:
             type: object
+          nullable: true
+          type: array
+        objectives:
+          items:
+            additionalProperties: false
             properties:
-              objective_id:
+              actions:
+                type: integer
+              autonomy:
                 type: string
-              objective_title:
+              converged:
+                type: integer
+              criteria_met:
+                type: number
+              drift_detected:
+                type: integer
+              escalations:
+                type: integer
+              failures:
+                type: integer
+              id:
                 type: string
-              from:
+              last_error:
                 type: string
-              to:
+              paused:
+                type: boolean
+              paused_why:
                 type: string
-              reason:
+              reconciles:
+                type: integer
+              senses:
+                type: integer
+              status:
                 type: string
-              at:
+              title:
                 type: string
-                format: date-time
+            type: object
+          nullable: true
+          type: array
         prose:
           type: string
-    Grant:
+        since:
+          format: date-time
+          type: string
+        spend:
+          additionalProperties: false
+          properties:
+            by_provider:
+              additionalProperties:
+                type: number
+              nullable: true
+              type: object
+            cost:
+              type: number
+            priced:
+              type: boolean
+          type: object
+        twin_id:
+          type: string
+        twin_name:
+          type: string
+        until:
+          format: date-time
+          type: string
       type: object
+    DomainInfo:
+      type: object
+      additionalProperties: false
       properties:
+        id:
+          type: string
+        name:
+          type: string
+        version:
+          type: string
+        description:
+          type: string
+    ErrorResponse:
+      type: object
+      additionalProperties: false
+      properties:
+        error:
+          type: string
+        reason:
+          type: string
+      required:
+      - error
+      description: A refusal from the authorization layer; other errors are plain text.
+    Grant:
+      additionalProperties: false
+      properties:
+        action:
+          type: string
+        conditions:
+          items:
+            additionalProperties: false
+            properties:
+              key:
+                type: string
+              kind:
+                type: string
+              values:
+                items:
+                  type: string
+                nullable: true
+                type: array
+            type: object
+          nullable: true
+          type: array
+        effect:
+          type: string
+        policy_id:
+          type: string
+        resource:
+          type: string
         role:
           type: string
         scope:
           type: string
-        policy_id:
-          type: string
-        action:
-          type: string
-        resource:
-          type: string
-        effect:
-          type: string
-        conditions:
-          type: array
-          items:
-            type: object
-            properties:
-              kind:
-                type: string
-              key:
-                type: string
-              values:
-                type: array
-                items:
-                  type: string
-    LoopResult:
       type: object
+    HealthResponse:
+      type: object
+      additionalProperties: false
       properties:
+        status:
+          type: string
+        providers:
+          type: object
+          nullable: true
+          additionalProperties:
+            type: boolean
+        adapters:
+          type: array
+          nullable: true
+          items:
+            $ref: '#/components/schemas/AdapterStatus'
+        mcp:
+          type: array
+          nullable: true
+          items:
+            $ref: '#/components/schemas/MCPInstanceHealth'
+        exporters:
+          type: array
+          nullable: true
+          items:
+            type: string
+        git:
+          type: object
+          additionalProperties: false
+          properties:
+            repo_path:
+              type: string
+            worktree_manager:
+              type: boolean
+    LoopResult:
+      additionalProperties: false
+      properties:
+        checkpoint_id:
+          nullable: true
+          type: string
+        criteria_met:
+          type: number
+        iterations:
+          items:
+            additionalProperties: false
+            properties:
+              Duration:
+                description: nanoseconds
+                type: integer
+              Input: {}
+              Number:
+                type: integer
+              Output: {}
+              Step:
+                type: string
+              Timestamp:
+                format: date-time
+                type: string
+              TokensUsed:
+                type: integer
+            type: object
+          nullable: true
+          type: array
+        learned_facts:
+          items:
+            $ref: '#/components/schemas/MemoryEntry'
+          nullable: true
+          type: array
         loop_id:
           type: string
         objective_id:
           type: string
         status:
           type: string
-        iterations:
-          type: array
-          items:
-            type: object
-            properties:
-              Number:
-                type: integer
-              Step:
-                type: string
-              Input: {}
-              Output: {}
-              TokensUsed:
-                type: integer
-              Duration:
-                type: integer
-                description: nanoseconds
-              Timestamp:
-                type: string
-                format: date-time
+      type: object
+    LoopStatus:
+      additionalProperties: false
+      properties:
         criteria_met:
           type: number
-        checkpoint_id:
-          type: string
-        learned_facts:
-          type: array
-          items:
-            $ref: '#/components/schemas/MemoryEntry'
-    LoopStatus:
-      type: object
-      properties:
+        iteration:
+          type: integer
         loop_id:
           type: string
         objective_id:
           type: string
-        step:
-          type: string
-        iteration:
-          type: integer
-        criteria_met:
-          type: number
         paused:
           type: boolean
-    MemoryEntry:
-      type: object
-      properties:
-        id:
+        step:
           type: string
+      type: object
+    MCPInstanceHealth:
+      additionalProperties: false
+      properties:
+        error:
+          type: string
+        filtered:
+          items:
+            type: string
+          nullable: true
+          type: array
+        is_default:
+          type: boolean
+        name:
+          type: string
+        protocol_path:
+          type: string
+        protocol_version:
+          type: string
+        server:
+          type: string
+        state:
+          type: string
+        tools:
+          items:
+            type: string
+          nullable: true
+          type: array
+        transport:
+          type: string
+      type: object
+    MeResponse:
+      type: object
+      additionalProperties: false
+      properties:
+        principal:
+          $ref: '#/components/schemas/Principal'
+        roles:
+          type: array
+          nullable: true
+          items:
+            type: string
+        permissions:
+          type: array
+          nullable: true
+          items:
+            type: string
+        bindings:
+          type: array
+          nullable: true
+          items:
+            $ref: '#/components/schemas/RoleBinding'
+    MemoryEntry:
+      additionalProperties: false
+      properties:
         agent_id:
           type: string
-        twin_id:
-          type: string
-        tier:
-          type: string
-        domain:
-          type: string
-        content:
-          type: string
-        embedding:
-          type: array
-          items:
-            type: number
         confidence:
           type: number
-        sources:
-          type: array
-          items:
-            type: string
+        content:
+          type: string
         created_at:
-          type: string
           format: date-time
-        expires_at:
           type: string
-          format: date-time
-    MemoryQuery:
-      type: object
-      properties:
-        agent_id:
-          type: string
-        twin_id:
-          type: string
-        tiers:
-          type: array
-          items:
-            type: string
-        query:
-          type: string
-        embedding:
-          type: array
-          items:
-            type: number
-        top_k:
-          type: integer
-        since:
-          type: string
-          format: date-time
         domain:
           type: string
-    MemoryRetentionPolicy:
-      type: object
-      properties:
-        agent_id:
+        embedding:
+          items:
+            type: number
+          nullable: true
+          type: array
+        expires_at:
+          format: date-time
+          nullable: true
+          type: string
+        id:
+          type: string
+        sources:
+          items:
+            type: string
+          nullable: true
+          type: array
+        tier:
           type: string
         twin_id:
           type: string
-        before:
+      type: object
+    MemoryQuery:
+      additionalProperties: false
+      properties:
+        agent_id:
           type: string
-          format: date-time
-        tiers:
+        domain:
+          type: string
+        embedding:
+          items:
+            type: number
+          nullable: true
           type: array
+        query:
+          type: string
+        since:
+          format: date-time
+          nullable: true
+          type: string
+        tiers:
           items:
             type: string
+          nullable: true
+          type: array
+        top_k:
+          type: integer
+        twin_id:
+          type: string
+      type: object
+    MemoryRetentionPolicy:
+      additionalProperties: false
+      properties:
+        agent_id:
+          type: string
+        before:
+          format: date-time
+          nullable: true
+          type: string
         min_score:
           type: number
-    Objective:
-      type: object
-      properties:
-        id:
+        tiers:
+          items:
+            type: string
+          nullable: true
+          type: array
+        twin_id:
           type: string
-        title:
+      type: object
+    Objective:
+      additionalProperties: false
+      properties:
+        additional_domains:
+          items:
+            type: string
+          nullable: true
+          type: array
+        agent_id:
+          type: string
+        autonomy:
+          allOf:
+          - $ref: '#/components/schemas/Autonomy'
+          nullable: true
+        budget:
+          allOf:
+          - $ref: '#/components/schemas/Budget'
+          nullable: true
+        cadence:
+          allOf:
+          - $ref: '#/components/schemas/Cadence'
+          nullable: true
+        constraints:
+          items:
+            $ref: '#/components/schemas/Constraint'
+          nullable: true
+          type: array
+        created_at:
+          format: date-time
+          type: string
+        deadline:
+          format: date-time
+          nullable: true
           type: string
         description:
           type: string
         domain:
           type: string
-        additional_domains:
-          type: array
-          items:
-            type: string
-        twin_id:
+        id:
+          type: string
+        max_iterations:
+          type: integer
+        mode:
+          type: string
+        parent_id:
+          nullable: true
           type: string
         priority:
           type: integer
-        max_iterations:
-          type: integer
-        deadline:
-          type: string
-          format: date-time
-        success_criteria:
-          type: array
-          items:
-            $ref: '#/components/schemas/Criterion'
-        constraints:
-          type: array
-          items:
-            $ref: '#/components/schemas/Constraint'
-        parent_id:
-          type: string
         status:
           type: string
-        mode:
-          type: string
-        cadence:
-          $ref: '#/components/schemas/Cadence'
-        autonomy:
-          $ref: '#/components/schemas/Autonomy'
-        budget:
-          $ref: '#/components/schemas/Budget'
-        agent_id:
-          type: string
+        success_criteria:
+          items:
+            $ref: '#/components/schemas/Criterion'
+          nullable: true
+          type: array
         template_id:
-          type: string
-        created_at:
-          type: string
-          format: date-time
-        updated_at:
-          type: string
-          format: date-time
-    ObjectiveTemplate:
-      type: object
-      properties:
-        id:
           type: string
         title:
           type: string
+        twin_id:
+          type: string
+        updated_at:
+          format: date-time
+          type: string
+      type: object
+    ObjectiveTemplate:
+      additionalProperties: false
+      properties:
+        constraints:
+          items:
+            $ref: '#/components/schemas/Constraint'
+          nullable: true
+          type: array
         description:
           type: string
         domain:
+          type: string
+        id:
           type: string
         risk:
           type: string
         success_criteria:
-          type: array
           items:
             $ref: '#/components/schemas/Criterion'
-        constraints:
+          nullable: true
           type: array
-          items:
-            $ref: '#/components/schemas/Constraint'
         suggested_agents:
-          type: array
           items:
-            type: object
+            additionalProperties: false
             properties:
-              ID:
-                type: string
-              Name:
-                type: string
-              Domain:
-                type: string
-              Capabilities:
-                type: array
-                items:
-                  type: string
-              Memory:
-                type: object
-                properties:
-                  working_window_size:
-                    type: integer
-                  episodic_retention:
-                    type: integer
-                    description: nanoseconds
-                  semantic_enabled:
-                    type: boolean
-                  procedural_enabled:
-                    type: boolean
-              ReasoningStrategy:
-                type: string
               Authority:
-                type: object
+                additionalProperties: false
                 properties:
-                  MaxAutonomousActions:
-                    type: integer
-                  RequiresApprovalFor:
-                    type: array
-                    items:
-                      type: string
                   CanDelegate:
                     type: boolean
                   CanModifyObjective:
                     type: boolean
                   ConfidenceThreshold:
                     type: number
-              LLMHints:
+                  MaxAutonomousActions:
+                    type: integer
+                  RequiresApprovalFor:
+                    items:
+                      type: string
+                    nullable: true
+                    type: array
                 type: object
+              Capabilities:
+                items:
+                  type: string
+                nullable: true
+                type: array
+              Domain:
+                type: string
+              ID:
+                type: string
+              LLMHints:
+                additionalProperties: false
                 properties:
-                  preferred_provider:
-                    type: string
                   fallback_provider:
                     type: string
-                  temperature_min:
-                    type: number
+                  preferred_provider:
+                    type: string
                   temperature_max:
                     type: number
-    Principal:
-      type: object
-      properties:
-        id:
+                  temperature_min:
+                    type: number
+                type: object
+              Memory:
+                additionalProperties: false
+                properties:
+                  episodic_retention:
+                    description: nanoseconds
+                    type: integer
+                  procedural_enabled:
+                    type: boolean
+                  semantic_enabled:
+                    type: boolean
+                  working_window_size:
+                    type: integer
+                type: object
+              Name:
+                type: string
+              ReasoningStrategy:
+                type: string
+            type: object
+          nullable: true
+          type: array
+        title:
           type: string
-        name:
+      type: object
+    Principal:
+      additionalProperties: false
+      properties:
+        attrs:
+          additionalProperties:
+            type: string
+          nullable: true
+          type: object
+        disabled:
+          type: boolean
+        id:
           type: string
         kind:
           type: string
-        attrs:
+        name:
+          type: string
+      type: object
+    QuotaConfig:
+      type: object
+      additionalProperties: false
+      properties:
+        request:
           type: object
-          additionalProperties:
-            type: string
-        disabled:
+          additionalProperties: false
+          properties:
+            algorithm:
+              type: string
+            limit:
+              type: integer
+            window:
+              type: string
+            per_second:
+              type: number
+        capability:
+          type: object
+          additionalProperties: false
+          properties:
+            cap:
+              type: integer
+            period:
+              type: string
+        llm_tokens:
+          type: object
+          additionalProperties: false
+          properties:
+            cap:
+              type: integer
+            period:
+              type: string
+        adapter:
+          type: object
+          additionalProperties: false
+          properties:
+            cap:
+              type: integer
+            period:
+              type: string
+        pressure_threshold:
+          type: number
+        configured:
+          type: object
+          additionalProperties: false
+          properties:
+            request:
+              type: object
+              additionalProperties: false
+              properties:
+                algorithm:
+                  type: string
+                limit:
+                  type: integer
+                window:
+                  type: string
+                per_second:
+                  type: number
+            capability:
+              type: object
+              additionalProperties: false
+              properties:
+                cap:
+                  type: integer
+                period:
+                  type: string
+            llm_tokens:
+              type: object
+              additionalProperties: false
+              properties:
+                cap:
+                  type: integer
+                period:
+                  type: string
+            adapter:
+              type: object
+              additionalProperties: false
+              properties:
+                cap:
+                  type: integer
+                period:
+                  type: string
+        editable:
           type: boolean
     QuotaOverride:
-      type: object
+      additionalProperties: false
       properties:
-        subject:
+        cap:
+          type: integer
+        expires_at:
+          format: date-time
           type: string
         name:
           type: string
-        cap:
-          type: integer
-        window:
-          type: integer
-          description: nanoseconds
-        expires_at:
-          type: string
-          format: date-time
         reason:
           type: string
-    QuotaRequest:
+        subject:
+          type: string
+        window:
+          description: nanoseconds
+          type: integer
       type: object
+    QuotaRequest:
+      additionalProperties: false
       properties:
+        cap:
+          type: integer
+        created_at:
+          format: date-time
+          type: string
+        decided_at:
+          format: date-time
+          type: string
+        decided_by:
+          type: string
+        decision_note:
+          type: string
+        expires_at:
+          format: date-time
+          type: string
         id:
           type: string
-        subject:
-          type: string
         name:
           type: string
-        cap:
-          type: integer
-        window:
-          type: integer
-          description: nanoseconds
-        expires_at:
-          type: string
-          format: date-time
         reason:
-          type: string
-        status:
           type: string
         requested_by:
           type: string
-        created_at:
+        status:
           type: string
-          format: date-time
-        decided_by:
+        subject:
           type: string
-        decided_at:
-          type: string
-          format: date-time
-        decision_note:
-          type: string
-    QuotaTier:
+        window:
+          description: nanoseconds
+          type: integer
       type: object
+    QuotaTier:
+      additionalProperties: false
       properties:
-        name:
-          type: string
         cap:
           type: integer
-        window:
-          type: integer
-          description: nanoseconds
+        name:
+          type: string
         rate:
           type: number
         reason:
           type: string
+        updated_at:
+          format: date-time
+          type: string
         updated_by:
           type: string
-        updated_at:
-          type: string
-          format: date-time
-    ReconcileOutcome:
+        window:
+          description: nanoseconds
+          type: integer
       type: object
+    QuotaTiers:
+      type: object
+      additionalProperties: false
       properties:
-        id:
-          type: string
-        objective_id:
-          type: string
+        stored:
+          type: array
+          nullable: true
+          items:
+            $ref: '#/components/schemas/QuotaTier'
+        editable:
+          type: boolean
+    QuotaUsage:
+      type: object
+      additionalProperties: false
+      properties:
         twin_id:
           type: string
-        trigger:
+        tiers:
+          type: object
+          nullable: true
+          additionalProperties:
+            type: object
+            additionalProperties: false
+            properties:
+              limit:
+                type: integer
+              remaining:
+                type: integer
+              used:
+                type: integer
+              reset_at:
+                type: string
+                format: date-time
+              allowed:
+                type: boolean
+    RateLimitError:
+      type: object
+      additionalProperties: false
+      properties:
+        error:
           type: string
-        loop_id:
+        message:
+          type: string
+      required:
+      - error
+      description: The quota limiter's refusal (quota/middleware.go).
+    ReconcileOutcome:
+      additionalProperties: false
+      properties:
+        autonomy:
+          type: string
+        checkpoint_id:
+          type: string
+        converged:
+          type: boolean
+        criteria_met:
+          type: number
+        deferred:
+          type: string
+        deferred_until:
+          format: date-time
           type: string
         drift:
-          type: object
+          additionalProperties: false
           properties:
+            blind:
+              type: boolean
             changed:
               type: boolean
             environments:
-              type: array
               items:
                 type: string
+              nullable: true
+              type: array
             from:
               type: string
             to:
               type: string
-            blind:
-              type: boolean
-        autonomy:
-          type: string
-        criteria_met:
-          type: number
-        converged:
-          type: boolean
-        escalated:
-          type: boolean
-        checkpoint_id:
+          type: object
+        ended_at:
+          format: date-time
           type: string
         error:
           type: string
-        deferred:
+        escalated:
+          type: boolean
+        id:
           type: string
-        deferred_until:
+        loop_id:
           type: string
-          format: date-time
-        started_at:
-          type: string
-          format: date-time
-        ended_at:
-          type: string
-          format: date-time
-    ReconcileState:
-      type: object
-      properties:
         objective_id:
+          type: string
+        started_at:
+          format: date-time
+          type: string
+        trigger:
           type: string
         twin_id:
           type: string
-        phase:
+      type: object
+    ReconcileState:
+      additionalProperties: false
+      properties:
+        active_loop_id:
+          type: string
+        autonomy:
+          type: string
+        clean_runs:
+          type: integer
+        consecutive_failures:
+          type: integer
+        converged_fingerprint:
+          additionalProperties: false
+          properties:
+            blind:
+              items:
+                type: string
+              nullable: true
+              type: array
+            environments:
+              additionalProperties:
+                type: string
+              nullable: true
+              type: object
+            sha:
+              type: string
+            taken_at:
+              format: date-time
+              type: string
+          type: object
+        created_at:
+          format: date-time
+          type: string
+        criteria_met:
+          type: number
+        holder:
+          type: string
+        last_converged_at:
+          format: date-time
+          nullable: true
+          type: string
+        last_error:
+          type: string
+        last_outcome_id:
+          type: string
+        last_reconciled_at:
+          format: date-time
+          nullable: true
+          type: string
+        last_run_at:
+          format: date-time
+          nullable: true
+          type: string
+        last_trigger:
+          type: string
+        lease_until:
+          format: date-time
+          nullable: true
+          type: string
+        next_due_at:
+          format: date-time
+          nullable: true
+          type: string
+        next_reconcile_at:
+          format: date-time
+          nullable: true
+          type: string
+        next_sense_at:
+          format: date-time
+          nullable: true
+          type: string
+        objective_id:
           type: string
         paused:
           type: boolean
         paused_reason:
           type: string
-        next_due_at:
+        phase:
           type: string
-          format: date-time
-        next_sense_at:
-          type: string
-          format: date-time
-        next_reconcile_at:
-          type: string
-          format: date-time
-        converged_fingerprint:
-          type: object
-          properties:
-            sha:
-              type: string
-            environments:
-              type: object
-              additionalProperties:
-                type: string
-            blind:
-              type: array
-              items:
-                type: string
-            taken_at:
-              type: string
-              format: date-time
-        last_converged_at:
-          type: string
-          format: date-time
-        last_run_at:
-          type: string
-          format: date-time
-        last_reconciled_at:
-          type: string
-          format: date-time
-        last_trigger:
-          type: string
-        last_outcome_id:
-          type: string
-        last_error:
-          type: string
-        active_loop_id:
-          type: string
-        criteria_met:
-          type: number
         score_streak:
           type: integer
-        consecutive_failures:
-          type: integer
-        autonomy:
-          type: string
-        clean_runs:
-          type: integer
-        holder:
-          type: string
-        lease_until:
-          type: string
-          format: date-time
-        created_at:
-          type: string
-          format: date-time
-        updated_at:
-          type: string
-          format: date-time
-    ReportSchedule:
-      type: object
-      properties:
-        id:
-          type: string
         twin_id:
           type: string
+        updated_at:
+          format: date-time
+          type: string
+      type: object
+    ReconcileStateResponse:
+      type: object
+      additionalProperties: false
+      properties:
+        state:
+          $ref: '#/components/schemas/ReconcileState'
+        history:
+          type: array
+          nullable: true
+          items:
+            $ref: '#/components/schemas/ReconcileOutcome'
+    ReportSchedule:
+      additionalProperties: false
+      properties:
         cadence:
           $ref: '#/components/schemas/Cadence'
         channel:
           type: string
+        consecutive_failures:
+          type: integer
+        created_at:
+          format: date-time
+          type: string
+        enabled:
+          type: boolean
+        holder:
+          type: string
+        id:
+          type: string
         instance:
           type: string
-        target:
+        last_error:
           type: string
-        window:
+        last_sent_at:
+          format: date-time
+          nullable: true
+          type: string
+        lease_until:
+          format: date-time
+          nullable: true
+          type: string
+        next_due_at:
+          format: date-time
+          nullable: true
           type: string
         send_when_empty:
           type: boolean
-        enabled:
-          type: boolean
-        next_due_at:
+        target:
           type: string
-          format: date-time
-        last_sent_at:
+        twin_id:
           type: string
-          format: date-time
-        last_error:
-          type: string
-        consecutive_failures:
-          type: integer
-        holder:
-          type: string
-        lease_until:
-          type: string
-          format: date-time
-        created_at:
-          type: string
-          format: date-time
         updated_at:
-          type: string
           format: date-time
-    ResearchResult:
+          type: string
+        window:
+          type: string
       type: object
+    ResearchResult:
+      additionalProperties: false
       properties:
         ArtifactSHA:
           type: string
-        Summary:
-          type: string
         Confidence:
           type: number
-    Role:
-      type: object
-      properties:
-        name:
+        Summary:
           type: string
+      type: object
+    ResourcePlacement:
+      type: object
+      additionalProperties: false
+      properties:
+        resource_type:
+          type: string
+        resource_id:
+          type: string
+        scopes:
+          type: array
+          nullable: true
+          items:
+            type: string
+    Role:
+      additionalProperties: false
+      properties:
         description:
           type: string
         inherits:
-          type: array
           items:
             type: string
-        policies:
+          nullable: true
           type: array
+        name:
+          type: string
+        policies:
           items:
-            type: object
+            additionalProperties: false
             properties:
-              id:
-                type: string
               action:
+                type: string
+              conditions:
+                items:
+                  additionalProperties: false
+                  properties:
+                    key:
+                      type: string
+                    kind:
+                      type: string
+                    values:
+                      items:
+                        type: string
+                      nullable: true
+                      type: array
+                  type: object
+                nullable: true
+                type: array
+              effect:
+                type: string
+              id:
                 type: string
               resource:
                 type: string
-              effect:
-                type: string
-              conditions:
-                type: array
-                items:
-                  type: object
-                  properties:
-                    kind:
-                      type: string
-                    key:
-                      type: string
-                    values:
-                      type: array
-                      items:
-                        type: string
+            type: object
+          nullable: true
+          type: array
         system:
           type: boolean
-    RoleBinding:
       type: object
+    RoleBinding:
+      additionalProperties: false
       properties:
         id:
           type: string
@@ -5383,127 +7080,173 @@ components:
           type: string
         scope:
           type: string
+      type: object
+    SSOConfig:
+      type: object
+      additionalProperties: false
+      properties:
+        provider:
+          type: string
+        enabled:
+          type: boolean
+        password_login:
+          type: boolean
+        login_url:
+          type: string
+    SSOExchangeResponse:
+      type: object
+      additionalProperties: false
+      properties:
+        access_token:
+          type: string
+        refresh_token:
+          type: string
+        expires_in:
+          type: integer
+        principal_id:
+          type: string
     SessionResponse:
       type: object
+      additionalProperties: false
       properties:
         token_type:
           type: string
         expires_in:
           type: integer
       description: The answer when the tokens were set as cookies.
-    TokenPair:
+    StatusMessage:
       type: object
+      additionalProperties: false
+      properties:
+        status:
+          type: string
+    TokenPair:
+      additionalProperties: false
       properties:
         access_token:
           type: string
+        expires_at:
+          format: date-time
+          type: string
+        expires_in:
+          type: integer
         refresh_token:
           type: string
         token_type:
           type: string
-        expires_in:
-          type: integer
-        expires_at:
-          type: string
-          format: date-time
-    Twin:
       type: object
+    Twin:
+      additionalProperties: false
       properties:
-        id:
-          type: string
-        name:
-          type: string
-        kind:
-          type: string
-        domain:
-          type: string
+        adapter_bindings:
+          additionalProperties:
+            type: string
+          nullable: true
+          type: object
         agents:
-          type: array
           items:
-            type: object
+            additionalProperties: false
             properties:
-              ID:
-                type: string
-              Name:
-                type: string
-              Domain:
-                type: string
-              Capabilities:
-                type: array
-                items:
-                  type: string
-              Memory:
-                type: object
-                properties:
-                  working_window_size:
-                    type: integer
-                  episodic_retention:
-                    type: integer
-                    description: nanoseconds
-                  semantic_enabled:
-                    type: boolean
-                  procedural_enabled:
-                    type: boolean
-              ReasoningStrategy:
-                type: string
               Authority:
-                type: object
+                additionalProperties: false
                 properties:
-                  MaxAutonomousActions:
-                    type: integer
-                  RequiresApprovalFor:
-                    type: array
-                    items:
-                      type: string
                   CanDelegate:
                     type: boolean
                   CanModifyObjective:
                     type: boolean
                   ConfidenceThreshold:
                     type: number
-              LLMHints:
+                  MaxAutonomousActions:
+                    type: integer
+                  RequiresApprovalFor:
+                    items:
+                      type: string
+                    nullable: true
+                    type: array
                 type: object
+              Capabilities:
+                items:
+                  type: string
+                nullable: true
+                type: array
+              Domain:
+                type: string
+              ID:
+                type: string
+              LLMHints:
+                additionalProperties: false
                 properties:
-                  preferred_provider:
-                    type: string
                   fallback_provider:
                     type: string
-                  temperature_min:
-                    type: number
+                  preferred_provider:
+                    type: string
                   temperature_max:
                     type: number
+                  temperature_min:
+                    type: number
+                type: object
+              Memory:
+                additionalProperties: false
+                properties:
+                  episodic_retention:
+                    description: nanoseconds
+                    type: integer
+                  procedural_enabled:
+                    type: boolean
+                  semantic_enabled:
+                    type: boolean
+                  working_window_size:
+                    type: integer
+                type: object
+              Name:
+                type: string
+              ReasoningStrategy:
+                type: string
+            type: object
+          nullable: true
+          type: array
+        children:
+          items:
+            type: string
+          nullable: true
+          type: array
+        created_at:
+          format: date-time
+          type: string
+        domain:
+          type: string
         environments:
-          type: array
           items:
             type: string
-        objectives:
+          nullable: true
           type: array
-          items:
-            type: string
+        id:
+          type: string
+        kind:
+          type: string
         memory:
-          type: object
+          additionalProperties: false
           properties:
-            working_window_size:
-              type: integer
             episodic_retention:
-              type: integer
               description: nanoseconds
-            semantic_enabled:
-              type: boolean
+              type: integer
             procedural_enabled:
               type: boolean
-        children:
-          type: array
+            semantic_enabled:
+              type: boolean
+            working_window_size:
+              type: integer
+          type: object
+        name:
+          type: string
+        objectives:
           items:
             type: string
-        adapter_bindings:
-          type: object
-          additionalProperties:
-            type: string
+          nullable: true
+          type: array
         owner_id:
           type: string
-        created_at:
-          type: string
-          format: date-time
         updated_at:
-          type: string
           format: date-time
+          type: string
+      type: object
