@@ -126,7 +126,7 @@ func readEd25519PublicKey(path string) (ed25519.PublicKey, error) {
 }
 
 func readPEM(path string) (*pem.Block, error) {
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(path) // #nosec G304 -- the operator names the key file in config
 	if err != nil {
 		return nil, err
 	}

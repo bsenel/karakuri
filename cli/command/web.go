@@ -41,7 +41,7 @@ Pass --install the first time, or after web/package.json changes, to run
 }
 
 func run(name string, args ...string) error {
-	cmd := exec.Command(name, args...)
+	cmd := exec.Command(name, args...) // #nosec G204 -- name and args are the fixed npm commands of krk web
 	cmd.Dir = "web"
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr

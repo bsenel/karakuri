@@ -109,7 +109,7 @@ func (e *shellEnv) Act(ctx context.Context, a environment.Action) (environment.A
 	cmdCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	c := exec.CommandContext(cmdCtx, "/bin/sh", "-c", cmd)
+	c := exec.CommandContext(cmdCtx, "/bin/sh", "-c", cmd) // #nosec G204 -- running a planned command is this capability's purpose; it is gated by the blocked patterns above and the authority bounds
 	c.Dir = workdir
 	var stdout, stderr bytes.Buffer
 	c.Stdout = &stdout

@@ -57,7 +57,7 @@ func (c *claudeCLI) complete(ctx context.Context, req CompletionRequest) (Comple
 	}
 	prompt += lastUserMessage(req.Messages)
 
-	cmd := exec.CommandContext(ctx, c.binary, "--print", "--output-format", "json")
+	cmd := exec.CommandContext(ctx, c.binary, "--print", "--output-format", "json") // #nosec G204 -- binary is resolved at construction; the prompt goes on stdin, not argv
 	cmd.Stdin = strings.NewReader(prompt)
 	// Per invocation, not per process: the CLI is spawned for each call, so
 	// the customer header can vary by twin. Without this the CLI path would be

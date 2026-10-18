@@ -15,12 +15,18 @@ import (
 // written as a single line. Each top-level slice element produces exactly one
 // `\n`-terminated JSON line so downstream tools (DuckDB read_json_auto,
 // `jq -c`, log shippers) can parse line-by-line without buffering.
-func WriteNDJSON(path string, v any) error {
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
+func WriteNDJSON(path string, v any) (err error) {
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600) // #nosec G304 -- path is the operator's export destination
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	// Close is where a full disk shows up on a written file, so its error is
+	// reported unless an earlier one already is.
+	defer func() {
+		if cerr := f.Close(); cerr != nil && err == nil {
+			err = fmt.Errorf("ndjson: close %s: %w", path, cerr)
+		}
+	}()
 	enc := json.NewEncoder(f)
 
 	val := reflect.ValueOf(v)

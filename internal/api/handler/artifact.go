@@ -44,7 +44,7 @@ func (h *ArtifactHandler) Get(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/octet-stream")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Content-Disposition", "attachment")
-	_, _ = w.Write(content)
+	_, _ = w.Write(content) // #nosec G705 -- served as an octet-stream attachment with nosniff (F-11), never rendered
 }
 
 func (h *ArtifactHandler) List(w http.ResponseWriter, r *http.Request) {

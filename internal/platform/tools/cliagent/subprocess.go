@@ -26,7 +26,7 @@ func runStreaming(ctx context.Context, in DelegateInput, name string, args []str
 		defer cancel()
 	}
 
-	cmd := exec.CommandContext(ctx, name, args...)
+	cmd := exec.CommandContext(ctx, name, args...) // #nosec G204 -- name is the adapter's configured binary; args are built by the adapter, no shell
 	cmd.Dir = in.WorktreePath
 	cmd.Env = procenv.ScrubNestedSession(procenv.Merge(in.Env))
 

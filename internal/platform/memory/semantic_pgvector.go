@@ -81,13 +81,13 @@ func (m *SemanticMemoryPgVector) Store(ctx context.Context, e memory.Entry) erro
 	if e.ID == "" {
 		e.ID = fmt.Sprintf("smv-%d", time.Now().UnixNano())
 	}
-	e.Tier = string(memory.TierSemantic)
 	if e.CreatedAt.IsZero() {
 		e.CreatedAt = time.Now().UTC()
 	}
 	srcJ, _ := json.Marshal(e.Sources)
 	embedding := embeddingLiteral(e.Embedding, m.dim)
 
+	// #nosec G201 -- the table name is the constant memory_semantic_vec and the vector literal is built from floats; every value is a $n placeholder
 	stmt := fmt.Sprintf(`INSERT INTO %s
 		(id, agent_id, twin_id, domain, content, embedding, confidence, sources_json, created_at, expires_at)
 		VALUES ($1, $2, $3, $4, $5, %s, $6, $7, $8, $9)
@@ -136,6 +136,7 @@ func (m *SemanticMemoryPgVector) Recall(ctx context.Context, q memory.Query) ([]
 		limit = 5
 	}
 
+	// #nosec G201 -- constant table name; the WHERE clause holds only $n placeholders, ORDER BY is chosen from fixed strings and LIMIT is an int
 	stmt := fmt.Sprintf(`SELECT id, agent_id, twin_id, domain, content, confidence, sources_json, created_at, expires_at
 		FROM %s %s ORDER BY %s LIMIT %d`, m.tableName, whereClause, orderBy, limit)
 
@@ -201,6 +202,7 @@ func (m *SemanticMemoryPgVector) Forget(ctx context.Context, p memory.RetentionP
 		where = append(where, fmt.Sprintf("twin_id = $%d", len(args)+1))
 		args = append(args, p.TwinID)
 	}
+	// #nosec G201 -- constant table name; the WHERE clause holds only $n placeholders
 	stmt := fmt.Sprintf(`DELETE FROM %s WHERE %s`, m.tableName, strings.Join(where, " AND "))
 	_, err := m.db.ExecContext(ctx, stmt, args...)
 	return err

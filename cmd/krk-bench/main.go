@@ -90,10 +90,10 @@ func runTrial(rng *rand.Rand, sc scenario, s strategy, maxIter int) trialResult 
 }
 
 type strategySummary struct {
-	trials       int
-	successes    int
-	totalIters   int
-	totalCalls   int
+	trials     int
+	successes  int
+	totalIters int
+	totalCalls int
 }
 
 func main() {
@@ -102,7 +102,7 @@ func main() {
 	seed := flag.Int64("seed", 42, "PRNG seed for reproducibility")
 	flag.Parse()
 
-	rng := rand.New(rand.NewSource(*seed))
+	rng := rand.New(rand.NewSource(*seed)) // #nosec G404 -- a seeded PRNG so a benchmark run is reproducible; nothing secret is drawn from it
 
 	summary := map[strategy]map[string]*strategySummary{
 		chainOfThought: {},
