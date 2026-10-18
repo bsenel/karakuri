@@ -1,46 +1,4535 @@
 openapi: 3.0.3
 info:
   title: Karakuri API
-  version: "1"
+  version: '1'
+  description: 'The Karakuri server''s REST API. Every route the server mounts under /api/v1 is listed
+    here, and test/integration/openapi_routes_test.go fails when a route is missing or a listed one no
+    longer exists. x-karakuri-permission names the permission an operation requires; routes without it
+    need only an authenticated principal, and public routes set `security: []`. Request bodies are JSON
+    unless stated.'
+servers:
+- url: /api/v1
+security:
+- bearerAuth: []
+- cookieAuth: []
+tags:
+- name: artifacts
+- name: audit
+- name: auth
+- name: checkpoints
+- name: containers
+- name: domains
+- name: eval
+- name: events
+- name: health
+- name: loops
+- name: mcp
+- name: memory
+- name: objectives
+- name: quota
+- name: reconcile
+- name: reports
+- name: research
+- name: twins
 paths:
-  /api/v1/checkpoints:
+  /artifacts:
     get:
-      summary: List pending checkpoints
+      operationId: listArtifacts
+      tags:
+      - artifacts
+      summary: List artifacts
+      x-karakuri-permission: artifact:read
       parameters:
-        - name: twin_id
-          in: query
-          schema:
-            type: string
+      - name: objective_id
+        in: query
+        required: false
+        description: Filter by objective.
+        schema:
+          type: string
+      - name: agent_id
+        in: query
+        required: false
+        description: Filter by agent.
+        schema:
+          type: string
       responses:
-        "200":
-          description: Pending checkpoints
+        '200':
+          description: Artifacts.
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  $ref: "#/components/schemas/Checkpoint"
-  /api/v1/checkpoints/{id}:
-    get:
-      summary: Get a checkpoint
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
+                  $ref: '#/components/schemas/Artifact'
+        '401':
+          description: Missing or invalid credential.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '403':
+          description: The principal lacks the permission.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '429':
+          description: Over the caller's rate or quota limit.
+          content:
+            text/plain:
+              schema:
+                type: string
+    post:
+      operationId: writeArtifact
+      tags:
+      - artifacts
+      summary: Store content as a content-addressed artifact
+      x-karakuri-permission: artifact:write
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                objective_id:
+                  type: string
+                agent_id:
+                  type: string
+                capability:
+                  type: string
+                content:
+                  type: string
+              required:
+              - content
       responses:
-        "200":
-          description: The checkpoint
+        '200':
+          description: The artifact.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Checkpoint"
+                $ref: '#/components/schemas/Artifact'
+        '400':
+          description: 'Bad request: the body or a parameter could not be read.'
+          content:
+            text/plain:
+              schema:
+                type: string
+        '401':
+          description: Missing or invalid credential.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '403':
+          description: The principal lacks the permission.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '429':
+          description: Over the caller's rate or quota limit.
+          content:
+            text/plain:
+              schema:
+                type: string
+  /artifacts/{sha}:
+    get:
+      operationId: getArtifact
+      tags:
+      - artifacts
+      summary: Download an artifact's content (always as an attachment)
+      x-karakuri-permission: artifact:read
+      parameters:
+      - name: sha
+        in: path
+        required: true
+        description: Content SHA.
+        schema:
+          type: string
+      responses:
+        '200':
+          description: The raw content.
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '401':
+          description: Missing or invalid credential.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '403':
+          description: The principal lacks the permission.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '404':
+          description: No such resource.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '429':
+          description: Over the caller's rate or quota limit.
+          content:
+            text/plain:
+              schema:
+                type: string
+  /artifacts/{sha}/diff/{other}:
+    get:
+      operationId: diffArtifacts
+      tags:
+      - artifacts
+      summary: Diff two artifacts
+      x-karakuri-permission: artifact:read
+      parameters:
+      - name: sha
+        in: path
+        required: true
+        description: Content SHA.
+        schema:
+          type: string
+      - name: other
+        in: path
+        required: true
+        description: The other content SHA.
+        schema:
+          type: string
+      responses:
+        '200':
+          description: A unified diff.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  diff:
+                    type: string
+        '401':
+          description: Missing or invalid credential.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '403':
+          description: The principal lacks the permission.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '429':
+          description: Over the caller's rate or quota limit.
+          content:
+            text/plain:
+              schema:
+                type: string
+  /audit:
+    get:
+      operationId: listAuditEvents
+      tags:
+      - audit
+      summary: List audit events
+      x-karakuri-permission: audit:read
+      parameters:
+      - name: objective_id
+        in: query
+        required: false
+        description: Filter by objective.
+        schema:
+          type: string
+      - name: agent_id
+        in: query
+        required: false
+        description: Filter by agent.
+        schema:
+          type: string
+      - name: kind
+        in: query
+        required: false
+        description: Filter by event kind.
+        schema:
+          type: string
+      - name: provider
+        in: query
+        required: false
+        description: Filter by model provider.
+        schema:
+          type: string
+      - name: model
+        in: query
+        required: false
+        description: Filter by model.
+        schema:
+          type: string
+      - name: template
+        in: query
+        required: false
+        description: Filter by objective template.
+        schema:
+          type: string
+      - name: bounds_violation
+        in: query
+        required: false
+        description: Only authority-bounds violations.
+        schema:
+          type: boolean
+      - name: since
+        in: query
+        required: false
+        description: Only events after this, RFC 3339 or a duration.
+        schema:
+          type: string
+      - name: limit
+        in: query
+        required: false
+        description: Maximum events.
+        schema:
+          type: integer
+      responses:
+        '200':
+          description: Audit events.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AuditEvent'
+        '401':
+          description: Missing or invalid credential.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '403':
+          description: The principal lacks the permission.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '429':
+          description: Over the caller's rate or quota limit.
+          content:
+            text/plain:
+              schema:
+                type: string
+  /audit/export:
+    get:
+      operationId: exportAuditWindow
+      tags:
+      - audit
+      summary: Export an audit window as a reproducible document
+      x-karakuri-permission: audit:read
+      parameters:
+      - name: from
+        in: query
+        required: false
+        description: Window start, RFC 3339.
+        schema:
+          type: string
+      - name: to
+        in: query
+        required: false
+        description: Window end, RFC 3339.
+        schema:
+          type: string
+      responses:
+        '200':
+          description: The export.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '400':
+          description: 'Bad request: the body or a parameter could not be read.'
+          content:
+            text/plain:
+              schema:
+                type: string
+        '401':
+          description: Missing or invalid credential.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '403':
+          description: The principal lacks the permission.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '429':
+          description: Over the caller's rate or quota limit.
+          content:
+            text/plain:
+              schema:
+                type: string
+  /audit/{id}:
+    get:
+      operationId: getAuditEvent
+      tags:
+      - audit
+      summary: Get an audit event
+      x-karakuri-permission: audit:read
+      parameters:
+      - name: id
+        in: path
+        required: true
+        description: Resource ID.
+        schema:
+          type: string
+      responses:
+        '200':
+          description: The event.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuditEvent'
+        '401':
+          description: Missing or invalid credential.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '403':
+          description: The principal lacks the permission.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '404':
+          description: No such resource.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '429':
+          description: Over the caller's rate or quota limit.
+          content:
+            text/plain:
+              schema:
+                type: string
+  /auth/bindings:
+    get:
+      operationId: listBindings
+      tags:
+      - auth
+      summary: List role bindings
+      x-karakuri-permission: auth:read
+      parameters:
+      - name: principal
+        in: query
+        required: false
+        description: Only this principal's bindings.
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Role bindings.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/RoleBinding'
+        '401':
+          description: Missing or invalid credential.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '403':
+          description: The principal lacks the permission.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '429':
+          description: Over the caller's rate or quota limit.
+          content:
+            text/plain:
+              schema:
+                type: string
+    post:
+      operationId: createBinding
+      tags:
+      - auth
+      summary: Bind a role to a principal at a scope
+      x-karakuri-permission: auth:write
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                principal_id:
+                  type: string
+                role:
+                  type: string
+                scope:
+                  type: string
+              required:
+              - principal_id
+              - role
+      responses:
+        '201':
+          description: The binding.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoleBinding'
+        '400':
+          description: 'Bad request: the body or a parameter could not be read.'
+          content:
+            text/plain:
+              schema:
+                type: string
+        '401':
+          description: Missing or invalid credential.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '403':
+          description: The principal lacks the permission.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '404':
+          description: No such resource.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '429':
+          description: Over the caller's rate or quota limit.
+          content:
+            text/plain:
+              schema:
+                type: string
+  /auth/bindings/{id}:
+    delete:
+      operationId: deleteBinding
+      tags:
+      - auth
+      summary: Delete a role binding
+      x-karakuri-permission: auth:write
+      parameters:
+      - name: id
+        in: path
+        required: true
+        description: Resource ID.
+        schema:
+          type: string
+      responses:
+        '204':
+          description: Deleted.
+        '401':
+          description: Missing or invalid credential.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '403':
+          description: The principal lacks the permission.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '404':
+          description: No such resource.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '429':
+          description: Over the caller's rate or quota limit.
+          content:
+            text/plain:
+              schema:
+                type: string
+  /auth/catalog:
+    get:
+      operationId: listPermissionCatalog
+      tags:
+      - auth
+      summary: List every permission and what it allows
+      x-karakuri-permission: auth:read
+      responses:
+        '200':
+          description: The permission catalog.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  additionalProperties: true
+        '401':
+          description: Missing or invalid credential.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '403':
+          description: The principal lacks the permission.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '429':
+          description: Over the caller's rate or quota limit.
+          content:
+            text/plain:
+              schema:
+                type: string
+  /auth/check:
+    post:
+      operationId: checkPermission
+      tags:
+      - auth
+      summary: Ask whether a principal may perform an action on a resource
+      x-karakuri-permission: auth:read
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                principal:
+                  type: string
+                action:
+                  type: string
+                resource:
+                  type: string
+                owner:
+                  type: string
+              required:
+              - principal
+              - action
+      responses:
+        '200':
+          description: The decision.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthDecision'
+        '400':
+          description: 'Bad request: the body or a parameter could not be read.'
+          content:
+            text/plain:
+              schema:
+                type: string
+        '401':
+          description: Missing or invalid credential.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '403':
+          description: The principal lacks the permission.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '404':
+          description: No such resource.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '429':
+          description: Over the caller's rate or quota limit.
+          content:
+            text/plain:
+              schema:
+                type: string
+  /auth/me:
+    get:
+      operationId: getMe
+      tags:
+      - auth
+      summary: The calling principal, its roles, bindings and permissions
+      responses:
+        '200':
+          description: The caller's identity and grants.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '401':
+          description: Missing or invalid credential.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '403':
+          description: The principal lacks the permission.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '429':
+          description: Over the caller's rate or quota limit.
+          content:
+            text/plain:
+              schema:
+                type: string
+  /auth/policies:
+    get:
+      operationId: listPolicies
+      tags:
+      - auth
+      summary: List grants, for one principal or per role
+      x-karakuri-permission: auth:read
+      parameters:
+      - name: principal
+        in: query
+        required: false
+        description: Expand this principal's grants.
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Grants.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                - type: array
+                  items:
+                    $ref: '#/components/schemas/Grant'
+                - type: object
+                  additionalProperties: true
+        '401':
+          description: Missing or invalid credential.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '403':
+          description: The principal lacks the permission.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '429':
+          description: Over the caller's rate or quota limit.
+          content:
+            text/plain:
+              schema:
+                type: string
+  /auth/refresh:
+    post:
+      operationId: refreshToken
+      tags:
+      - auth
+      summary: Exchange a refresh token for a new pair
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                refresh_token:
+                  type: string
+                  description: Omit when the refresh token is in a cookie.
+      responses:
+        '200':
+          description: A new token pair.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                - $ref: '#/components/schemas/TokenPair'
+                - $ref: '#/components/schemas/SessionResponse'
+        '400':
+          description: 'Bad request: the body or a parameter could not be read.'
+          content:
+            text/plain:
+              schema:
+                type: string
+        '401':
+          description: Missing or invalid credential.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '429':
+          description: Over the caller's rate or quota limit.
+          content:
+            text/plain:
+              schema:
+                type: string
+  /auth/revoke:
+    post:
+      operationId: revokeToken
+      tags:
+      - auth
+      summary: Revoke a refresh token (end a session)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                refresh_token:
+                  type: string
+                  description: Omit when it is in a cookie.
+      responses:
+        '200':
+          description: Revoked.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+        '401':
+          description: Missing or invalid credential.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '403':
+          description: The principal lacks the permission.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '429':
+          description: Over the caller's rate or quota limit.
+          content:
+            text/plain:
+              schema:
+                type: string
+  /auth/roles:
+    get:
+      operationId: listRoles
+      tags:
+      - auth
+      summary: List roles
+      x-karakuri-permission: auth:read
+      responses:
+        '200':
+          description: Roles.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Role'
+        '401':
+          description: Missing or invalid credential.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '403':
+          description: The principal lacks the permission.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '429':
+          description: Over the caller's rate or quota limit.
+          content:
+            text/plain:
+              schema:
+                type: string
+  /auth/saml/acs:
+    post:
+      operationId: samlACS
+      tags:
+      - auth
+      summary: SAML assertion consumer service
+      security: []
+      responses:
+        '302':
+          description: Redirect with the session established.
+        '400':
+          description: 'Bad request: the body or a parameter could not be read.'
+          content:
+            text/plain:
+              schema:
+                type: string
+        '401':
+          description: Missing or invalid credential.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '404':
+          description: No such resource.
+          content:
+            text/plain:
+              schema:
+                type: string
+  /auth/saml/metadata:
+    get:
+      operationId: getSAMLMetadata
+      tags:
+      - auth
+      summary: This service provider's SAML metadata
+      security: []
+      responses:
+        '200':
+          description: SAML SP metadata.
+          content:
+            application/samlmetadata+xml:
+              schema:
+                type: string
+        '404':
+          description: No such resource.
+          content:
+            text/plain:
+              schema:
+                type: string
+  /auth/sso/callback:
+    get:
+      operationId: finishSSOLogin
+      tags:
+      - auth
+      summary: OIDC callback (redirects back to the SPA or the CLI)
+      security: []
+      responses:
+        '302':
+          description: Redirect with the session established, or with a one-time code for the CLI.
+        '400':
+          description: 'Bad request: the body or a parameter could not be read.'
+          content:
+            text/plain:
+              schema:
+                type: string
+        '401':
+          description: Missing or invalid credential.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '404':
+          description: No such resource.
+          content:
+            text/plain:
+              schema:
+                type: string
+  /auth/sso/config:
+    get:
+      operationId: getSSOConfig
+      tags:
+      - auth
+      summary: Describe the configured federated login, if any
+      security: []
+      responses:
+        '200':
+          description: The provider kind and login URL.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+  /auth/sso/exchange:
+    post:
+      operationId: exchangeSSOCode
+      tags:
+      - auth
+      summary: Exchange a CLI login's one-time code and PKCE verifier for tokens
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                code:
+                  type: string
+                verifier:
+                  type: string
+              required:
+              - code
+              - verifier
+      responses:
+        '200':
+          description: A token pair.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '400':
+          description: 'Bad request: the body or a parameter could not be read.'
+          content:
+            text/plain:
+              schema:
+                type: string
+        '401':
+          description: Missing or invalid credential.
+          content:
+            text/plain:
+              schema:
+                type: string
+  /auth/sso/login:
+    get:
+      operationId: startSSOLogin
+      tags:
+      - auth
+      summary: Start a federated login (redirects to the identity provider)
+      security: []
+      parameters:
+      - name: port
+        in: query
+        required: false
+        description: Loopback port of a CLI login.
+        schema:
+          type: string
+      - name: challenge
+        in: query
+        required: false
+        description: PKCE challenge of a CLI login.
+        schema:
+          type: string
+      responses:
+        '302':
+          description: Redirect to the identity provider.
+        '400':
+          description: 'Bad request: the body or a parameter could not be read.'
+          content:
+            text/plain:
+              schema:
+                type: string
+        '404':
+          description: No such resource.
+          content:
+            text/plain:
+              schema:
+                type: string
+  /auth/token:
+    post:
+      operationId: issueToken
+      tags:
+      - auth
+      summary: Exchange an ID and password for a token pair
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                id:
+                  type: string
+                password:
+                  type: string
+                cookie:
+                  type: boolean
+                  description: Set the tokens as cookies instead of returning them.
+              required:
+              - id
+              - password
+      responses:
+        '200':
+          description: A token pair, or the session shape when cookie is set.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                - $ref: '#/components/schemas/TokenPair'
+                - $ref: '#/components/schemas/SessionResponse'
+        '400':
+          description: 'Bad request: the body or a parameter could not be read.'
+          content:
+            text/plain:
+              schema:
+                type: string
+        '401':
+          description: Missing or invalid credential.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '429':
+          description: Over the caller's rate or quota limit.
+          content:
+            text/plain:
+              schema:
+                type: string
+  /auth/users:
+    get:
+      operationId: listUsers
+      tags:
+      - auth
+      summary: List principals
+      x-karakuri-permission: auth:read
+      responses:
+        '200':
+          description: Principals.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Principal'
+        '401':
+          description: Missing or invalid credential.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '403':
+          description: The principal lacks the permission.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '429':
+          description: Over the caller's rate or quota limit.
+          content:
+            text/plain:
+              schema:
+                type: string
+    post:
+      operationId: createUser
+      tags:
+      - auth
+      summary: Create a principal, its role bindings, and for a service account its tokens
+      x-karakuri-permission: auth:write
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                id:
+                  type: string
+                name:
+                  type: string
+                roles:
+                  type: array
+                  items:
+                    type: string
+                scope:
+                  type: string
+                password:
+                  type: string
+                service_account:
+                  type: boolean
+                attrs:
+                  type: object
+                  additionalProperties:
+                    type: string
+              required:
+              - id
+      responses:
+        '201':
+          description: The created principal.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '400':
+          description: 'Bad request: the body or a parameter could not be read.'
+          content:
+            text/plain:
+              schema:
+                type: string
+        '401':
+          description: Missing or invalid credential.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '403':
+          description: The principal lacks the permission.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '409':
+          description: Conflict with the resource's current state.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '429':
+          description: Over the caller's rate or quota limit.
+          content:
+            text/plain:
+              schema:
+                type: string
+  /auth/users/{id}:
+    delete:
+      operationId: deleteUser
+      tags:
+      - auth
+      summary: Delete a principal and its bindings
+      x-karakuri-permission: auth:write
+      parameters:
+      - name: id
+        in: path
+        required: true
+        description: Resource ID.
+        schema:
+          type: string
+      responses:
+        '204':
+          description: Deleted.
+        '401':
+          description: Missing or invalid credential.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '403':
+          description: The principal lacks the permission.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '404':
+          description: No such resource.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '429':
+          description: Over the caller's rate or quota limit.
+          content:
+            text/plain:
+              schema:
+                type: string
+  /checkpoints:
+    get:
+      operationId: listPendingCheckpoints
+      tags:
+      - checkpoints
+      summary: List pending checkpoints
+      x-karakuri-permission: checkpoint:read
+      parameters:
+      - name: twin_id
+        in: query
+        required: false
+        description: Filter by twin.
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Pending checkpoints.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Checkpoint'
+        '401':
+          description: Missing or invalid credential.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '403':
+          description: The principal lacks the permission.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '429':
+          description: Over the caller's rate or quota limit.
+          content:
+            text/plain:
+              schema:
+                type: string
+  /checkpoints/{id}:
+    get:
+      operationId: getCheckpoint
+      tags:
+      - checkpoints
+      summary: Get a checkpoint
+      x-karakuri-permission: checkpoint:read
+      parameters:
+      - name: id
+        in: path
+        required: true
+        description: Resource ID.
+        schema:
+          type: string
+      responses:
+        '200':
+          description: The checkpoint.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Checkpoint'
+        '401':
+          description: Missing or invalid credential.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '403':
+          description: The principal lacks the permission.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '404':
+          description: No such resource.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '429':
+          description: Over the caller's rate or quota limit.
+          content:
+            text/plain:
+              schema:
+                type: string
+  /checkpoints/{id}/resolve:
+    post:
+      operationId: resolveCheckpoint
+      tags:
+      - checkpoints
+      summary: Approve, reject or modify a checkpoint
+      x-karakuri-permission: checkpoint:resolve
+      parameters:
+      - name: id
+        in: path
+        required: true
+        description: Resource ID.
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                decision:
+                  type: string
+                  description: approve, reject or modify
+                choice:
+                  type: string
+                  description: Alias of decision.
+                note:
+                  type: string
+                approver:
+                  type: string
+                modifications:
+                  $ref: '#/components/schemas/CheckpointModifications'
+      responses:
+        '200':
+          description: Resolved.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+        '400':
+          description: 'Bad request: the body or a parameter could not be read.'
+          content:
+            text/plain:
+              schema:
+                type: string
+        '401':
+          description: Missing or invalid credential.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '403':
+          description: The principal lacks the permission.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '429':
+          description: Over the caller's rate or quota limit.
+          content:
+            text/plain:
+              schema:
+                type: string
+  /containers:
+    post:
+      operationId: createContainer
+      tags:
+      - containers
+      summary: Create an organisation, team or project
+      x-karakuri-permission: container:write
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                kind:
+                  type: string
+                name:
+                  type: string
+                parent_id:
+                  type: string
+              required:
+              - kind
+              - name
+      responses:
+        '201':
+          description: The container.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Container'
+        '400':
+          description: 'Bad request: the body or a parameter could not be read.'
+          content:
+            text/plain:
+              schema:
+                type: string
+        '401':
+          description: Missing or invalid credential.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '403':
+          description: The principal lacks the permission.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '409':
+          description: Conflict with the resource's current state.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '429':
+          description: Over the caller's rate or quota limit.
+          content:
+            text/plain:
+              schema:
+                type: string
+    get:
+      operationId: listContainers
+      tags:
+      - containers
+      summary: List containers
+      x-karakuri-permission: container:read
+      parameters:
+      - name: kind
+        in: query
+        required: false
+        description: Filter by kind.
+        schema:
+          type: string
+      - name: name
+        in: query
+        required: false
+        description: Filter by name.
+        schema:
+          type: string
+      - name: parent_id
+        in: query
+        required: false
+        description: Children of this container.
+        schema:
+          type: string
+      - name: roots
+        in: query
+        required: false
+        description: Only top-level containers.
+        schema:
+          type: boolean
+      responses:
+        '200':
+          description: Containers.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Container'
+        '401':
+          description: Missing or invalid credential.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '403':
+          description: The principal lacks the permission.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '429':
+          description: Over the caller's rate or quota limit.
+          content:
+            text/plain:
+              schema:
+                type: string
+  /containers/resources:
+    get:
+      operationId: getResourceContainers
+      tags:
+      - containers
+      summary: The containers a resource is placed in
+      x-karakuri-permission: container:read
+      parameters:
+      - name: resource_type
+        in: query
+        required: true
+        description: Resource type.
+        schema:
+          type: string
+      - name: resource_id
+        in: query
+        required: true
+        description: Resource ID.
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Placement.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '400':
+          description: 'Bad request: the body or a parameter could not be read.'
+          content:
+            text/plain:
+              schema:
+                type: string
+        '401':
+          description: Missing or invalid credential.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '403':
+          description: The principal lacks the permission.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '429':
+          description: Over the caller's rate or quota limit.
+          content:
+            text/plain:
+              schema:
+                type: string
+    post:
+      operationId: setResourceContainers
+      tags:
+      - containers
+      summary: Place a resource in containers
+      x-karakuri-permission: container:write
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                resource_type:
+                  type: string
+                resource_id:
+                  type: string
+                container_ids:
+                  type: array
+                  items:
+                    type: string
+              required:
+              - resource_type
+              - resource_id
+              - container_ids
+      responses:
+        '200':
+          description: Placement.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '400':
+          description: 'Bad request: the body or a parameter could not be read.'
+          content:
+            text/plain:
+              schema:
+                type: string
+        '401':
+          description: Missing or invalid credential.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '403':
+          description: The principal lacks the permission.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '429':
+          description: Over the caller's rate or quota limit.
+          content:
+            text/plain:
+              schema:
+                type: string
+  /containers/{id}:
+    get:
+      operationId: getContainer
+      tags:
+      - containers
+      summary: Get a container
+      x-karakuri-permission: container:read
+      parameters:
+      - name: id
+        in: path
+        required: true
+        description: Resource ID.
+        schema:
+          type: string
+      responses:
+        '200':
+          description: The container.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Container'
+        '401':
+          description: Missing or invalid credential.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '403':
+          description: The principal lacks the permission.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '404':
+          description: No such resource.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '429':
+          description: Over the caller's rate or quota limit.
+          content:
+            text/plain:
+              schema:
+                type: string
+    delete:
+      operationId: deleteContainer
+      tags:
+      - containers
+      summary: Delete an empty container
+      x-karakuri-permission: container:write
+      parameters:
+      - name: id
+        in: path
+        required: true
+        description: Resource ID.
+        schema:
+          type: string
+      responses:
+        '204':
+          description: Deleted.
+        '401':
+          description: Missing or invalid credential.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '403':
+          description: The principal lacks the permission.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '404':
+          description: No such resource.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '409':
+          description: Conflict with the resource's current state.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '429':
+          description: Over the caller's rate or quota limit.
+          content:
+            text/plain:
+              schema:
+                type: string
+  /containers/{id}/name:
+    post:
+      operationId: renameContainer
+      tags:
+      - containers
+      summary: Rename a container
+      x-karakuri-permission: container:write
+      parameters:
+      - name: id
+        in: path
+        required: true
+        description: Resource ID.
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+              required:
+              - name
+      responses:
+        '200':
+          description: The container.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Container'
+        '400':
+          description: 'Bad request: the body or a parameter could not be read.'
+          content:
+            text/plain:
+              schema:
+                type: string
+        '401':
+          description: Missing or invalid credential.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '403':
+          description: The principal lacks the permission.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '404':
+          description: No such resource.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '409':
+          description: Conflict with the resource's current state.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '429':
+          description: Over the caller's rate or quota limit.
+          content:
+            text/plain:
+              schema:
+                type: string
+  /containers/{id}/parent:
+    post:
+      operationId: reparentContainer
+      tags:
+      - containers
+      summary: Move a container under another
+      x-karakuri-permission: container:move
+      parameters:
+      - name: id
+        in: path
+        required: true
+        description: Resource ID.
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                parent_id:
+                  type: string
+              required:
+              - parent_id
+      responses:
+        '200':
+          description: The container.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Container'
+        '400':
+          description: 'Bad request: the body or a parameter could not be read.'
+          content:
+            text/plain:
+              schema:
+                type: string
+        '401':
+          description: Missing or invalid credential.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '403':
+          description: The principal lacks the permission.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '404':
+          description: No such resource.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '409':
+          description: Conflict with the resource's current state.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '429':
+          description: Over the caller's rate or quota limit.
+          content:
+            text/plain:
+              schema:
+                type: string
+  /cost:
+    get:
+      operationId: getCostReport
+      tags:
+      - quota
+      summary: Spend grouped by time, provider, model, twin or label
+      x-karakuri-permission: cost:read
+      parameters:
+      - name: since
+        in: query
+        required: false
+        description: Start, RFC 3339 or a duration back from now.
+        schema:
+          type: string
+      - name: until
+        in: query
+        required: false
+        description: End, RFC 3339.
+        schema:
+          type: string
+      - name: group_by
+        in: query
+        required: false
+        description: Bucket key.
+        schema:
+          type: string
+      - name: provider
+        in: query
+        required: false
+        description: Filter by provider.
+        schema:
+          type: string
+      - name: label
+        in: query
+        required: false
+        description: Filter by label.
+        schema:
+          type: string
+      - name: twin
+        in: query
+        required: false
+        description: Filter by twin.
+        schema:
+          type: string
+      - name: limit
+        in: query
+        required: false
+        description: Maximum buckets.
+        schema:
+          type: integer
+      responses:
+        '200':
+          description: Cost buckets.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CostBucket'
+        '400':
+          description: 'Bad request: the body or a parameter could not be read.'
+          content:
+            text/plain:
+              schema:
+                type: string
+        '401':
+          description: Missing or invalid credential.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '403':
+          description: The principal lacks the permission.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '429':
+          description: Over the caller's rate or quota limit.
+          content:
+            text/plain:
+              schema:
+                type: string
+  /domains:
+    get:
+      operationId: listDomains
+      tags:
+      - domains
+      summary: List domain packs
+      x-karakuri-permission: domain:read
+      responses:
+        '200':
+          description: Packs.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  additionalProperties: true
+        '401':
+          description: Missing or invalid credential.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '403':
+          description: The principal lacks the permission.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '429':
+          description: Over the caller's rate or quota limit.
+          content:
+            text/plain:
+              schema:
+                type: string
+  /domains/capabilities:
+    get:
+      operationId: listCapabilities
+      tags:
+      - domains
+      summary: List capabilities, optionally of one domain
+      x-karakuri-permission: domain:read
+      parameters:
+      - name: domain
+        in: query
+        required: false
+        description: Only this domain's.
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Capabilities.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Capability'
+        '401':
+          description: Missing or invalid credential.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '403':
+          description: The principal lacks the permission.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '429':
+          description: Over the caller's rate or quota limit.
+          content:
+            text/plain:
+              schema:
+                type: string
+  /domains/{id}/conformance:
+    get:
+      operationId: runConformance
+      tags:
+      - domains
+      summary: Run a domain pack's conformance suite
+      x-karakuri-permission: domain:read
+      parameters:
+      - name: id
+        in: path
+        required: true
+        description: Resource ID.
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Results.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ConformanceResult'
+        '401':
+          description: Missing or invalid credential.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '403':
+          description: The principal lacks the permission.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '404':
+          description: No such resource.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '429':
+          description: Over the caller's rate or quota limit.
+          content:
+            text/plain:
+              schema:
+                type: string
+  /eval/calibrate:
+    post:
+      operationId: calibrateJudge
+      tags:
+      - eval
+      summary: Compare the model judge's verdicts with people's checkpoint decisions
+      x-karakuri-permission: eval:run
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                twin:
+                  type: string
+                since:
+                  type: string
+                until:
+                  type: string
+                limit:
+                  type: integer
+      responses:
+        '200':
+          description: The calibration report.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CalibrationReport'
+        '400':
+          description: 'Bad request: the body or a parameter could not be read.'
+          content:
+            text/plain:
+              schema:
+                type: string
+        '401':
+          description: Missing or invalid credential.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '403':
+          description: The principal lacks the permission.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '429':
+          description: Over the caller's rate or quota limit.
+          content:
+            text/plain:
+              schema:
+                type: string
+  /events:
+    get:
+      operationId: streamEvents
+      tags:
+      - events
+      summary: Stream every event the caller may see
+      x-karakuri-permission: twin:read
+      responses:
+        '200':
+          description: Server-sent event stream; each event is a JSON object.
+          content:
+            text/event-stream:
+              schema:
+                type: string
+        '401':
+          description: Missing or invalid credential.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '403':
+          description: The principal lacks the permission.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '429':
+          description: Over the caller's rate or quota limit.
+          content:
+            text/plain:
+              schema:
+                type: string
+  /health:
+    get:
+      operationId: getHealth
+      tags:
+      - health
+      summary: Report whether the server is up and which providers and adapters it has
+      security: []
+      responses:
+        '200':
+          description: Health and topology.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+  /loops:
+    post:
+      operationId: startLoop
+      tags:
+      - loops
+      summary: Start the reasoning loop for an objective
+      x-karakuri-permission: loop:start
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                objective_id:
+                  type: string
+                twin_id:
+                  type: string
+                max_iter:
+                  type: integer
+                watch_mode:
+                  type: boolean
+                  description: Declare the objective standing at sense-only autonomy after the loop.
+              required:
+              - objective_id
+      responses:
+        '200':
+          description: The loop's start result.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoopResult'
+        '400':
+          description: 'Bad request: the body or a parameter could not be read.'
+          content:
+            text/plain:
+              schema:
+                type: string
+        '401':
+          description: Missing or invalid credential.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '403':
+          description: The principal lacks the permission.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '429':
+          description: Over the caller's rate or quota limit.
+          content:
+            text/plain:
+              schema:
+                type: string
+  /loops/{id}/resume:
+    post:
+      operationId: resumeLoop
+      tags:
+      - loops
+      summary: Resume a paused loop with a checkpoint decision
+      x-karakuri-permission: loop:resume
+      parameters:
+      - name: id
+        in: path
+        required: true
+        description: Resource ID.
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                decision:
+                  type: string
+                  description: approve, reject or modify
+                note:
+                  type: string
+                approver:
+                  type: string
+                modifications:
+                  $ref: '#/components/schemas/CheckpointModifications'
+              required:
+              - decision
+      responses:
+        '200':
+          description: The loop's result.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoopResult'
+        '400':
+          description: 'Bad request: the body or a parameter could not be read.'
+          content:
+            text/plain:
+              schema:
+                type: string
+        '401':
+          description: Missing or invalid credential.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '403':
+          description: The principal lacks the permission.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '429':
+          description: Over the caller's rate or quota limit.
+          content:
+            text/plain:
+              schema:
+                type: string
+  /loops/{id}/status:
+    get:
+      operationId: getLoopStatus
+      tags:
+      - loops
+      summary: A loop's status
+      x-karakuri-permission: loop:read
+      parameters:
+      - name: id
+        in: path
+        required: true
+        description: Resource ID.
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Status.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoopStatus'
+        '401':
+          description: Missing or invalid credential.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '403':
+          description: The principal lacks the permission.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '404':
+          description: No such resource.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '429':
+          description: Over the caller's rate or quota limit.
+          content:
+            text/plain:
+              schema:
+                type: string
+  /mcp:
+    post:
+      operationId: mcp
+      tags:
+      - mcp
+      summary: Karakuri's MCP server (JSON-RPC 2.0, streamable HTTP)
+      description: Serves Karakuri's read-only tools to MCP clients. Takes a JSON-RPC 2.0 request and
+        answers with a JSON-RPC response; each tool is gated by its own permission.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: A JSON-RPC 2.0 request.
+              additionalProperties: true
+      responses:
+        '200':
+          description: A JSON-RPC 2.0 response.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '400':
+          description: 'Bad request: the body or a parameter could not be read.'
+          content:
+            text/plain:
+              schema:
+                type: string
+        '401':
+          description: Missing or invalid credential.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '403':
+          description: The principal lacks the permission.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '429':
+          description: Over the caller's rate or quota limit.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '202':
+          description: A notification was accepted (no response body).
+  /memory/forget:
+    post:
+      operationId: forgetMemory
+      tags:
+      - memory
+      summary: Delete memory entries by policy
+      x-karakuri-permission: memory:forget
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MemoryRetentionPolicy'
+      responses:
+        '200':
+          description: Forgotten.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+        '400':
+          description: 'Bad request: the body or a parameter could not be read.'
+          content:
+            text/plain:
+              schema:
+                type: string
+        '401':
+          description: Missing or invalid credential.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '403':
+          description: The principal lacks the permission.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '429':
+          description: Over the caller's rate or quota limit.
+          content:
+            text/plain:
+              schema:
+                type: string
+  /memory/recall:
+    post:
+      operationId: recallMemory
+      tags:
+      - memory
+      summary: Recall memory entries
+      x-karakuri-permission: memory:read
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MemoryQuery'
+      responses:
+        '200':
+          description: Entries.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/MemoryEntry'
+        '400':
+          description: 'Bad request: the body or a parameter could not be read.'
+          content:
+            text/plain:
+              schema:
+                type: string
+        '401':
+          description: Missing or invalid credential.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '403':
+          description: The principal lacks the permission.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '429':
+          description: Over the caller's rate or quota limit.
+          content:
+            text/plain:
+              schema:
+                type: string
+  /memory/store:
+    post:
+      operationId: storeMemory
+      tags:
+      - memory
+      summary: Store a memory entry
+      x-karakuri-permission: memory:write
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MemoryEntry'
+      responses:
+        '200':
+          description: Stored.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+        '400':
+          description: 'Bad request: the body or a parameter could not be read.'
+          content:
+            text/plain:
+              schema:
+                type: string
+        '401':
+          description: Missing or invalid credential.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '403':
+          description: The principal lacks the permission.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '429':
+          description: Over the caller's rate or quota limit.
+          content:
+            text/plain:
+              schema:
+                type: string
+  /objectives:
+    post:
+      operationId: createObjective
+      tags:
+      - objectives
+      summary: Create an objective, from a template or bare
+      x-karakuri-permission: objective:create
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title:
+                  type: string
+                description:
+                  type: string
+                domain:
+                  type: string
+                additional_domains:
+                  type: array
+                  items:
+                    type: string
+                priority:
+                  type: integer
+                max_iterations:
+                  type: integer
+                twin_id:
+                  type: string
+                template_id:
+                  type: string
+              required:
+              - title
+      responses:
+        '200':
+          description: The objective.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Objective'
+        '400':
+          description: 'Bad request: the body or a parameter could not be read.'
+          content:
+            text/plain:
+              schema:
+                type: string
+        '401':
+          description: Missing or invalid credential.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '403':
+          description: The principal lacks the permission.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '429':
+          description: Over the caller's rate or quota limit.
+          content:
+            text/plain:
+              schema:
+                type: string
+    get:
+      operationId: listObjectives
+      tags:
+      - objectives
+      summary: List objectives the caller may read
+      x-karakuri-permission: objective:read
+      parameters:
+      - name: twin_id
+        in: query
+        required: false
+        description: Filter by twin.
+        schema:
+          type: string
+      - name: status
+        in: query
+        required: false
+        description: Filter by status.
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Objectives.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Objective'
+        '401':
+          description: Missing or invalid credential.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '403':
+          description: The principal lacks the permission.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '429':
+          description: Over the caller's rate or quota limit.
+          content:
+            text/plain:
+              schema:
+                type: string
+  /objectives/templates:
+    get:
+      operationId: listObjectiveTemplates
+      tags:
+      - objectives
+      summary: List objective templates
+      x-karakuri-permission: objective:read
+      responses:
+        '200':
+          description: Templates.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ObjectiveTemplate'
+        '401':
+          description: Missing or invalid credential.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '403':
+          description: The principal lacks the permission.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '429':
+          description: Over the caller's rate or quota limit.
+          content:
+            text/plain:
+              schema:
+                type: string
+  /objectives/{id}:
+    get:
+      operationId: getObjective
+      tags:
+      - objectives
+      summary: Get an objective
+      x-karakuri-permission: objective:read
+      parameters:
+      - name: id
+        in: path
+        required: true
+        description: Resource ID.
+        schema:
+          type: string
+      responses:
+        '200':
+          description: The objective.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Objective'
+        '401':
+          description: Missing or invalid credential.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '403':
+          description: The principal lacks the permission.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '404':
+          description: No such resource.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '429':
+          description: Over the caller's rate or quota limit.
+          content:
+            text/plain:
+              schema:
+                type: string
+  /objectives/{id}/events:
+    get:
+      operationId: streamObjectiveEvents
+      tags:
+      - events
+      summary: Stream an objective's events
+      x-karakuri-permission: objective:read
+      parameters:
+      - name: id
+        in: path
+        required: true
+        description: Resource ID.
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Server-sent event stream; each event is a JSON object.
+          content:
+            text/event-stream:
+              schema:
+                type: string
+        '401':
+          description: Missing or invalid credential.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '403':
+          description: The principal lacks the permission.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '429':
+          description: Over the caller's rate or quota limit.
+          content:
+            text/plain:
+              schema:
+                type: string
+  /objectives/{id}/pause:
+    post:
+      operationId: pauseObjective
+      tags:
+      - reconcile
+      summary: Pause a standing objective
+      x-karakuri-permission: objective:pause
+      parameters:
+      - name: id
+        in: path
+        required: true
+        description: Resource ID.
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+      responses:
+        '200':
+          description: The reconcile state.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReconcileState'
+        '401':
+          description: Missing or invalid credential.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '403':
+          description: The principal lacks the permission.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '404':
+          description: No such resource.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '429':
+          description: Over the caller's rate or quota limit.
+          content:
+            text/plain:
+              schema:
+                type: string
+  /objectives/{id}/reconcile:
+    get:
+      operationId: getReconcileState
+      tags:
+      - reconcile
+      summary: A standing objective's reconcile state and recent history
+      x-karakuri-permission: objective:read
+      parameters:
+      - name: id
+        in: path
+        required: true
+        description: Resource ID.
+        schema:
+          type: string
+      - name: limit
+        in: query
+        required: false
+        description: How many history entries.
+        schema:
+          type: integer
+      responses:
+        '200':
+          description: State and history.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  state:
+                    $ref: '#/components/schemas/ReconcileState'
+                  history:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ReconcileOutcome'
+        '401':
+          description: Missing or invalid credential.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '403':
+          description: The principal lacks the permission.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '404':
+          description: No such resource.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '429':
+          description: Over the caller's rate or quota limit.
+          content:
+            text/plain:
+              schema:
+                type: string
+    post:
+      operationId: triggerReconcile
+      tags:
+      - reconcile
+      summary: Ask a standing objective to reconcile now
+      x-karakuri-permission: objective:reconcile
+      parameters:
+      - name: id
+        in: path
+        required: true
+        description: Resource ID.
+        schema:
+          type: string
+      responses:
+        '202':
+          description: Requested.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  objective_id:
+                    type: string
+                  status:
+                    type: string
+        '401':
+          description: Missing or invalid credential.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '403':
+          description: The principal lacks the permission.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '409':
+          description: Conflict with the resource's current state.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '429':
+          description: Over the caller's rate or quota limit.
+          content:
+            text/plain:
+              schema:
+                type: string
+  /objectives/{id}/resume:
+    post:
+      operationId: resumeObjective
+      tags:
+      - reconcile
+      summary: Resume a paused standing objective
+      x-karakuri-permission: objective:pause
+      parameters:
+      - name: id
+        in: path
+        required: true
+        description: Resource ID.
+        schema:
+          type: string
+      responses:
+        '200':
+          description: The reconcile state.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReconcileState'
+        '401':
+          description: Missing or invalid credential.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '403':
+          description: The principal lacks the permission.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '404':
+          description: No such resource.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '429':
+          description: Over the caller's rate or quota limit.
+          content:
+            text/plain:
+              schema:
+                type: string
+  /objectives/{id}/standing:
+    put:
+      operationId: declareStanding
+      tags:
+      - reconcile
+      summary: Declare an objective standing, with its cadence, autonomy and budget
+      x-karakuri-permission: objective:declare
+      parameters:
+      - name: id
+        in: path
+        required: true
+        description: Resource ID.
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                cadence:
+                  $ref: '#/components/schemas/Cadence'
+                autonomy:
+                  $ref: '#/components/schemas/Autonomy'
+                budget:
+                  $ref: '#/components/schemas/Budget'
+      responses:
+        '200':
+          description: The reconcile state.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReconcileState'
+        '400':
+          description: 'Bad request: the body or a parameter could not be read.'
+          content:
+            text/plain:
+              schema:
+                type: string
+        '401':
+          description: Missing or invalid credential.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '403':
+          description: The principal lacks the permission.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '404':
+          description: No such resource.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '429':
+          description: Over the caller's rate or quota limit.
+          content:
+            text/plain:
+              schema:
+                type: string
+    delete:
+      operationId: undeclareStanding
+      tags:
+      - reconcile
+      summary: Make a standing objective one-shot again
+      x-karakuri-permission: objective:declare
+      parameters:
+      - name: id
+        in: path
+        required: true
+        description: Resource ID.
+        schema:
+          type: string
+      responses:
+        '204':
+          description: No longer standing.
+        '401':
+          description: Missing or invalid credential.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '403':
+          description: The principal lacks the permission.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '404':
+          description: No such resource.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '429':
+          description: Over the caller's rate or quota limit.
+          content:
+            text/plain:
+              schema:
+                type: string
+  /objectives/{id}/status:
+    post:
+      operationId: setObjectiveStatus
+      tags:
+      - objectives
+      summary: Set an objective's status
+      x-karakuri-permission: objective:update
+      parameters:
+      - name: id
+        in: path
+        required: true
+        description: Resource ID.
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+              required:
+              - status
+      responses:
+        '200':
+          description: The new status.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+        '400':
+          description: 'Bad request: the body or a parameter could not be read.'
+          content:
+            text/plain:
+              schema:
+                type: string
+        '401':
+          description: Missing or invalid credential.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '403':
+          description: The principal lacks the permission.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '429':
+          description: Over the caller's rate or quota limit.
+          content:
+            text/plain:
+              schema:
+                type: string
+  /quota:
+    get:
+      operationId: getQuotaConfig
+      tags:
+      - quota
+      summary: The tier limits in force and as configured
+      x-karakuri-permission: quota:read
+      responses:
+        '200':
+          description: Limits.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '401':
+          description: Missing or invalid credential.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '403':
+          description: The principal lacks the permission.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '429':
+          description: Over the caller's rate or quota limit.
+          content:
+            text/plain:
+              schema:
+                type: string
+  /quota/overrides:
+    get:
+      operationId: listQuotaOverrides
+      tags:
+      - quota
+      summary: List active quota overrides the caller may see
+      x-karakuri-permission: quota:read
+      responses:
+        '200':
+          description: Overrides.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/QuotaOverride'
+        '401':
+          description: Missing or invalid credential.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '403':
+          description: The principal lacks the permission.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '429':
+          description: Over the caller's rate or quota limit.
+          content:
+            text/plain:
+              schema:
+                type: string
+  /quota/overrides/{subject}/{name}:
+    delete:
+      operationId: revokeQuotaOverride
+      tags:
+      - quota
+      summary: Revoke an active quota override
+      x-karakuri-permission: quota:approve
+      parameters:
+      - name: subject
+        in: path
+        required: true
+        description: Subject key.
+        schema:
+          type: string
+      - name: name
+        in: path
+        required: true
+        description: Tier name.
+        schema:
+          type: string
+      responses:
+        '204':
+          description: Revoked.
+        '401':
+          description: Missing or invalid credential.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '403':
+          description: The principal lacks the permission.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '404':
+          description: No such resource.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '429':
+          description: Over the caller's rate or quota limit.
+          content:
+            text/plain:
+              schema:
+                type: string
+  /quota/requests:
+    get:
+      operationId: listQuotaRequests
+      tags:
+      - quota
+      summary: List quota raise requests the caller may see
+      x-karakuri-permission: quota:read
+      parameters:
+      - name: status
+        in: query
+        required: false
+        description: Filter by status.
+        schema:
+          type: string
+      - name: twin
+        in: query
+        required: false
+        description: Filter by twin.
+        schema:
+          type: string
+      - name: mine
+        in: query
+        required: false
+        description: Only the caller's own.
+        schema:
+          type: boolean
+      responses:
+        '200':
+          description: Requests.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/QuotaRequest'
+        '401':
+          description: Missing or invalid credential.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '403':
+          description: The principal lacks the permission.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '429':
+          description: Over the caller's rate or quota limit.
+          content:
+            text/plain:
+              schema:
+                type: string
+    post:
+      operationId: submitQuotaRequest
+      tags:
+      - quota
+      summary: Ask for a temporary quota raise
+      x-karakuri-permission: quota:request
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                tier:
+                  type: string
+                twin:
+                  type: string
+                principal:
+                  type: string
+                cap:
+                  type: integer
+                window:
+                  type: string
+                until:
+                  type: string
+                  format: date-time
+                reason:
+                  type: string
+              required:
+              - tier
+              - cap
+      responses:
+        '201':
+          description: The request.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QuotaRequest'
+        '400':
+          description: 'Bad request: the body or a parameter could not be read.'
+          content:
+            text/plain:
+              schema:
+                type: string
+        '401':
+          description: Missing or invalid credential.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '403':
+          description: The principal lacks the permission.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '429':
+          description: Over the caller's rate or quota limit.
+          content:
+            text/plain:
+              schema:
+                type: string
+  /quota/requests/{id}/decide:
+    post:
+      operationId: decideQuotaRequest
+      tags:
+      - quota
+      summary: Approve or deny a quota raise request
+      x-karakuri-permission: quota:approve
+      parameters:
+      - name: id
+        in: path
+        required: true
+        description: Resource ID.
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                approve:
+                  type: boolean
+                note:
+                  type: string
+              required:
+              - approve
+      responses:
+        '200':
+          description: The decided request.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QuotaRequest'
+        '400':
+          description: 'Bad request: the body or a parameter could not be read.'
+          content:
+            text/plain:
+              schema:
+                type: string
+        '401':
+          description: Missing or invalid credential.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '403':
+          description: The principal lacks the permission.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '404':
+          description: No such resource.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '409':
+          description: Conflict with the resource's current state.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '429':
+          description: Over the caller's rate or quota limit.
+          content:
+            text/plain:
+              schema:
+                type: string
+  /quota/reset:
+    post:
+      operationId: resetQuota
+      tags:
+      - quota
+      summary: Clear a twin's daily counters, or one capability's
+      x-karakuri-permission: quota:admin
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                twin:
+                  type: string
+                capability:
+                  type: string
+              required:
+              - twin
+      responses:
+        '200':
+          description: Reset.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  twin_id:
+                    type: string
+                  capability:
+                    type: string
+                  reset:
+                    type: boolean
+        '400':
+          description: 'Bad request: the body or a parameter could not be read.'
+          content:
+            text/plain:
+              schema:
+                type: string
+        '401':
+          description: Missing or invalid credential.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '403':
+          description: The principal lacks the permission.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '429':
+          description: Over the caller's rate or quota limit.
+          content:
+            text/plain:
+              schema:
+                type: string
+  /quota/tiers:
+    get:
+      operationId: listQuotaTiers
+      tags:
+      - quota
+      summary: The stored tier limits
+      x-karakuri-permission: quota:read
+      responses:
+        '200':
+          description: Stored tiers.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  stored:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/QuotaTier'
+                  editable:
+                    type: boolean
+        '401':
+          description: Missing or invalid credential.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '403':
+          description: The principal lacks the permission.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '429':
+          description: Over the caller's rate or quota limit.
+          content:
+            text/plain:
+              schema:
+                type: string
+  /quota/tiers/{name}:
+    put:
+      operationId: setQuotaTier
+      tags:
+      - quota
+      summary: Store a tier limit
+      x-karakuri-permission: quota:admin
+      parameters:
+      - name: name
+        in: path
+        required: true
+        description: Tier name.
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                cap:
+                  type: integer
+                window:
+                  type: string
+                  description: A Go duration, e.g. 24h.
+                rate:
+                  type: number
+                reason:
+                  type: string
+      responses:
+        '200':
+          description: The tier.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QuotaTier'
+        '400':
+          description: 'Bad request: the body or a parameter could not be read.'
+          content:
+            text/plain:
+              schema:
+                type: string
+        '401':
+          description: Missing or invalid credential.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '403':
+          description: The principal lacks the permission.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '429':
+          description: Over the caller's rate or quota limit.
+          content:
+            text/plain:
+              schema:
+                type: string
+    delete:
+      operationId: resetQuotaTier
+      tags:
+      - quota
+      summary: Drop a stored tier limit back to its configured value
+      x-karakuri-permission: quota:admin
+      parameters:
+      - name: name
+        in: path
+        required: true
+        description: Tier name.
+        schema:
+          type: string
+      responses:
+        '204':
+          description: Reset.
+        '401':
+          description: Missing or invalid credential.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '403':
+          description: The principal lacks the permission.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '429':
+          description: Over the caller's rate or quota limit.
+          content:
+            text/plain:
+              schema:
+                type: string
+  /quota/usage:
+    get:
+      operationId: getQuotaUsage
+      tags:
+      - quota
+      summary: A twin's consumption of each daily tier
+      x-karakuri-permission: quota:read
+      parameters:
+      - name: twin
+        in: query
+        required: true
+        description: The twin.
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Usage.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  twin_id:
+                    type: string
+                  tiers:
+                    type: object
+                    additionalProperties: true
+        '400':
+          description: 'Bad request: the body or a parameter could not be read.'
+          content:
+            text/plain:
+              schema:
+                type: string
+        '401':
+          description: Missing or invalid credential.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '403':
+          description: The principal lacks the permission.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '429':
+          description: Over the caller's rate or quota limit.
+          content:
+            text/plain:
+              schema:
+                type: string
+  /reports:
+    get:
+      operationId: listReportSchedules
+      tags:
+      - reports
+      summary: List digest schedules
+      x-karakuri-permission: report:read
+      parameters:
+      - name: twin_id
+        in: query
+        required: false
+        description: Filter by twin.
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Schedules.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ReportSchedule'
+        '401':
+          description: Missing or invalid credential.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '403':
+          description: The principal lacks the permission.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '429':
+          description: Over the caller's rate or quota limit.
+          content:
+            text/plain:
+              schema:
+                type: string
+    post:
+      operationId: createReportSchedule
+      tags:
+      - reports
+      summary: Schedule a digest
+      x-karakuri-permission: report:write
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                twin_id:
+                  type: string
+                cadence:
+                  $ref: '#/components/schemas/Cadence'
+                channel:
+                  type: string
+                instance:
+                  type: string
+                target:
+                  type: string
+                window:
+                  type: string
+                send_when_empty:
+                  type: boolean
+              required:
+              - twin_id
+              - channel
+      responses:
+        '200':
+          description: The schedule.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReportSchedule'
+        '400':
+          description: 'Bad request: the body or a parameter could not be read.'
+          content:
+            text/plain:
+              schema:
+                type: string
+        '401':
+          description: Missing or invalid credential.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '403':
+          description: The principal lacks the permission.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '429':
+          description: Over the caller's rate or quota limit.
+          content:
+            text/plain:
+              schema:
+                type: string
+  /reports/preview:
+    get:
+      operationId: previewDigest
+      tags:
+      - reports
+      summary: Build a twin's digest without sending it
+      x-karakuri-permission: report:read
+      parameters:
+      - name: twin_id
+        in: query
+        required: true
+        description: The twin.
+        schema:
+          type: string
+      - name: window
+        in: query
+        required: false
+        description: A Go duration, e.g. 24h.
+        schema:
+          type: string
+      responses:
+        '200':
+          description: The digest.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Digest'
+        '400':
+          description: 'Bad request: the body or a parameter could not be read.'
+          content:
+            text/plain:
+              schema:
+                type: string
+        '401':
+          description: Missing or invalid credential.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '403':
+          description: The principal lacks the permission.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '429':
+          description: Over the caller's rate or quota limit.
+          content:
+            text/plain:
+              schema:
+                type: string
+  /reports/{id}:
+    delete:
+      operationId: deleteReportSchedule
+      tags:
+      - reports
+      summary: Delete a digest schedule
+      x-karakuri-permission: report:write
+      parameters:
+      - name: id
+        in: path
+        required: true
+        description: Resource ID.
+        schema:
+          type: string
+      responses:
+        '204':
+          description: Deleted.
+        '401':
+          description: Missing or invalid credential.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '403':
+          description: The principal lacks the permission.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '429':
+          description: Over the caller's rate or quota limit.
+          content:
+            text/plain:
+              schema:
+                type: string
+  /reports/{id}/send:
+    post:
+      operationId: sendDigest
+      tags:
+      - reports
+      summary: Send a scheduled digest now
+      x-karakuri-permission: report:write
+      parameters:
+      - name: id
+        in: path
+        required: true
+        description: Resource ID.
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Sent.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+        '401':
+          description: Missing or invalid credential.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '403':
+          description: The principal lacks the permission.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '404':
+          description: No such resource.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '429':
+          description: Over the caller's rate or quota limit.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '502':
+          description: The messaging adapter refused the send.
+          content:
+            text/plain:
+              schema:
+                type: string
+  /research:
+    post:
+      operationId: runResearch
+      tags:
+      - research
+      summary: Run a research task
+      x-karakuri-permission: research:run
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                twin_id:
+                  type: string
+                objective_id:
+                  type: string
+                agent_id:
+                  type: string
+                topic:
+                  type: string
+                sources:
+                  type: array
+                  items:
+                    type: string
+                depth:
+                  type: string
+              required:
+              - topic
+      responses:
+        '200':
+          description: The research result.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResearchResult'
+        '400':
+          description: 'Bad request: the body or a parameter could not be read.'
+          content:
+            text/plain:
+              schema:
+                type: string
+        '401':
+          description: Missing or invalid credential.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '403':
+          description: The principal lacks the permission.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '429':
+          description: Over the caller's rate or quota limit.
+          content:
+            text/plain:
+              schema:
+                type: string
+  /twins:
+    post:
+      operationId: createTwin
+      tags:
+      - twins
+      summary: Create a digital twin
+      x-karakuri-permission: twin:create
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                kind:
+                  type: string
+                  description: person, team or organization
+                domain:
+                  type: string
+              required:
+              - name
+              - kind
+      responses:
+        '200':
+          description: The twin.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Twin'
+        '400':
+          description: 'Bad request: the body or a parameter could not be read.'
+          content:
+            text/plain:
+              schema:
+                type: string
+        '401':
+          description: Missing or invalid credential.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '403':
+          description: The principal lacks the permission.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '429':
+          description: Over the caller's rate or quota limit.
+          content:
+            text/plain:
+              schema:
+                type: string
+    get:
+      operationId: listTwins
+      tags:
+      - twins
+      summary: List twins the caller may read
+      x-karakuri-permission: twin:read
+      parameters:
+      - name: kind
+        in: query
+        required: false
+        description: Filter by kind.
+        schema:
+          type: string
+      - name: domain
+        in: query
+        required: false
+        description: Filter by domain.
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Twins.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Twin'
+        '401':
+          description: Missing or invalid credential.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '403':
+          description: The principal lacks the permission.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '429':
+          description: Over the caller's rate or quota limit.
+          content:
+            text/plain:
+              schema:
+                type: string
+  /twins/{id}:
+    get:
+      operationId: getTwin
+      tags:
+      - twins
+      summary: Get a twin
+      x-karakuri-permission: twin:read
+      parameters:
+      - name: id
+        in: path
+        required: true
+        description: Resource ID.
+        schema:
+          type: string
+      responses:
+        '200':
+          description: The twin.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Twin'
+        '401':
+          description: Missing or invalid credential.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '403':
+          description: The principal lacks the permission.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '404':
+          description: No such resource.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '429':
+          description: Over the caller's rate or quota limit.
+          content:
+            text/plain:
+              schema:
+                type: string
+    put:
+      operationId: updateTwin
+      tags:
+      - twins
+      summary: Update a twin's name, domain or adapter bindings
+      x-karakuri-permission: twin:update
+      parameters:
+      - name: id
+        in: path
+        required: true
+        description: Resource ID.
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                domain:
+                  type: string
+                adapter_bindings:
+                  type: object
+                  additionalProperties:
+                    type: string
+      responses:
+        '200':
+          description: The twin.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Twin'
+        '400':
+          description: 'Bad request: the body or a parameter could not be read.'
+          content:
+            text/plain:
+              schema:
+                type: string
+        '401':
+          description: Missing or invalid credential.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '403':
+          description: The principal lacks the permission.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '404':
+          description: No such resource.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '429':
+          description: Over the caller's rate or quota limit.
+          content:
+            text/plain:
+              schema:
+                type: string
+  /twins/{id}/bindings:
+    put:
+      operationId: setTwinBindings
+      tags:
+      - twins
+      summary: Replace a twin's adapter bindings (slot to instance)
+      x-karakuri-permission: twin:bind
+      parameters:
+      - name: id
+        in: path
+        required: true
+        description: Resource ID.
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                adapter_bindings:
+                  type: object
+                  additionalProperties:
+                    type: string
+              required:
+              - adapter_bindings
+      responses:
+        '200':
+          description: The twin.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Twin'
+        '400':
+          description: 'Bad request: the body or a parameter could not be read.'
+          content:
+            text/plain:
+              schema:
+                type: string
+        '401':
+          description: Missing or invalid credential.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '403':
+          description: The principal lacks the permission.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '404':
+          description: No such resource.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '429':
+          description: Over the caller's rate or quota limit.
+          content:
+            text/plain:
+              schema:
+                type: string
+  /twins/{id}/events:
+    get:
+      operationId: streamTwinEvents
+      tags:
+      - events
+      summary: Stream a twin's events
+      x-karakuri-permission: twin:read
+      parameters:
+      - name: id
+        in: path
+        required: true
+        description: Resource ID.
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Server-sent event stream; each event is a JSON object.
+          content:
+            text/event-stream:
+              schema:
+                type: string
+        '401':
+          description: Missing or invalid credential.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '403':
+          description: The principal lacks the permission.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '429':
+          description: Over the caller's rate or quota limit.
+          content:
+            text/plain:
+              schema:
+                type: string
 components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: karakuri_access
   schemas:
+    Artifact:
+      type: object
+      properties:
+        sha:
+          type: string
+        objective_id:
+          type: string
+        agent_id:
+          type: string
+        capability:
+          type: string
+        content_type:
+          type: string
+        size:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+    AuditEvent:
+      type: object
+      properties:
+        id:
+          type: string
+        objective_id:
+          type: string
+        agent_id:
+          type: string
+        capability:
+          type: string
+        adapter:
+          type: string
+        success:
+          type: boolean
+        confidence:
+          type: number
+        payload_json:
+          type: string
+        kind:
+          type: string
+        escalation_reason:
+          type: string
+        approver:
+          type: string
+        bounds_violation:
+          type: boolean
+        provider:
+          type: string
+        model:
+          type: string
+        template_id:
+          type: string
+        autonomy_rung:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+    AuthDecision:
+      type: object
+      properties:
+        allowed:
+          type: boolean
+        effect:
+          type: string
+        principal_id:
+          type: string
+        action:
+          type: string
+        resource:
+          type: string
+        matched_policy:
+          type: string
+        via_role:
+          type: string
+        binding_scope:
+          type: string
+        conditions:
+          type: array
+          items:
+            type: object
+            properties:
+              condition:
+                type: object
+                properties:
+                  kind:
+                    type: string
+                  key:
+                    type: string
+                  values:
+                    type: array
+                    items:
+                      type: string
+              satisfied:
+                type: boolean
+              detail:
+                type: string
+        reason:
+          type: string
+        considered_roles:
+          type: array
+          items:
+            type: string
+    Autonomy:
+      type: object
+      properties:
+        level:
+          type: string
+        ceiling:
+          type: string
+        promote_after:
+          type: integer
+        demote_on_failure:
+          type: boolean
+    Budget:
+      type: object
+      properties:
+        daily:
+          type: number
+        per_reconcile:
+          type: number
+    Cadence:
+      type: object
+      properties:
+        sense:
+          type: string
+        every:
+          type: string
+        cron:
+          type: string
+        daily_at:
+          type: string
+        timezone:
+          type: string
+        resync:
+          type: string
+        min_interval:
+          type: string
+        quiet:
+          type: array
+          items:
+            type: string
+    CalibrationReport:
+      type: object
+      properties:
+        TwinID:
+          type: string
+        Since:
+          type: string
+          format: date-time
+        Until:
+          type: string
+          format: date-time
+        N:
+          type: integer
+        Agreed:
+          type: integer
+        Skipped:
+          type: integer
+        Agreement:
+          type: number
+        Replayable:
+          type: integer
+        Confusion:
+          type: object
+          properties:
+            JudgePassHumanApprove:
+              type: integer
+            JudgePassHumanReject:
+              type: integer
+            JudgeFailHumanApprove:
+              type: integer
+            JudgeFailHumanReject:
+              type: integer
+        ByDecision:
+          type: object
+          additionalProperties:
+            type: object
+            properties:
+              N:
+                type: integer
+              Agreed:
+                type: integer
+              JudgePass:
+                type: integer
+        Items:
+          type: array
+          items:
+            type: object
+            properties:
+              CheckpointID:
+                type: string
+              ObjectiveID:
+                type: string
+              Choice:
+                type: string
+              HumanApprove:
+                type: boolean
+              JudgePass:
+                type: boolean
+              Agreed:
+                type: boolean
+              Reply:
+                type: string
+              Error:
+                type: string
+              Title:
+                type: string
+              Criterion:
+                type: string
+              Actions:
+                type: string
+    Capability:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        domain:
+          type: string
+        description:
+          type: string
+        input_schema:
+          type: object
+          properties:
+            type:
+              type: string
+            properties:
+              type: object
+              additionalProperties:
+                type: object
+                properties:
+                  type:
+                    type: string
+                  description:
+                    type: string
+                  enum:
+                    type: array
+                    items:
+                      type: string
+            required:
+              type: array
+              items:
+                type: string
+        output_schema:
+          type: object
+          properties:
+            type:
+              type: string
+            properties:
+              type: object
+              additionalProperties:
+                type: object
+                properties:
+                  type:
+                    type: string
+                  description:
+                    type: string
+                  enum:
+                    type: array
+                    items:
+                      type: string
+            required:
+              type: array
+              items:
+                type: string
+        verifiable:
+          type: boolean
+        llm_hints:
+          type: object
+          properties:
+            preferred_provider:
+              type: string
+            fallback_provider:
+              type: string
+            temperature_min:
+              type: number
+            temperature_max:
+              type: number
+        needs_workspace:
+          type: boolean
     Checkpoint:
       type: object
-      required: [id, objective_id, twin_id, summary, options, status, created_at]
       properties:
         id:
           type: string
@@ -60,8 +4549,35 @@ components:
           type: string
         confidence:
           type: number
+        actions:
+          type: array
+          items:
+            type: object
+            properties:
+              capability:
+                type: string
+              params:
+                type: object
+                additionalProperties: {}
+              reason:
+                type: string
+              env_id:
+                type: string
+        audit_event_id:
+          type: string
         status:
           type: string
+        decision:
+          type: object
+          properties:
+            choice:
+              type: string
+            note:
+              type: string
+            approver:
+              type: string
+            modifications:
+              $ref: '#/components/schemas/CheckpointModifications'
         created_at:
           type: string
           format: date-time
@@ -71,6 +4587,923 @@ components:
         expires_at:
           type: string
           format: date-time
-          description: >-
-            When an unanswered checkpoint lapses and is resolved as a rejection
-            by system:timeout. Absent when no expiry is configured.
+    CheckpointModifications:
+      type: object
+      properties:
+        removed_actions:
+          type: array
+          items:
+            type: string
+        added_constraints:
+          type: array
+          items:
+            type: string
+        revised_confidence:
+          type: number
+    ConformanceResult:
+      type: object
+      properties:
+        check:
+          type: string
+        passed:
+          type: boolean
+        message:
+          type: string
+        warning:
+          type: boolean
+    Constraint:
+      type: object
+      properties:
+        id:
+          type: string
+        description:
+          type: string
+        hard:
+          type: boolean
+        expression:
+          type: string
+    Container:
+      type: object
+      properties:
+        id:
+          type: string
+        kind:
+          type: string
+        name:
+          type: string
+        parent_id:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    CostBucket:
+      type: object
+      properties:
+        key:
+          type: array
+          items:
+            type: string
+        units:
+          type: number
+        cost:
+          type: number
+        events:
+          type: integer
+    Criterion:
+      type: object
+      properties:
+        id:
+          type: string
+        description:
+          type: string
+        verifier:
+          type: string
+        threshold: {}
+        weight:
+          type: number
+        met:
+          type: boolean
+        domain:
+          type: string
+    Digest:
+      type: object
+      properties:
+        twin_id:
+          type: string
+        twin_name:
+          type: string
+        since:
+          type: string
+          format: date-time
+        until:
+          type: string
+          format: date-time
+        objectives:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+              title:
+                type: string
+              status:
+                type: string
+              senses:
+                type: integer
+              reconciles:
+                type: integer
+              drift_detected:
+                type: integer
+              converged:
+                type: integer
+              escalations:
+                type: integer
+              failures:
+                type: integer
+              actions:
+                type: integer
+              autonomy:
+                type: string
+              criteria_met:
+                type: number
+              paused:
+                type: boolean
+              paused_why:
+                type: string
+              last_error:
+                type: string
+        decisions:
+          type: array
+          items:
+            type: object
+            properties:
+              checkpoint_id:
+                type: string
+              objective_id:
+                type: string
+              objective_title:
+                type: string
+              reason:
+                type: string
+              summary:
+                type: string
+              options:
+                type: array
+                items:
+                  type: string
+              proposed:
+                type: array
+                items:
+                  type: string
+              waiting_since:
+                type: string
+                format: date-time
+        spend:
+          type: object
+          properties:
+            cost:
+              type: number
+            by_provider:
+              type: object
+              additionalProperties:
+                type: number
+            priced:
+              type: boolean
+        exhausted:
+          type: array
+          items:
+            type: object
+            properties:
+              objective_id:
+                type: string
+              objective_title:
+                type: string
+              times:
+                type: integer
+              ceiling:
+                type: number
+              resumes_at:
+                type: string
+                format: date-time
+              interrupted_by:
+                type: string
+        autonomy_changes:
+          type: array
+          items:
+            type: object
+            properties:
+              objective_id:
+                type: string
+              objective_title:
+                type: string
+              from:
+                type: string
+              to:
+                type: string
+              reason:
+                type: string
+              at:
+                type: string
+                format: date-time
+        prose:
+          type: string
+    Grant:
+      type: object
+      properties:
+        role:
+          type: string
+        scope:
+          type: string
+        policy_id:
+          type: string
+        action:
+          type: string
+        resource:
+          type: string
+        effect:
+          type: string
+        conditions:
+          type: array
+          items:
+            type: object
+            properties:
+              kind:
+                type: string
+              key:
+                type: string
+              values:
+                type: array
+                items:
+                  type: string
+    LoopResult:
+      type: object
+      properties:
+        loop_id:
+          type: string
+        objective_id:
+          type: string
+        status:
+          type: string
+        iterations:
+          type: array
+          items:
+            type: object
+            properties:
+              Number:
+                type: integer
+              Step:
+                type: string
+              Input: {}
+              Output: {}
+              TokensUsed:
+                type: integer
+              Duration:
+                type: integer
+                description: nanoseconds
+              Timestamp:
+                type: string
+                format: date-time
+        criteria_met:
+          type: number
+        checkpoint_id:
+          type: string
+        learned_facts:
+          type: array
+          items:
+            $ref: '#/components/schemas/MemoryEntry'
+    LoopStatus:
+      type: object
+      properties:
+        loop_id:
+          type: string
+        objective_id:
+          type: string
+        step:
+          type: string
+        iteration:
+          type: integer
+        criteria_met:
+          type: number
+        paused:
+          type: boolean
+    MemoryEntry:
+      type: object
+      properties:
+        id:
+          type: string
+        agent_id:
+          type: string
+        twin_id:
+          type: string
+        tier:
+          type: string
+        domain:
+          type: string
+        content:
+          type: string
+        embedding:
+          type: array
+          items:
+            type: number
+        confidence:
+          type: number
+        sources:
+          type: array
+          items:
+            type: string
+        created_at:
+          type: string
+          format: date-time
+        expires_at:
+          type: string
+          format: date-time
+    MemoryQuery:
+      type: object
+      properties:
+        agent_id:
+          type: string
+        twin_id:
+          type: string
+        tiers:
+          type: array
+          items:
+            type: string
+        query:
+          type: string
+        embedding:
+          type: array
+          items:
+            type: number
+        top_k:
+          type: integer
+        since:
+          type: string
+          format: date-time
+        domain:
+          type: string
+    MemoryRetentionPolicy:
+      type: object
+      properties:
+        agent_id:
+          type: string
+        twin_id:
+          type: string
+        before:
+          type: string
+          format: date-time
+        tiers:
+          type: array
+          items:
+            type: string
+        min_score:
+          type: number
+    Objective:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+        domain:
+          type: string
+        additional_domains:
+          type: array
+          items:
+            type: string
+        twin_id:
+          type: string
+        priority:
+          type: integer
+        max_iterations:
+          type: integer
+        deadline:
+          type: string
+          format: date-time
+        success_criteria:
+          type: array
+          items:
+            $ref: '#/components/schemas/Criterion'
+        constraints:
+          type: array
+          items:
+            $ref: '#/components/schemas/Constraint'
+        parent_id:
+          type: string
+        status:
+          type: string
+        mode:
+          type: string
+        cadence:
+          $ref: '#/components/schemas/Cadence'
+        autonomy:
+          $ref: '#/components/schemas/Autonomy'
+        budget:
+          $ref: '#/components/schemas/Budget'
+        agent_id:
+          type: string
+        template_id:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    ObjectiveTemplate:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+        domain:
+          type: string
+        risk:
+          type: string
+        success_criteria:
+          type: array
+          items:
+            $ref: '#/components/schemas/Criterion'
+        constraints:
+          type: array
+          items:
+            $ref: '#/components/schemas/Constraint'
+        suggested_agents:
+          type: array
+          items:
+            type: object
+            properties:
+              ID:
+                type: string
+              Name:
+                type: string
+              Domain:
+                type: string
+              Capabilities:
+                type: array
+                items:
+                  type: string
+              Memory:
+                type: object
+                properties:
+                  working_window_size:
+                    type: integer
+                  episodic_retention:
+                    type: integer
+                    description: nanoseconds
+                  semantic_enabled:
+                    type: boolean
+                  procedural_enabled:
+                    type: boolean
+              ReasoningStrategy:
+                type: string
+              Authority:
+                type: object
+                properties:
+                  MaxAutonomousActions:
+                    type: integer
+                  RequiresApprovalFor:
+                    type: array
+                    items:
+                      type: string
+                  CanDelegate:
+                    type: boolean
+                  CanModifyObjective:
+                    type: boolean
+                  ConfidenceThreshold:
+                    type: number
+              LLMHints:
+                type: object
+                properties:
+                  preferred_provider:
+                    type: string
+                  fallback_provider:
+                    type: string
+                  temperature_min:
+                    type: number
+                  temperature_max:
+                    type: number
+    Principal:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        kind:
+          type: string
+        attrs:
+          type: object
+          additionalProperties:
+            type: string
+        disabled:
+          type: boolean
+    QuotaOverride:
+      type: object
+      properties:
+        subject:
+          type: string
+        name:
+          type: string
+        cap:
+          type: integer
+        window:
+          type: integer
+          description: nanoseconds
+        expires_at:
+          type: string
+          format: date-time
+        reason:
+          type: string
+    QuotaRequest:
+      type: object
+      properties:
+        id:
+          type: string
+        subject:
+          type: string
+        name:
+          type: string
+        cap:
+          type: integer
+        window:
+          type: integer
+          description: nanoseconds
+        expires_at:
+          type: string
+          format: date-time
+        reason:
+          type: string
+        status:
+          type: string
+        requested_by:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        decided_by:
+          type: string
+        decided_at:
+          type: string
+          format: date-time
+        decision_note:
+          type: string
+    QuotaTier:
+      type: object
+      properties:
+        name:
+          type: string
+        cap:
+          type: integer
+        window:
+          type: integer
+          description: nanoseconds
+        rate:
+          type: number
+        reason:
+          type: string
+        updated_by:
+          type: string
+        updated_at:
+          type: string
+          format: date-time
+    ReconcileOutcome:
+      type: object
+      properties:
+        id:
+          type: string
+        objective_id:
+          type: string
+        twin_id:
+          type: string
+        trigger:
+          type: string
+        loop_id:
+          type: string
+        drift:
+          type: object
+          properties:
+            changed:
+              type: boolean
+            environments:
+              type: array
+              items:
+                type: string
+            from:
+              type: string
+            to:
+              type: string
+            blind:
+              type: boolean
+        autonomy:
+          type: string
+        criteria_met:
+          type: number
+        converged:
+          type: boolean
+        escalated:
+          type: boolean
+        checkpoint_id:
+          type: string
+        error:
+          type: string
+        deferred:
+          type: string
+        deferred_until:
+          type: string
+          format: date-time
+        started_at:
+          type: string
+          format: date-time
+        ended_at:
+          type: string
+          format: date-time
+    ReconcileState:
+      type: object
+      properties:
+        objective_id:
+          type: string
+        twin_id:
+          type: string
+        phase:
+          type: string
+        paused:
+          type: boolean
+        paused_reason:
+          type: string
+        next_due_at:
+          type: string
+          format: date-time
+        next_sense_at:
+          type: string
+          format: date-time
+        next_reconcile_at:
+          type: string
+          format: date-time
+        converged_fingerprint:
+          type: object
+          properties:
+            sha:
+              type: string
+            environments:
+              type: object
+              additionalProperties:
+                type: string
+            blind:
+              type: array
+              items:
+                type: string
+            taken_at:
+              type: string
+              format: date-time
+        last_converged_at:
+          type: string
+          format: date-time
+        last_run_at:
+          type: string
+          format: date-time
+        last_reconciled_at:
+          type: string
+          format: date-time
+        last_trigger:
+          type: string
+        last_outcome_id:
+          type: string
+        last_error:
+          type: string
+        active_loop_id:
+          type: string
+        criteria_met:
+          type: number
+        score_streak:
+          type: integer
+        consecutive_failures:
+          type: integer
+        autonomy:
+          type: string
+        clean_runs:
+          type: integer
+        holder:
+          type: string
+        lease_until:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    ReportSchedule:
+      type: object
+      properties:
+        id:
+          type: string
+        twin_id:
+          type: string
+        cadence:
+          $ref: '#/components/schemas/Cadence'
+        channel:
+          type: string
+        instance:
+          type: string
+        target:
+          type: string
+        window:
+          type: string
+        send_when_empty:
+          type: boolean
+        enabled:
+          type: boolean
+        next_due_at:
+          type: string
+          format: date-time
+        last_sent_at:
+          type: string
+          format: date-time
+        last_error:
+          type: string
+        consecutive_failures:
+          type: integer
+        holder:
+          type: string
+        lease_until:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    ResearchResult:
+      type: object
+      properties:
+        ArtifactSHA:
+          type: string
+        Summary:
+          type: string
+        Confidence:
+          type: number
+    Role:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        inherits:
+          type: array
+          items:
+            type: string
+        policies:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+              action:
+                type: string
+              resource:
+                type: string
+              effect:
+                type: string
+              conditions:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    kind:
+                      type: string
+                    key:
+                      type: string
+                    values:
+                      type: array
+                      items:
+                        type: string
+        system:
+          type: boolean
+    RoleBinding:
+      type: object
+      properties:
+        id:
+          type: string
+        principal_id:
+          type: string
+        role:
+          type: string
+        scope:
+          type: string
+    SessionResponse:
+      type: object
+      properties:
+        token_type:
+          type: string
+        expires_in:
+          type: integer
+      description: The answer when the tokens were set as cookies.
+    TokenPair:
+      type: object
+      properties:
+        access_token:
+          type: string
+        refresh_token:
+          type: string
+        token_type:
+          type: string
+        expires_in:
+          type: integer
+        expires_at:
+          type: string
+          format: date-time
+    Twin:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        kind:
+          type: string
+        domain:
+          type: string
+        agents:
+          type: array
+          items:
+            type: object
+            properties:
+              ID:
+                type: string
+              Name:
+                type: string
+              Domain:
+                type: string
+              Capabilities:
+                type: array
+                items:
+                  type: string
+              Memory:
+                type: object
+                properties:
+                  working_window_size:
+                    type: integer
+                  episodic_retention:
+                    type: integer
+                    description: nanoseconds
+                  semantic_enabled:
+                    type: boolean
+                  procedural_enabled:
+                    type: boolean
+              ReasoningStrategy:
+                type: string
+              Authority:
+                type: object
+                properties:
+                  MaxAutonomousActions:
+                    type: integer
+                  RequiresApprovalFor:
+                    type: array
+                    items:
+                      type: string
+                  CanDelegate:
+                    type: boolean
+                  CanModifyObjective:
+                    type: boolean
+                  ConfidenceThreshold:
+                    type: number
+              LLMHints:
+                type: object
+                properties:
+                  preferred_provider:
+                    type: string
+                  fallback_provider:
+                    type: string
+                  temperature_min:
+                    type: number
+                  temperature_max:
+                    type: number
+        environments:
+          type: array
+          items:
+            type: string
+        objectives:
+          type: array
+          items:
+            type: string
+        memory:
+          type: object
+          properties:
+            working_window_size:
+              type: integer
+            episodic_retention:
+              type: integer
+              description: nanoseconds
+            semantic_enabled:
+              type: boolean
+            procedural_enabled:
+              type: boolean
+        children:
+          type: array
+          items:
+            type: string
+        adapter_bindings:
+          type: object
+          additionalProperties:
+            type: string
+        owner_id:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
