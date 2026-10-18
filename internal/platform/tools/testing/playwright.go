@@ -32,7 +32,7 @@ func (p *Playwright) RunTests(ctx context.Context, path string) ([]TestResult, e
 	if path != "" {
 		args = append(args, path)
 	}
-	cmd := exec.CommandContext(ctx, p.npxBin, args...)
+	cmd := exec.CommandContext(ctx, p.npxBin, args...) // #nosec G204 -- npxBin comes from operator config; args are fixed playwright flags plus a test path
 	cmd.Dir = p.projectDir
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout

@@ -34,7 +34,7 @@ type LogRow struct {
 // silently writing JSON to a .parquet path.
 func WriteParquet(path string, v any) error {
 	parquetPath := ensureExt(path, ".parquet")
-	f, err := os.Create(parquetPath)
+	f, err := os.Create(parquetPath) // #nosec G304 -- path is the operator's export destination
 	if err != nil {
 		return err
 	}
