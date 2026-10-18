@@ -58,7 +58,7 @@ func startServerWith(t *testing.T, configure func(*config.Config)) (baseURL stri
 	}
 	addr := ln.Addr().String()
 
-	srv := &http.Server{Handler: apiApp.Handler()}
+	srv := &http.Server{Handler: validateResponses(t, apiApp.Handler())}
 	go func() { _ = srv.Serve(ln) }()
 
 	base := "http://" + addr
