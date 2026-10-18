@@ -58,7 +58,7 @@ func (l *LocalFileExporter) write(_ context.Context, kind string, exportFmt Expo
 
 	date := time.Now().Format("2006-01-02")
 	dir := filepath.Join(l.path, kind, date)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return err
 	}
 
@@ -151,7 +151,7 @@ func writeFormat(filename string, exportFmt ExportFormat, kind string, records a
 		if err != nil {
 			return err
 		}
-		return os.WriteFile(filename, data, 0o644)
+		return os.WriteFile(filename, data, 0o600)
 	}
 }
 
