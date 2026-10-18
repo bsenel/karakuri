@@ -335,6 +335,11 @@ func (f *Federation) AbsoluteRedirect() string {
 	if u, err := url.Parse(target); err == nil && u.IsAbs() {
 		return target
 	}
+	// "//host" and "/\\host" pass a leading-slash check but a browser reads
+	// them as another host.
+	if strings.HasPrefix(target, "//") || strings.HasPrefix(target, "/\\") {
+		return "/"
+	}
 	if !strings.HasPrefix(target, "/") {
 		return "/" + target
 	}
