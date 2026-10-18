@@ -167,8 +167,9 @@ func PrintOutput(data []byte, format string) {
 	case "quiet":
 		return
 	case "json":
-		os.Stdout.Write(data)
-		os.Stdout.Write([]byte("\n"))
+		// Nothing useful can be done if stdout is gone; the discard is deliberate.
+		_, _ = os.Stdout.Write(data)
+		_, _ = os.Stdout.Write([]byte("\n"))
 	default:
 		var v any
 		_ = json.Unmarshal(data, &v)
