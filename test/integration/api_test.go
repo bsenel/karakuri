@@ -390,6 +390,7 @@ func TestObjectiveCRUD(t *testing.T) {
 			"domain":      "software",
 			"priority":    1,
 			"twin_id":     twinID,
+			"template_id": "software.objective.code_review",
 		})
 		assertStatus(t, resp, http.StatusOK)
 		m := decodeJSON(t, resp)
@@ -399,8 +400,9 @@ func TestObjectiveCRUD(t *testing.T) {
 
 	t.Run("create_then_get", func(t *testing.T) {
 		resp := doJSON(t, adminToken, http.MethodPost, baseURL+"/api/v1/objectives", map[string]any{
-			"title":  "Objective for Get",
-			"domain": "software",
+			"title":       "Objective for Get",
+			"domain":      "software",
+			"template_id": "software.objective.code_review",
 		})
 		assertStatus(t, resp, http.StatusOK)
 		created := decodeJSON(t, resp)
@@ -422,8 +424,9 @@ func TestObjectiveCRUD(t *testing.T) {
 
 	t.Run("update_status", func(t *testing.T) {
 		resp := doJSON(t, adminToken, http.MethodPost, baseURL+"/api/v1/objectives", map[string]any{
-			"title":  "Status Objective",
-			"domain": "software",
+			"title":       "Status Objective",
+			"domain":      "software",
+			"template_id": "software.objective.code_review",
 		})
 		assertStatus(t, resp, http.StatusOK)
 		created := decodeJSON(t, resp)
@@ -454,7 +457,7 @@ func TestLoopStartStatus(t *testing.T) {
 	twinID := twinM["id"].(string)
 
 	objResp := doJSON(t, adminToken, http.MethodPost, baseURL+"/api/v1/objectives", map[string]any{
-		"title": "Loop Objective", "domain": "software",
+		"title": "Loop Objective", "domain": "software", "template_id": "software.objective.code_review",
 	})
 	assertStatus(t, objResp, http.StatusOK)
 	objM := decodeJSON(t, objResp)

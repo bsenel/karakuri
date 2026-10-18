@@ -2,6 +2,7 @@ package versioncontrol
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"time"
 )
@@ -25,4 +26,12 @@ func (n *NoOp) ListPRs(_ context.Context, _ string, _ time.Time) ([]PRSummary, e
 
 func (n *NoOp) GetCommits(_ context.Context, _ string, _ time.Time) ([]Commit, error) {
 	return nil, nil
+}
+
+func (n *NoOp) ListChecks(_ context.Context, _, _ string) ([]CheckRun, error) {
+	return nil, fmt.Errorf("noop: checks: %w", ErrUnsupported)
+}
+
+func (n *NoOp) ChangedFiles(_ context.Context, _, _ string) ([]string, error) {
+	return nil, fmt.Errorf("noop: changed files: %w", ErrUnsupported)
 }

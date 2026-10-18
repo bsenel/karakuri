@@ -1,6 +1,7 @@
 package objective
 
 import (
+	"encoding/json"
 	"time"
 
 	"github.com/bsenel/karakuri/internal/core/capability"
@@ -159,12 +160,103 @@ type Criterion struct {
 	Verifier    capability.CapabilityID `json:"verifier,omitempty"`
 	Threshold   any                     `json:"threshold,omitempty"`
 	Weight      float64                 `json:"weight"`
-	Met         bool                    `json:"met"`
 	// Domain optionally scopes the criterion to one of the objective's
 	// domains; verifier resolution then prefers a capability from that pack
 	// when multiple packs offer the same capability ID. Cross-domain
 	// objectives use this to keep per-pack acceptance criteria isolated.
 	Domain string `json:"domain,omitempty"`
+
+	// Required says whether the criterion gates completion. Nil is required,
+	// so every criterion written before the field existed still gates. Read
+	// it through IsRequired.
+	Required *bool `json:"required,omitempty"`
+	// State is what the last verify step settled, and Reason says why when
+	// the state is inconclusive. "met" on the wire is derived from it; see
+	// MarshalJSON.
+	State  CriterionState     `json:"state,omitempty"`
+	Reason InconclusiveReason `json:"reason,omitempty"`
+}
+
+// CriterionState is what a verify step settled about one criterion.
+type CriterionState string
+
+const (
+	CriterionMet          CriterionState = "met"
+	CriterionNotMet       CriterionState = "not_met"
+	CriterionInconclusive CriterionState = "inconclusive"
+)
+
+// InconclusiveReason says why a criterion could not be settled.
+type InconclusiveReason string
+
+// ReasonVerifierError is a named verifier that could not run. It blocks
+// completion without saying anything about the work.
+const ReasonVerifierError InconclusiveReason = "verifier_error"
+
+// The other reasons a verifier settles nothing. ReasonNoData is a world with
+// nothing to judge, ReasonNotRun a check that did not run as far as the
+// verifier can tell, and ReasonUnsupported a source that cannot answer the
+// question at all (AGENTS.md rule 10).
+const (
+	ReasonNoData      InconclusiveReason = "no_data"
+	ReasonNotRun      InconclusiveReason = "not_run"
+	ReasonUnsupported InconclusiveReason = "unsupported"
+)
+
+// IsRequired reports whether the criterion gates completion.
+func (c Criterion) IsRequired() bool {
+	return c.Required == nil || *c.Required
+}
+
+// IsMet reports whether the last verify step settled the criterion met.
+func (c Criterion) IsMet() bool { return c.State == CriterionMet }
+
+// criterionFields is Criterion without its methods, so the JSON methods below
+// can encode the fields without calling themselves.
+type criterionFields Criterion
+
+// MarshalJSON writes "met" beside the state, derived from it, so the API's
+// readers keep the field and it can never disagree with the state.
+func (c Criterion) MarshalJSON() ([]byte, error) {
+	return json.Marshal(struct {
+		criterionFields
+		Met bool `json:"met"`
+	}{criterionFields(c), c.IsMet()})
+}
+
+// UnmarshalJSON reads a state when there is one. An objective stored before
+// states existed carries only "met", and a true one reads back met; a "met"
+// beside a state is ignored, so a stale flag cannot override what was settled.
+func (c *Criterion) UnmarshalJSON(data []byte) error {
+	var in struct {
+		criterionFields
+		Met bool `json:"met"`
+	}
+	if err := json.Unmarshal(data, &in); err != nil {
+		return err
+	}
+	*c = Criterion(in.criterionFields)
+	if c.State == "" && in.Met {
+		c.State = CriterionMet
+	}
+	return nil
+}
+
+// AllRequiredMet is the completion rule: at least one criterion is required,
+// and every required one is met. An optional criterion neither blocks nor
+// grants completion, and zero required criteria never completes.
+func AllRequiredMet(criteria []Criterion) bool {
+	required := 0
+	for _, c := range criteria {
+		if !c.IsRequired() {
+			continue
+		}
+		if !c.IsMet() {
+			return false
+		}
+		required++
+	}
+	return required > 0
 }
 
 // VerifierIsReserved reports whether this criterion names a verifier from the
