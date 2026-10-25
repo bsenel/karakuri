@@ -412,7 +412,75 @@ _Pending: part 7._
 ## Fit and bets
 
 <!-- p7a:start -->
-_Pending: part 7._
+Written by part 7 on 2026-10-25 from this report (parts 1 to 6, read line by line), the 2026-10-08 report's '## Fit and bets' only, README.md's headings, the Goal line of every phase in `docs/roadmap.md`, a search of Phase 39's text (lines 4337 to 4572) for `schema|argument|inventory` (no hit), and `gh pr list`. No web page was fetched and no Go file opened; nothing was built, run or tested. Every 'Observed:' below is another part's observation, cited by section; every ranking is Inferred. Upstream state: Feasibility (part 6b) is written, not a placeholder, so Gate 2 can be passed. This report has no '**Baseline:**' line and no '### Thin spots inherited' heading (part 6 searched for both, and so did this part); the baseline is taken as `docs/research/discovery-2026-10-08.md`, which the Method names, and its gaps as part 1's 'Still thin' and 'Not attempted' lists plus the 2026-10-08 thin spots each part says it filled.
+
+### (a) Fit by segment
+
+**Platform and SRE teams: STRONG in shape, WEAK in proof, and now with a reason to fear action.** Strong: Phase 32 (Completed) is investigation handed to a person, and Phase 35 (Completed) ends an unanswered checkpoint as a rejection. Weak: nothing read this cycle shows Phase 32 run against a live backend (as on 2026-10-08); the stop that reaches a running pass is Phase 37, Planned; and no phase gives an agent knowledge of the other automations acting on the same system, which is the failure Redick names. Reasons this segment would NOT want Karakuri: Observed in part 1, Redick's "over-eager AI auto-remediator" and "overlapping automations" (https://www.usenix.org/conference/srecon26americas/presentation/redick, read 2026-10-25) [Q]: one more actor during a P1 is part of the problem. IBM's figure on IBM's own benchmark, "Current AI models resolve only 13.8% of scenarios" (https://www.usenix.org/conference/srecon26americas/program, read 2026-10-25) [Q], is a vendor figure, not a measurement, and gives a team no reason to let any agent act. incident.io ships an investigation agent inside the incident product the team already pages from (part 4, 5, [E]).
+
+**Self-hosters: WEAK.** What fits: Inferred, the three options ZeroClaw's maintainers list for unattended turns (auto-deny, a profile for "no operator present", an approver channel; https://github.com/zeroclaw-labs/zeroclaw/issues/10968, read 2026-10-25, [Q]) are decisions Karakuri already made: authority written into the run (rule 8, `effectiveAuthority` in `internal/feature/reconcile/authority.go:21`, read by part 4) and an unanswered checkpoint that rejects (Phase 35). Not checked: whether every unattended path (reconcile passes, delegated coding agents, sub-agents) carries the same bounds; no part opened that code. What does not fit: Observed in part 6b, Karakuri has no local-model provider (`internal/platform/llm/` holds claude, claude_cli, copilot, cursor, gemini, gemini_cli; no `ollama` hit), and self-hosters of the 2026-10-08 report run local models. Reasons NOT to want it: ZeroClaw is a single Rust binary with cron, heartbeat, risk profiles and approval routing whose maintainers accepted the gap as a P1; a Go server with a database is heavier; the 2026-10-08 objections (framework dependencies, "a directory of ticket files") stand.
+
+**Engineering teams delegating coding work, unattended: STRONG on the record, WEAK on the pre-push check, and the standing case still has no observed user.** Strong: worktree delivery (ADR 003), checkpoints, spend ceilings (Phase 23), and Phase 38 (Planned) on criteria never settled. Weak: both sources of part 1 put the weight on deterministic checks before the push (Temporal: the unattended loops produced "hygiene that our own local tooling should have caught before the push.", https://temporal.io/blog/using-coding-agents-on-a-migration-three-practices-that-mattered, read 2026-10-25 [Q]; Stripe: "Deterministic steps handle linting, generated code, tests, and pull request setup.", https://background-agents.com/summit/sessions/alistair-gray/, read 2026-10-25 [Q, page summary only]); whether Karakuri's delivery path runs the repository's own checks before it pushes was not read this cycle. Phase 41 (#187, open) settles success criteria by code, which is near but not the same. Reasons NOT to want it: Stripe's outline makes "Human developer infrastructure" the agent runtime, so a company of that size builds on its own environment; a small team with one migration needs a CI loop, not standing objectives; Claude Code ships routines, scheduled wakeups and an OS sandbox (part 3, [E]) to developers who already use it.
+
+**Regulated organisations and governance buyers (moved to part 6): STRONG on mechanism, WEAK on proof, unchanged.** Strong: Observed in part 6a, `internal/feature/audit/export.go:149-214` separates decisions, oversight interventions, autonomy changes, decisions without provenance and pending checkpoints, with a `NotACertification` field; `retention.go:13-37` holds a 183-day floor. Weak: the AI Act legal text is unread for the third cycle, so no row is a compliance finding; the omnibus's amended dates are unread; the stop requirement (Art. 14(4)(e), via secondary) is not evidenced until Phase 37 ships; no regulated organisation speaking for itself was found in any cycle (part 1 item f). Reasons NOT to want it: no vendor, support or certification; Anthropic now ships OpenTelemetry export and per-end-customer "user profiles" for enforcement (part 5 C1, https://platform.claude.com/docs/en/release-notes/overview, read 2026-10-25 [Q]), so part of the control surface arrives with the provider.
+
+**Small product teams embedding agents: IRRELEVANT, as on 2026-10-04 and 2026-10-08.** No new source this cycle. They embed an SDK (the Agents SDK's approvals now persist across resume, part 3 [E]); Karakuri has nothing to embed.
+
+Inferred, overall: the fit has not moved. What part 1 adds is that the unattended path is where runtimes leak authority (ZeroClaw) and where deterministic checks matter more than the model (Temporal, Stripe), both of which are questions about Karakuri's code that no part answered this cycle.
+
+### (b) Ranking of every candidate
+
+Gate 1 counts one tracker once. Gate 2 needs the candidate's code read in '## Feasibility' and no phase on main or open pull request covering it. No discovery pull request was closed unmerged (`gh pr list --state all --label karakuri:discovery`, re-run 2026-10-25: #148 and #158 merged, #195 open), so no candidate is excluded as declined. Open pull requests: #187 (Phase 41), #194 (EB-005, exporter drops spans), #195.
+
+**1. Filter MCP call arguments against the tool's declared schema. PASS, as FRONTIER BET.** As DEMAND it FAILS Gate 1: n8n #21500 and #21716 are one tracker. As FRONTIER BET it passes Gate 1 on a capability a leader shipped: n8n pull request #23167, "fix(McpClientTool Node): Sanitize MCP tool arguments based on schema", merged 2026-01-06 (https://api.github.com/repos/n8n-io/n8n/pulls/23167, read 2026-10-25) [Q for the title, E for the body]. This part states plainly that it chose the bet path because the demand path fails. Gate 2: Feasibility candidate 1 observed the gap at `internal/platform/tools/mcp/instance.go:259-273` (`Call` passes `args` unchanged; `schemaOf`'s comment says nothing validates the call). Phase 39 (one gateway, Planned) does not mention schema, arguments or inventory in its text (search, this part). Inferred: first because the gap is observed in code, the slice is one function and a table test, the users framed the leak as a security issue ("I think this should be considered a security issue by n8n.io team.", n8n #21716 comments [Q]), and it costs no authority change. Risk: `client.go` was not opened and may already strip arguments.
+
+**2. A recorded-fixture contract test for provider tool calls. PASS, as FRONTIER BET (weak).** As DEMAND it FAILS Gate 1 (n8n #22181 and #9862, one tracker). As FRONTIER BET: Anthropic shipped API version `2026-10-21` and "Go SDK 2.0.0" with breaking changes (https://platform.claude.com/docs/en/release-notes/overview, read 2026-10-25) [Q]. Gate 2: Feasibility candidate 4 (`internal/platform/llm/claude.go:32` hard-codes `claude-sonnet-4-6`, `Complete` at 78-89, `go.mod:57` pins langchaingo v0.1.15); no phase covers a provider contract test. Inferred: second, and weak, because Karakuri talks to Anthropic through langchaingo, not the Go SDK, and which `anthropic-version` header v0.1.15 sends is unknown, so the shipped change may not touch Karakuri at all. Karakuri does have a gemini provider, and the n8n Gemini `thought_signature` breakage was reported "still happening in newest release." (n8n #22181 comments [Q]).
+
+**3. A2A: a read-only Agent Card. PASS, not recommended.** FRONTIER BET; Gate 1 on the A2A 1.0 specification, sections 7 and 8.4 (https://a2a-protocol.org/latest/specification/, characters 100,000 to 200,000, read 2026-10-25) [Q]; LangSmith claims `SendMessage` and `GetTask` (https://docs.langchain.com/langsmith/changelog, read 2026-10-25) [E]. Gate 2: Feasibility candidate 5 (no `a2a` in `internal/**/*.go`); no phase plans it. Not recommended: no user source in any of three cycles asks for it, and the first slice changes nothing a buyer has asked about. Inferred: low expected value until one does.
+
+**4. Connection-pool lifetimes for the Postgres store. FAIL Gate 1.** DEMAND; langgraph #3716 and #5672 are one tracker (https://api.github.com/repos/langchain-ai/langgraph/issues/3716/comments?per_page=100, read 2026-10-25) [Q]. Gate 2 would pass (Feasibility candidate 2: `internal/platform/db/gorm.go:22-28`, no `SetConnMaxIdleTime` in `internal/platform`). Inferred: cheap and probably worth doing as engineering hygiene through the tech backlog, not as a discovery recommendation.
+
+**5. A configurable timeout on a slow local model. FAIL Gate 1 and Gate 2.** DEMAND, one tracker (n8n #25360). Feasibility candidate 3 found no local provider, so there is no slice.
+
+**6. Run the repository's own checks before a delegated push. NOT ASSESSED.** DEMAND; Gate 1 PASS on two independent primary sources (Temporal blog [Q]; Stripe session page [Q, summary only], both above), the only DEMAND candidate this cycle with two. Gate 2: not in Feasibility; whether the delivery path already runs checks, and whether Phase 41 (#187) covers it, were not read. Heads the next cycle's list.
+
+**7. Every unattended path carries the run's bounds (reconcile, delegated agents, sub-agents). NOT ASSESSED.** DEMAND; Gate 1 FAILS on one tracker (ZeroClaw #10968 and the #11335 it links). Code not read; part 1 asked part 6 to test it and part 6 did not reach it. Inferred: a code reading could find a real authority leak, which matters more than the source count, so it is second on the next list.
+
+**8. No widening of authority after a run has read third-party text (part 5 B2). NOT ASSESSED; Gate 1 also FAILS as it stands.** The paper's method section was not returned (https://arxiv.org/html/2610.22987, read 2026-10-25) [Q for results only], and Phase 27 only partly covers it (Feasibility).
+
+**9. A post-run check for actions outside the run's bounds (part 5 B1). NOT ASSESSED.** FRONTIER BET; Gate 1 PASS (arXiv 2610.27548, method section 3 read, "Agents act out of authorization in 19.2% of trajectories", https://arxiv.org/html/2610.27548, read 2026-10-25, [Q]; the authors' figure on their benchmark). Not in Feasibility; Phase 38's Goal is unmet criteria, not overstepping.
+
+**10. Delegated vs autonomous marking on outbound calls (WIMSE, part 5 A4). NOT ASSESSED.** Gate 1 PASS on `draft-ietf-wimse-arch-08` (https://datatracker.ietf.org/doc/html/draft-ietf-wimse-arch, read 2026-10-25) [Q/E], an informational draft. Code not read; Phase 34 and 39 overlap unverified.
+
+**11. MCP server and tool inventory in the evidence record (2026-10-08 rank 5). NOT ASSESSED.** Adopted by no phase (part 1). Phase 39's text has no `inventory` hit (this part's search), which suggests it is not covered, but the export code was not reopened. The OWASP mitigations are still unread (part 6a).
+
+**12. Serious-incident records (AI Act Art. 73). NOT ASSESSED.** Legal text unread [N]; `export.go:140-229` holds no incident type (part 6b).
+
+**13. Anthropic user profiles and organisation-wide fetch limits against Phase 39; OTel agent spans beyond Phase 29. NOT ASSESSED.** The second overlaps #194 (open), which would make it FAIL Gate 2 in part.
+
+**14. Knowing about other automations acting during an incident (Redick). FAIL Gate 1.** One abstract.
+
+**15. A stop that reaches a running pass; reconcile sharing a cancellable context. FAIL Gate 2.** Covered by Phase 37 (Planned).
+
+**16. OS-level sandbox; in-session rewind (Claude Code `/rewind`, Codex #9203). NOT ASSESSED.** Release notes [E] only and no code read; worktree delivery (ADR 003) may already cover rewind for delivery.
+
+### (c) Recommended
+
+Two, fewer than five, because only two candidates pass both gates and both rest on a shipped capability rather than on two independent user populations.
+
+**R1. Filter MCP call arguments against the declared schema. FRONTIER BET.**
+- Sources: n8n pull request #23167 (https://api.github.com/repos/n8n-io/n8n/pulls/23167, read 2026-10-25) [Q title, E body]; supporting demand from one tracker, n8n #21716 (https://api.github.com/repos/n8n-io/n8n/issues/21716/comments?per_page=100, read 2026-10-25) [Q].
+- Rests on: Feasibility candidate 1.
+- The bet: a client that forwards keys the tool never declared leaks the platform's own parameters to a third-party server, and dropping or refusing them in `Call` removes that leak without breaking a server that declares its properties.
+- Proved wrong if: `internal/platform/tools/mcp/client.go` already strips undeclared keys; or the servers Karakuri binds mostly declare `additionalProperties: true`, so the filter passes everything.
+- Kill criterion for the first slice: if, after reading `client.go` and the servers in `config/default.yaml`, no path is found by which an undeclared key reaches `client.CallTool`, stop at the test and ship no filter.
+
+**R2. A recorded-fixture contract test for provider tool calls. FRONTIER BET (weak).**
+- Sources: Anthropic release notes, API version `2026-10-21` (https://platform.claude.com/docs/en/release-notes/overview, read 2026-10-25) [Q]; supporting demand from one tracker, n8n #22181 (https://api.github.com/repos/n8n-io/n8n/issues/22181/comments?per_page=100, read 2026-10-25) [Q].
+- Rests on: Feasibility candidate 4.
+- The bet: a provider's tool-calling change reaches Karakuri's loop as a wrong plan or a silent failure, and a fixture test per provider under `internal/platform/agent` catches it before a run does.
+- Proved wrong if: langchaingo v0.1.15 pins a request version the providers keep serving unchanged, so no change in the window would have reached Karakuri.
+- Kill criterion for the first slice: if the fixture for the current Anthropic tool-use shape and the Gemini `thought_signature` shape both parse correctly today and no provider change since 2026-07-01 is found that would alter them, keep the test and open no phase.
 <!-- p7a:end -->
 
 <!-- p8:start -->
