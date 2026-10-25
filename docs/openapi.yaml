@@ -5796,6 +5796,30 @@ components:
             temperature_min:
               type: number
           type: object
+        metrics:
+          items:
+            additionalProperties: false
+            properties:
+              direction:
+                type: string
+              name:
+                type: string
+              params:
+                items:
+                  additionalProperties: false
+                  properties:
+                    name:
+                      type: string
+                    type:
+                      type: string
+                  type: object
+                nullable: true
+                type: array
+              unit:
+                type: string
+            type: object
+          nullable: true
+          type: array
         name:
           type: string
         needs_workspace:
