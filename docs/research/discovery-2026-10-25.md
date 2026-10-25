@@ -187,7 +187,77 @@ Products 4 to 6 and the capability matrix: written by part 4, below.
 <!-- p3:end -->
 
 <!-- p4a:start -->
-Part 4 in progress.
+Every page in this part came through a fetch tool that returns a model-written extract, so nothing below is quoted verbatim and every external claim is [E]. All pages were read on 2026-10-25. Vendor notes are claims, not measurements. Part 4 ran out of time before reading any complaint thread in full, so every (iv) below is an opening-post extract, not the two full threads the brief asked for.
+
+### 4. Temporal (durable execution)
+
+**(i) Shipped, part of window read.** Server releases, observed [E] (https://api.github.com/repos/temporalio/temporal/releases?per_page=30, first 100,000 of about 432,500 characters): six releases, v1.32.0 (2026-09-11) to v1.30.8 and v1.31.4 (2026-10-12). 2026-04-25 to 2026-09-10 is not in the part read. v1.32.0: Standalone Nexus Operations in pre-release, Standalone Activities GA, and proactive activity cancellation when a workflow closes; later releases are Nexus callback fixes. No release in the part read names AI agents or OpenTelemetry. Temporal Cloud changelog, observed [E] (https://temporal.io/change-log/product-area/cloud, the page as loaded, which has a "Load More" button): 2026-04-30 principal attribution for workflow executions (pre-release); 2026-05-04 Worker Controller GA; 2026-05-05 task queue priority and fairness GA; 2026-05-14 External Storage (public preview); 2026-06-25 custom roles (pre-release); 2026-08-03 Serverless Workers on AWS Lambda (public preview); 2026-09-15 pay-as-you-go plan with a $0 minimum; 2026-09-18 Serverless Workers for AWS Bedrock AgentCore (pre-release); 2026-10-05 Serverless Workers on Cloud Run (public preview). The SDK repositories' releases were not read. Licence, observed [E] (https://raw.githubusercontent.com/temporalio/temporal/main/LICENSE): MIT, copyright Temporal Technologies 2025 and Uber 2020. DBOS, Inngest and Restate: not read.
+
+**(ii) What it does that Karakuri does not.** Inferred: a general durable-execution engine with replay, multi-language SDKs, priority and fairness on task queues, and a managed cloud with serverless workers; the only agent-specific item in the part read is AgentCore as a worker host.
+
+**(iii) What Karakuri does that it does not.** From README and Completed phases (docs/roadmap.md headings Phases 20, 21, 23, 27, 35): standing objectives that reconcile, digests, per-objective spend ceilings, provenance on observations, checkpoints that end when unanswered. Inferred: Temporal provides none of these as product features; it is the layer such features would be built on. Karakuri's Phase 11 "Distributed & Durable Execution" is its own resume path, not Temporal.
+
+**(iv) Complaints.** https://api.github.com/search/issues?q=repo:temporalio/temporal+is:issue+is:open&sort=reactions&order=desc&per_page=2 [E], opening posts only: #680, waiting from workflow code on an external workflow's completion, opened 2020-08-18, 76 reactions, 15 comments; #3006, workflow pause and unpause, opened 2022-06-17, 69 reactions, 21 comments. Inferred: #3006 is the same need as Karakuri's Phase 37 ("Any Run Can Be Stopped at Any Time", Planned).
+
+**Rows.** Durable resume: claimed by the vendor, yes. Earned autonomy: no (not a concept in the part read). A2A: unknown.
+
+### 5. incident.io (AI SRE)
+
+**(i) Shipped, part of window read.** https://incident.io/changelog [E]: the page carries no dates on its entries (slugs show 2021 to January 2025), so nothing can be placed in the window. Undated entries near the top: Investigations GA "powered by Nexus" (its agent, not Temporal's Nexus), posting root-cause hypotheses after an incident is declared; a claim that investigations became twice as fast (median 6.7 to 3 minutes to an accurate channel update, a vendor claim); "Extensions" to plug internal tools into the agent; an incident.io plugin bringing its skills into a coding harness; a hosted MCP server in public beta. Rootly, PagerDuty and Datadog Bits AI SRE: not read.
+
+**(ii) What it does that Karakuri does not.** Inferred: an incident product with paging and a Slack-native channel, where the agent's investigation runs from declaration; a hosted MCP server for the incident record.
+
+**(iii) What Karakuri does that it does not.** Inferred, against README and Phase 32 "The SRE Path, Actually Wired" (Completed, heading only): a self-hosted open-source runtime, earned autonomy on standing objectives, evidence export (Phase 31). Nothing in the part read describes autonomy that widens with a record.
+
+**(iv) Complaints.** No public tracker or forum was found or read. Not filled.
+
+**Rows.** SRE path: claimed by the vendor, yes. MCP server: claimed, yes (beta). Earned autonomy, A2A: unknown.
+
+### 6. Langfuse (observability); governance product not read
+
+**(i) Shipped, part of window read.** https://api.github.com/repos/langfuse/langfuse/releases?per_page=40 [E], first 100,000 of about 219,600 characters: v4.57.0 (2026-10-12) to v4.70.0 (2026-10-24) only; 2026-04-25 to 2026-10-11 is still unread, so the "whole window" was not covered. https://langfuse.com/changelog returned 404 [N]. In the part read: batch evaluation runnable through an MCP tool (v4.70.0); MCP tool listing LLM connections and managed skills loaded from Langfuse (v4.68.0); agent-session spans named after the agent (v4.59.0); OTel input media extraction (v4.57.0, v4.58.0); a billable-units ledger and prompt-cache hit rate (v4.60.0); score configs in annotation queues (v4.63.0).
+
+Governance-only product: Zenity's guessed changelog URL (https://www.zenity.io/changelog) returned 404 [N]; Credo AI was not tried. Not filled.
+
+**(ii) What it does that Karakuri does not.** Inferred: a trace store and UI that ingests OpenTelemetry from any agent, with human annotation queues and evaluators, and an MCP server over that data.
+
+**(iii) What Karakuri does that it does not.** Inferred: Langfuse observes runs; it does not run them. Karakuri's checkpoints, spend ceilings (Phase 23) and evidence pack (Phase 31) act on the run. Karakuri emits GenAI telemetry (Phase 29) that a store such as Langfuse could ingest; whether it does was not tested.
+
+**(iv) Complaints.** https://api.github.com/search/issues?q=repo:langfuse/langfuse+is:issue+is:open&sort=reactions&order=desc&per_page=2 [E], opening posts only: #5030, inline media preview in traces, opened 2025-01-14, 25 reactions, 9 comments; #11874, numeric score filters miss traces, opened 2026-02-04, 15 reactions, 5 comments. Inferred: low counts; neither touches agents.
+
+**Rows.** OTel GenAI: claimed by the vendor, yes (ingest). MCP server: claimed, yes. Self-hosted licence: unknown (not read this pass).
+<!-- p4a:end -->
+
+## Capability matrix
+
+<!-- p4b:start -->
+Key: O = observed (in a page or file read), C = claimed by the vendor, U = unknown; then yes / partial / no. KARAKURI cells rest on docs/roadmap.md phase status (headings and status lines, not the full phase text, which part 4 had no time to read) except where a Go file is named. Only one Go file was read in full enough to cite: `internal/feature/reconcile/authority.go` (`effectiveAuthority`). `internal/core/environment/environment.go` was seen only through a search for `Trust`, which is not a reading. The brief asked for four; this falls short.
+
+| Capability | KARAKURI | Claude Code | Codex / Agents SDK | LangGraph / LangSmith | Temporal | incident.io | Langfuse |
+|---|---|---|---|---|---|---|---|
+| Standing / scheduled objectives | O yes (Phase 20 Completed; reconcile package) | C yes, scheduled (routines) | U | C partial, crons | U | U | no (observes only, inferred) |
+| Checkpoint enforced by runtime | O yes (authority.go writes bounds the loop enforces; Phase 13.5) | C yes (permission modes) | C yes (SDK approvals) | C yes (`interrupt`) | U | U | no |
+| Earned autonomy | O partial: authority.go maps levels sense/propose/act_with_notice/act to bounds and never widens past the agent's own bounds | U | U | U | no | U | no |
+| Per-run spend ceiling | O-heading yes (Phase 23) | C partial (usage warnings, `--max-turns`) | U | U | no | U | partial (cost ledger, not a ceiling) |
+| Durable resume after restart | O-heading yes (Phase 11) | C partial (session resume) | C partial (session resume) | C yes (checkpointers) | C yes | U | no |
+| Stop any run at any time | O-heading no (Phase 37 Planned) | U | U | U | C partial (cancel; pause is open #3006) | U | no |
+| Audit log and evidence export | O-heading yes (Phases 19, 31) | U | U | U | C partial (principal attribution, pre-release) | U | U |
+| MCP client | O-heading yes (Phases 28, 33) | C yes | C yes | U | U | U | U |
+| MCP server | O-heading yes (Phase 34) | U | U | C yes | U | C yes (beta) | C yes |
+| Agent-to-agent protocol | U (no Completed phase heading names A2A) | U | U | C yes (LangSmith `SendMessage`/`GetTask`) | no | U | no |
+| OTel GenAI telemetry | O-heading yes (Phase 29) | C yes | no seen | U | no seen | U | C yes (ingest) |
+| SRE / incident path | O-heading yes (Phase 32) | no | no | no | no | C yes | no |
+| Self-hosted OSS licence | U this pass (licence file not read) | no (inferred) | C partial (SDK open source; not read) | U | O yes, MIT | no (inferred, SaaS) | U |
+| Provenance labelling of third-party text | O partial-read yes (Phase 27; `TrustThirdParty` seen by search) | U | U | U | no | U | no |
+
+### Still thin (part 4)
+
+1. Every (iv) is an opening-post extract; no thread was read in full, and incident.io has no tracker read.
+2. Temporal: server releases before 2026-09-11 and every SDK's releases unread; DBOS, Inngest, Restate not opened.
+3. incident.io's changelog is undated; nothing is placed in the window. Rootly, PagerDuty, Datadog not read.
+4. Langfuse: 2026-04-25 to 2026-10-11 unread; its licence unread. No governance-only product read (Zenity 404, Credo AI not tried).
+5. KARAKURI column: one Go file read; the rest rests on phase headings, the same weakness as 2026-10-08. docs/research/discovery-2026-10-08.md's teardown and matrix were not read this part.
+6. A2A is unknown for Karakuri itself; only LangSmith has a vendor claim.
 <!-- p4a:end -->
 
 ## Capability matrix
@@ -302,7 +372,19 @@ Repository files read: this report's headings and the parts 1 and 2 markers, REA
 ### Sources, part 4
 
 <!-- s4:start -->
-_Pending: part 4._
+All read 2026-10-25 by a fetch tool that returns extracts. P = primary.
+- https://api.github.com/repos/temporalio/temporal/releases?per_page=30: P, first 100,000 of about 432,500 characters [E]
+- https://raw.githubusercontent.com/temporalio/temporal/main/LICENSE: P [E]
+- https://docs.temporal.io/cloud/release-notes: redirect only [N]
+- https://temporal.io/change-log/product-area/cloud: P, entries as first loaded [E]
+- https://api.github.com/search/issues?q=repo:temporalio/temporal+is:issue+is:open&sort=reactions&order=desc&per_page=2: P [E]
+- https://incident.io/changelog: P, undated entries [E]
+- https://langfuse.com/changelog: 404 [N]
+- https://api.github.com/repos/langfuse/langfuse/releases?per_page=40: P, first 100,000 of about 219,600 characters [E]
+- https://api.github.com/search/issues?q=repo:langfuse/langfuse+is:issue+is:open&sort=reactions&order=desc&per_page=2: P [E]
+- https://www.zenity.io/changelog: 404 [N]
+
+Repository files read: this report's part 3; docs/roadmap.md phase headings and statuses; internal/feature/reconcile/authority.go lines 1 to 60; a search of internal/core/environment/environment.go and internal/core/agent/agent.go. README.md and docs/research/discovery-2026-10-08.md were not read in full this part.
 <!-- s4:end -->
 
 ### Sources, part 5
@@ -330,3 +412,4 @@ _Pending: part 7._
 <!-- rl1:end -->
 - Part 2: ran 2026-10-25 from 17:04 UTC in one 600-second session; filled thin spots 1 (except #5672) and 3; spots 2 and 4 to 8 not reached.
 - Part 3: ran 2026-10-25 from 17:07 UTC in one 600-second session; `gh api` and `curl` were not permitted, so every page came through an extract tool; wrote products 1 to 3 in one commit, not one per product; the 2026-10-08 teardown was not read in full.
+- Part 4: ran 2026-10-25 from 17:11 UTC in one 600-second session; extract tool only; wrote products 4 to 6 and the matrix in one commit after the in-progress marker; no complaint thread read in full, no governance product read, one Go file read.
