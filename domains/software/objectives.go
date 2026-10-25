@@ -15,10 +15,9 @@ func softwareObjectiveTemplates() []objective.Template {
 		}
 	}
 	// judged declares a criterion no capability settles. Naming a verifier
-	// that nothing serves does not fail the criterion — verify.go falls back
-	// to asking a model — so the declaration was costing a judgement call per
-	// iteration while claiming to be settled by a review that never ran.
-	// A verifier answers the criterion; it does not merely relate to it.
+	// that nothing serves leaves the criterion inconclusive: not_run on every
+	// pass, so it could never be met. A verifier answers the criterion; it
+	// does not merely relate to it.
 	judged := func(id, desc string, weight float64) objective.Criterion {
 		return objective.Criterion{ID: id, Description: desc, Weight: weight}
 	}
@@ -53,14 +52,27 @@ func softwareObjectiveTemplates() []objective.Template {
 			SuccessCriteria: []objective.Criterion{
 				crit("tests-pass", "All tests pass", "software.verify.run_tests", 0.4),
 				crit("lint-pass", "Linter passes", "software.verify.lint", 0.1),
-				judged("peer-review", "Peer review approved", 0.25),
-				judged("lead-review", "Tech lead review approved", 0.25),
+				progress("peer-review", "Peer review approved", 0.25),
+				progress("lead-review", "Tech lead review approved", 0.25),
 			},
 			Constraints: []objective.Constraint{
 				hard("design-first", "Design doc must exist before any write_code action", "design_doc_exists"),
 				hard("tdd-order", "write_test must precede the write_code it covers", "test_before_code"),
 				hard("two-stage-review", "Both review and tech_lead_review must pass before create_pr", "reviews_passed"),
 			},
+		},
+		{
+			// A docs-only change. run_tests and lint do not fit it, and under
+			// the delivery template every criterion fell to the judge, so these
+			// one-shots ended failed and were completed by hand (Phase 41).
+			ID: "software.objective.docs", Title: "Documentation", Domain: "software",
+			// Opens a pull request against a shared repository; a human merges.
+			Risk:            objective.RiskRoutine,
+			Description:     "Write or revise documentation under docs/ and open a pull request for it",
+			SuggestedAgents: []agent.Definition{{ID: "software.agent.implementer"}},
+			SuccessCriteria: append(pullRequestCriteria("docs/**"),
+				progress("prose", "A review of the prose finds it accurate against the code and clear to its reader", 0.3),
+			),
 		},
 		{
 			ID: "software.objective.code_review", Title: "Code Review", Domain: "software",

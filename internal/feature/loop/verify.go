@@ -79,8 +79,8 @@ func stepVerify(ctx context.Context, sc *stepContext, outcomes []actionOutcome) 
 		verifier := string(criterion.Verifier)
 
 		// A criterion naming a verifier is settled by the action that ran that
-		// verifier, when one did. Deterministic beats asking a model, and it
-		// is the only reading of "verified by run_tests" that means anything.
+		// verifier and by nothing else. Deterministic beats asking a model, and
+		// it is the only reading of "verified by run_tests" that means anything.
 		//
 		// It used to be "met if any action succeeded", for verifiers whose ID
 		// merely *contained* run_tests or lint — so a criterion about the test
@@ -99,10 +99,15 @@ func stepVerify(ctx context.Context, sc *stepContext, outcomes []actionOutcome) 
 			// agent either: its judgement would be read off that tool's output.
 		case verifier != "" && len(ran) > 0:
 			state, reason = settleByVerifier(ran)
+		case verifier != "":
+			// The declared verifier never ran. Only its result settles the
+			// criterion, so it is not run rather than handed to the agent: a
+			// model's reading of other capabilities' results is how passes
+			// that did the work were judged failed (Phase 41).
+			state, reason = objective.CriterionInconclusive, objective.ReasonNotRun
 		default:
-			// No verifier declared, or the declared one never ran. The agent
-			// judges — now from the actual outcomes, which is the difference
-			// between a judgement and a guess.
+			// No verifier declared. The agent judges — from the actual
+			// outcomes, which is the difference between a judgement and a guess.
 			if evaluateWithAgent(ctx, sc, criterion, outcomes) {
 				state = objective.CriterionMet
 			}
