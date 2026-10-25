@@ -335,6 +335,175 @@ func TestCreateRejectsAnInvalidCriterion(t *testing.T) {
 	}
 }
 
+// The rest of what a new criterion must say for the loop to settle it the way
+// its author meant.
+func TestCreateRejectsAnIncompleteCriterion(t *testing.T) {
+	for name, tc := range map[string]struct {
+		criteria []coreobjective.Criterion
+		field    string
+	}{
+		"no id": {
+			[]coreobjective.Criterion{{Description: "x", Kind: coreobjective.KindVerified, Verifier: testsVerifier}},
+			"success_criteria[0].id",
+		},
+		"no description": {
+			[]coreobjective.Criterion{{ID: "x", Kind: coreobjective.KindVerified, Verifier: testsVerifier}},
+			"success_criteria[0].description",
+		},
+		"repeated id": {
+			[]coreobjective.Criterion{
+				{ID: "x", Description: "x", Kind: coreobjective.KindVerified, Verifier: testsVerifier},
+				{ID: "x", Description: "x again", Kind: coreobjective.KindVerified, Verifier: testsVerifier},
+			},
+			"success_criteria[1].id",
+		},
+		"no kind": {
+			[]coreobjective.Criterion{{ID: "x", Description: "x", Verifier: testsVerifier}},
+			"success_criteria[0].kind",
+		},
+		"unknown kind": {
+			[]coreobjective.Criterion{{ID: "x", Description: "x", Kind: "vibes", Verifier: testsVerifier}},
+			"success_criteria[0].kind",
+		},
+		// The loop settles any criterion naming a verifier by that verifier,
+		// so a judged one with a verifier would never reach the judge.
+		"judged with a verifier": {
+			[]coreobjective.Criterion{{ID: "x", Description: "x", Kind: coreobjective.KindJudged, Evidence: "the PR", Verifier: testsVerifier}},
+			"success_criteria[0].verifier",
+		},
+		"verified without a verifier": {
+			[]coreobjective.Criterion{{ID: "x", Description: "x", Kind: coreobjective.KindVerified}},
+			"success_criteria[0].verifier",
+		},
+		"verified with a parameter": {
+			[]coreobjective.Criterion{{ID: "x", Description: "x", Kind: coreobjective.KindVerified, Verifier: testsVerifier, Params: map[string]any{"packages": "./..."}}},
+			"success_criteria[0].params.packages",
+		},
+		"measured without a metric": {
+			[]coreobjective.Criterion{{ID: "x", Description: "x", Kind: coreobjective.KindMeasured, Verifier: coverageVerifier, Op: coreobjective.OpGreaterEqual, Target: target(90), Unit: "percent"}},
+			"success_criteria[0].metric",
+		},
+		"target without an op": {
+			[]coreobjective.Criterion{{ID: "x", Description: "x", Kind: coreobjective.KindMeasured, Verifier: coverageVerifier, Metric: "coverage", Target: target(90), Unit: "percent"}},
+			"success_criteria[0].op",
+		},
+		"unknown op": {
+			[]coreobjective.Criterion{{ID: "x", Description: "x", Kind: coreobjective.KindMeasured, Verifier: coverageVerifier, Metric: "coverage", Op: "~=", Target: target(90), Unit: "percent"}},
+			"success_criteria[0].op",
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			assertRejected(t, newCriteriaService(t), CreateRequest{Title: "plain", Domain: "software", SuccessCriteria: tc.criteria}, tc.field)
+		})
+	}
+}
+
+// Without a verifier lookup nothing can say a named verifier exists, so the
+// criterion is refused rather than let through unchecked.
+func TestCreateRejectsANamedVerifierWithNoLookup(t *testing.T) {
+	assertRejected(t, newTestService(t), CreateRequest{
+		Title: "plain", Domain: "software",
+		SuccessCriteria: []coreobjective.Criterion{
+			{ID: "tested", Description: "the tests pass", Kind: coreobjective.KindVerified, Verifier: testsVerifier},
+		},
+	}, "success_criteria[0].verifier")
+}
+
+// The rest of what a request may not do to a template criterion.
+func TestCreateRejectsAReplacedTemplateCriterion(t *testing.T) {
+	tmpl := deliveryTemplate()
+	coverage := tmpl.SuccessCriteria[1]
+
+	noTarget := coverage
+	noTarget.Target = nil
+	otherOp := coverage
+	otherOp.Op = coreobjective.OpEqual
+	otherParams := coverage
+	otherParams.Params = map[string]any{"packages": "./internal/core/..."}
+	otherDomain := coverage
+	otherDomain.Domain = "agriculture"
+	noDescription := coverage
+	noDescription.Description = ""
+
+	for name, tc := range map[string]struct {
+		replaced coreobjective.Criterion
+		field    string
+	}{
+		"target removed":      {noTarget, "success_criteria[0].target"},
+		"different op":        {otherOp, "success_criteria[0].op"},
+		"different params":    {otherParams, "success_criteria[0].params"},
+		"different domain":    {otherDomain, "success_criteria[0].domain"},
+		"description dropped": {noDescription, "success_criteria[0].description"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			assertRejected(t, newCriteriaService(t), CreateRequest{
+				Title: "ship it", Domain: "software", TemplateID: "tmpl.delivery",
+				SuccessCriteria: []coreobjective.Criterion{tc.replaced},
+			}, tc.field)
+		})
+	}
+
+	// A judged template criterion keeps its evidence.
+	svc := newCriteriaService(t)
+	svc.RegisterTemplate(coreobjective.Template{ID: "tmpl.judged", SuccessCriteria: []coreobjective.Criterion{
+		{ID: "reviewed", Description: "an open PR with tests", Kind: coreobjective.KindJudged, Evidence: "the PR", Required: required(false)},
+		{ID: "tested", Description: "the tests pass", Kind: coreobjective.KindVerified, Verifier: testsVerifier},
+	}})
+	assertRejected(t, svc, CreateRequest{
+		Title: "ship it", Domain: "software", TemplateID: "tmpl.judged",
+		SuccessCriteria: []coreobjective.Criterion{
+			{ID: "reviewed", Description: "an open PR with tests", Kind: coreobjective.KindJudged, Required: required(true)},
+		},
+	}, "success_criteria[0].evidence")
+}
+
+// The pack templates still leave Kind empty, and a request may tighten one of
+// their criteria all the same.
+func TestCreateTightensATemplateCriterionWithoutAKind(t *testing.T) {
+	svc := newCriteriaService(t)
+	svc.RegisterTemplate(coreobjective.Template{ID: "tmpl.legacy", SuccessCriteria: []coreobjective.Criterion{
+		{ID: "tested", Description: "the tests pass", Verifier: testsVerifier},
+		{ID: "peer-review", Description: "Peer review approved", Required: required(false)},
+	}})
+	o, err := svc.Create(context.Background(), CreateRequest{
+		Title: "ship it", Domain: "software", TemplateID: "tmpl.legacy",
+		SuccessCriteria: []coreobjective.Criterion{
+			{ID: "peer-review", Description: "Peer review approved", Required: required(true)},
+		},
+	})
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if c := criterionByID(t, o.SuccessCriteria, "peer-review"); !c.IsRequired() {
+		t.Errorf("peer-review = %+v, want it required", c)
+	}
+}
+
+// Tightening one objective's criterion leaves the template, and so the next
+// objective made from it, as registered.
+func TestCreateLeavesTheTemplateAsRegistered(t *testing.T) {
+	svc := newCriteriaService(t)
+	tightened := deliveryTemplate().SuccessCriteria[1]
+	tightened.Target = target(95)
+	if _, err := svc.Create(context.Background(), CreateRequest{
+		Title: "strict", Domain: "software", TemplateID: "tmpl.delivery",
+		SuccessCriteria: []coreobjective.Criterion{tightened},
+	}); err != nil {
+		t.Fatalf("create strict: %v", err)
+	}
+	o, err := svc.Create(context.Background(), CreateRequest{Title: "plain", Domain: "software", TemplateID: "tmpl.delivery"})
+	if err != nil {
+		t.Fatalf("create plain: %v", err)
+	}
+	c := criterionByID(t, o.SuccessCriteria, "coverage")
+	if c.Target == nil {
+		t.Fatalf("coverage has no target, want the template's 80")
+	}
+	if *c.Target != 80 {
+		t.Errorf("coverage target = %v, want the template's 80", *c.Target)
+	}
+}
+
 // The step 1 rule holds for request criteria too, through the same error, and
 // names the list as the field.
 func TestCreateRejectsRequestCriteriaWithNoneRequired(t *testing.T) {
