@@ -1,6 +1,10 @@
 package command
 
 import (
+	"fmt"
+	"net/http"
+	"strings"
+
 	"github.com/bsenel/karakuri/cli/client"
 	"github.com/spf13/cobra"
 )
@@ -27,16 +31,38 @@ func objectiveCreateCmd() *cobra.Command {
 
   # From a template (see: krk objective templates)
   krk objective create --title "Ship the export endpoint" --twin t_7f2a \
-      --template software.objective.delivery --priority 2`,
+      --template software.objective.delivery --priority 2
+
+  # With success criteria from a file (see docs/examples/criteria.yaml)
+  krk objective create --title "Ship the export endpoint" --twin t_7f2a \
+      --criteria-file docs/examples/criteria.yaml
+
+  # Add a one-off criterion after the file's
+  krk objective create --title "Speed up search" --twin t_7f2a \
+      --criteria-file docs/examples/criteria.yaml \
+      --criterion 'id=p95;description=Search p95 latency is at most 250 ms;kind=measured;verifier=ci.latency;metric=p95_latency;op=<=;target=250;unit=ms'`,
 		RunE: func(_ *cobra.Command, _ []string) error {
-			data, _, err := api.Post("/objectives", map[string]any{
+			body := map[string]any{
 				"title": title, "description": description, "domain": domain,
 				"twin_id": twinID, "template_id": templateID,
 				"priority":       priority,
 				"max_iterations": maxIter,
-			})
+			}
+			sc, err := successCriteria(criteriaFile, criteria)
 			if err != nil {
 				return err
+			}
+			if sc != nil {
+				body["success_criteria"] = sc
+			}
+			data, status, err := api.Post("/objectives", body)
+			if err != nil {
+				return err
+			}
+			// The server's 400 names the field it refused (success_criteria[1].evidence),
+			// so its body is the error, word for word.
+			if status >= http.StatusBadRequest {
+				return fmt.Errorf("create objective: HTTP %d: %s", status, strings.TrimSpace(string(data)))
 			}
 			client.PrintOutput(data, output)
 			return nil
