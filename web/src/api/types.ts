@@ -17,11 +17,24 @@ export interface Twin {
   updated_at: string;
 }
 
+/** What the last verify step settled about a criterion (Phase 41). */
+export type CriterionState = 'met' | 'not_met' | 'inconclusive';
+
+/** Why a criterion could not be settled. */
+export type InconclusiveReason = 'verifier_error' | 'no_data' | 'not_run' | 'unsupported';
+
 export interface Criterion {
   id: string;
   description: string;
   verifier?: string;
   weight?: number;
+  /** Absent means required, so a criterion written before the field still gates. */
+  required?: boolean;
+  /** Absent means no verify step has settled it yet. */
+  state?: CriterionState;
+  reason?: InconclusiveReason;
+  /** Derived from state on the server; true only when state is met. */
+  met?: boolean;
 }
 
 export type ObjectiveStatus =
