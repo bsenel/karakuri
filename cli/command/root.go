@@ -53,6 +53,7 @@ func NewRoot() *cobra.Command {
 		memoryCmd(),
 		artifactCmd(),
 		domainCmd(),
+		verifierCmd(),
 		researchCmd(),
 		autoCmd(),
 		migrateCmd(),
