@@ -40,7 +40,8 @@ type CreateRequest struct {
 	TwinID            string
 	TemplateID        string // optional; populates criteria/constraints if set
 	// SuccessCriteria are added after the template's. One with a template
-	// criterion's ID may tighten it, never loosen it.
+	// criterion's ID may tighten it, never loosen it. Each is checked against
+	// the verifier it names, and a refusal is a *ValidationError.
 	SuccessCriteria []objective.Criterion
 }
 
@@ -111,7 +112,16 @@ func (s *Service) Create(ctx context.Context, req CreateRequest) (objective.Obje
 			}
 		}
 	}
+	criteria, err := s.mergeCriteria(o.SuccessCriteria, req.SuccessCriteria)
+	if err != nil {
+		return objective.Objective{}, err
+	}
+	o.SuccessCriteria = criteria
 	if !hasRequiredCriterion(o.SuccessCriteria) {
+		if len(req.SuccessCriteria) > 0 {
+			// The request's own list is what the caller can fix.
+			return objective.Objective{}, &ValidationError{Field: "success_criteria", Err: ErrNoRequiredCriterion}
+		}
 		return objective.Objective{}, ErrNoRequiredCriterion
 	}
 	if err := s.store.SaveObjective(ctx, o); err != nil {
