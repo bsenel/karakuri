@@ -6008,9 +6008,18 @@ components:
           type: string
         id:
           type: string
+        kind:
+          description: What settles the criterion (judged, verified or measured).
+          type: string
         met:
           description: Derived from state; true only when state is met.
           type: boolean
+        metric:
+          description: The verifier measurement a measured criterion compares.
+          type: string
+        op:
+          description: How a measured value is compared with the target (<, <=, >, >= or ==).
+          type: string
         reason:
           description: Why the criterion is inconclusive, when it is.
           type: string
@@ -6021,7 +6030,14 @@ components:
         state:
           description: What the last verify step settled (met, not_met or inconclusive).
           type: string
+        target:
+          description: The value a measured criterion is compared with.
+          nullable: true
+          type: number
         threshold: {}
+        unit:
+          description: The unit of the target; it must equal the unit the verifier declares.
+          type: string
         verifier:
           type: string
         weight:

@@ -175,6 +175,43 @@ type Criterion struct {
 	// MarshalJSON.
 	State  CriterionState     `json:"state,omitempty"`
 	Reason InconclusiveReason `json:"reason,omitempty"`
+
+	// Kind says what settles the criterion: a model, a verifier's pass or
+	// fail, or a measured number compared with a target.
+	Kind CriterionKind `json:"kind,omitempty"`
+	// The measured form, metric op target unit. Metric names one of the
+	// verifier's measurements, and Unit must equal the unit it declares.
+	Metric string   `json:"metric,omitempty"`
+	Op     Op       `json:"op,omitempty"`
+	Target *float64 `json:"target,omitempty"`
+	Unit   string   `json:"unit,omitempty"`
+}
+
+// CriterionKind is what settles a criterion.
+type CriterionKind string
+
+const (
+	KindJudged   CriterionKind = "judged"
+	KindVerified CriterionKind = "verified"
+	KindMeasured CriterionKind = "measured"
+)
+
+// Op compares a measured value with its target.
+type Op string
+
+const (
+	OpLess         Op = "<"
+	OpLessEqual    Op = "<="
+	OpGreater      Op = ">"
+	OpGreaterEqual Op = ">="
+	OpEqual        Op = "=="
+)
+
+// Compare settles a measured criterion from one value in one unit.
+//
+// Not implemented yet (Phase 41 step 4): it returns the zero state.
+func (c Criterion) Compare(value float64, unit string) (CriterionState, InconclusiveReason) {
+	return "", ""
 }
 
 // CriterionState is what a verify step settled about one criterion.

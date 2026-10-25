@@ -41,6 +41,9 @@ type actionOutcome struct {
 	// from one that ran and reported failure. For a verifier it is a
 	// verifier_error, which says nothing about the work.
 	Errored bool
+	// Err is the error the environment returned, when it returned one, so
+	// verify can tell a verifier that cannot measure from one that failed.
+	Err error
 }
 
 // results extracts the bare results, for the callers that genuinely do not

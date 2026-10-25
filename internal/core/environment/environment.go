@@ -98,6 +98,22 @@ type ActionResult struct {
 	// whether its adapter is wired. A phase that marked observations alone
 	// would have left the larger hole open.
 	Trust Trust
+
+	// Measurements are the named numbers a verifier computed, typed so that
+	// a measured criterion never has to scrape one out of StateDelta or prose.
+	Measurements []Measurement
+}
+
+// Measurement is one named number a verifier emitted. Which names exist is a
+// pack's business; the core knows only the shape (Phase 41, decision 2).
+type Measurement struct {
+	Name   string
+	Value  float64
+	Unit   string
+	Source string
+	// Trust says who wrote the number. A figure read out of somebody else's
+	// text is TrustThirdParty, and it cannot settle a required criterion.
+	Trust Trust
 }
 
 type EventFilter struct {

@@ -99,10 +99,11 @@ type criterionShape struct {
 }
 
 func TestOpenAPIMarshalShapesMatchTheWire(t *testing.T) {
-	required := true
+	required, target := true, 0.8
 	c := objective.Criterion{
 		ID: "c1", Description: "d", Verifier: "v", Threshold: 1, Weight: 1, Domain: "software",
 		Required: &required, State: objective.CriterionInconclusive, Reason: objective.ReasonVerifierError,
+		Kind: objective.KindMeasured, Metric: "m", Op: objective.OpGreaterEqual, Target: &target, Unit: "ratio",
 	}
 	b, err := json.Marshal(c)
 	if err != nil {
