@@ -1,9 +1,13 @@
 package command
 
 import (
+	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
+	"strconv"
 	"strings"
+	"text/tabwriter"
 
 	"github.com/bsenel/karakuri/cli/client"
 	"github.com/spf13/cobra"
@@ -129,13 +133,102 @@ func objectiveListCmd() *cobra.Command {
 	return cmd
 }
 
-// objectiveCriteriaCmd is registered so its tests compile; it does nothing yet.
 func objectiveCriteriaCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "criteria <id>",
 		Short: "Show an objective's success criteria and their state",
-		RunE:  func(_ *cobra.Command, _ []string) error { return nil },
+		Long: "Show an objective's success criteria and the state the server settled\n" +
+			"each one in. Required criteria are the gate; required: false criteria are\n" +
+			"printed apart as progress. krk objective list shows each objective's ID.",
+		Example: `  krk objective criteria obj_123`,
+		Args:    cobra.ExactArgs(1),
+		RunE: func(c *cobra.Command, args []string) error {
+			data, _, err := api.Get("/objectives/" + args[0])
+			if err != nil {
+				return fmt.Errorf("objective %s: %w", args[0], err)
+			}
+			if output != "pretty" {
+				client.PrintOutput(data, output)
+				return nil
+			}
+			return printCriteria(c.OutOrStdout(), data)
+		},
 	}
+}
+
+// shownCriterion is the part of a criterion in GET /objectives/{id} that
+// krk objective criteria prints.
+type shownCriterion struct {
+	ID          string   `json:"id"`
+	Description string   `json:"description"`
+	Kind        string   `json:"kind"`
+	Metric      string   `json:"metric"`
+	Op          string   `json:"op"`
+	Target      *float64 `json:"target"`
+	Unit        string   `json:"unit"`
+	Required    *bool    `json:"required"`
+	State       string   `json:"state"`
+	Reason      string   `json:"reason"`
+}
+
+// printCriteria writes the gate, then the progress. State and reason are the
+// server's; a criterion with no state has not been through a verify step.
+func printCriteria(w io.Writer, data []byte) error {
+	var obj struct {
+		ID       string           `json:"id"`
+		Title    string           `json:"title"`
+		Criteria []shownCriterion `json:"success_criteria"`
+	}
+	if err := json.Unmarshal(data, &obj); err != nil {
+		return fmt.Errorf("read objective: %w", err)
+	}
+	var gate, progress []shownCriterion
+	for _, cr := range obj.Criteria {
+		// The API omits required when it is true.
+		if cr.Required == nil || *cr.Required {
+			gate = append(gate, cr)
+		} else {
+			progress = append(progress, cr)
+		}
+	}
+	fmt.Fprintf(w, "%s  %s\n\nRequired:\n", obj.ID, obj.Title)
+	writeCriteria(w, gate, true)
+	if len(progress) > 0 {
+		fmt.Fprintln(w, "\nProgress (required: false, not part of the gate):")
+		writeCriteria(w, progress, false)
+	}
+	return nil
+}
+
+func writeCriteria(w io.Writer, criteria []shownCriterion, gate bool) {
+	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
+	for _, cr := range criteria {
+		fmt.Fprintf(tw, "  %s\t%s\t%s\t%s\t%s\n", cr.ID, cr.Kind, criterionState(cr, gate), comparison(cr), cr.Description)
+	}
+	_ = tw.Flush()
+}
+
+// criterionState is the server's state; an optional criterion not met yet is
+// progress still to make, so it does not read as a failure.
+func criterionState(cr shownCriterion, gate bool) string {
+	switch {
+	case cr.State == "":
+		return "inconclusive: not_run"
+	case cr.State == "inconclusive" && cr.Reason != "":
+		return "inconclusive: " + cr.Reason
+	case cr.State == "not_met" && !gate:
+		return "not yet met"
+	}
+	return cr.State
+}
+
+// comparison is "metric op target unit" for a measured criterion.
+func comparison(cr shownCriterion) string {
+	if cr.Metric == "" || cr.Target == nil {
+		return ""
+	}
+	target := strconv.FormatFloat(*cr.Target, 'f', -1, 64)
+	return strings.TrimSpace(cr.Metric + " " + cr.Op + " " + target + " " + cr.Unit)
 }
 
 func objectiveTemplatesCmd() *cobra.Command {
