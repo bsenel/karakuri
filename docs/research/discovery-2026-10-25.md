@@ -55,7 +55,7 @@ No talk with a transcript was read. The SREcon26 talk above links slides and no 
 ## What they ask for and complain about
 
 <!-- p2:start -->
-_Pending: part 2._
+_Part 2 in progress._
 <!-- p2:end -->
 
 ## Competitive teardown
