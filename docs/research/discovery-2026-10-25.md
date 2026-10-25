@@ -183,11 +183,11 @@ LangSmith, observed [E] (https://docs.langchain.com/langsmith/changelog, read 20
 5. No issue's comments were read; every complaint is from the opening post.
 6. docs/roadmap.md not read; (iii) rests on README only.
 
-Products 4 to 6 and the capability matrix: pending part 4.
+Products 4 to 6 and the capability matrix: written by part 4, below.
 <!-- p3:end -->
 
 <!-- p4a:start -->
-_Pending: part 4._
+Part 4 in progress.
 <!-- p4a:end -->
 
 ## Capability matrix
