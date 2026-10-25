@@ -17,6 +17,7 @@ import (
 	corecheckpoint "github.com/bsenel/karakuri/internal/core/checkpoint"
 	"github.com/bsenel/karakuri/internal/core/digest"
 	"github.com/bsenel/karakuri/internal/core/objective"
+	"github.com/bsenel/karakuri/internal/core/reconcile"
 	"github.com/bsenel/karakuri/internal/platform/storage"
 )
 
@@ -98,6 +99,7 @@ func (s *Service) summarise(ctx context.Context, obj objective.Objective, since,
 	// number a reader is checking.
 	outcomes, err := s.store.ListReconcileOutcomes(ctx, obj.ID, 2000)
 	if err == nil {
+		sum.Criteria, sum.Progress = s.criteria(ctx, obj, outcomes, since, until)
 		for _, o := range outcomes {
 			if o.StartedAt.Before(since) || o.StartedAt.After(until) {
 				continue
@@ -138,6 +140,84 @@ func (s *Service) summarise(ctx context.Context, obj objective.Objective, since,
 		}
 	}
 	return sum
+}
+
+// criteria reads the criterion states the window's passes settled and returns
+// the required criteria worth a line, and the optional weighted ones as
+// progress.
+//
+// A pass's states are on the loop row its outcome points at, so this is a read
+// like the rest of the digest. Sense-only outcomes settle nothing and are
+// skipped rather than counted as a break in a run of passes. Outcomes arrive
+// newest first, so passes[0] is the latest pass.
+func (s *Service) criteria(ctx context.Context, obj objective.Objective, outcomes []reconcile.Outcome, since, until time.Time) ([]digest.CriterionLine, *digest.Progress) {
+	if len(obj.SuccessCriteria) == 0 {
+		return nil, nil
+	}
+	var passes []map[string]objective.Criterion
+	for _, o := range outcomes {
+		if o.LoopID == "" || o.StartedAt.Before(since) || o.StartedAt.After(until) {
+			continue
+		}
+		st, err := s.store.GetLoopState(ctx, o.LoopID)
+		if err != nil {
+			continue
+		}
+		settled := make(map[string]objective.Criterion, len(st.Criteria))
+		for _, c := range st.Criteria {
+			settled[c.ID] = c
+		}
+		passes = append(passes, settled)
+	}
+
+	var lines []digest.CriterionLine
+	var progress *digest.Progress
+	for _, c := range obj.SuccessCriteria {
+		if !c.IsRequired() {
+			if c.Weight <= 0 {
+				continue
+			}
+			if progress == nil {
+				progress = &digest.Progress{}
+			}
+			progress.Of += c.Weight
+			if len(passes) > 0 && passes[0][c.ID].IsMet() {
+				progress.Earned += c.Weight
+			}
+			continue
+		}
+		if len(passes) == 0 {
+			continue
+		}
+		state, reason := stateIn(passes[0], c.ID)
+		n := 1
+		for _, p := range passes[1:] {
+			if st, _ := stateIn(p, c.ID); st != state {
+				break
+			}
+			n++
+		}
+		// not_met is news at once. Inconclusive is news from the second pass:
+		// once is a verifier that had nothing to read yet, twice in a row is a
+		// criterion that will neither complete nor fail.
+		if state == objective.CriterionNotMet || (state == objective.CriterionInconclusive && n > 1) {
+			lines = append(lines, digest.CriterionLine{
+				ID: c.ID, Description: c.Description, State: state, Reason: reason, Passes: n,
+			})
+		}
+	}
+	return lines, progress
+}
+
+// stateIn is what one pass settled about a criterion. A criterion the pass
+// left without a state, or did not carry at all, was never run by its
+// verifier: inconclusive: not_run, never met.
+func stateIn(pass map[string]objective.Criterion, criterionID string) (objective.CriterionState, objective.InconclusiveReason) {
+	c := pass[criterionID]
+	if c.State == "" {
+		return objective.CriterionInconclusive, objective.ReasonNotRun
+	}
+	return c.State, c.Reason
 }
 
 func (s *Service) autonomyChanges(ctx context.Context, obj objective.Objective, since time.Time) []digest.AutonomyChange {
