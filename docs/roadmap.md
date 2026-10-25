@@ -51,6 +51,7 @@ Phases 27–32 were proposed from two kinds of evidence: what this repository de
 | 38    | What Was Required and Not Done             | **Planned**   |
 | 40    | Streams That Run Without a Coordinator     | **Planned**   |
 | 42    | An MCP Call Carries Only What the Tool Declared | **Planned** |
+| 43    | A Provider's Tool-Call Shape, Pinned by a Test | **Planned** |
 
 
 ---
@@ -6052,6 +6053,68 @@ Phase 34 (Completed, a credential scoped to one delegation) nor Phase 33
 (Completed, MCP after the handshake). Not Phase 27's escalation on
 third-party text. It does not validate argument types or values, only which
 keys are sent.
+
+---
+
+## Phase 43 — A Provider's Tool-Call Shape, Pinned by a Test (Planned)
+
+**Kind: FRONTIER BET (weak).** The bet: a provider's change to how tool calls
+are requested or returned reaches Karakuri's loop as a wrong plan or a silent
+failure, and a recorded-fixture test per provider catches it before a run
+does. The primary technical evidence is Anthropic's release notes, which list
+API version `2026-10-21` and a Go SDK 2.0.0 with breaking changes
+(https://platform.claude.com/docs/en/release-notes/overview, read 2026-10-25,
+first 100,000 of 133,497 characters); that is the vendor's own statement, not
+a measurement of any effect on Karakuri. It is proved wrong if langchaingo
+v0.1.15 pins a request version the providers keep serving unchanged, so no
+change in the window would have reached Karakuri.
+
+**Goal:** a test fails when the tool-call shape Karakuri parses for a provider
+stops matching the shape that provider returns today.
+
+**Why.** Observed in the discovery report of 2026-10-25 ('## Feasibility',
+candidate 4): `internal/platform/llm/claude.go` hard-codes the model ID at
+line 32, `Complete` (lines 78 to 89) sends no tools, and tool calling goes
+through `AsLLM()` (line 76) into the agent factory; `go.mod` pins
+`github.com/tmc/langchaingo v0.1.15`; no test pins a tool-call request or
+response shape. The demand comes from one tracker, so it is not a DEMAND
+phase: n8n #22181 (Gemini `thought_signature`) was closed and is still
+reported, "this is still happening in newest release."
+(https://api.github.com/repos/n8n-io/n8n/issues/22181/comments?per_page=100,
+read 2026-10-25). Not verified: which `anthropic-version` header langchaingo
+v0.1.15 sends; the module cache was not read.
+
+**Steps.**
+1. *Find out (one slice, time-boxed to one delivery pass).* Read
+   `internal/platform/agent/factory.go`, `internal/platform/llm/claude.go`,
+   `internal/platform/llm/gemini.go` and the langchaingo v0.1.15 Anthropic
+   and Google clients in the module cache; record the request version each
+   sends. Add a recorded-fixture test beside `internal/platform/agent/factory_test.go`
+   that feeds a tool-use response in the current Anthropic shape, and one in
+   the Gemini shape carrying a `thought_signature`, through the langchaingo
+   model and asserts the parsed call. **Kill criterion:** if both fixtures
+   parse correctly today and no provider change since 2026-07-01 is found
+   that would alter them, keep the test and mark this phase Dropped with the
+   finding.
+2. If a fixture fails or a change is found: fix the parse path inside
+   `internal/platform/` (langchaingo stays behind that boundary) and keep the
+   fixture as the regression test.
+3. Move the hard-coded model ID in `claude.go` to `config/default.yaml`, so a
+   provider's deprecation is a config change, not a code change.
+
+**Acceptance.**
+- The fixtures from step 1 run under `go test ./internal/platform/...` with no
+  network and no API key.
+- The request version each provider sends is written in this phase.
+- If step 3 ships: no model ID literal remains in `claude.go`, and the
+  default is read from `config/default.yaml`; `go test ./...` and
+  `scripts/check_langchaingo_imports.sh` pass.
+
+**What this is not.** Not Phase 36 (Completed, a provider's refusal or rate
+limit is not a plan): that classifies errors; this pins the shape of a
+successful tool call. Not Phase 41 (Planned, success a machine can check) nor
+Phase 38 (Planned, unmet obligations). It does not upgrade langchaingo or
+adopt the Go SDK 2.0.0; whether to do either is what step 1 finds out.
 
 ---
 
