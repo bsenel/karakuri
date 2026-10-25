@@ -55,7 +55,55 @@ No talk with a transcript was read. The SREcon26 talk above links slides and no 
 ## What they ask for and complain about
 
 <!-- p2:start -->
-_Part 2 in progress._
+Written by part 2 on 2026-10-25. It extends the 2026-10-08 section (items 1 to 6 there) and does not restate it. Every GitHub thread below was read through the api.github.com form with the WebFetch tool, which returns an extract written by a small model, not the raw JSON; so quotations are [Q] only where the extract gave them as quotations, and the rest are [E]. Counts are as returned on 2026-10-25. Session limit: 600 seconds, so thin spots (4) to (8) were not reached; see "Still thin (part 2)".
+
+### A. The fixed five-minute ceiling is a client-library default, not an Ollama quirk (extends 2026-10-08 item 6)
+
+- Observed: n8n #25360 has 10 comments and no reply from a maintainer account; the project's only answers are two bot comments, one of which threatens automatic closure after 14 days. (https://api.github.com/repos/n8n-io/n8n/issues/25360/comments?per_page=100, read 2026-10-25) [E]
+- Observed: the ceiling hits other providers. cotsuka, 2026-03-21: "This seems to be the exactly same issue with the OpenAI node as well." cthorner, 2026-05-13 (2 reactions), on the Anthropic node: "Verified still present in 2.20.6 (latest stable)", with the cause that the proxy helper returns no agent unless a proxy is set, so the 300 s default applies; their workaround was lowering `thinkingBudget` to 8000. damscot, 2026-03-31, with `N8N_AI_TIMEOUT_MAX` and two Ollama settings set: "does not fix the issue, still killed after 5m". (same URL) [Q for quoted text, E for the cause]
+- Observed: the open fix, pull request #32081 (cthorner, 2026-06-10), covers the Anthropic node only; the comment says Groq and OpenAI still need the same change. (same URL) [E]
+- Inferred: this contradicts the 2026-10-08 framing of item 6 as a local-model problem. It is a timeout that a configuration variable claims to control and does not, and long thinking budgets on hosted models reach it too.
+
+### B. A provider's tool-calling contract: "fixed" twice, still reported (extends 2026-10-08 item 5)
+
+- Observed: n8n #22181 (Gemini 3 `thought_signature`) has 10 comments, none from a maintainer account. A user claims it works in 1.123.1 thanks to PR #22500; then ascendedent, 2025-12-17: "This is still happening for me even with 1.123.10", and javiercornejo, 2026-04-23: "this is still happening in newest release." (https://api.github.com/repos/n8n-io/n8n/issues/22181/comments?per_page=100, read 2026-10-25) [Q]
+- Observed: n8n #9862 (models list on a non-OpenAI base URL) has 3 comments: maintainer Joffcom, 2024-06-26: "We should probably update the node to remove the filter if using a different base url which would solve the problem."; the same maintainer closed it on 2025-03-17 "To keep our backlog focused on current priorities"; a user, 2025-10-14: "This appears to be supported now (v1.113.3)." (https://api.github.com/repos/n8n-io/n8n/issues/9862/comments?per_page=100, read 2026-10-25) [Q]
+- Inferred: this contradicts the 2026-10-08 conclusion that the hosted-provider breakage "was fixed in two weeks" and the self-hoster's request was dropped: the Gemini issue was closed as completed but is reported broken five months later, and the stale-closed one appears to have shipped quietly. A closed issue says little in either direction.
+
+### C. The MCP argument leak: the full thread is much larger, and the fix is a schema filter (fills 2026-10-08 thin spot 3)
+
+- Observed: n8n #21716, "MCP tool calls are failing due to new toolCallId, previous n8n worfklows won't run on update to most recent version!" (bsk-amboss, 2025-11-11), closed as completed on 2026-01-14, **77 comments**, against 27 on #21500 which the 2026-10-08 report ranked by. (https://api.github.com/repos/n8n-io/n8n/issues/21716, read 2026-10-25) [Q for the title]
+- Observed, first 100,000 of about 158,700 characters of the comments: skware (12 reactions): "this makes n8n useless if you can't run mcp tools."; liaz-af (7 +1): "I think this should be considered a security issue by n8n.io team."; garyellow (6 +1): "The issue originates from how n8n merges parent node (AI Agent) parameters with tool call arguments"; agaldemas (5 +1) proposed sending only schema-defined parameters rather than filtering by a blocklist. A contributor-tagged account: "The fix was released with 2.3.1."; the bot: "Fix got released with n8n@1.123.11". After that, tobi-ahx: "I just tested it on v2.3.1: But i still get the same error". (https://api.github.com/repos/n8n-io/n8n/issues/21716/comments?per_page=100, read 2026-10-25) [Q for quoted text, E for the rest]
+- Observed: pull request #23167 (TomTom101), "fix(McpClientTool Node): Sanitize MCP tool arguments based on schema", merged 2026-01-06. It keeps only arguments in the tool's input schema, passes all through when the schema allows additional properties, and sends none for a tool without parameters. (https://api.github.com/repos/n8n-io/n8n/pulls/23167, read 2026-10-25) [Q for the title, E for the body]
+- Inferred: confirms and strengthens 2026-10-08 item 4 (about three times the comments once the duplicate is counted). Users framed it as a security issue, not only a breakage: a client that merges its own parameters into tool arguments sends data to a third-party server that the server never asked for.
+
+### D. The checkpoint store's "SSL error" is idle connections and oversized state (fills 2026-10-08 thin spot 1, langgraph #3716)
+
+- Observed, first 100,000 of about 125,600 characters: no MEMBER or COLLABORATOR reply is visible; vbarda (CONTRIBUTOR), 2025-03-06: "any chance you might be running out of disk space?". Causes users found: a cloud database dropping idle connections that psycopg reuses (vignesh-deltaforge, 2025-07-01; workaround a ping every 5 minutes); large base64 images or a 100,000-character prompt in state (kashyap-aditya, piersreynaud; fixed by storing a link instead); pool settings (jamesheavey, 2025-07-10, 3 +1: "we havent had any of the same errors since"). cloudlessdreams, 2025-06-04: "The SSL connection failure appears to be a symptom rather than the root cause." The most-reacted comment has 3 reactions; two of the top eight are "any update?" (https://api.github.com/repos/langchain-ai/langgraph/issues/3716/comments?per_page=100, read 2026-10-25) [Q for quoted text, E for the rest]
+- Inferred: refines 2026-10-08 item 2. The pain is that a checkpointer which holds whole messages and images in a database row fails in the network layer, and the error names neither cause.
+- langgraph #5672, comments 32 to 52: **not read**; the fetch stopped at comment 31 again. [N]
+
+### Ranking (part 2, items read this pass plus 2026-10-08)
+
+| Requirement or pain | Independent sources (count, list) | Strongest quote with URL | Counts shown | Karakuri addresses it |
+|---|---|---|---|---|
+| MCP client sends only the arguments the tool declared | 1 (n8n tracker; #21500 and #21716) | "this makes n8n useless if you can't run mcp tools." (n8n #21716 comments) | 77 + 27 comments; 12 reactions on one reply; 11 on #21500 | not checked |
+| A configured timeout is honoured, for every provider | 1 (n8n tracker; #25360 plus two earlier issues cited 2026-10-08) | "does not fix the issue, still killed after 5m" (n8n #25360 comments) | 8 reactions, 10 comments | not checked |
+| Durable state survives the database and stays small | 1 (langgraph tracker; #3716, #5672) | "The SSL connection failure appears to be a symptom rather than the root cause." (langgraph #3716 comments) | 53 comments, 12 reactions; top reply 3 | not checked |
+| A provider's tool-calling change does not break the run | 1 (n8n tracker; #22181, #9862) | "this is still happening in newest release." (n8n #22181 comments) | 6 and 7 reactions | not checked |
+
+All four rest on one vendor's tracker each, and three share the n8n population; no new independent population was added this pass. Confirms 2026-10-08 items 2 and 4; contradicts its item 5 ("fixed in two weeks") and narrows item 6 (not local models only). Karakuri's roadmap was not read this pass, hence "not checked".
+
+### Still thin (part 2)
+
+1. langgraph #5672 comments 32 to 52: still unread (fetch truncated twice).
+2. The claude-code reaction count (#16157, "1499" unconfirmed in 2026-10-08): not attempted.
+3. No production postmortem written by the team that ran the agent: not attempted.
+4. Temporal community forum, microsoft/autogen, crewAIInc/crewAI, openai/codex: not attempted.
+5. "The Agent That Burned $4,200 in 63 Hours": not attempted; no first-hand cost numbers this pass.
+6. "78% of enterprises with pilots, under 15% at production scale": not attempted; it remains unverified.
+7. The last 58,700 characters of n8n #21716 comments and the last 25,600 of langgraph #3716 comments were not read.
+8. docs/roadmap.md was not read this pass; no "Karakuri addresses it" cell is filled.
 <!-- p2:end -->
 
 ## Competitive teardown
@@ -147,7 +195,16 @@ Every URL that part 1 read or tried, all on 2026-10-25. P = primary, S = seconda
 ### Sources, part 2
 
 <!-- s2:start -->
-_Pending: part 2._
+All read on 2026-10-25 with WebFetch; P = primary; X = extract written by the fetch tool's model, not raw text.
+
+- https://api.github.com/repos/n8n-io/n8n/issues/25360/comments?per_page=100: P, X, all 10 comments [Q]
+- https://api.github.com/repos/n8n-io/n8n/issues/22181/comments?per_page=100: P, X, all 10 comments [Q]
+- https://api.github.com/repos/n8n-io/n8n/issues/9862/comments?per_page=100: P, X, all 3 comments [Q]
+- https://api.github.com/repos/n8n-io/n8n/issues/21716: P, X [Q for the title]
+- https://api.github.com/repos/n8n-io/n8n/issues/21716/comments?per_page=100: P, X, first 100,000 of about 158,700 characters [Q]
+- https://api.github.com/repos/n8n-io/n8n/pulls/23167: P, X [E]
+- https://api.github.com/repos/langchain-ai/langgraph/issues/3716/comments?per_page=100: P, X, first 100,000 of about 125,600 characters [Q]
+- https://api.github.com/repos/langchain-ai/langgraph/issues/5672/comments?per_page=100: P, X, stopped at comment 31; comments 32 to 52 not read [N for those]
 <!-- s2:end -->
 
 ### Sources, part 3
@@ -185,3 +242,4 @@ _Pending: part 7._
 <!-- rl1:start -->
 - Part 1: started 2026-10-25 by a first session, which was cut off after the self-hoster segment; resumed at 17:03 UTC and finished on 2026-10-25 by a second session.
 <!-- rl1:end -->
+- Part 2: ran 2026-10-25 from 17:04 UTC in one 600-second session; filled thin spots 1 (except #5672) and 3; spots 2 and 4 to 8 not reached.
