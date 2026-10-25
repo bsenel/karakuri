@@ -109,7 +109,81 @@ All four rest on one vendor's tracker each, and three share the n8n population; 
 ## Competitive teardown
 
 <!-- p3:start -->
-_Part 3 in progress._
+Every fetch in this part went through a tool that returns a model-written extract of the page, so nothing below is quoted verbatim and every external claim is graded [E]. Each long page was read for its first 100,000 characters only; the rest is not read. The window asked for (2026-04-25 to 2026-10-25) was not covered for any product; the part actually read is stated per product. Vendor release notes are claims, not measurements.
+
+### 1. Claude Code
+
+**(i) Shipped, part of window read.** Observed [E] in the CHANGELOG (https://raw.githubusercontent.com/anthropics/claude-code/main/CHANGELOG.md, read 2026-10-25): the first 100,000 of about 1,084,700 characters, versions 2.1.296 to 2.1.310. The file carries no dates, so these versions cannot be placed inside the window; April to September 2026 is still unread, as in 2026-10-08. Changed since 2026-10-08 (which read 2.1.285 to 2.1.294):
+- Human approval: `/auto-mode-setup` and `decider: "person"` on `tool.check` (2.1.304); `CLAUDE_CODE_AUTO_MODE_MODEL` (2.1.302); auto-mode `PermissionRequest` hooks can no longer approve shell commands or subagents in Cowork (2.1.300); permission prompts name the plugin or skill behind a hook's `ask` (2.1.301).
+- Durability and resume: a run of resume fixes (compaction summary lost on headless resume, 2.1.300; subagents forgetting recent work on resume, 2.1.304; `/rewind` attribution, 2.1.309).
+- Budgets: `/usage` warnings (2.1.299), rate-limit end times in `/usage` (2.1.304), unattended retry controls `CLAUDE_CODE_RETRY_WATCHDOG_MAX_USAGE_LIMIT_WAIT_MS` (2.1.301) and a recheck interval (2.1.305); a plugin no longer keeps headless runs past `--max-turns` (2.1.304).
+- Observability: GenAI semantic-convention attributes and a cache-write token split (2.1.300); `classifier_verdict`, `permission_mode` on `tool_decision` (2.1.301); a `claude_code.safety_event` for permission, auto-mode, hook and sandbox stops (2.1.307).
+- MCP: protocol revision 2026-07-28 as default (2.1.300); allow rules scoped to the named server (2.1.300). A2A: nothing in the part read.
+- Security and sandboxing: shell startup files no longer run outside the sandbox (2.1.309); `sandbox.allowNestedUserNamespaces` (2.1.305).
+- Multi-agent: fork subagents on by default (2.1.302); teammates inherit the leader's deny rules (2.1.309).
+- Scheduling: routine status and repeat-run fixes (2.1.302), scheduled-wakeup and DST fixes (2.1.299), `/loop` wakeup fixes (2.1.304).
+
+**(ii) What it does that Karakuri does not.** Inferred from the list above: a model-backed classifier deciding tool calls in auto mode, with its verdict exported as telemetry; an OS-level sandbox for shell commands; in-session rewind of file changes.
+
+**(iii) What Karakuri does that it does not.** Karakuri's README names an `act_with_notice` autonomy level whose autonomous actions all appear in the next digest, and one digest per twin per day ([ADR 016](../adr/016-earned-autonomy-and-digests.md), README "Standing Objectives" and "Digests"). Inferred: nothing in the Claude Code part read reports unsupervised work back as a digest, and its permission modes are chosen by a person, not widened by a track record. docs/roadmap.md was not read this pass, so no phase status is claimed.
+
+**(iv) Complaints.** The two most-reacted open issues, from the search API (https://api.github.com/search/issues?q=repo:anthropics/claude-code+is:issue+is:open&sort=reactions&order=desc&per_page=2, read 2026-10-25, extract of bodies, comments not read) [E]: #45596 "Bring Back Buddy", opened 2026-04-09, 2,116 reactions (1,195 +1), 282 comments, asking to restore the `/buddy` companion removed in 2.1.97; #18435, multiple accounts in the Desktop app, opened 2026-01-15, 1,186 reactions (951 +1), 217 comments. Inferred: neither touches agent autonomy or durability; the top complaints are about the product's surface, so they say little for Karakuri.
+
+**Rows.** Scheduled or standing agents: observed [E] (routines, scheduled wakeups, `/loop`). Earned autonomy: unknown; the part read shows modes set by a person and a classifier, no widening by record. A2A: unknown (not in the part read).
+
+### 2. OpenAI Codex and the OpenAI Agents SDK
+
+**(i) Shipped, part of window read.** Codex: not read. The releases list at per_page=100 exceeded the fetch tool's 10 MB limit; at per_page=15 (https://api.github.com/repos/openai/codex/releases?per_page=15, read 2026-10-25) the first 100,000 of about 8.16 million characters held only rust-v0.164.0 (2026-10-23) and its asset list, no notes [E]. Nothing is claimed about what Codex shipped.
+
+Agents SDK, observed [E] (https://api.github.com/repos/openai/openai-agents-python/releases?per_page=100, read 2026-10-25, first 100,000 of about 529,600 characters): v0.22.1 (2026-09-08) to v0.24.0 (2026-10-15); 2026-04-25 to early September was not read.
+- Human approval: deferred approval history persists across resumes and compaction waits for pending approvals (v0.24.0); approvals scoped to the owning agent (v0.23.0); conditional approvals checked against validated arguments (v0.22.3).
+- Durability: Redis compaction history replaced atomically (v0.24.0); encrypted session history requires encrypted envelopes (v0.23.0).
+- Budgets: bounded streaming callback backlogs, MCP listing page limits, a compaction rollback item budget (v0.23.0). No spend budget seen.
+- Observability: default trace exports omit reasoning, rate-limited exports retried (v0.23.0); approved resumed tools attach to the resumed agent span (v0.24.0). No OpenTelemetry item seen.
+- MCP: server-wide guardrails for MCP tools (v0.22.1); resumed MCP calls bound to their original recipients (v0.23.0); MCP annotations exposed (v0.24.0). A2A: none seen.
+- Sandbox: configurable Unix-local environment isolation (v0.22.1); opt-in Docker removal protection (v0.23.0).
+- Multi-agent: handoff and nested agent-tool state fixes (v0.22.1 to v0.24.0). Scheduling: none seen.
+
+**(ii) What it does that Karakuri does not.** Inferred: approval state that survives a resume and compaction inside a library a developer embeds, and guardrails attached server-wide to MCP tools.
+
+**(iii) What Karakuri does that it does not.** Inferred, from the SDK part read: no scheduler, no standing objective and no digest; it is a library, so cadence and reporting are left to the caller. Karakuri names standing objectives on a cadence and digests in its README.
+
+**(iv) Complaints (Codex tracker).** https://api.github.com/search/issues?q=repo:openai/codex+is:issue+is:open&sort=reactions&order=desc&per_page=2, read 2026-10-25 [E], bodies summarised, comments not read: #8745 LSP integration, opened 2026-01-05, 610 reactions (505 +1), 72 comments; #9203 "Please make /undo back", opened 2026-01-14, 540 reactions (489 +1), 96 comments, because Codex has deleted untracked files or changed uncommitted work. Inferred: #9203 is the same need as Claude Code's `/rewind`, a way back from an agent's file changes. The Agents SDK tracker was not read.
+
+**Rows.** Scheduled or standing agents: unknown (Codex not read; none in the SDK part read). Earned autonomy: unknown. A2A: unknown; none in the SDK part read.
+
+### 3. LangGraph and LangSmith
+
+**(i) Shipped, part of window read.** LangGraph, observed [E] (https://api.github.com/repos/langchain-ai/langgraph/releases?per_page=100, read 2026-10-25, first 100,000 of about 274,800 characters): 1.2.7 (2026-06-30) to 1.2.17 (2026-10-24). The 8 to 30 April gap left by 2026-10-08, and 2026-04-25 to 2026-06-29, are still not read.
+- Human approval: `response_schema` on `interrupt()` (1.2.12, 2026-09-21); answered interrupts no longer reported in `get_state` (1.2.13, 2026-10-05).
+- Durability: `prune` on PostgresSaver (checkpoint-postgres 3.2.0, 2026-10-14); subgraphs no longer rerun finished tasks on resume (1.2.16, 2026-10-16); no checkpoint saved past a failed DeltaChannel write (1.2.15).
+- Budgets: only a recursion-limit fix (1.2.17). Observability: `trace_policy` on `add_node` (1.2.10, 2026-07-28). Scheduling: a cron's `end_time` can be cleared (sdk 0.4.3, 2026-08-19). MCP, A2A, sandbox: none in the part read.
+
+LangSmith, observed [E] (https://docs.langchain.com/langsmith/changelog, read 2026-10-25, first 100,000 of about 235,900 characters): weekly entries from 2026-08-31 to 2026-10-19 only; April to August 2026 still unread, so the April to May gap is not filled.
+- A2A: `SendMessage` honours `returnImmediately` so a caller can poll with `GetTask` (week of 2026-10-12).
+- MCP: `query_runs` in the LangSmith MCP server (week of 2026-09-28); managed-tools gateways up to 10,000 tools (week of 2026-10-12).
+- Sandboxes: memory-preserving resume (week of 2026-09-28), HTTP forward proxy and optional command history (week of 2026-10-05), customer-managed KMS keys and short-lived workload identity (week of 2026-10-12).
+- Cost and access: per-call prompt-cache breakdown (2026-10-12 week); granular organisation permissions (2026-10-05 week); tracing-only API keys (2026-10-12 week).
+- Scheduling: only cron-fired runs carry a `cron_id` (2026-10-12 week). Approvals: none seen.
+
+**(ii) What it does that Karakuri does not.** Inferred: a hosted sandbox product with its own cost reporting, an A2A endpoint on the agent server, and a typed `response_schema` on a human interrupt.
+
+**(iii) What Karakuri does that it does not.** Inferred: neither part read shows autonomy that widens with a track record or a daily digest of unsupervised actions; LangGraph's crons fire runs, but nothing read ties them to a standing objective that reconciles. Karakuri names both in its README.
+
+**(iv) Complaints.** https://api.github.com/search/issues?q=repo:langchain-ai/langgraph+is:issue+is:open&sort=reactions&order=desc&per_page=2, read 2026-10-25 [E]: #3716, PostgresSaver "SSL error: bad length", 12 reactions, 53 comments; #5672, a cancelled run loses streamed state not yet checkpointed, 9 reactions, 52 comments. Both were read in part 2 of this report (section D). Inferred: the counts are an order of magnitude below the coding agents', so "most reacted" here means little. LangSmith has no public tracker that was read.
+
+**Rows.** Scheduled or standing agents: observed [E], crons on the agent server (scheduled, not standing). Earned autonomy: unknown. A2A: claimed by the vendor [E] (LangSmith changelog, week of 2026-10-12).
+
+### Still thin (part 3)
+
+1. Claude Code: 984,700 characters of CHANGELOG unread, and the file is undated; release dates need the GitHub releases API or tags. The Agent SDK release notes were not read.
+2. Codex: nothing read. The releases API needs a smaller page or the `gh` CLI, which was not available to this session.
+3. Agents SDK: 2026-04-25 to early September not read; its own tracker not read.
+4. LangGraph: 2026-04-08 to 2026-06-29 not read; LangSmith April to August not read.
+5. No issue's comments were read; every complaint is from the opening post.
+6. docs/roadmap.md not read; (iii) rests on README only.
+
+Products 4 to 6 and the capability matrix: pending part 4.
 <!-- p3:end -->
 
 <!-- p4a:start -->
@@ -210,7 +284,19 @@ All read on 2026-10-25 with WebFetch; P = primary; X = extract written by the fe
 ### Sources, part 3
 
 <!-- s3:start -->
-_Pending: part 3._
+All read 2026-10-25 by a fetch tool that returns extracts. P = primary, X = extract.
+- https://raw.githubusercontent.com/anthropics/claude-code/main/CHANGELOG.md: P, X, first 100,000 of about 1,084,700 characters [E]
+- https://api.github.com/repos/openai/codex/releases?per_page=100: not read, over the tool's 10 MB limit [N]
+- https://api.github.com/repos/openai/codex/releases?per_page=15: P, X, first 100,000 characters, asset metadata only [E for the tag and date; N for contents]
+- https://api.github.com/repos/openai/openai-agents-python/releases?per_page=100: P, X, first 100,000 of about 529,600 characters [E]
+- https://api.github.com/repos/langchain-ai/langgraph/releases?per_page=100: P, X, first 100,000 of about 274,800 characters [E]
+- https://docs.smith.langchain.com/changelog: redirect only, not read [N]
+- https://docs.langchain.com/langsmith/changelog: P, X, first 100,000 of about 235,900 characters [E]
+- https://api.github.com/search/issues?q=repo:anthropics/claude-code+is:issue+is:open&sort=reactions&order=desc&per_page=2: P, X [E]
+- https://api.github.com/search/issues?q=repo:openai/codex+is:issue+is:open&sort=reactions&order=desc&per_page=2: P, X [E]
+- https://api.github.com/search/issues?q=repo:langchain-ai/langgraph+is:issue+is:open&sort=reactions&order=desc&per_page=2: P, X [E]
+
+Repository files read: this report's headings and the parts 1 and 2 markers, README.md (a search for autonomy and digest terms only). docs/research/discovery-2026-10-08.md was located but its teardown was not read in full; docs/roadmap.md was not read.
 <!-- s3:end -->
 
 ### Sources, part 4
@@ -243,3 +329,4 @@ _Pending: part 7._
 - Part 1: started 2026-10-25 by a first session, which was cut off after the self-hoster segment; resumed at 17:03 UTC and finished on 2026-10-25 by a second session.
 <!-- rl1:end -->
 - Part 2: ran 2026-10-25 from 17:04 UTC in one 600-second session; filled thin spots 1 (except #5672) and 3; spots 2 and 4 to 8 not reached.
+- Part 3: ran 2026-10-25 from 17:07 UTC in one 600-second session; `gh api` and `curl` were not permitted, so every page came through an extract tool; wrote products 1 to 3 in one commit, not one per product; the 2026-10-08 teardown was not read in full.
