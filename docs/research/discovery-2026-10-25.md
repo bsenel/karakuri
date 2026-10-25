@@ -263,7 +263,7 @@ Key: O = observed (in a page or file read), C = claimed by the vendor, U = unkno
 ## Capability matrix
 
 <!-- p4b:start -->
-_Pending: part 4._
+_Not written: part 4 did not finish this section (see Run log)._ Part 4's matrix is the '## Capability matrix' section above; this is a leftover duplicate placeholder.
 <!-- p4b:end -->
 
 ## Technical frontier
@@ -406,7 +406,7 @@ Dropped as covered:
 <!-- p6b:end -->
 
 <!-- p7f:start -->
-_Pending: part 7._
+_Not written: part 7 did not finish this section (see Run log)._ Part 7's text is under '## Fit and bets' below; this is a leftover placeholder.
 <!-- p7f:end -->
 
 ## Fit and bets
@@ -484,7 +484,7 @@ Two, fewer than five, because only two candidates pass both gates and both rest 
 <!-- p7a:end -->
 
 <!-- p8:start -->
-_Pending: part 8._
+**Part 8, phases proposed.** Written by part 8 on 2026-10-25. R1 became Phase 42 (An MCP Call Carries Only What the Tool Declared) and R2 became Phase 43 (A Provider's Tool-Call Shape, Pinned by a Test) in `docs/roadmap.md`, both FRONTIER BET with a find-out first slice and the kill criterion above. No other candidate passed both gates, so no other phase was written. Numbers checked against main (highest 41) and open pull requests #187 and #194 (highest 41). Consistency check: every URL the two phases cite is in '## Sources' with a grade, none [N]; the two quoted sentences are [Q] (n8n #21716 and #22181 comments); n8n #23167 is [E] in Sources, so its title is paraphrased, not quoted; every named file exists (`ls`). Nothing was built, run or tested.
 <!-- p8:end -->
 
 ## What changed since the last report
@@ -665,6 +665,10 @@ Repository files read: `internal/feature/audit/retention.go` lines 1-58; `intern
 No web page fetched; no api.github.com call. Files read on 2026-10-25: `docs/research/discovery-2026-10-25.md` (parts 1 to 6, line by line); `docs/research/discovery-2026-10-08.md` lines 541 to 604 ('## Fit and bets' only); `README.md` headings; `docs/roadmap.md` Goal lines (search) and a search of lines 4337 to 4572 (Phase 39) for `schema|argument|inventory`. Commands: `gh pr view 195`, `gh pr list --state open`, `gh pr list --state all --label karakuri:discovery`.
 <!-- s7:end -->
 
+### Part 8
+
+No web page fetched; no api.github.com call. Files read on 2026-10-25: this report's '## Feasibility', '## Fit and bets', 'Still thin' lines, Sources and Run log; `docs/roadmap.md` (phase headings, the status table, the start of Phase 41 and its 'Read and not read', and the line before '## Engineering Backlog'); the roadmap of open pull requests #187 and #194 (phase headings only); `ls` of `internal/platform/tools/mcp/`, `internal/platform/agent/`, `internal/platform/llm/`, `config/default.yaml`, `go.mod` and `scripts/check_langchaingo_imports.sh`.
+
 ## Run log
 
 <!-- rl1:start -->
@@ -676,3 +680,4 @@ No web page fetched; no api.github.com call. Files read on 2026-10-25: `docs/res
 - Part 6: started 20:32 UTC, finished 20:35, API: used 0. EUR-Lex was empty again, and the OWASP PDF and NIST/ISO were not reached. Five feasibility candidates were assessed from code, committed in two commits (governance, then feasibility) rather than one per candidate.
 - Part 5: ran 2026-10-25 from 17:14 UTC in one 600-second session; extract tool only; A, B and C went into one commit after the in-progress marker, not one commit each; Google and `ext-auth` not read.
 - Part 7: started 20:35 UTC, finished 20:39, API: used 0. Fit and bets (two recommended, both FRONTIER BET) and What changed, in two commits; no Baseline line or Thin spots inherited heading existed, so the 2026-10-08 report and each part's own gap lists were used.
+- Part 8: started 20:38 UTC, finished 20:41, API: used 0. Merged origin/main cleanly (go.mod and go.sum only); proposed Phases 42 and 43 (both FRONTIER BET) and added them to the status table; consistency check passed; replaced the leftover part 4 and part 7 placeholders; brought #195 to its final state.
