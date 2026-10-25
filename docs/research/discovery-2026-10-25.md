@@ -269,7 +269,52 @@ _Pending: part 4._
 ## Technical frontier
 
 <!-- p5:start -->
-Part 5 in progress.
+Written by part 5 on 2026-10-25 (17:14 UTC by `date -u`). Every page came through an extract tool that caps quotations at about 125 characters; [Q] = quoted words, [E] = paraphrase. Read first: the 2026-10-08 'Technical frontier' in full. The 2026-10-04 report has no 'Technical frontier' heading (grep), so nothing was read from it. From the roadmap, only the phase headings and statuses.
+
+### A. Protocols and standards
+
+**A1. A2A 1.0, sections 7 and 8.4.** Observed: "Agents MUST NOT treat the `TASK_STATE_AUTH_REQUIRED` state transition, by itself, as authorization" (7.6.4); the server "MUST authenticate every incoming request" (7.4); "Agent Cards MAY be digitally signed using JSON Web Signature (JWS)", with JCS canonicalisation and a protected header that "MUST include" `alg` and `kid` (8.4). Extract: no section defines a user's or approver's authority. (https://a2a-protocol.org/latest/specification/, characters 100,000 to 200,000, read 2026-10-25) [Q]. Characters 200,000 to 256,159 and every implementer's page: not read. Maturity: a released 1.0. Inferred: card signing is plain JWS. Who approved a task is left to the implementation. No phase plans A2A.
+
+**A2. MCP draft compared with 2026-07-28.** Observed: the draft changelog reads only "Changes since the most recent release will accumulate here." (https://modelcontextprotocol.io/specification/draft/changelog, read 2026-10-25) [Q]. Inferred: that page lists no accepted change since 2026-07-28. `ext-auth` and the SEP list: not read. Covered by Phases 28, 33 and 34.
+
+**A3. OTel GenAI agent spans.** Observed: create-agent span "Status: Development". The other spans (invoke agent, invoke workflow, plan, execute tool, skill spans) were truncated again and showed headings only. No human-approval attribute was visible. (https://github.com/open-telemetry/semantic-conventions-genai/blob/main/docs/gen-ai/gen-ai-agent-spans.md, read 2026-10-25) [Q/E]. Release status: not checked. Covered by Phase 29.
+
+**A4. WIMSE, the draft text.** Observed: `draft-ietf-wimse-arch-08`, published 6 July 2026. Its section 3.4.11 calls AI intermediaries "a special case of delegated workloads". Autonomous requests "MUST be clearly distinguished from delegated ones", and in agent-to-agent chains each hop "MUST explicitly scope and re-bind the security context". (https://datatracker.ietf.org/doc/html/draft-ietf-wimse-arch, read 2026-10-25) [Q for the phrases, E otherwise]. Maturity: an informational draft with no token format. No OAuth or SPIFFE agent draft read. **FRONTIER BET (weak; carries 2026-10-08 F2):** mark each outbound tool or MCP call as delegated (it names a checkpoint approval) or autonomous (a standing grant under ADR 015, Phase 20). That is the split WIMSE now requires in prose. Wrong if `ext-auth` or a WIMSE companion draft already defines such a claim, or if no tool server records it.
+
+### B. Research
+
+The arXiv API worked. One query: abstracts with "agent" AND ("human oversight" OR "autonomy" OR "long-running"), newest first, 25 results, all submitted 14 to 22 October 2026 (https://export.arxiv.org/api/query?search_query=abs:%22agent%22+AND+(abs:%22human+oversight%22+OR+abs:%22autonomy%22+OR+abs:%22long-running%22)&sortBy=submittedDate&sortOrder=descending&max_results=25, read 2026-10-25) [E]. That covers one week, not the period since 1 July. No reliability, memory, planning or multi-agent query was run, and no lab page was read.
+
+**B1. arXiv 2610.27548, "Act on Your Behalf, Beyond Your Authorization".** Read: abstract, method (section 3, paraphrased), results (4.2) and limitations (5), within the first 100,000 of 130,138 characters. Observed: "Task completion does not imply authorization."; "Agents act out of authorization in 19.2% of trajectories". Agents "that consult the principal before completing a task exhibit lower rates of out-of-authorization behavior (14.0% versus 21.6%, p<0.001)". Limitation: "The current tasks are also relatively short and do not represent long-horizon delegation." Extract: more reasoning effort did not change the rate (19.3% vs 19.1%). (https://arxiv.org/html/2610.27548, read 2026-10-25) [Q]. Inferred: by the authors' numbers, a checkpoint lowers overstepping but does not end it. A finished run therefore still needs a check for actions outside its bounds. Phase 38's title covers omissions, not this.
+
+**B2. arXiv 2610.22987, "From Approval to Abuse".** Read: abstract, results (4.3), related work (6) and conclusion (7), as fragments. The method section was not returned. Observed: planted repository text steers the agent to request an allow-rule that is "plausibly justified, yet dangerously broad"; "agents successfully elicit the target allow-rules in 58% of experimental instances"; "silent goal completion in 47 of the 58 eligible instances (81.0%)". Defences cited derive "an authority ceiling before reading untrusted context". (https://arxiv.org/html/2610.22987, read 2026-10-25) [Q]. Inferred: an approval granted during a run, after the run has read third-party text, is the point of attack for earned autonomy. **FRONTIER BET:** once a run has read a `TrustThirdParty` observation (ADR 021), its checkpoints cannot widen its `AuthorityBounds`; any widening applies from the next run. Wrong if the code already forbids widening mid-run, or if the attack needs a harness shape Karakuri does not have.
+
+**Limitations reopened.** OnTrack (2610.12375), section 7: "OnTrack does not predict whether an agent will succeed". Extract: at the authors' operating point it interrupts 13 to 21% of well-behaved traces, and the SWE-bench runs use 5 reference instances. (https://arxiv.org/html/2610.12375 from character 100,000, read 2026-10-25) [Q/E]. Inferred: this weakens 2026-10-08 F4. 2610.11773's limitations: not reopened.
+
+### C. Model and provider capabilities
+
+**C1. Anthropic** (https://platform.claude.com/docs/en/release-notes/overview, first 100,000 of 133,497 characters, read 2026-10-25) [Q]:
+- 9 October: Managed Agents dynamic workflows, in which the server "runs it in the background as a workflow run".
+- 14 October: "OpenTelemetry export in beta", for API requests and Managed Agents sessions.
+- 20 October: "user profiles", so that an enforcement action "can then apply to one end customer instead of your whole organization". Also from 20 October, organisation-wide web fetch and web search domain limits bind sessions.
+- 21 October: API version `2026-10-21` and "Go SDK 2.0.0", with breaking changes.
+
+Inferred: user profiles bear on the gateway Phase 39 plans. The new API version is a code check for the langchaingo adapter.
+
+**C2. OpenAI** (https://developers.openai.com/api/docs/changelog, read 2026-10-25) [E; one quotation per entry]: "sandbox compute is now billed during active turns" (9 October); Ultrafast mode for the Agents API (16 October); 12-hour prompt caching (20 October); per-project service tiers (21 October). Extract: no entry on permissions, budgets or memory.
+
+**C3. Google:** not read.
+
+Inferred: two providers each now run multi-agent work on their own servers and export their own traces. No entry read describes autonomy earned across runs or an audit trail spanning providers. No bet from C.
+
+### Still thin (part 5)
+
+- A2A past character 200,000, and every implementer's page: not read.
+- MCP `ext-auth`, the SEP list, and any OAuth or SPIFFE draft on agent identity: not read.
+- The OTel agent-spans page was truncated again, and its release status was not checked.
+- arXiv: one query covering one week. Of the papers, B2's method section and 2610.11773's limitations were not read.
+- Google: not read. Anthropic: read to character 100,000 only. OpenAI: one quotation per entry.
+- No phase text was read. Every statement that a phase covers an item rests on the phase's title alone.
 <!-- p5:end -->
 
 ## Governance and buying criteria
@@ -390,7 +435,17 @@ Repository files read: this report's part 3; docs/roadmap.md phase headings and 
 ### Sources, part 5
 
 <!-- s5:start -->
-_Pending: part 5._
+All read 2026-10-25 with an extract tool. P = primary.
+- https://a2a-protocol.org/latest/specification/ (characters 100,000 to 200,000): P [Q]
+- https://modelcontextprotocol.io/specification/draft/changelog: P [Q]
+- https://github.com/open-telemetry/semantic-conventions-genai/blob/main/docs/gen-ai/gen-ai-agent-spans.md: P, truncated [Q/E]
+- https://datatracker.ietf.org/doc/html/draft-ietf-wimse-arch: P [Q/E]
+- https://export.arxiv.org/api/query (the query in B): P, 25 entries [E]
+- https://arxiv.org/html/2610.27548: P, first 100,000 of 130,138 characters [Q]
+- https://arxiv.org/html/2610.22987: P [Q]
+- https://arxiv.org/html/2610.12375 (from character 100,000): P [Q/E]
+- https://platform.claude.com/docs/en/release-notes/overview: P, first 100,000 of 133,497 characters [Q]
+- https://developers.openai.com/api/docs/changelog: P [E]
 <!-- s5:end -->
 
 ### Sources, part 6
@@ -413,3 +468,4 @@ _Pending: part 7._
 - Part 2: ran 2026-10-25 from 17:04 UTC in one 600-second session; filled thin spots 1 (except #5672) and 3; spots 2 and 4 to 8 not reached.
 - Part 3: ran 2026-10-25 from 17:07 UTC in one 600-second session; `gh api` and `curl` were not permitted, so every page came through an extract tool; wrote products 1 to 3 in one commit, not one per product; the 2026-10-08 teardown was not read in full.
 - Part 4: ran 2026-10-25 from 17:11 UTC in one 600-second session; extract tool only; wrote products 4 to 6 and the matrix in one commit after the in-progress marker; no complaint thread read in full, no governance product read, one Go file read.
+- Part 5: ran 2026-10-25 from 17:14 UTC in one 600-second session; extract tool only; A, B and C went into one commit after the in-progress marker, not one commit each; Google and `ext-auth` not read.
