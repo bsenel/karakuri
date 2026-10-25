@@ -269,7 +269,7 @@ _Pending: part 4._
 ## Technical frontier
 
 <!-- p5:start -->
-_Pending: part 5._
+Part 5 in progress.
 <!-- p5:end -->
 
 ## Governance and buying criteria
