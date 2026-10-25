@@ -18,6 +18,8 @@ func objectiveCmd() *cobra.Command {
 func objectiveCreateCmd() *cobra.Command {
 	var title, description, domain, twinID, templateID string
 	var priority, maxIter int
+	var criteriaFile string
+	var criteria []string
 	cmd := &cobra.Command{
 		Use:   "create",
 		Short: "Create an objective",
@@ -47,6 +49,8 @@ func objectiveCreateCmd() *cobra.Command {
 	cmd.Flags().StringVar(&templateID, "template", "", "Template ID (e.g. software.objective.delivery)")
 	cmd.Flags().IntVar(&priority, "priority", 0, "Priority (0=low, higher=more urgent)")
 	cmd.Flags().IntVar(&maxIter, "max-iter", 0, "Max loop iterations baked into the objective (0 = use the loop-start default)")
+	cmd.Flags().StringVar(&criteriaFile, "criteria-file", "", "YAML file of success criteria, in the shape of the API's success_criteria")
+	cmd.Flags().StringArrayVar(&criteria, "criterion", nil, "One success criterion, id=..;kind=measured;metric=..;op=..;target=..;unit=.. (repeatable; added after --criteria-file)")
 	_ = cmd.MarkFlagRequired("title")
 	return cmd
 }
