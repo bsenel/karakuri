@@ -345,7 +345,64 @@ Written by part 6 on 2026-10-25 in a single 600-second session. Two notes on the
 ## Feasibility
 
 <!-- p6b:start -->
-_Pending: part 6._
+Written by part 6 on 2026-10-25. Nothing was built, run or tested; every "exists" below is a file that was opened and read at the lines given.
+
+**(a, b) Shortlist and coverage.** Phases were checked with `grep -nE '^## Phase [0-9]+' docs/roadmap.md` (34 at line 3444, 35 at 3717, 36 at 3863, 37 at 4021, 38 at 4258, 39 at 4337, 40 at 4573, 41 at 5397) and by reading the Goal and 'What this is not' lines of each. Open pull requests: #187 (Phase 41, checkable success), #194 (tech backlog EB-005, exporter drops spans) and #195 (this one).
+
+Dropped as covered:
+- Provider rate limits: **Phase 36, Completed**. Observed: `internal/feature/loop/reason.go:96-106` matches `coreerrors.ErrProviderRateLimited`, retries once and then ends with "model provider rate limit". `maxRateLimitWait` is 30 seconds (line 219). `classifyRateLimit` is at `internal/platform/llm/claude.go:132`. This settles the 2026-10-08 unknown "what stepDecide does with a 429".
+- Stop or pause any run: **Phase 37, Planned**.
+- Unmet obligations and verifiers that never ran: **Phase 38, Planned**.
+- Authority carried on MCP calls, and every tool call going through one gateway: **Phase 34, Completed** (credential scoped to one delegation), then **Phase 39, Planned** (one MCP gateway). Whether Phase 39 records the server and tool inventory in the evidence export was not read; see 'Not assessed'.
+- Streams without a coordinator: **Phase 40, Planned**.
+- Checkable success: **Phase 41, Planned**, being built in **#187**.
+- Past runs as reference trajectories: probably covered by the phase whose Goal is "measured against decisions real people made" (`docs/roadmap.md:2566`). Its number and status were not read. Inferred, not verified.
+- Planted text steering an allow-rule (part 5 B2): partly covered by Phase 27 (`docs/roadmap.md:2189`, where a plan justified by third-party text escalates).
+
+**(c) Top five, ranked by the evidence this report holds:** (1) the MCP client passing undeclared arguments (part 2 C, a large primary thread plus a fix); (2) the checkpoint store's idle connections and oversized state (part 2 D); (3) the fixed timeout on a slow local model (part 2 A); (4) provider tool-calling contract changes, including Anthropic API `2026-10-21` (part 2 B and part 5 C1); (5) A2A tasks (part 5 A1, one primary specification, with no user complaint behind it).
+
+**1. The MCP client sends arguments the tool did not declare.**
+- Observed, exists: `internal/platform/tools/mcp/instance.go:259-273`. `Call` checks state and the allowlist and then passes `args` to `client.CallTool` unchanged. `schemaOf` (lines 296-339) narrows the server's schema for the planner only, and its comment says "Nothing validates an MCP call against this schema — the server does that".
+- Missing: arguments are not filtered against the tool's declared `properties` before the call.
+- First slice: in `Call`, drop or refuse any key absent from the discovered `InputSchema.properties` when the schema declares properties. Choosing between refusing and dropping is the design question. Add a table test beside `internal/platform/tools/mcp`.
+- Not verified: whether `client.go` already strips arguments (it was not opened), and how a server with `additionalProperties: true` should be handled.
+
+**2. Durable state matching what the user saw: idle connections and oversized state.**
+- Observed, exists: `internal/platform/db/gorm.go:22-28` opens GORM with a logger and nothing else. A search of `internal/platform` for `SetConnMaxIdleTime|SetMaxIdleConns|SetConnMaxLifetime` returned nothing. `ResumeStoredLoops` (`internal/feature/loop/service.go:362-400`) replays active loops under `context.WithoutCancel`, bounded by `maxResumeConcurrency`. Paused loops wait for their decision instead of re-planning.
+- Missing: connection-pool lifetimes on Postgres. Nothing measured how large a loop state row gets.
+- First slice: set `ConnMaxIdleTime` and `ConnMaxLifetime` from config on the `*sql.DB` behind GORM for the postgres driver, with a test that asserts the settings are applied.
+- Not verified: the loop-state schema and its size, and whether Karakuri has ever shown the "SSL error" symptom (Inferred: it plausibly would behind a proxy that drops idle connections).
+
+**3. Fixed timeout on a slow local model.**
+- Observed: `internal/platform/llm/` holds claude, claude_cli, copilot, cursor, gemini and gemini_cli, and no local-model provider. A search for `ollama` across Go and YAML files returned nothing. In `claude.go:39-43` a custom `http.Client` is built only when `ANTHROPIC_BASE_URL` is set (`WithCustomerAttribution(nil, …)`), with no timeout field in view.
+- Inferred: the five-minute client default from part 2 A does not apply today, because there is no local provider. The candidate is really "add a local provider whose timeout is configurable".
+- First slice: none until a local provider exists. The gap to note is that no provider timeout is configurable.
+- Not verified: `customer.go:46-60` was seen only through a search, and the CLI paths' own timeouts were not read.
+
+**4. Provider tool-calling contract changes.**
+- Observed: `internal/platform/llm/claude.go:32` hard-codes `claude-sonnet-4-6`. `Complete` (lines 78-89) uses `llms.GenerateFromSinglePrompt` with no tools, and estimates `TokensUsed` as `len(resp)/4`. Tool calling goes through `AsLLM()` (line 76) into the agent factory. `go.mod:57` pins `github.com/tmc/langchaingo v0.1.15`.
+- Missing: a contract test that pins the tool-call request and response shapes per provider. The hard-coded model ID also sits outside config.
+- First slice: a recorded-fixture test under `internal/platform/agent` that feeds a tool-use response in the current Anthropic shape through the langchaingo model and asserts the parsed call.
+- Not verified: which `anthropic-version` header langchaingo v0.1.15 sends, and whether API `2026-10-21` breaks it. The module cache was not read. `internal/platform/agent` was not opened.
+
+**5. A2A tasks.**
+- Observed: a case-insensitive search for `a2a` in `internal/**/*.go` returned no file.
+- Missing: everything. A2A 1.0 requires authenticating every request and forbids treating `AUTH_REQUIRED` as authorisation (part 5 A1). Both requirements map onto Karakuri's checkpoints, but that mapping is Inferred.
+- First slice: a read-only Agent Card endpoint describing the twin's capabilities. It is small, needs a new route in `docs/openapi.yaml`, and changes no authority.
+- Not verified: demand. No user source in parts 1 and 2 asks for A2A.
+
+**Not assessed this cycle (time, not evidence):**
+- MCP server and tool inventory in the evidence record: Phase 39's text was not read to see whether it covers this.
+- Serious-incident records (AI Act Art. 73): the legal text was not read. Phase 32 (SRE) and `internal/feature/audit/export.go` hold no incident type at lines 140-229.
+- Authority ceiling derived before reading untrusted context (part 5 B2) beyond Phase 27.
+- WIMSE agent identity and re-binding per hop (part 5 A4).
+- Anthropic user profiles and organisation-wide fetch limits, against Phase 39 (part 5 C1).
+- OTel GenAI agent spans beyond Phase 29 (part 5 A3), and the open #194 (exporter drops spans).
+- A reconcile pass sharing a cancellable context (a 2026-10-08 unknown): not read. Part 4's matrix reused `authority.go` only.
+- Where MCP instances are built in bootstrap (a 2026-10-08 unknown): `NewInstance` is at `internal/platform/tools/mcp/instance.go:100`, and its caller was not opened.
+- What `finalizeLoop` records: `internal/feature/loop/runner.go:469-500` was read. It sets completed or failed, leaves a standing objective's row alone, and builds a `loop.Result`. The part after line 500 was not read.
+
+**Still thin:** none of the five rests on a test that was run. Candidate 4's header question needs the langchaingo source. Candidate 1 needs `client.go`. Candidate 2 needs the loop-state schema. Candidate 5 has no demand evidence. The phase behind "decisions real people made" was identified only by its Goal line.
 <!-- p6b:end -->
 
 <!-- p7f:start -->
@@ -476,7 +533,7 @@ All tried on 2026-10-25 with an extract tool. P = primary.
 - https://digital-strategy.ec.europa.eu/en/library/digital-omnibus-ai-regulation-proposal: P (the Commission on its own proposal), extract [E]
 - https://genai.owasp.org/resource/owasp-top-10-for-agentic-applications-for-2026/: P, landing page only, extract [E]; the linked PDF was not fetched [N]
 
-Repository files read: `internal/feature/audit/retention.go` lines 1-58; `internal/feature/audit/export.go` lines 140-229; `docs/roadmap.md` Goal and 'What this is not' lines of every phase (one search), plus the Phase 36 lines 3870-3937.
+Repository files read: `internal/feature/audit/retention.go` lines 1-58; `internal/feature/audit/export.go` lines 140-229; `docs/roadmap.md` Goal and 'What this is not' lines of every phase (one search), plus the Phase 36 lines 3870-3937. For feasibility: `internal/platform/tools/mcp/instance.go` lines 255-339; `internal/platform/llm/claude.go` lines 28-97; `internal/platform/db/gorm.go` lines 15-30; `internal/feature/loop/service.go` lines 362-400; `internal/feature/loop/runner.go` lines 469-500; `internal/feature/loop/reason.go` (search hits at 41, 96-106, 218-219 only); `go.mod` line 57.
 <!-- s6:end -->
 
 ### Sources, part 7
@@ -493,4 +550,5 @@ _Pending: part 7._
 - Part 2: ran 2026-10-25 from 17:04 UTC in one 600-second session; filled thin spots 1 (except #5672) and 3; spots 2 and 4 to 8 not reached.
 - Part 3: ran 2026-10-25 from 17:07 UTC in one 600-second session; `gh api` and `curl` were not permitted, so every page came through an extract tool; wrote products 1 to 3 in one commit, not one per product; the 2026-10-08 teardown was not read in full.
 - Part 4: ran 2026-10-25 from 17:11 UTC in one 600-second session; extract tool only; wrote products 4 to 6 and the matrix in one commit after the in-progress marker; no complaint thread read in full, no governance product read, one Go file read.
+- Part 6: started 20:32 UTC, finished 20:35, API: used 0. EUR-Lex was empty again, and the OWASP PDF and NIST/ISO were not reached. Five feasibility candidates were assessed from code, committed in two commits (governance, then feasibility) rather than one per candidate.
 - Part 5: ran 2026-10-25 from 17:14 UTC in one 600-second session; extract tool only; A, B and C went into one commit after the in-progress marker, not one commit each; Google and `ext-auth` not read.
