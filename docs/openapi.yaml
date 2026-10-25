@@ -6030,6 +6030,9 @@ components:
           type: string
         domain:
           type: string
+        evidence:
+          description: What the judge will look at; a judged criterion without it is refused at create time.
+          type: string
         id:
           type: string
         kind:
@@ -6044,6 +6047,11 @@ components:
         op:
           description: How a measured value is compared with the target (<, <=, >, >= or ==).
           type: string
+        params:
+          additionalProperties: {}
+          description: Values for the parameters the metric declares; an undeclared name is refused at create time.
+          nullable: true
+          type: object
         reason:
           description: Why the criterion is inconclusive, when it is.
           type: string

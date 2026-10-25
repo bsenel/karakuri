@@ -122,6 +122,11 @@ func NewApp(
 	// Objectives inherit their twin's containers, so a grant on an organisation
 	// reaches the work being done in it and not only the twins themselves.
 	objSvc := objective.NewService(store).WithContainers(containerSvc)
+	if capReg != nil {
+		// Criteria are checked against the verifiers they name when the
+		// objective is created, not when the loop first fails to settle them.
+		objSvc.WithVerifiers(capReg)
+	}
 	for _, t := range templates {
 		objSvc.RegisterTemplate(t)
 	}

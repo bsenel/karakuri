@@ -186,6 +186,14 @@ type Criterion struct {
 	Op     Op       `json:"op,omitempty"`
 	Target *float64 `json:"target,omitempty"`
 	Unit   string   `json:"unit,omitempty"`
+	// Params are the values for the parameters the metric declares, such as
+	// the packages a coverage figure is computed over. A name the metric does
+	// not declare is refused at create time.
+	Params map[string]any `json:"params,omitempty"`
+
+	// Evidence names what the judge will look at to settle a judged
+	// criterion. A judged criterion without it is refused at create time.
+	Evidence string `json:"evidence,omitempty"`
 }
 
 // CriterionKind is what settles a criterion.

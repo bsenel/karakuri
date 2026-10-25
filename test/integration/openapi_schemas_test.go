@@ -104,6 +104,7 @@ func TestOpenAPIMarshalShapesMatchTheWire(t *testing.T) {
 		ID: "c1", Description: "d", Verifier: "v", Threshold: 1, Weight: 1, Domain: "software",
 		Required: &required, State: objective.CriterionInconclusive, Reason: objective.ReasonVerifierError,
 		Kind: objective.KindMeasured, Metric: "m", Op: objective.OpGreaterEqual, Target: &target, Unit: "ratio",
+		Params: map[string]any{"packages": "./..."}, Evidence: "e",
 	}
 	b, err := json.Marshal(c)
 	if err != nil {
