@@ -503,7 +503,62 @@ Written by part 1 on 2026-10-25 from `gh pr list --state all --label karakuri:di
 <!-- p1h:end -->
 
 <!-- p7b:start -->
-_Pending: part 7._
+Written by part 7 on 2026-10-25. `gh pr list --state all --label karakuri:discovery --json number,title,state,mergedAt,closedAt`, re-run: #148 merged 2026-10-05, #158 merged 2026-10-09, #195 open. Nothing new since part 1; no discovery pull request was closed unmerged.
+
+**No '### Thin spots inherited' heading exists in this report** (searched by part 6 and again here). The items below are checked against the gaps the 2026-10-08 report admitted, as each part of this cycle named them ("fills 2026-10-08 thin spot N") and as part 1's 'Still thin' and 'Not attempted' lists carry them. Every claim keeps the source and grade of the section it comes from.
+
+**CONFIRMED**
+- The MCP argument leak (2026-10-08 item 4): re-observed and larger, 77 comments on n8n #21716 plus a merged schema filter (part 2 C; https://api.github.com/repos/n8n-io/n8n/issues/21716/comments?per_page=100 and https://api.github.com/repos/n8n-io/n8n/pulls/23167, read 2026-10-25) [Q/E]. Observed in Karakuri's code: the same gap exists (part 6b, `instance.go:259-273`).
+- Durable state pain (2026-10-08 item 2): re-observed in langgraph #3716, with causes named (part 2 D, https://api.github.com/repos/langchain-ai/langgraph/issues/3716/comments?per_page=100, read 2026-10-25) [Q].
+- SRE teams want agents to investigate, not act: re-observed, now from the hazard side (Redick, part 1, [Q]); nothing read contradicts the 2026-10-08 Brex reading.
+- A checkpoint lowers overstepping (the premise of Phases 13.5 and 35): the authors of arXiv 2610.27548 report 14.0% versus 21.6% (part 5 B1, https://arxiv.org/html/2610.27548, read 2026-10-25) [Q], their figure on their benchmark.
+
+**CONTRADICTED**
+- 2026-10-08 item 5, provider breakage "fixed in two weeks": n8n #22181 is reported broken five months after closing (part 2 B, https://api.github.com/repos/n8n-io/n8n/issues/22181/comments?per_page=100, read 2026-10-25) [Q], against the 2026-10-08 reading of the same issue (https://api.github.com/repos/n8n-io/n8n/issues/22181, read 2026-10-08) [Q].
+- 2026-10-08 item 6, the five-minute ceiling as a local-model problem: the same ceiling hits the OpenAI and Anthropic nodes (part 2 A, https://api.github.com/repos/n8n-io/n8n/issues/25360/comments?per_page=100, read 2026-10-25) [Q], against https://api.github.com/repos/n8n-io/n8n/issues/25360 (read 2026-10-08) [Q, fragments].
+- 2026-10-08 F4, past runs as reference trajectories: weakened, not refuted. OnTrack's own limitations say it "does not predict whether an agent will succeed" and interrupts 13 to 21% of well-behaved traces (part 5 B, https://arxiv.org/html/2610.12375, read 2026-10-25) [Q/E].
+- **Digital Omnibus date contradiction: still open.** Part 6 read the Commission's own library page, which says the AI Omnibus entered into force on 27 July 2026 with "extended timelines" (https://digital-strategy.ec.europa.eu/en/library/digital-omnibus-ai-regulation-proposal, read 2026-10-25) [E], not the Official Journal text. Which deadlines moved, and to when, was not read, so the 2026-10-08 conflict over the high-risk dates (2 December 2027 per https://digital-strategy.ec.europa.eu/en/policies/regulatory-framework-ai, read 2026-10-09 [Q]) is not settled.
+
+**THIN SPOTS NOW FILLED**
+- 2026-10-08 thin spot 1 (langgraph #3716): filled to character 100,000 of about 125,600 (part 2 D).
+- 2026-10-08 thin spot 3 (MCP argument thread): filled to character 100,000 of about 158,700 (part 2 C).
+- 2026-10-08 unknown, what the loop does with a 429: settled from code by part 6b (`internal/feature/loop/reason.go:96-106`, Phase 36 Completed).
+- 2026-10-08 Feasibility candidates 9 to 12 (MCP arguments, durable state, provider contract, local timeout), all "code not read" then: all four now read (part 6b).
+
+**THIN SPOTS STILL THIN**
+- A first-hand SRE source in which an agent acted: one abstract, slides undecodable (part 1 a).
+- A talk with a transcript: none (part 1 b).
+- A second independent self-hoster: missing (part 1 c).
+- Unattended coding agents: fragments and a page summary only; Ona white paper unopened (part 1 d).
+- A team running a STANDING coding or maintenance agent, first-hand: not attempted (part 1 e).
+- A regulated organisation speaking for itself: not found in any cycle (part 1 f; part 6 item 6).
+- Anthropic's report PDF: not opened (part 1 g).
+- langgraph #5672 comments 32 to 52; the claude-code #16157 count; autogen, crewAI, codex trackers; the "$4,200" and "78%" claims: not read (part 2 list).
+- Claude Code CHANGELOG before 2.1.296 and undated; Codex releases; Agents SDK and LangGraph before the windows stated (part 3 list).
+- EU AI Act legal text: unread for the third cycle (part 6a). OWASP Agentic mitigations: PDF unread (part 6a). NIST, ISO 42001, procurement questionnaires: not reached.
+- KARAKURI's matrix column: still mostly phase headings (part 4 item 5).
+
+**NEW**
+- Unattended paths that skip approval as a recognised runtime bug class: ZeroClaw #10968, `priority:p1`, `risk:high` (part 1, https://github.com/zeroclaw-labs/zeroclaw/issues/10968, read 2026-10-25) [Q].
+- Deterministic checks before the push as the main gain of unattended coding loops: Temporal and Stripe (part 1) [Q].
+- Approval as an attack point: planted repository text elicits broad allow-rules in 58% of instances, by the authors' figures (part 5 B2) [Q].
+- WIMSE arch-08 requires autonomous requests to be distinguished from delegated ones (part 5 A4) [Q/E].
+- Anthropic ships OpenTelemetry export (beta), Managed Agents workflow runs and per-end-customer user profiles (part 5 C1) [Q].
+- Karakuri has no Postgres connection-pool lifetimes and no local-model provider (part 6b, observed in code).
+
+### Where this cycle is still thin
+
+In the order the next cycle should fill it:
+1. NOT ASSESSED, candidate 6: whether the delivery path runs the repository's own checks before a push, and whether Phase 41 (#187) covers it. The only DEMAND candidate with two independent sources.
+2. NOT ASSESSED, candidate 7: whether reconcile passes, delegated coding agents and sub-agents carry the same `AuthorityBounds` as an attended run (the ZeroClaw question).
+3. NOT ASSESSED, candidate 9: a post-run check for actions outside the bounds (arXiv 2610.27548), against Phase 38's text.
+4. NOT ASSESSED, candidate 8: no widening after `TrustThirdParty` input; read 2610.22987's method section first.
+5. NOT ASSESSED, candidate 11: MCP server and tool inventory in the export, against Phase 39 and `export.go`; read the OWASP PDF.
+6. NOT ASSESSED, candidates 10, 12, 13, 16: WIMSE marking, incident records, Anthropic user profiles and OTel spans, sandbox and rewind.
+7. R1's open question: `internal/platform/tools/mcp/client.go`. R2's open question: the `anthropic-version` header langchaingo v0.1.15 sends.
+8. The EU AI Act through `http://data.europa.eu/eli/reg/2024/1689/oj`, and the omnibus's amended dates in the Official Journal.
+9. A first-hand regulated organisation; a team running a standing agent; a second self-hoster; a talk with a transcript.
+10. The report's own structure: add a '**Baseline:**' line and a '### Thin spots inherited' heading in part 1, which this cycle lacked.
 <!-- p7b:end -->
 
 ## Sources
@@ -607,7 +662,7 @@ Repository files read: `internal/feature/audit/retention.go` lines 1-58; `intern
 ### Sources, part 7
 
 <!-- s7:start -->
-_Pending: part 7._
+No web page fetched; no api.github.com call. Files read on 2026-10-25: `docs/research/discovery-2026-10-25.md` (parts 1 to 6, line by line); `docs/research/discovery-2026-10-08.md` lines 541 to 604 ('## Fit and bets' only); `README.md` headings; `docs/roadmap.md` Goal lines (search) and a search of lines 4337 to 4572 (Phase 39) for `schema|argument|inventory`. Commands: `gh pr view 195`, `gh pr list --state open`, `gh pr list --state all --label karakuri:discovery`.
 <!-- s7:end -->
 
 ## Run log
@@ -620,3 +675,4 @@ _Pending: part 7._
 - Part 4: ran 2026-10-25 from 17:11 UTC in one 600-second session; extract tool only; wrote products 4 to 6 and the matrix in one commit after the in-progress marker; no complaint thread read in full, no governance product read, one Go file read.
 - Part 6: started 20:32 UTC, finished 20:35, API: used 0. EUR-Lex was empty again, and the OWASP PDF and NIST/ISO were not reached. Five feasibility candidates were assessed from code, committed in two commits (governance, then feasibility) rather than one per candidate.
 - Part 5: ran 2026-10-25 from 17:14 UTC in one 600-second session; extract tool only; A, B and C went into one commit after the in-progress marker, not one commit each; Google and `ext-auth` not read.
+- Part 7: started 20:35 UTC, finished 20:39, API: used 0. Fit and bets (two recommended, both FRONTIER BET) and What changed, in two commits; no Baseline line or Thin spots inherited heading existed, so the 2026-10-08 report and each part's own gap lists were used.
