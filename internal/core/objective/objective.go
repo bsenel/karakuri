@@ -2,6 +2,7 @@ package objective
 
 import (
 	"encoding/json"
+	"math"
 	"time"
 
 	"github.com/bsenel/karakuri/internal/core/capability"
@@ -207,11 +208,41 @@ const (
 	OpEqual        Op = "=="
 )
 
-// Compare settles a measured criterion from one value in one unit.
+// Compare settles a measured criterion from one value in one unit. It is plain
+// arithmetic against the author's target; nothing in it reads a clock, a model
+// or an earlier value.
 //
-// Not implemented yet (Phase 41 step 4): it returns the zero state.
+// A NaN, a missing target or an operator it does not know is no data, never a
+// silent zero and never a pass. A value in another unit than the criterion's
+// is a verifier emitting something other than it declared, so it says nothing
+// about the work either way and is a verifier_error, not not_met.
 func (c Criterion) Compare(value float64, unit string) (CriterionState, InconclusiveReason) {
-	return "", ""
+	if math.IsNaN(value) || c.Target == nil {
+		return CriterionInconclusive, ReasonNoData
+	}
+	if unit != c.Unit {
+		return CriterionInconclusive, ReasonVerifierError
+	}
+	target := *c.Target
+	var met bool
+	switch c.Op {
+	case OpLess:
+		met = value < target
+	case OpLessEqual:
+		met = value <= target
+	case OpGreater:
+		met = value > target
+	case OpGreaterEqual:
+		met = value >= target
+	case OpEqual:
+		met = value == target
+	default:
+		return CriterionInconclusive, ReasonNoData
+	}
+	if met {
+		return CriterionMet, ""
+	}
+	return CriterionNotMet, ""
 }
 
 // CriterionState is what a verify step settled about one criterion.

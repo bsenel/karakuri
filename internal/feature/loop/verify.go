@@ -3,6 +3,7 @@ package loop
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -13,6 +14,8 @@ import (
 	"github.com/bsenel/karakuri/internal/core/event"
 	"github.com/bsenel/karakuri/internal/core/loop"
 	"github.com/bsenel/karakuri/internal/core/objective"
+	"github.com/bsenel/karakuri/internal/platform/tools/observability"
+	"github.com/bsenel/karakuri/internal/platform/tools/versioncontrol"
 )
 
 func stepVerify(ctx context.Context, sc *stepContext, outcomes []actionOutcome) (float64, bool) {
@@ -97,6 +100,12 @@ func stepVerify(ctx context.Context, sc *stepContext, outcomes []actionOutcome) 
 			// objective — boot only warns about templates, so this is the
 			// place that refuses (ADR 022). Not met, and not handed to the
 			// agent either: its judgement would be read off that tool's output.
+		case criterion.Kind == objective.KindMeasured && len(ran) > 0:
+			state, reason = settleByMeasurement(criterion, ran)
+		case criterion.Kind == objective.KindMeasured:
+			// A number nobody measured is not handed to a model to guess,
+			// whether the verifier was not run or none was named.
+			state, reason = objective.CriterionInconclusive, objective.ReasonNotRun
 		case verifier != "" && len(ran) > 0:
 			state, reason = settleByVerifier(ran)
 		case verifier != "":
@@ -192,6 +201,50 @@ func settleByVerifier(ran []actionOutcome) (objective.CriterionState, objective.
 		}
 	}
 	if reported == 0 {
+		return objective.CriterionInconclusive, reason
+	}
+	return objective.CriterionMet, ""
+}
+
+// settleByMeasurement compares the criterion's metric, as its named verifier
+// measured it, with the target.
+//
+// Only the runs of that verifier are read, and only the measurement the
+// criterion names. Every settled value has to meet the target, as every run
+// has to succeed in settleByVerifier. A third-party figure may sit on the
+// result, but it cannot settle a required criterion (AGENTS.md rule 9).
+//
+// Nothing settled is inconclusive: no measurement is no_data, a verifier that
+// says it cannot measure is unsupported and any other error is a
+// verifier_error (AGENTS.md rule 10). None of them is not_met, so none counts
+// against the work.
+func settleByMeasurement(c objective.Criterion, ran []actionOutcome) (objective.CriterionState, objective.InconclusiveReason) {
+	settled := 0
+	reason := objective.ReasonNoData
+	for _, o := range ran {
+		if o.Errored {
+			reason = objective.ReasonVerifierError
+			if errors.Is(o.Err, versioncontrol.ErrUnsupported) || errors.Is(o.Err, observability.ErrUnsupported) {
+				reason = objective.ReasonUnsupported
+			}
+			continue
+		}
+		for _, m := range o.Result.Measurements {
+			if m.Name != c.Metric || (m.Trust.IsThirdParty() && c.IsRequired()) {
+				continue
+			}
+			state, r := c.Compare(m.Value, m.Unit)
+			switch state {
+			case objective.CriterionNotMet:
+				return objective.CriterionNotMet, ""
+			case objective.CriterionMet:
+				settled++
+			default:
+				reason = r
+			}
+		}
+	}
+	if settled == 0 {
 		return objective.CriterionInconclusive, reason
 	}
 	return objective.CriterionMet, ""

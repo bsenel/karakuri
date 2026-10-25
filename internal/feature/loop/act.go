@@ -149,6 +149,7 @@ func stepAct(ctx context.Context, sc *stepContext, p plan) []actionOutcome {
 		// Whether the action could not be carried out at all, as opposed to
 		// ran and reported failure.
 		errored := true
+		var actErr error
 		if provisionErr != nil {
 			// The environment would refuse for want of a worktree anyway; say
 			// why there is none instead.
@@ -177,6 +178,7 @@ func stepAct(ctx context.Context, sc *stepContext, p plan) []actionOutcome {
 				}
 			}
 			errored = err != nil
+			actErr = err
 			if !result.Success {
 				span.SetError(result.Error)
 			}
@@ -328,6 +330,7 @@ func stepAct(ctx context.Context, sc *stepContext, p plan) []actionOutcome {
 			EnvID:        envAdapter,
 			Result:       result,
 			Errored:      errored,
+			Err:          actErr,
 		})
 	}
 
