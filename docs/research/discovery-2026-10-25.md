@@ -320,7 +320,26 @@ Inferred: two providers each now run multi-agent work on their own servers and e
 ## Governance and buying criteria
 
 <!-- p6a:start -->
-_Pending: part 6._
+Written by part 6 on 2026-10-25 in a single 600-second session. Two notes on the structure. First, this report has no '**Baseline:**' line and no '### Thin spots inherited' heading (searched for both), so the gaps are the ones the prompt lists for the 2026-10-08 report. Second, this report's placeholders read '_Pending: part 6._', not '_Not yet written: part 6._'; they were still placeholders, so nothing from an earlier attempt was kept.
+
+**(1) EU AI Act legal text: still not read.** Both EUR-Lex renderings returned an empty page again (https://eur-lex.europa.eu/legal-content/EN/TXT/HTML/?uri=CELEX:32024R1689 and https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:32024R1689, read 2026-10-25) [N]. That makes three cycles. The Publications Office and data.europa.eu were not tried in the time available. Articles 12, 14, 26 and 113 therefore still rest on the 2026-10-08 secondary mirror. Observed in code: the six-month audit floor in `internal/feature/audit/retention.go:13-16` cites "Phase 31 cites a six-month minimum ... (EU AI Act Article 12)" [Q, from the repository]. Inferred: that number traces to the roadmap and a secondary source, not to the legal text, and the code comment should not be read as legal verification.
+
+**(2) Digital Omnibus: stage partly settled, effect on dates not.** Observed: the Commission's library page gives the proposal's publication as 19 November 2025. It links a news item saying the AI Omnibus "enters into force across the EU" on 27 July 2026, and it brings "extended timelines" (https://digital-strategy.ec.europa.eu/en/library/digital-omnibus-ai-regulation-proposal, read 2026-10-25) [E; the phrases came through an extract and are not offered as verbatim]. Inferred: the omnibus has been adopted and is in force, but this is the Commission speaking about its own act, not the Official Journal text. Which deadlines moved, and by how long, was **not** read. Article 113's dates as amended remain unsettled.
+
+**(3) OWASP Top 10 for Agentic Applications: mitigations still unread.** The landing page gives no risk entries and only a "Download" link to a PDF (https://genai.owasp.org/resource/owasp-top-10-for-agentic-applications-for-2026/, read 2026-10-25) [E]. The PDF was not fetched. ASI01, ASI03, ASI04 and ASI06 remain unread.
+
+(4) NIST AI RMF and NIST AI 600-1, ISO/IEC 42001, (5) a procurement questionnaire and (6) a regulated organisation speaking for itself: not reached.
+
+| Requirement | Primary source, date read | What Karakuri can already evidence (files opened) |
+|---|---|---|
+| Automatic event logs kept for a minimum period (AI Act Art. 12 / 26(6), via secondary) | none: EUR-Lex [N] 2026-10-25 | `internal/feature/audit/retention.go:13-37`: floor of 183 days that can only be raised, enforced at config load (`CheckRetention`) and again in `Prune` (lines 54-58). |
+| Record of human oversight: approvals, rejections, modifications, autonomy changes (Art. 14, via secondary) | none [N] | `internal/feature/audit/export.go:149-214`: `Export` for a closed window, separating decisions, oversight interventions (approval/rejection/modification), autonomy promotions and demotions, decisions without provenance (lines 196-198), checkpoints still pending at window end (219 onward), and a `NotACertification` field (181). |
+| Authority bounded per run, never widened | none | `internal/feature/reconcile/authority.go:21` `effectiveAuthority` (reused from part 4's matrix). |
+| A person can stop any run (Art. 14(4)(e), via secondary) | none | Not evidenced: Phase 37 is Planned (`docs/roadmap.md:4021`), and its 'What this is not' says "no legal text was read" (line 4248-4249) [Q]. |
+| Unanswered checkpoints do not become approval | none | Phase 35 Completed (`docs/roadmap.md:3717-3778`); code not opened this part. |
+| Agentic security risks ASI01/03/04/06 | OWASP PDF not read [N] | Provenance labelling (Phase 27, `TrustThirdParty`, as in part 4) bears on goal hijack. Inferred only. |
+
+**Still thin:** the AI Act text has now been unread for three cycles. The next cycle should try `https://op.europa.eu` or `data.europa.eu` ELI renderings (`http://data.europa.eu/eli/reg/2024/1689/oj`) first. The omnibus's adopted text and its amended dates were not read. The OWASP PDF was not read. NIST, ISO 42001, questionnaires and regulated organisations were not read. Phase 35's code was not opened.
 <!-- p6a:end -->
 
 ## Feasibility
@@ -451,7 +470,13 @@ All read 2026-10-25 with an extract tool. P = primary.
 ### Sources, part 6
 
 <!-- s6:start -->
-_Pending: part 6._
+All tried on 2026-10-25 with an extract tool. P = primary.
+- https://eur-lex.europa.eu/legal-content/EN/TXT/HTML/?uri=CELEX:32024R1689: P, empty page [N]
+- https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:32024R1689: P, empty page [N]
+- https://digital-strategy.ec.europa.eu/en/library/digital-omnibus-ai-regulation-proposal: P (the Commission on its own proposal), extract [E]
+- https://genai.owasp.org/resource/owasp-top-10-for-agentic-applications-for-2026/: P, landing page only, extract [E]; the linked PDF was not fetched [N]
+
+Repository files read: `internal/feature/audit/retention.go` lines 1-58; `internal/feature/audit/export.go` lines 140-229; `docs/roadmap.md` Goal and 'What this is not' lines of every phase (one search), plus the Phase 36 lines 3870-3937.
 <!-- s6:end -->
 
 ### Sources, part 7
