@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -125,6 +126,7 @@ func softwareEnvironmentFactories(reg *tools.Registry) []environment.Factory {
 					opts := reg.CLIAgents.Options(ctx.AdapterBindings["cli_agents"])
 					env.attachMCP, env.mcpURL = cliMCPOptions(opts)
 					env.timeoutSeconds = cliTimeoutSeconds(opts)
+					env.allowedTools = config.InstanceConfig{Options: opts}.OptStrings("allowed_tools")
 				}
 				return env, nil
 			},
@@ -616,6 +618,9 @@ type cliEnv struct {
 	// timeoutSeconds is the instance's timeout_seconds option: how long one
 	// delegation may run before it is killed. Zero means the default.
 	timeoutSeconds int
+	// allowedTools is the instance's allowed_tools option: the tool list a
+	// delegation gets when its action names none.
+	allowedTools []string
 }
 
 // DelegationCredential is what one delegation carries to Karakuri's own MCP
@@ -652,6 +657,15 @@ func cliTimeoutSeconds(options map[string]any) int {
 		return n
 	}
 	return 0
+}
+
+// deniesUnlistedTools reports whether a coding-agent CLI refuses every tool that
+// needs permission unless its allow-list names it. Claude Code in headless
+// print mode does, so a run with an empty list can read files but can neither
+// edit, commit nor push; Cursor falls back to its own defaults, and Gemini and
+// Copilot ignore the list.
+func deniesUnlistedTools(adapterName string) bool {
+	return adapterName == "claude_code"
 }
 
 // delegationTimeoutSeconds is how long this environment lets one delegation run.
@@ -731,6 +745,12 @@ func (e *cliEnv) Act(ctx context.Context, a environment.Action) (environment.Act
 			}
 		}
 	}
+	// The action's own list wins, so a plan can narrow it for one task; the
+	// instance's list is the floor a plan that forgot the field still gets.
+	// Cloned, because concurrent delegations share the environment.
+	if len(in.AllowedTools) == 0 {
+		in.AllowedTools = slices.Clone(e.allowedTools)
+	}
 
 	// karakuri_tools: the Karakuri MCP tools the agent may call during this
 	// one delegation, e.g. ["audit_list"]. Needs the instance option
@@ -743,6 +763,19 @@ func (e *cliEnv) Act(ctx context.Context, a environment.Action) (environment.Act
 				karakuriTools = append(karakuriTools, s)
 			}
 		}
+	}
+	// Refused before the agent starts or a credential is issued: with no list
+	// and no Karakuri tools it could only read files, so it would spend its
+	// whole time limit and the quota being denied, then report a vague failure
+	// (AGENTS.md rule 10, blind, not quiet). Karakuri tools alone are a working
+	// read-only delegation (Phase 34), so they are not refused.
+	if len(in.AllowedTools) == 0 && len(karakuriTools) == 0 && deniesUnlistedTools(e.cli.Name()) {
+		return environment.ActionResult{
+			Success: false,
+			Error: fmt.Sprintf("%s has no allowed_tools: %s denies every edit, shell command and web fetch not listed, "+
+				"so the agent could only read files; set params.allowed_tools or the cli_agents instance's allowed_tools",
+				a.CapabilityID, e.cli.Name()),
+		}, nil
 	}
 	// scrub keeps the delegation token out of anything the result carries.
 	scrub := func(s string) string { return s }

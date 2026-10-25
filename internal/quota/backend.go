@@ -212,7 +212,8 @@ func buildBackend(ctx context.Context, cfg config.QuotaConfig, db *sql.DB) (quot
 		}
 		b, err := quotavalkey.New(client, quotavalkey.Options{KeyPrefix: "karakuri:quota:"})
 		if err != nil {
-			client.Close()
+			// The construction error is the one worth returning.
+			_ = client.Close()
 			return nil, nil, err
 		}
 		return b, client.Close, nil

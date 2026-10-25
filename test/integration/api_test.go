@@ -49,6 +49,43 @@ func startServer(t *testing.T) (baseURL string, adminToken string, cleanup func(
 func startServerWith(t *testing.T, configure func(*config.Config)) (baseURL string, adminToken string, cleanup func()) {
 	t.Helper()
 
+	apiApp, token, removeDB := newTestApp(t, configure)
+	// Listen on a random port
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		removeDB()
+		t.Fatalf("listen: %v", err)
+	}
+	addr := ln.Addr().String()
+
+	srv := &http.Server{Handler: validateResponses(t, apiApp.Handler())}
+	go func() { _ = srv.Serve(ln) }()
+
+	base := "http://" + addr
+
+	// Wait for server to be ready
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		resp, err := http.Get(base + "/api/v1/health")
+		if err == nil {
+			resp.Body.Close()
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	return base, token, func() {
+		_ = srv.Shutdown(context.Background())
+		removeDB()
+	}
+}
+
+// newTestApp builds the whole app on a temporary database and returns it with
+// an admin token, without serving it. A test that inspects the router itself
+// (the OpenAPI coverage check) needs the app, not a URL.
+func newTestApp(t *testing.T, configure func(*config.Config)) (*api.App, string, func()) {
+	t.Helper()
+
 	// Create a temp SQLite file
 	dbFile, err := os.CreateTemp("", "karakuri-test-*.db")
 	if err != nil {
@@ -169,34 +206,7 @@ func startServerWith(t *testing.T, configure func(*config.Config)) (baseURL stri
 		t.Fatalf("issue admin token: %v", err)
 	}
 
-	// Listen on a random port
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		os.Remove(dbPath)
-		t.Fatalf("listen: %v", err)
-	}
-	addr := ln.Addr().String()
-
-	srv := &http.Server{Handler: apiApp.Handler()}
-	go func() { _ = srv.Serve(ln) }()
-
-	base := "http://" + addr
-
-	// Wait for server to be ready
-	deadline := time.Now().Add(5 * time.Second)
-	for time.Now().Before(deadline) {
-		resp, err := http.Get(base + "/api/v1/health")
-		if err == nil {
-			resp.Body.Close()
-			break
-		}
-		time.Sleep(20 * time.Millisecond)
-	}
-
-	return base, pair.AccessToken, func() {
-		_ = srv.Shutdown(context.Background())
-		os.Remove(dbPath)
-	}
+	return apiApp, pair.AccessToken, func() { os.Remove(dbPath) }
 }
 
 // doJSON issues an HTTP request with a JSON body. An empty token sends the

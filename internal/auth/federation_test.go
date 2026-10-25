@@ -195,6 +195,9 @@ func TestAbsoluteRedirect(t *testing.T) {
 		{configured: "/dashboard", want: "/dashboard"},
 		{configured: "dashboard", want: "/dashboard"},
 		{configured: "https://app.example.com/home", want: "https://app.example.com/home"},
+		// A leading slash is not enough: a browser reads these as another host.
+		{configured: "//evil.example/home", want: "/"},
+		{configured: "/\\evil.example/home", want: "/"},
 	}
 	for _, tc := range cases {
 		f := &karakuriauth.Federation{LoginRedirect: tc.configured}

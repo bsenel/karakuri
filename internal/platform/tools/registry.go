@@ -462,16 +462,19 @@ func buildCLIAgentSlot(cfg config.SlotConfig) SlotInstances[cliagent.CLIAgentAda
 			s.instances[name] = instanceEntry[cliagent.CLIAgentAdapter]{
 				typeName: "cursor_cli",
 				adapter:  cliagent.NewCursorCLI(inst.OptString("binary")),
+				options:  inst.Options,
 			}
 		case "gemini_cli":
 			s.instances[name] = instanceEntry[cliagent.CLIAgentAdapter]{
 				typeName: "gemini_cli",
 				adapter:  cliagent.NewGeminiCLI(inst.OptString("binary")),
+				options:  inst.Options,
 			}
 		case "copilot_cli":
 			s.instances[name] = instanceEntry[cliagent.CLIAgentAdapter]{
 				typeName: "copilot_cli",
 				adapter:  cliagent.NewCopilotCLI(inst.OptString("binary")),
+				options:  inst.Options,
 			}
 		default:
 			slog.Warn("unknown cli_agents adapter type", "instance", name, "type", inst.Type)

@@ -207,7 +207,7 @@ func (s *serviceImpl) Run(ctx context.Context, req loop.Request) (loop.Result, e
 	s.persistState(ctx, state, false)
 
 	// Run the loop in background goroutine
-	go s.runLoop(context.Background(), id, req)
+	go s.runLoop(context.Background(), id, req) // #nosec G118 -- the loop outlives the request that starts it; it must inherit neither its cancellation nor its caller's values
 
 	return loop.Result{
 		LoopID:      id,

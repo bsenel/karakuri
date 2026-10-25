@@ -216,5 +216,5 @@ func openInBrowser(target string) error {
 	default:
 		cmd = "xdg-open"
 	}
-	return exec.Command(cmd, append(args, target)...).Start()
+	return exec.Command(cmd, append(args, target)...).Start() // #nosec G204 -- cmd is one of three fixed openers chosen by GOOS; target is the login URL
 }

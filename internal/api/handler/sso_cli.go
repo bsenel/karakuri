@@ -91,7 +91,7 @@ func (h *SSOHandler) beginCLILogin(w http.ResponseWriter, r *http.Request) error
 	if err != nil {
 		return err
 	}
-	http.SetCookie(w, &http.Cookie{
+	http.SetCookie(w, &http.Cookie{ // #nosec G124 -- HttpOnly and SameSite are set; Secure is off only when the operator sets InsecureAllowHTTP for local plain HTTP
 		Name:     cliFlowCookie,
 		Value:    sealed,
 		Path:     "/",
@@ -111,7 +111,16 @@ func (h *SSOHandler) cliRedirect(w http.ResponseWriter, r *http.Request, p auth.
 		return ""
 	}
 	// However this ends, the flow is over.
-	http.SetCookie(w, &http.Cookie{Name: cliFlowCookie, Path: "/", MaxAge: -1})
+	// Cleared with the attributes it was set with, so a browser matches and
+	// drops it, and the clearing cookie is no weaker than the one it replaces.
+	http.SetCookie(w, &http.Cookie{ // #nosec G124 -- as above: Secure is off only under InsecureAllowHTTP
+		Name:     cliFlowCookie,
+		Path:     "/",
+		MaxAge:   -1,
+		HttpOnly: true,
+		Secure:   !h.InsecureAllowHTTP,
+		SameSite: http.SameSiteLaxMode,
+	})
 
 	var flow cliFlow
 	if err := h.Federation.Sealer.Open(cookie.Value, &flow); err != nil {

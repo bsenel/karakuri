@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"encoding/binary"
 	"encoding/json"
 	"log/slog"
 	"math"
@@ -1058,11 +1059,7 @@ func (s *GORMStorage) DeleteResourceScopes(ctx context.Context, resourceType, re
 func float32SliceToBytes(f []float32) []byte {
 	b := make([]byte, len(f)*4)
 	for i, v := range f {
-		bits := math.Float32bits(v)
-		b[i*4] = byte(bits)
-		b[i*4+1] = byte(bits >> 8)
-		b[i*4+2] = byte(bits >> 16)
-		b[i*4+3] = byte(bits >> 24)
+		binary.LittleEndian.PutUint32(b[i*4:], math.Float32bits(v))
 	}
 	return b
 }

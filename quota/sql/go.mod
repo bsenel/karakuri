@@ -1,6 +1,6 @@
 module github.com/bsenel/karakuri/quota/sql
 
-go 1.25.0
+go 1.26.0
 
 require (
 	github.com/bsenel/karakuri/quota v0.0.0

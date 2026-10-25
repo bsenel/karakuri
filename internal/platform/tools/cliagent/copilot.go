@@ -55,7 +55,7 @@ func (c *CopilotCLI) Delegate(ctx context.Context, in DelegateInput) (DelegateOu
 		args = append(args, in.Prompt)
 	}
 
-	cmd := exec.CommandContext(ctx, c.bin, args...)
+	cmd := exec.CommandContext(ctx, c.bin, args...) // #nosec G204 -- bin comes from operator config; the prompt is one argv entry, no shell
 	cmd.Dir = in.WorktreePath
 	cmd.Env = procenv.Merge(in.Env)
 

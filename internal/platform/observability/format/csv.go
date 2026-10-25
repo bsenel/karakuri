@@ -13,7 +13,7 @@ import (
 // derived from the struct field names so downstream tools (pandas, DuckDB,
 // spreadsheet apps) can name columns without out-of-band schema.
 func WriteCSV(path string, v any) error {
-	f, err := os.Create(path)
+	f, err := os.Create(path) // #nosec G304 -- path is the operator's export destination
 	if err != nil {
 		return err
 	}

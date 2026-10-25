@@ -150,7 +150,7 @@ func (m *GoGitWorktreeManager) Prune(ctx context.Context, objectiveID objective.
 }
 
 func (m *GoGitWorktreeManager) runGit(ctx context.Context, args ...string) error {
-	cmd := exec.CommandContext(ctx, "git", args...)
+	cmd := exec.CommandContext(ctx, "git", args...) // #nosec G204 -- fixed binary; args are worktree subcommands built by this manager
 	cmd.Dir = m.repoRoot()
 	out, err := cmd.CombinedOutput()
 	if err != nil {
