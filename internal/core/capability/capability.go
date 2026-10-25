@@ -106,6 +106,11 @@ const (
 
 // DeclaredMetric returns the metric this capability declares under name.
 func (c Capability) DeclaredMetric(name string) (Metric, bool) {
+	for _, m := range c.Metrics {
+		if m.Name == name {
+			return m, true
+		}
+	}
 	return Metric{}, false
 }
 

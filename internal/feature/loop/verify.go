@@ -100,6 +100,11 @@ func stepVerify(ctx context.Context, sc *stepContext, outcomes []actionOutcome) 
 			// objective — boot only warns about templates, so this is the
 			// place that refuses (ADR 022). Not met, and not handed to the
 			// agent either: its judgement would be read off that tool's output.
+		case criterion.Kind == objective.KindMeasured && sc.svc.declaresOtherUnit(criterion):
+			// The verifier does not measure this metric in the unit the
+			// criterion asks for, so no value it emits is one the author's
+			// target was written against, whichever unit it arrives in.
+			state, reason = objective.CriterionInconclusive, objective.ReasonUnsupported
 		case criterion.Kind == objective.KindMeasured && len(ran) > 0:
 			state, reason = settleByMeasurement(criterion, ran)
 		case criterion.Kind == objective.KindMeasured:
@@ -248,6 +253,24 @@ func settleByMeasurement(c objective.Criterion, ran []actionOutcome) (objective.
 		return objective.CriterionInconclusive, reason
 	}
 	return objective.CriterionMet, ""
+}
+
+// declaresOtherUnit reports whether a measured criterion's verifier declares
+// its metric in another unit than the criterion's.
+//
+// Read off the registry, where the loop reads every capability. A verifier the
+// registry does not hold, or one that declares no such metric, has nothing to
+// disagree with, and its measurements are compared as they arrive.
+func (s *serviceImpl) declaresOtherUnit(c objective.Criterion) bool {
+	if s.capReg == nil {
+		return false
+	}
+	verifier, ok := s.capReg.Get(c.Verifier)
+	if !ok {
+		return false
+	}
+	declared, ok := verifier.DeclaredMetric(c.Metric)
+	return ok && declared.Unit != c.Unit
 }
 
 // hasRequired reports whether any criterion gates completion.
