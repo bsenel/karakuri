@@ -6009,7 +6009,18 @@ components:
         id:
           type: string
         met:
+          description: Derived from state; true only when state is met.
           type: boolean
+        reason:
+          description: Why the criterion is inconclusive, when it is.
+          type: string
+        required:
+          description: Whether the criterion gates completion; null is required.
+          nullable: true
+          type: boolean
+        state:
+          description: What the last verify step settled (met, not_met or inconclusive).
+          type: string
         threshold: {}
         verifier:
           type: string
@@ -6844,6 +6855,9 @@ components:
           type: boolean
         id:
           type: string
+        inconclusive:
+          description: The loop ended with a required criterion nobody could settle and none not_met.
+          type: boolean
         loop_id:
           type: string
         objective_id:

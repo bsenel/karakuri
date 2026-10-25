@@ -83,6 +83,50 @@ var specTypes = map[string]any{
 	"Twin":                    twin.DigitalTwin{},
 }
 
+// marshalShapes names, for a type whose MarshalJSON writes more than its
+// fields, a struct with exactly the fields it writes; the schema is derived
+// from that struct. TestOpenAPIMarshalShapesMatchTheWire holds each one to the bytes
+// MarshalJSON actually writes.
+var marshalShapes = map[reflect.Type]reflect.Type{
+	reflect.TypeOf(objective.Criterion{}): reflect.TypeOf(criterionShape{}),
+}
+
+// criterionShape is what objective.Criterion's MarshalJSON writes: its own
+// fields and a "met" derived from its state.
+type criterionShape struct {
+	objective.Criterion
+	Met bool `json:"met"`
+}
+
+func TestOpenAPIMarshalShapesMatchTheWire(t *testing.T) {
+	required := true
+	c := objective.Criterion{
+		ID: "c1", Description: "d", Verifier: "v", Threshold: 1, Weight: 1, Domain: "software",
+		Required: &required, State: objective.CriterionInconclusive, Reason: objective.ReasonVerifierError,
+	}
+	b, err := json.Marshal(c)
+	if err != nil {
+		t.Fatalf("marshal criterion: %v", err)
+	}
+	var wire map[string]any
+	if err := json.Unmarshal(b, &wire); err != nil {
+		t.Fatalf("unmarshal criterion: %v", err)
+	}
+	got := make([]string, 0, len(wire))
+	for k := range wire {
+		got = append(got, k)
+	}
+	want := []string{}
+	for _, f := range jsonFields(reflect.TypeOf(criterionShape{})) {
+		want = append(want, f.name)
+	}
+	sort.Strings(got)
+	sort.Strings(want)
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("objective.Criterion marshals the keys %v, criterionShape says %v", got, want)
+	}
+}
+
 // The spec says what the server sends, so its schemas follow encoding/json:
 // a nil slice, map or pointer is null, a struct carries exactly its exported
 // json fields, a time.Time is an RFC 3339 string and a Duration a number of
@@ -178,6 +222,9 @@ func goSchema(t reflect.Type, named map[reflect.Type]string, top bool) map[strin
 	case reflect.Interface:
 		return map[string]any{}
 	case reflect.Struct:
+		if shape, ok := marshalShapes[t]; ok {
+			t = shape
+		}
 		props := map[string]any{}
 		for _, f := range jsonFields(t) {
 			props[f.name] = goSchema(f.typ, named, false)
