@@ -6212,6 +6212,23 @@ components:
                 type: string
               converged:
                 type: integer
+              criteria:
+                items:
+                  additionalProperties: false
+                  properties:
+                    description:
+                      type: string
+                    id:
+                      type: string
+                    passes:
+                      type: integer
+                    reason:
+                      type: string
+                    state:
+                      type: string
+                  type: object
+                nullable: true
+                type: array
               criteria_met:
                 type: number
               drift_detected:
@@ -6228,6 +6245,15 @@ components:
                 type: boolean
               paused_why:
                 type: string
+              progress:
+                additionalProperties: false
+                nullable: true
+                properties:
+                  earned:
+                    type: number
+                  of:
+                    type: number
+                type: object
               reconciles:
                 type: integer
               senses:
