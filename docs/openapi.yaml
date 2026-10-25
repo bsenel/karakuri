@@ -3090,6 +3090,12 @@ paths:
                   type: string
                 template_id:
                   type: string
+                success_criteria:
+                  description: Added after the template's criteria. One with a template criterion's id replaces it only when it tightens it (a stricter target, or required where the template had it optional).
+                  type: array
+                  nullable: true
+                  items:
+                    $ref: '#/components/schemas/CriterionRequest'
               required:
               - title
       responses:
@@ -3100,14 +3106,14 @@ paths:
               schema:
                 $ref: '#/components/schemas/Objective'
         '400':
-          description: 'Bad request: the body or a parameter could not be read.'
+          description: 'Bad request: the body could not be read or no criterion is required (plain text), or a success criterion is invalid (JSON naming the field to change).'
           content:
             text/plain:
               schema:
                 type: string
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: '#/components/schemas/FieldError'
         '401':
           description: Missing or invalid credential.
           content:
@@ -6075,6 +6081,54 @@ components:
         weight:
           type: number
       type: object
+    CriterionRequest:
+      description: A success criterion as a create request sends it; what settles it (state, reason, met) is the server's to write.
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+        description:
+          type: string
+        kind:
+          description: judged, verified or measured.
+          type: string
+        evidence:
+          description: What the judge will look at; required for a judged criterion.
+          type: string
+        verifier:
+          description: A registered verifying capability; required for a verified or measured criterion.
+          type: string
+        domain:
+          type: string
+        weight:
+          type: number
+        threshold: {}
+        required:
+          description: Whether the criterion gates completion; null or absent is required.
+          nullable: true
+          type: boolean
+        metric:
+          description: A metric the verifier declares.
+          type: string
+        op:
+          description: <, <=, >, >= or ==.
+          type: string
+        target:
+          nullable: true
+          type: number
+        unit:
+          description: Must equal the unit the verifier declares for the metric.
+          type: string
+        params:
+          additionalProperties: {}
+          description: Values for parameters the metric declares.
+          nullable: true
+          type: object
+      required:
+      - id
+      - description
+      - kind
     Digest:
       additionalProperties: false
       properties:
@@ -6234,6 +6288,19 @@ components:
       required:
       - error
       description: A refusal from the authorization layer; other errors are plain text.
+    FieldError:
+      type: object
+      additionalProperties: false
+      properties:
+        error:
+          type: string
+        field:
+          description: The request field to change, e.g. success_criteria[1].evidence.
+          type: string
+      required:
+      - error
+      - field
+      description: A request refused for one field, named the way the request spells it.
     Grant:
       additionalProperties: false
       properties:

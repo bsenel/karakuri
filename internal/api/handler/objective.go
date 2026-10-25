@@ -32,6 +32,8 @@ func (h *ObjectiveHandler) Create(w http.ResponseWriter, r *http.Request) {
 		MaxIterations     int      `json:"max_iterations"`
 		TwinID            string   `json:"twin_id"`
 		TemplateID        string   `json:"template_id"`
+
+		SuccessCriteria []objective.Criterion `json:"success_criteria"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -46,7 +48,16 @@ func (h *ObjectiveHandler) Create(w http.ResponseWriter, r *http.Request) {
 		MaxIterations:     req.MaxIterations,
 		TwinID:            req.TwinID,
 		TemplateID:        req.TemplateID,
+		SuccessCriteria:   req.SuccessCriteria,
 	})
+	var invalid *featureobj.ValidationError
+	if errors.As(err, &invalid) {
+		// JSON, so a client reads the field to change without parsing prose.
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": invalid.Err.Error(), "field": invalid.Field})
+		return
+	}
 	if errors.Is(err, featureobj.ErrNoRequiredCriterion) {
 		// The caller's mistake, and one they can fix: name a template whose
 		// criteria include a required one.
