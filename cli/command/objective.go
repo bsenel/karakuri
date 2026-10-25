@@ -14,7 +14,7 @@ func objectiveCmd() *cobra.Command {
 		Use:   "objective",
 		Short: "Manage objectives",
 	}
-	cmd.AddCommand(objectiveCreateCmd(), objectiveGetCmd(), objectiveListCmd(), objectiveTemplatesCmd())
+	cmd.AddCommand(objectiveCreateCmd(), objectiveGetCmd(), objectiveListCmd(), objectiveTemplatesCmd(), objectiveCriteriaCmd())
 	cmd.AddCommand(standingCmds()...)
 	return cmd
 }
@@ -127,6 +127,15 @@ func objectiveListCmd() *cobra.Command {
 	cmd.Flags().StringVar(&twinID, "twin", "", "Filter by twin ID (see: krk twin list)")
 	cmd.Flags().StringVar(&status, "status", "", "Filter by status (pending|active|blocked|converged|completed|failed)")
 	return cmd
+}
+
+// objectiveCriteriaCmd is registered so its tests compile; it does nothing yet.
+func objectiveCriteriaCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "criteria <id>",
+		Short: "Show an objective's success criteria and their state",
+		RunE:  func(_ *cobra.Command, _ []string) error { return nil },
+	}
 }
 
 func objectiveTemplatesCmd() *cobra.Command {
