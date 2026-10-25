@@ -109,7 +109,7 @@ All four rest on one vendor's tracker each, and three share the n8n population; 
 ## Competitive teardown
 
 <!-- p3:start -->
-_Pending: part 3._
+_Part 3 in progress._
 <!-- p3:end -->
 
 <!-- p4a:start -->
