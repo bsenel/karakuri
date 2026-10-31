@@ -2,6 +2,7 @@ package objective
 
 import (
 	"encoding/json"
+	"fmt"
 	"math"
 	"slices"
 	"time"
@@ -238,7 +239,9 @@ const (
 
 // Compare settles a measured criterion from one value in one unit. It is plain
 // arithmetic against the author's target; nothing in it reads a clock, a model
-// or an earlier value.
+// or an earlier value other than the frozen baseline the criterion carries.
+// With a change, the value is first set against that baseline (see
+// againstBaseline), and the difference is what op target compares.
 //
 // A NaN, a missing target or an operator it does not know is no data, never a
 // silent zero and never a pass. A value in another unit than the criterion's
@@ -250,6 +253,10 @@ func (c Criterion) Compare(value float64, unit string) (CriterionState, Inconclu
 	}
 	if unit != c.Unit {
 		return CriterionInconclusive, ReasonVerifierError
+	}
+	value, reason := c.againstBaseline(value)
+	if reason != "" {
+		return CriterionInconclusive, reason
 	}
 	target := *c.Target
 	var met bool
@@ -273,6 +280,32 @@ func (c Criterion) Compare(value float64, unit string) (CriterionState, Inconclu
 	return CriterionNotMet, ""
 }
 
+// againstBaseline is the value op target compares: the value itself when the
+// criterion has no change, otherwise its difference from the frozen baseline,
+// absolute or in percent of the baseline's magnitude. A change with no frozen
+// baseline, or a percent change against 0, has nothing to be set against and
+// is no_baseline; a change it does not know is no data, never a pass.
+func (c Criterion) againstBaseline(value float64) (float64, InconclusiveReason) {
+	if c.Change == "" {
+		return value, ""
+	}
+	if c.BaselineValue == nil {
+		return 0, ReasonNoBaseline
+	}
+	baseline := *c.BaselineValue
+	switch c.Change {
+	case ChangeAbsolute:
+		return value - baseline, ""
+	case ChangePercent:
+		if baseline == 0 {
+			return 0, ReasonNoBaseline
+		}
+		// Multiplied before dividing, so 220 against 200 is exactly 10.
+		return (value - baseline) * 100 / math.Abs(baseline), ""
+	}
+	return 0, ReasonNoData
+}
+
 // Baseline is how a criterion's baseline is given: the string "at_start",
 // measured once when the objective starts, or a number fixed by hand. On the
 // wire it is exactly one of those two; anything else is refused when decoded.
@@ -280,6 +313,37 @@ func (c Criterion) Compare(value float64, unit string) (CriterionState, Inconclu
 type Baseline struct {
 	AtStart bool
 	Value   float64
+}
+
+// baselineAtStart is how an at_start baseline is written on the wire.
+const baselineAtStart = "at_start"
+
+// MarshalJSON writes the baseline as it was given: "at_start" or the number.
+func (b Baseline) MarshalJSON() ([]byte, error) {
+	if b.AtStart {
+		return json.Marshal(baselineAtStart)
+	}
+	return json.Marshal(b.Value)
+}
+
+// UnmarshalJSON reads "at_start" or a number and refuses anything else, so a
+// misspelt baseline or a number sent as a string fails at the door instead of
+// leaving a relative target that never settles.
+func (b *Baseline) UnmarshalJSON(data []byte) error {
+	var s string
+	if err := json.Unmarshal(data, &s); err == nil {
+		if s != baselineAtStart {
+			return fmt.Errorf("baseline %q is not %q or a number", s, baselineAtStart)
+		}
+		*b = Baseline{AtStart: true}
+		return nil
+	}
+	var v float64
+	if err := json.Unmarshal(data, &v); err != nil {
+		return fmt.Errorf("baseline %s is not %q or a number", data, baselineAtStart)
+	}
+	*b = Baseline{Value: v}
+	return nil
 }
 
 // Change is how a measured value is set against its baseline.

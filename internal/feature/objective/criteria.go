@@ -3,6 +3,7 @@ package objective
 import (
 	"errors"
 	"fmt"
+	"math"
 	"reflect"
 	"slices"
 
@@ -45,6 +46,7 @@ func (s *Service) mergeCriteria(fromTemplate, fromRequest []objective.Criterion)
 		}
 		merged[j] = c
 	}
+	freezeBaselines(merged)
 	return merged, nil
 }
 
@@ -68,6 +70,9 @@ func (s *Service) validateCriterion(field string, c objective.Criterion) error {
 		if err := refuseSamples(field, c); err != nil {
 			return err
 		}
+		if err := refuseBaseline(field, c); err != nil {
+			return err
+		}
 		if c.Evidence == "" {
 			return refuse("evidence", "a judged criterion must name what the judge will look at")
 		}
@@ -83,6 +88,9 @@ func (s *Service) validateCriterion(field string, c objective.Criterion) error {
 	}
 	if c.Kind == objective.KindVerified {
 		if err := refuseSamples(field, c); err != nil {
+			return err
+		}
+		if err := refuseBaseline(field, c); err != nil {
 			return err
 		}
 		// A pass or a fail declares no parameters to take.
@@ -110,7 +118,64 @@ func (s *Service) validateCriterion(field string, c objective.Criterion) error {
 	if err := validateSampling(field, c); err != nil {
 		return err
 	}
+	if err := validateBaseline(field, c); err != nil {
+		return err
+	}
 	return refuseParams(field, c.Params, metric.Params)
+}
+
+// refuseBaseline refuses a baseline or a change on a criterion that is not
+// measured: only a measured criterion has a value to set against a baseline.
+func refuseBaseline(field string, c objective.Criterion) error {
+	var name string
+	switch {
+	case c.Baseline != nil:
+		name = "baseline"
+	case c.Change != "":
+		name = "change"
+	default:
+		return nil
+	}
+	return &ValidationError{Field: field + "." + name, Err: fmt.Errorf("only a measured criterion is set against a baseline, so %s is refused on a %s one", name, c.Kind)}
+}
+
+// validateBaseline refuses a measured criterion's baseline and change when
+// the loop could never compare with them: a change with no baseline to be set
+// against, a change it does not know, or a baseline no change reads.
+func validateBaseline(field string, c objective.Criterion) error {
+	refuse := func(name, why string) error {
+		return &ValidationError{Field: field + "." + name, Err: errors.New(why)}
+	}
+	switch c.Change {
+	case "":
+		if c.Baseline != nil {
+			return refuse("change", "a baseline is read only through a change; say absolute or percent")
+		}
+		return nil
+	case objective.ChangeAbsolute, objective.ChangePercent:
+	default:
+		return refuse("change", fmt.Sprintf("change %q is not absolute or percent", c.Change))
+	}
+	if c.Baseline == nil {
+		return refuse("baseline", fmt.Sprintf("a %s change needs a baseline, at_start or a number, to be set against", c.Change))
+	}
+	return nil
+}
+
+// freezeBaselines sets each criterion's frozen baseline from what was given:
+// a number is the baseline at once, and at_start has none until the start is
+// measured. Whatever baseline_value a request sent is discarded, so nobody can
+// write the number a relative target is compared with except by giving it as
+// the baseline.
+func freezeBaselines(criteria []objective.Criterion) {
+	for i := range criteria {
+		c := &criteria[i]
+		c.BaselineValue = nil
+		if c.Baseline != nil && !c.Baseline.AtStart {
+			v := c.Baseline.Value
+			c.BaselineValue = &v
+		}
+	}
 }
 
 // refuseSamples refuses samples, a reducer, k or min_samples on a criterion
@@ -208,7 +273,8 @@ func refuseParams(field string, params map[string]any, declared []capability.Met
 
 // tightens refuses a request criterion that does anything to a template
 // criterion other than make it stricter: a target further in its op's
-// direction, or required where the template had it optional. Everything that
+// direction (against its baseline, when it has one; see tightensTarget), or
+// required where the template had it optional. Everything that
 // says what is measured, and by whom, stays the template's, and the prose may
 // be reworded but not dropped.
 func tightens(field string, tmpl, req objective.Criterion) error {
@@ -238,14 +304,83 @@ func tightens(field string, tmpl, req objective.Criterion) error {
 		return refuse("op", fmt.Sprintf("the template's criterion compares with %s; a request may not change its op", tmpl.Op))
 	case tmpl.Target != nil && req.Target == nil:
 		return refuse("target", fmt.Sprintf("the template's criterion has target %v; a request may not remove it", *tmpl.Target))
-	case tmpl.Target != nil && !stricterOrEqual(req.Op, *req.Target, *tmpl.Target):
-		return refuse("target", fmt.Sprintf("target %v loosens the template's %v for op %s", *req.Target, *tmpl.Target, tmpl.Op))
+	}
+	if err := tightensTarget(field, tmpl, req); err != nil {
+		return err
+	}
+	switch {
 	case tmpl.IsRequired() && !req.IsRequired():
 		return refuse("required", "the template's criterion is required; a request may not make it optional")
 	case req.Kind == objective.KindJudged && req.Evidence == "":
 		return refuse("evidence", "a judged criterion must name what the judge will look at")
 	}
 	return nil
+}
+
+// tightensTarget refuses a request target that loosens the template's. With
+// the same baseline and change the targets compare directly. A changed
+// baseline or change is a loosening unless it is plainly stricter: both sides
+// must come down to a raw value the measurement is compared with, and the
+// request's must be at least as hard to meet. When either cannot, as with
+// at_start, whose number nobody knows yet, it is refused, naming the field.
+func tightensTarget(field string, tmpl, req objective.Criterion) error {
+	if req.Change == tmpl.Change && sameBaseline(req.Baseline, tmpl.Baseline) {
+		if tmpl.Target != nil && !stricterOrEqual(req.Op, *req.Target, *tmpl.Target) {
+			return &ValidationError{Field: field + ".target", Err: fmt.Errorf("target %v loosens the template's %v for op %s", *req.Target, *tmpl.Target, tmpl.Op)}
+		}
+		return nil
+	}
+	name := "change"
+	if req.Change == tmpl.Change {
+		name = "baseline"
+	}
+	reqRaw, reqOK := rawThreshold(req)
+	tmplRaw, tmplOK := rawThreshold(tmpl)
+	if !reqOK || !tmplOK {
+		return &ValidationError{Field: field + "." + name, Err: errors.New("a request may change a template criterion's baseline or change only where it is plainly stricter, and this one cannot be compared with the template's")}
+	}
+	if !stricterOrEqual(tmpl.Op, reqRaw, tmplRaw) {
+		return &ValidationError{Field: field + "." + name, Err: fmt.Errorf("against its baseline the target comes to %v, which loosens the template's %v for op %s", reqRaw, tmplRaw, tmpl.Op)}
+	}
+	return nil
+}
+
+func sameBaseline(a, b *objective.Baseline) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return *a == *b
+}
+
+// rawThreshold is the raw value a measured criterion's target comes to: the
+// target itself with no change, and against a number baseline the value the
+// measurement must reach for the change to meet it, since value-baseline op t
+// is value op baseline+t, and a percent change is value op
+// baseline+t*|baseline|/100. An at_start baseline, a percent change against
+// 0, a change with no baseline or a baseline with no change comes to nothing
+// known, so it reports false.
+func rawThreshold(c objective.Criterion) (float64, bool) {
+	if c.Target == nil {
+		return 0, false
+	}
+	t := *c.Target
+	if c.Change == "" {
+		return t, c.Baseline == nil
+	}
+	if c.Baseline == nil || c.Baseline.AtStart {
+		return 0, false
+	}
+	b := c.Baseline.Value
+	switch c.Change {
+	case objective.ChangeAbsolute:
+		return b + t, true
+	case objective.ChangePercent:
+		if b == 0 {
+			return 0, false
+		}
+		return b + t*math.Abs(b)/100, true
+	}
+	return 0, false
 }
 
 // stricterOrEqual reports whether target is at least as hard to meet as the
