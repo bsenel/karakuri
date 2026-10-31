@@ -21,7 +21,7 @@ export interface Twin {
 export type CriterionState = 'met' | 'not_met' | 'inconclusive';
 
 /** Why a criterion could not be settled. */
-export type InconclusiveReason = 'verifier_error' | 'no_data' | 'not_run' | 'unsupported';
+export type InconclusiveReason = 'verifier_error' | 'no_data' | 'not_run' | 'unsupported' | 'too_few_samples';
 
 export interface Criterion {
   id: string;
