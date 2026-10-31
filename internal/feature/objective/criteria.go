@@ -62,6 +62,9 @@ func (s *Service) validateCriterion(field string, c objective.Criterion) error {
 	if c.Description == "" {
 		return refuse("description", "a criterion needs a description a person can read")
 	}
+	if err := validateSustain(field, c.Sustain); err != nil {
+		return err
+	}
 	switch c.Kind {
 	case objective.KindJudged:
 		if c.Verifier != "" {
@@ -233,6 +236,63 @@ func validateSampling(field string, c objective.Criterion) error {
 	return nil
 }
 
+// validateSustain refuses a sustain reconcile could never read the way its
+// author meant: a window it cannot parse or that holds no time, a budget that
+// is not a share from 0 to 1, or a negative min_passes. Any kind of criterion
+// may be sustained, since each pass settles it met, not_met or inconclusive.
+func validateSustain(field string, s *objective.Sustain) error {
+	if s == nil {
+		return nil
+	}
+	refuse := func(name, why string) error {
+		return &ValidationError{Field: field + ".sustain." + name, Err: errors.New(why)}
+	}
+	if _, err := objective.ParseWindow(s.Window); err != nil {
+		return refuse("window", err.Error())
+	}
+	if math.IsNaN(s.Budget) || s.Budget < 0 || s.Budget > 1 {
+		return refuse("budget", fmt.Sprintf("budget %v is not a share from 0 to 1", s.Budget))
+	}
+	if s.MinPasses < 0 {
+		return refuse("min_passes", fmt.Sprintf("min_passes %d is negative", s.MinPasses))
+	}
+	return nil
+}
+
+// tightensSustain refuses a request sustain that loosens the template's: none
+// where the template had one, a larger budget, which forgives more failures, a
+// shorter window, which forgets them sooner, or a lower min_passes, which says
+// sustained from fewer passes. A sustain where the template had none asks more
+// of the criterion, so it needs only to be valid.
+func tightensSustain(field string, tmpl, req *objective.Sustain) error {
+	if err := validateSustain(field, req); err != nil {
+		return err
+	}
+	if tmpl == nil {
+		return nil
+	}
+	refuse := func(name, why string) error {
+		return &ValidationError{Field: field + "." + name, Err: errors.New(why)}
+	}
+	if req == nil {
+		return refuse("sustain", "the template's criterion is held over a window; a request may not remove its sustain")
+	}
+	tmplWindow, err := objective.ParseWindow(tmpl.Window)
+	if err != nil {
+		return refuse("sustain.window", "the template's sustain window cannot be read, so no request window can be shown to be at least as long")
+	}
+	reqWindow, _ := objective.ParseWindow(req.Window) // validated above
+	switch {
+	case req.Budget > tmpl.Budget:
+		return refuse("sustain.budget", fmt.Sprintf("budget %v loosens the template's %v", req.Budget, tmpl.Budget))
+	case reqWindow < tmplWindow:
+		return refuse("sustain.window", fmt.Sprintf("window %s is shorter than the template's %s", req.Window, tmpl.Window))
+	case req.MinPasses < tmpl.MinPasses:
+		return refuse("sustain.min_passes", fmt.Sprintf("min_passes %d is lower than the template's %d", req.MinPasses, tmpl.MinPasses))
+	}
+	return nil
+}
+
 // lookupVerifier returns the pack verifier an ID names. The reserved namespace
 // is refused before the lookup, so a discovered tool and one that merely might
 // be discovered later are refused alike (ADR 022).
@@ -273,8 +333,9 @@ func refuseParams(field string, params map[string]any, declared []capability.Met
 
 // tightens refuses a request criterion that does anything to a template
 // criterion other than make it stricter: a target further in its op's
-// direction (against its baseline, when it has one; see tightensTarget), or
-// required where the template had it optional. Everything that
+// direction (against its baseline, when it has one; see tightensTarget), a
+// sustain at least as strict (see tightensSustain), or required where the
+// template had it optional. Everything that
 // says what is measured, and by whom, stays the template's, and the prose may
 // be reworded but not dropped.
 func tightens(field string, tmpl, req objective.Criterion) error {
@@ -306,6 +367,9 @@ func tightens(field string, tmpl, req objective.Criterion) error {
 		return refuse("target", fmt.Sprintf("the template's criterion has target %v; a request may not remove it", *tmpl.Target))
 	}
 	if err := tightensTarget(field, tmpl, req); err != nil {
+		return err
+	}
+	if err := tightensSustain(field, tmpl.Sustain, req.Sustain); err != nil {
 		return err
 	}
 	switch {
