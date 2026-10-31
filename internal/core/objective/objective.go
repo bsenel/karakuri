@@ -201,6 +201,16 @@ type Criterion struct {
 	K          int     `json:"k,omitempty"`
 	MinSamples int     `json:"min_samples,omitempty"`
 
+	// Baseline is what a relative target is measured against: at_start, or a
+	// number fixed by hand. Change says how the measured value is set against
+	// it, so the value compared with op target is the difference, absolute or
+	// in percent. BaselineValue is the frozen baseline: the number itself when
+	// one was given, nil for at_start until it has been measured. A criterion
+	// with a change and no baseline value is inconclusive: no_baseline.
+	Baseline      *Baseline `json:"baseline,omitempty"`
+	Change        Change    `json:"change,omitempty"`
+	BaselineValue *float64  `json:"baseline_value,omitempty"`
+
 	// Evidence names what the judge will look at to settle a judged
 	// criterion. A judged criterion without it is refused at create time.
 	Evidence string `json:"evidence,omitempty"`
@@ -262,6 +272,23 @@ func (c Criterion) Compare(value float64, unit string) (CriterionState, Inconclu
 	}
 	return CriterionNotMet, ""
 }
+
+// Baseline is how a criterion's baseline is given: the string "at_start",
+// measured once when the objective starts, or a number fixed by hand. On the
+// wire it is exactly one of those two; anything else is refused when decoded.
+// Value is read only when AtStart is false.
+type Baseline struct {
+	AtStart bool
+	Value   float64
+}
+
+// Change is how a measured value is set against its baseline.
+type Change string
+
+const (
+	ChangeAbsolute Change = "absolute"
+	ChangePercent  Change = "percent"
+)
 
 // Reducer turns a measured criterion's samples into one state. There is no
 // "any" reducer: rerunning until green hides real bugs.
@@ -398,6 +425,9 @@ const (
 	// ReasonTooFewSamples is fewer usable samples than the criterion's
 	// min_samples.
 	ReasonTooFewSamples InconclusiveReason = "too_few_samples"
+
+	// ReasonNoBaseline is a relative target with no baseline to compare with.
+	ReasonNoBaseline InconclusiveReason = "no_baseline"
 )
 
 // IsRequired reports whether the criterion gates completion.

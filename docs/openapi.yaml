@@ -6041,6 +6041,21 @@ components:
           type: string
         id:
           type: string
+        baseline:
+          description: What a relative target is measured against, "at_start" or a number fixed by hand.
+          nullable: true
+          oneOf:
+          - enum:
+            - at_start
+            type: string
+          - type: number
+        baseline_value:
+          description: The frozen baseline; the number itself when one was given, absent for at_start until it has been measured.
+          nullable: true
+          type: number
+        change:
+          description: How the measured value is set against the baseline (absolute or percent); with no baseline value the criterion is inconclusive (no_baseline).
+          type: string
         k:
           description: Under the k_of_n reducer, how many samples must meet the target.
           type: integer
@@ -6149,6 +6164,17 @@ components:
         min_samples:
           description: Below this many samples the criterion is inconclusive; at most samples.
           type: integer
+        baseline:
+          description: '"at_start" or a number fixed by hand; a measured criterion only, and required with change.'
+          nullable: true
+          oneOf:
+          - enum:
+            - at_start
+            type: string
+          - type: number
+        change:
+          description: absolute or percent; a measured criterion only, and needs a baseline.
+          type: string
       required:
       - id
       - description

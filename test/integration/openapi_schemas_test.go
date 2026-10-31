@@ -106,6 +106,7 @@ func TestOpenAPIMarshalShapesMatchTheWire(t *testing.T) {
 		Kind: objective.KindMeasured, Metric: "m", Op: objective.OpGreaterEqual, Target: &target, Unit: "ratio",
 		Params: map[string]any{"packages": "./..."}, Evidence: "e",
 		Samples: 3, Reducer: objective.ReducerKOfN, K: 2, MinSamples: 3,
+		Baseline: &objective.Baseline{Value: 0.8}, Change: objective.ChangeAbsolute, BaselineValue: &target,
 	}
 	b, err := json.Marshal(c)
 	if err != nil {
@@ -202,6 +203,13 @@ func goSchema(t reflect.Type, named map[reflect.Type]string, top bool) map[strin
 		return wrap(map[string]any{"type": "integer", "description": "nanoseconds"})
 	case reflect.TypeOf(json.RawMessage{}):
 		return map[string]any{}
+	case reflect.TypeOf(objective.Baseline{}):
+		// Baseline writes itself as "at_start" or as a number, never as its
+		// fields.
+		return wrap(map[string]any{"oneOf": []any{
+			map[string]any{"type": "string", "enum": []any{"at_start"}},
+			map[string]any{"type": "number"},
+		}})
 	}
 	switch t.Kind() {
 	case reflect.String:
