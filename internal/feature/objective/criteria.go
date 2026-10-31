@@ -65,6 +65,9 @@ func (s *Service) validateCriterion(field string, c objective.Criterion) error {
 		if c.Verifier != "" {
 			return refuse("verifier", "a judged criterion is settled by a model, not a verifier; use kind verified or measured")
 		}
+		if err := refuseSamples(field, c); err != nil {
+			return err
+		}
 		if c.Evidence == "" {
 			return refuse("evidence", "a judged criterion must name what the judge will look at")
 		}
@@ -79,6 +82,9 @@ func (s *Service) validateCriterion(field string, c objective.Criterion) error {
 		return refuse("verifier", err.Error())
 	}
 	if c.Kind == objective.KindVerified {
+		if err := refuseSamples(field, c); err != nil {
+			return err
+		}
 		// A pass or a fail declares no parameters to take.
 		return refuseParams(field, c.Params, nil)
 	}
@@ -101,7 +107,65 @@ func (s *Service) validateCriterion(field string, c objective.Criterion) error {
 	if c.Target == nil {
 		return refuse("target", fmt.Sprintf("op %s needs a target to compare with", c.Op))
 	}
+	if err := validateSampling(field, c); err != nil {
+		return err
+	}
 	return refuseParams(field, c.Params, metric.Params)
+}
+
+// refuseSamples refuses samples, a reducer, k or min_samples on a criterion
+// that is not measured: only a measured criterion has values to reduce.
+func refuseSamples(field string, c objective.Criterion) error {
+	var name string
+	switch {
+	case c.Samples != 0:
+		name = "samples"
+	case c.Reducer != "":
+		name = "reducer"
+	case c.K != 0:
+		name = "k"
+	case c.MinSamples != 0:
+		name = "min_samples"
+	default:
+		return nil
+	}
+	return &ValidationError{Field: field + "." + name, Err: fmt.Errorf("only a measured criterion takes samples, so %s is refused on a %s one", name, c.Kind)}
+}
+
+// validateSampling refuses a measured criterion's samples, reducer, k or
+// min_samples when the loop could never settle them the way the author meant.
+// A samples of 0 says how many runs nothing, so k and min_samples are then
+// bounded only from below.
+func validateSampling(field string, c objective.Criterion) error {
+	refuse := func(name, why string) error {
+		return &ValidationError{Field: field + "." + name, Err: errors.New(why)}
+	}
+	if c.Samples < 0 {
+		return refuse("samples", fmt.Sprintf("samples %d is negative", c.Samples))
+	}
+	switch c.Reducer {
+	case "", objective.ReducerAll, objective.ReducerKOfN, objective.ReducerMedian,
+		objective.ReducerP95, objective.ReducerMin, objective.ReducerMax, objective.ReducerMean:
+	case "any":
+		return refuse("reducer", "there is no any reducer: rerunning until one run passes hides real bugs; use all or k_of_n")
+	default:
+		return refuse("reducer", fmt.Sprintf("reducer %q is not one of all, k_of_n, median, p95, min, max or mean", c.Reducer))
+	}
+	switch {
+	case c.Reducer == objective.ReducerKOfN && c.K < 1:
+		return refuse("k", "k_of_n needs a k of at least 1")
+	case c.Reducer == objective.ReducerKOfN && c.Samples > 0 && c.K > c.Samples:
+		return refuse("k", fmt.Sprintf("k %d is more than the %d samples taken", c.K, c.Samples))
+	case c.Reducer != objective.ReducerKOfN && c.K != 0:
+		return refuse("k", "k is read only by the k_of_n reducer")
+	}
+	if c.MinSamples < 0 {
+		return refuse("min_samples", fmt.Sprintf("min_samples %d is negative", c.MinSamples))
+	}
+	if c.Samples > 0 && c.MinSamples > c.Samples {
+		return refuse("min_samples", fmt.Sprintf("min_samples %d is more than the %d samples taken, so it could never settle", c.MinSamples, c.Samples))
+	}
+	return nil
 }
 
 // lookupVerifier returns the pack verifier an ID names. The reserved namespace
@@ -166,6 +230,10 @@ func tightens(field string, tmpl, req objective.Criterion) error {
 		return refuse("unit", fmt.Sprintf("the template's criterion is in %q; a request may not change its unit", tmpl.Unit))
 	case !reflect.DeepEqual(req.Params, tmpl.Params):
 		return refuse("params", "a request may not change what a template criterion is measured over")
+	case req.Samples != tmpl.Samples || req.Reducer != tmpl.Reducer || req.K != tmpl.K || req.MinSamples != tmpl.MinSamples:
+		// A min reducer, a lower k or fewer samples loosens a criterion as
+		// surely as a lower target does.
+		return refuse("reducer", "a request may not change how a template criterion's samples are taken or reduced")
 	case req.Op != tmpl.Op:
 		return refuse("op", fmt.Sprintf("the template's criterion compares with %s; a request may not change its op", tmpl.Op))
 	case tmpl.Target != nil && req.Target == nil:

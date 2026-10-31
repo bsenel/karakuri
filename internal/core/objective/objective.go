@@ -3,6 +3,7 @@ package objective
 import (
 	"encoding/json"
 	"math"
+	"slices"
 	"time"
 
 	"github.com/bsenel/karakuri/internal/core/capability"
@@ -277,11 +278,96 @@ const (
 )
 
 // CompareSamples settles a measured criterion from several values in one
-// unit, through its reducer.
+// unit, through its reducer. Like Compare it is plain arithmetic: no clock, no
+// model and no earlier value.
 //
-// Phase 41 step 7 part A: not implemented yet; the tests specify it.
-func (c Criterion) CompareSamples(_ []float64, _ string) (CriterionState, InconclusiveReason) {
-	return "", ""
+// A NaN is no data, so it is dropped before anything is counted. No value left
+// is no_data, samples in another unit than the criterion's are a
+// verifier_error, and fewer values than MinSamples are too_few_samples, however
+// good they are.
+//
+// all and k_of_n compare each sample with the target and count the ones that
+// meet it. The other reducers compare one statistic of the samples, and no
+// reducer is the median, the reading of a noisy signal that one outlier does
+// not move. A reducer it does not know is no data, never a pass.
+func (c Criterion) CompareSamples(values []float64, unit string) (CriterionState, InconclusiveReason) {
+	kept := make([]float64, 0, len(values))
+	for _, v := range values {
+		if !math.IsNaN(v) {
+			kept = append(kept, v)
+		}
+	}
+	if len(kept) == 0 || c.Target == nil {
+		return CriterionInconclusive, ReasonNoData
+	}
+	if unit != c.Unit {
+		return CriterionInconclusive, ReasonVerifierError
+	}
+	if len(kept) < c.MinSamples {
+		return CriterionInconclusive, ReasonTooFewSamples
+	}
+
+	switch c.Reducer {
+	case ReducerAll:
+		return c.comparePasses(kept, len(kept))
+	case ReducerKOfN:
+		// Create refuses a k below 1; were one to arrive anyway, asking for
+		// every sample is the reading that cannot pass a failing run.
+		k := c.K
+		if k < 1 {
+			k = len(kept)
+		}
+		return c.comparePasses(kept, k)
+	}
+
+	sorted := slices.Clone(kept)
+	slices.Sort(sorted)
+	var statistic float64
+	switch c.Reducer {
+	case ReducerMedian, "":
+		mid := len(sorted) / 2
+		statistic = sorted[mid]
+		if len(sorted)%2 == 0 {
+			statistic = (sorted[mid-1] + sorted[mid]) / 2
+		}
+	case ReducerP95:
+		// Nearest rank: the smallest sample with at least 95% of the samples
+		// at or below it, so the statistic is always a value that was measured.
+		rank := int(math.Ceil(0.95 * float64(len(sorted))))
+		statistic = sorted[rank-1]
+	case ReducerMin:
+		statistic = sorted[0]
+	case ReducerMax:
+		statistic = sorted[len(sorted)-1]
+	case ReducerMean:
+		sum := 0.0
+		for _, v := range sorted {
+			sum += v
+		}
+		statistic = sum / float64(len(sorted))
+	default:
+		return CriterionInconclusive, ReasonNoData
+	}
+	return c.Compare(statistic, unit)
+}
+
+// comparePasses is met when at least k of the samples meet the target on
+// their own.
+func (c Criterion) comparePasses(values []float64, k int) (CriterionState, InconclusiveReason) {
+	passes := 0
+	for _, v := range values {
+		state, reason := c.Compare(v, c.Unit)
+		if state == CriterionInconclusive {
+			return state, reason
+		}
+		if state == CriterionMet {
+			passes++
+		}
+	}
+	if passes >= k {
+		return CriterionMet, ""
+	}
+	return CriterionNotMet, ""
 }
 
 // CriterionState is what a verify step settled about one criterion.

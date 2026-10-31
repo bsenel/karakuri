@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"slices"
 	"strings"
 	"time"
@@ -223,8 +224,15 @@ func settleByVerifier(ran []actionOutcome) (objective.CriterionState, objective.
 // says it cannot measure is unsupported and any other error is a
 // verifier_error (AGENTS.md rule 10). None of them is not_met, so none counts
 // against the work.
+//
+// Every qualifying value is a sample, and the samples are settled together by
+// the criterion's reducer, so the median of three runs is read off all three
+// and min_samples counts them. A criterion that asks for no samples and names
+// no reducer is settled as it always was: every value has to meet the target.
+// A third-party figure is not a sample either, and a value in another unit or
+// a NaN is not one any more than it settled anything before.
 func settleByMeasurement(c objective.Criterion, ran []actionOutcome) (objective.CriterionState, objective.InconclusiveReason) {
-	settled := 0
+	var samples []float64
 	reason := objective.ReasonNoData
 	for _, o := range ran {
 		if o.Errored {
@@ -238,21 +246,23 @@ func settleByMeasurement(c objective.Criterion, ran []actionOutcome) (objective.
 			if m.Name != c.Metric || (m.Trust.IsThirdParty() && c.IsRequired()) {
 				continue
 			}
-			state, r := c.Compare(m.Value, m.Unit)
-			switch state {
-			case objective.CriterionNotMet:
-				return objective.CriterionNotMet, ""
-			case objective.CriterionMet:
-				settled++
+			switch {
+			case math.IsNaN(m.Value):
+				reason = objective.ReasonNoData
+			case m.Unit != c.Unit:
+				reason = objective.ReasonVerifierError
 			default:
-				reason = r
+				samples = append(samples, m.Value)
 			}
 		}
 	}
-	if settled == 0 {
+	if len(samples) == 0 {
 		return objective.CriterionInconclusive, reason
 	}
-	return objective.CriterionMet, ""
+	if c.Samples == 0 && c.Reducer == "" {
+		c.Reducer = objective.ReducerAll
+	}
+	return c.CompareSamples(samples, c.Unit)
 }
 
 // declaresOtherUnit reports whether a measured criterion's verifier declares
