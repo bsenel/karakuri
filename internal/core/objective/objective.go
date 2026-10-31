@@ -533,6 +533,11 @@ const (
 
 	// ReasonNoBaseline is a relative target with no baseline to compare with.
 	ReasonNoBaseline InconclusiveReason = "no_baseline"
+
+	// ReasonMeasureChanged is a pass that changed a path its verifier's
+	// definition is read from, so the measure moved with the work and waits
+	// for a person (Phase 41, decision 6, 'Anti-gaming').
+	ReasonMeasureChanged InconclusiveReason = "measure_changed"
 )
 
 // IsRequired reports whether the criterion gates completion.

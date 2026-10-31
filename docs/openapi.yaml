@@ -5974,6 +5974,11 @@ components:
             temperature_min:
               type: number
           type: object
+        measure_paths:
+          items:
+            type: string
+          nullable: true
+          type: array
         metrics:
           items:
             additionalProperties: false

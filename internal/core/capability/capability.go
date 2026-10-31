@@ -17,9 +17,15 @@ type Capability struct {
 	// The roadmap puts the declaration in the pack manifest (Phase 39, ADR
 	// 028), and that manifest is not on main, so it lives on the capability
 	// a pack registers until it is.
-	Metrics    []Metric `json:"metrics,omitempty"`
-	Verifiable bool     `json:"verifiable,omitempty"`
-	LLMHints   LLMHints `json:"llm_hints,omitempty"`
+	Metrics []Metric `json:"metrics,omitempty"`
+	// MeasurePaths are the path globs this verifier's definition is read
+	// from, such as its test files or its benchmark, where "**" is any number
+	// of directories. A pass that changes one of them changed the measure as
+	// well as the work, so a criterion naming this verifier settles nothing in
+	// it (Phase 41, decision 6, 'Anti-gaming'). Empty declares none.
+	MeasurePaths []string `json:"measure_paths,omitempty"`
+	Verifiable   bool     `json:"verifiable,omitempty"`
+	LLMHints     LLMHints `json:"llm_hints,omitempty"`
 
 	// NeedsWorkspace says this capability writes files and must be given an
 	// isolated git worktree before it runs. The loop provisions one and puts
@@ -112,6 +118,15 @@ func (c Capability) DeclaredMetric(name string) (Metric, bool) {
 		}
 	}
 	return Metric{}, false
+}
+
+// TouchesAnyGlob reports whether any of the changed paths matches one of the
+// globs, where "**" is any number of path segments and any other segment is a
+// path.Match pattern.
+//
+// Stub for Phase 41 step 9 slice 9a's tests; the next action fills it in.
+func TouchesAnyGlob(changed, globs []string) bool {
+	return false
 }
 
 type LLMHints struct {
