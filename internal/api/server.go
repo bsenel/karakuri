@@ -383,6 +383,7 @@ func NewApp(
 				r.With(require(karakuriauth.ActionObjectiveRead, objectiveRes)).Get("/{id}", objH.Get)
 				r.With(require(karakuriauth.ActionObjectiveUpdate, objectiveRes)).Post("/{id}/status", objH.UpdateStatus)
 				r.With(require(karakuriauth.ActionObjectiveUpdate, objectiveRes)).Put("/{id}/criteria/{criterion_id}/baseline", objH.SetBaseline)
+				r.With(require(karakuriauth.ActionObjectiveUpdate, objectiveRes)).Put("/{id}/criteria/{criterion_id}/target", objH.SetTarget)
 				r.With(require(karakuriauth.ActionObjectiveRead, objectiveRes)).Get("/{id}/events", evtH.StreamObjective)
 
 				// Standing objectives (Phase 20). Declaring is its own

@@ -29,19 +29,9 @@ func (s *Service) SetBaseline(ctx context.Context, id objective.ObjectiveID, cri
 	if math.IsNaN(value) || math.IsInf(value, 0) {
 		return objective.Objective{}, &ValidationError{Field: "value", Err: errors.New("a baseline is a finite number")}
 	}
-	o, err := s.store.GetObjective(ctx, id)
+	o, i, err := s.criterionOf(ctx, id, criterionID)
 	if err != nil {
 		return objective.Objective{}, err
-	}
-	i := -1
-	for j := range o.SuccessCriteria {
-		if o.SuccessCriteria[j].ID == criterionID {
-			i = j
-			break
-		}
-	}
-	if i < 0 {
-		return objective.Objective{}, fmt.Errorf("%w: %s", ErrCriterionNotFound, criterionID)
 	}
 	c := o.SuccessCriteria[i]
 	if c.Kind != objective.KindMeasured {

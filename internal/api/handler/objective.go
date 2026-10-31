@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -125,6 +126,23 @@ func (h *ObjectiveHandler) UpdateStatus(w http.ResponseWriter, r *http.Request) 
 // baseline (Phase 41 step 7 part D2). The person in the audit row is the
 // authenticated caller, never a body field.
 func (h *ObjectiveHandler) SetBaseline(w http.ResponseWriter, r *http.Request) {
+	setCriterionValue(w, r, h.Objectives.SetBaseline)
+}
+
+// SetTarget serves PUT /objectives/{id}/criteria/{criterion_id}/target with
+// the body {"value": <number>}: a person changing a measured criterion's
+// target, which restarts its sustain window (Phase 41 step 8). The person in
+// the audit row is the authenticated caller, never a body field.
+func (h *ObjectiveHandler) SetTarget(w http.ResponseWriter, r *http.Request) {
+	setCriterionValue(w, r, h.Objectives.SetTarget)
+}
+
+// setCriterionValue reads {"value": <number>}, hands it to set with the
+// criterion named in the path and the authenticated caller, and answers the
+// objective, a 400 naming the field, or a 404.
+func setCriterionValue(w http.ResponseWriter, r *http.Request,
+	set func(context.Context, objective.ObjectiveID, string, float64, string) (objective.Objective, error),
+) {
 	var req struct {
 		Value json.RawMessage `json:"value"`
 	}
@@ -146,7 +164,7 @@ func (h *ObjectiveHandler) SetBaseline(w http.ResponseWriter, r *http.Request) {
 	if p, ok := auth.PrincipalFromContext(r.Context()); ok {
 		setBy = p.ID
 	}
-	obj, err := h.Objectives.SetBaseline(r.Context(), objective.ObjectiveID(chi.URLParam(r, "id")),
+	obj, err := set(r.Context(), objective.ObjectiveID(chi.URLParam(r, "id")),
 		chi.URLParam(r, "criterion_id"), value, setBy)
 	var invalid *featureobj.ValidationError
 	switch {
@@ -159,14 +177,6 @@ func (h *ObjectiveHandler) SetBaseline(w http.ResponseWriter, r *http.Request) {
 	default:
 		writeJSON(w, obj)
 	}
-}
-
-// SetTarget serves PUT /objectives/{id}/criteria/{criterion_id}/target with
-// the body {"value": <number>}: a person changing a measured criterion's
-// target, which restarts its sustain window (Phase 41 step 8). Not
-// implemented yet.
-func (h *ObjectiveHandler) SetTarget(w http.ResponseWriter, _ *http.Request) {
-	http.Error(w, "set target: not implemented", http.StatusNotImplemented)
 }
 
 // writeFieldError is a 400 in JSON naming the field to change, so a client

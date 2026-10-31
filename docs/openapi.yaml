@@ -3384,6 +3384,92 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/RateLimitError'
+  /objectives/{id}/criteria/{criterion_id}/target:
+    put:
+      operationId: setCriterionTarget
+      tags:
+      - objectives
+      summary: Change a measured criterion's target
+      description: A person changing the target a measured criterion is compared against. The change restarts the criterion's sustain window, so sustain_since is the time of the change and earlier passes are out of the sustain counts; sustain and baseline are left as they were. Each change writes one target audit row naming the criterion, the target it replaced, the new one, the unit, the caller and the restart.
+      x-karakuri-permission: objective:update
+      parameters:
+      - name: id
+        in: path
+        required: true
+        description: Resource ID.
+        schema:
+          type: string
+      - name: criterion_id
+        in: path
+        required: true
+        description: The success criterion's id.
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                value:
+                  description: The target, a finite number in the criterion's unit.
+                  type: number
+              required:
+              - value
+      responses:
+        '200':
+          description: The objective, with the criterion's target and sustain_since set.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Objective'
+        '400':
+          description: 'Bad request: the body could not be read (plain text), or value is missing or not a finite number, or the criterion is not measured (JSON naming the field: value or kind).'
+          content:
+            text/plain:
+              schema:
+                type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FieldError'
+        '401':
+          description: Missing or invalid credential.
+          content:
+            text/plain:
+              schema:
+                type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: The principal lacks the permission.
+          content:
+            text/plain:
+              schema:
+                type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: No such objective, or no such criterion on it.
+          content:
+            text/plain:
+              schema:
+                type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Over the caller's rate or quota limit.
+          content:
+            text/plain:
+              schema:
+                type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RateLimitError'
   /objectives/{id}/events:
     get:
       operationId: streamObjectiveEvents
