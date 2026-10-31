@@ -45,11 +45,13 @@ func startServer(t *testing.T) (baseURL string, adminToken string, cleanup func(
 
 // startServerWith is startServer with a hook to adjust configuration before the
 // app is built. The quota tests use it to set a limit low enough to trip
-// deliberately; everything else takes the defaults.
-func startServerWith(t *testing.T, configure func(*config.Config)) (baseURL string, adminToken string, cleanup func()) {
+// deliberately; everything else takes the defaults. extra registers
+// capabilities no pack ships, such as a verifier declaring a metric for a
+// measured criterion.
+func startServerWith(t *testing.T, configure func(*config.Config), extra ...capability.Capability) (baseURL string, adminToken string, cleanup func()) {
 	t.Helper()
 
-	apiApp, token, removeDB := newTestApp(t, configure)
+	apiApp, token, removeDB := newTestApp(t, configure, extra...)
 	// Listen on a random port
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -83,7 +85,7 @@ func startServerWith(t *testing.T, configure func(*config.Config)) (baseURL stri
 // newTestApp builds the whole app on a temporary database and returns it with
 // an admin token, without serving it. A test that inspects the router itself
 // (the OpenAPI coverage check) needs the app, not a URL.
-func newTestApp(t *testing.T, configure func(*config.Config)) (*api.App, string, func()) {
+func newTestApp(t *testing.T, configure func(*config.Config), extra ...capability.Capability) (*api.App, string, func()) {
 	t.Helper()
 
 	// Create a temp SQLite file
@@ -173,6 +175,12 @@ func newTestApp(t *testing.T, configure func(*config.Config)) (*api.App, string,
 	}
 	for _, cap := range swPack.Capabilities() {
 		_ = capReg.Register(cap)
+	}
+	for _, c := range extra {
+		if err := capReg.Register(c); err != nil {
+			os.Remove(dbPath)
+			t.Fatalf("register %s: %v", c.ID, err)
+		}
 	}
 	for _, factory := range swPack.EnvironmentFactories() {
 		_ = envReg.Register(factory)
