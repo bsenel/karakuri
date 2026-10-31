@@ -168,4 +168,81 @@ describe('ObjectiveDetailPage success criteria', () => {
     // The required criterion keeps its own state beside the progress.
     expect(criterion('an open PR with tests')).toHaveTextContent(met);
   });
+
+  // Phase 41 step 7: the person sees the baseline value beside the target,
+  // because a baseline taken from a start that was already bad is met by
+  // construction. baseline_value is the frozen number; the API leaves it out
+  // for at_start until it has been measured.
+  it('shows a frozen at_start baseline with its unit beside the target', async () => {
+    get.mockResolvedValue(withCriteria(
+      {
+        id: 'p95-regress', description: 'search p95 latency stays within 10% of the start', kind: 'measured',
+        verifier: 'ci.latency', metric: 'p95_latency', op: '<=', target: 10, unit: 'ms',
+        baseline: 'at_start', baseline_value: 212.5, change: 'percent', weight: 1, state: 'met', met: true,
+      },
+    ));
+
+    renderPage();
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Success criteria' })).toBeInTheDocument());
+    const item = criterion('search p95 latency stays within 10% of the start');
+    expect(item).toHaveTextContent('p95_latency <= 10');
+    expect(item).toHaveTextContent('baseline 212.5 ms');
+    expect(item).toHaveTextContent('at_start');
+    expect(item).not.toHaveTextContent(/fixed/);
+  });
+
+  it('shows a baseline fixed by hand with its unit beside the target', async () => {
+    get.mockResolvedValue(withCriteria(
+      {
+        id: 'bundle-growth', description: 'the bundle grows by at most 20 kB', kind: 'measured',
+        verifier: 'ci.bundle', metric: 'bundle_size', op: '<=', target: 20, unit: 'kB',
+        baseline: 300, baseline_value: 300, change: 'absolute', weight: 1, state: 'not_met', met: false,
+      },
+    ));
+
+    renderPage();
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Success criteria' })).toBeInTheDocument());
+    const item = criterion('the bundle grows by at most 20 kB');
+    expect(item).toHaveTextContent('bundle_size <= 20');
+    expect(item).toHaveTextContent('baseline 300 kB');
+    expect(item).toHaveTextContent(/fixed/);
+    expect(item).not.toHaveTextContent('at_start');
+  });
+
+  it('says an at_start baseline has not been measured yet rather than showing a value', async () => {
+    get.mockResolvedValue(withCriteria(
+      {
+        id: 'p99-regress', description: 'search p99 latency stays within 15% of the start', kind: 'measured',
+        verifier: 'ci.latency', metric: 'p99_latency', op: '<=', target: 15, unit: 'ms',
+        baseline: 'at_start', change: 'percent', weight: 1, state: 'inconclusive', reason: 'no_baseline', met: false,
+      },
+    ));
+
+    renderPage();
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Success criteria' })).toBeInTheDocument());
+    const item = criterion('search p99 latency stays within 15% of the start');
+    expect(item).toHaveTextContent('inconclusive: no_baseline');
+    expect(item).toHaveTextContent('p99_latency <= 15');
+    expect(item).toHaveTextContent('at_start');
+    expect(item).toHaveTextContent(/not measured/);
+    // No number stands in for a baseline nobody measured.
+    expect(item).not.toHaveTextContent(/baseline \d/);
+  });
+
+  it('shows nothing about a baseline on a criterion that has none', async () => {
+    get.mockResolvedValue(withCriteria(
+      {
+        id: 'p50', description: 'search p50 latency is at most 80 ms', kind: 'measured',
+        verifier: 'ci.latency', metric: 'p50_latency', op: '<=', target: 80, unit: 'ms',
+        weight: 1, state: 'met', met: true,
+      },
+      { id: 'pr-open', description: 'an open PR with tests', weight: 1, state: 'met', met: true },
+    ));
+
+    renderPage();
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Success criteria' })).toBeInTheDocument());
+    expect(criterion('search p50 latency is at most 80 ms')).not.toHaveTextContent(/baseline/);
+    expect(criterion('search p50 latency is at most 80 ms')).toHaveTextContent(met);
+    expect(criterion('an open PR with tests')).not.toHaveTextContent(/baseline/);
+  });
 });

@@ -74,7 +74,13 @@ func startCriteriaServer(t *testing.T, status int, reply string) (*criteriaServe
 // returns its stdout split into lines.
 func showCriteria(t *testing.T) []string {
 	t.Helper()
-	srv, apiURL := startCriteriaServer(t, http.StatusOK, criteriaObjective)
+	return showCriteriaOf(t, criteriaObjective)
+}
+
+// showCriteriaOf is showCriteria against an objective the test writes.
+func showCriteriaOf(t *testing.T, objective string) []string {
+	t.Helper()
+	srv, apiURL := startCriteriaServer(t, http.StatusOK, objective)
 
 	stdout, stderr, err := runKrkSplit("--api-url", apiURL, "objective", "criteria", "obj_42")
 
@@ -189,6 +195,130 @@ func TestObjectiveCriteriaShowsTheMeasuredComparison(t *testing.T) {
 		requireContains(t, line, want)
 	}
 }
+
+// baselineObjective is GET /objectives/{id} with relative targets (Phase 41
+// step 7): an at_start baseline the loop measured and froze, a baseline
+// fixed by hand, an at_start baseline not measured yet, and a measured
+// criterion with no baseline at all. baseline_value is the frozen number; the
+// API leaves it out for at_start until it has been measured.
+const baselineObjective = `{
+  "id": "obj_43", "title": "Keep search fast", "domain": "software", "status": "active",
+  "success_criteria": [
+    {"id": "p95-regress", "description": "Search p95 latency is not more than 10% above the start", "kind": "measured",
+     "verifier": "ci.latency", "metric": "p95_latency", "op": "<=", "target": 10, "unit": "ms",
+     "baseline": "at_start", "baseline_value": 212.5, "change": "percent",
+     "weight": 0.4, "state": "met", "met": true},
+    {"id": "bundle-growth", "description": "The bundle grows by at most 20 kB", "kind": "measured",
+     "verifier": "ci.bundle", "metric": "bundle_size", "op": "<=", "target": 20, "unit": "kB",
+     "baseline": 300, "baseline_value": 300, "change": "absolute",
+     "weight": 0.3, "state": "not_met", "met": false},
+    {"id": "p99-regress", "description": "Search p99 latency is not more than 15% above the start", "kind": "measured",
+     "verifier": "ci.latency", "metric": "p99_latency", "op": "<=", "target": 15, "unit": "ms",
+     "baseline": "at_start", "change": "percent",
+     "weight": 0.2, "state": "inconclusive", "reason": "no_baseline", "met": false},
+    {"id": "p50", "description": "Search p50 latency is at most 80 ms", "kind": "measured",
+     "verifier": "ci.latency", "metric": "p50_latency", "op": "<=", "target": 80, "unit": "ms",
+     "weight": 0.1, "state": "met", "met": true}
+  ],
+  "created_at": "2026-10-25T09:00:00Z", "updated_at": "2026-10-25T09:30:00Z"
+}`
+
+// requireBesideTarget checks that want is on the criterion's line after its
+// metric op target unit and before its description: beside the target, not
+// trailing after the prose. Only that stretch is searched, so the state's
+// "no_baseline" does not count as showing a baseline.
+func requireBesideTarget(t *testing.T, line, target, want, description string) {
+	t.Helper()
+	tgt, desc := strings.Index(line, target), strings.Index(line, description)
+	if tgt < 0 || desc < tgt {
+		t.Errorf("line %q does not show the target %q before the description %q", line, target, description)
+		return
+	}
+	if beside := line[tgt:desc]; !strings.Contains(beside, want) {
+		t.Errorf("line %q does not show %q beside the target %q", line, want, target)
+	}
+}
+
+// The person sees the baseline value beside the target, in the criterion's
+// unit and with where it came from, because a baseline taken from a start that
+// was already bad is met by construction (roadmap Phase 41, section 3).
+func TestObjectiveCriteriaShowsTheFrozenBaselineBesideTheTarget(t *testing.T) {
+	lines := showCriteriaOf(t, baselineObjective)
+
+	for _, tc := range []struct {
+		id, target, baseline, source, otherSource, description string
+	}{
+		// at_start: measured once when the objective started, then frozen.
+		{"p95-regress", "p95_latency <= 10", "baseline 212.5 ms", "at_start", "fixed",
+			"Search p95 latency is not more than 10% above the start"},
+		// A number in the criterion: fixed by hand, not measured.
+		{"bundle-growth", "bundle_size <= 20", "baseline 300 kB", "fixed", "at_start",
+			"The bundle grows by at most 20 kB"},
+	} {
+		t.Run(tc.id, func(t *testing.T) {
+			_, line := criterionLine(t, lines, tc.id)
+			requireBesideTarget(t, line, tc.target, tc.baseline, tc.description)
+			requireBesideTarget(t, line, tc.target, tc.source, tc.description)
+			if strings.Contains(line, tc.otherSource) {
+				t.Errorf("line %q says the baseline is %s; it is %s", line, tc.otherSource, tc.source)
+			}
+		})
+	}
+}
+
+// An at_start baseline the loop has not measured yet has no value to show:
+// the line says so, beside the target, rather than printing a zero or
+// leaving the person to guess why the criterion is no_baseline.
+func TestObjectiveCriteriaSaysAnAtStartBaselineIsNotMeasuredYet(t *testing.T) {
+	lines := showCriteriaOf(t, baselineObjective)
+
+	_, line := criterionLine(t, lines, "p99-regress")
+	const description = "Search p99 latency is not more than 15% above the start"
+	requireContains(t, line, "inconclusive: no_baseline")
+	requireBesideTarget(t, line, "p99_latency <= 15", "baseline", description)
+	requireBesideTarget(t, line, "p99_latency <= 15", "at_start", description)
+	requireBesideTarget(t, line, "p99_latency <= 15", "not measured", description)
+	for _, wrong := range []string{"baseline 0", "baseline  ms", "fixed"} {
+		if strings.Contains(line, wrong) {
+			t.Errorf("an unmeasured at_start baseline reads %q: %q", wrong, line)
+		}
+	}
+}
+
+// A measured criterion with no baseline shows its comparison and nothing
+// about a baseline, beside criteria that do have one.
+func TestObjectiveCriteriaShowsNoBaselineWhereThereIsNone(t *testing.T) {
+	lines := showCriteriaOf(t, baselineObjective)
+
+	_, line := criterionLine(t, lines, "p50")
+	requireContains(t, line, "p50_latency <= 80 ms", "Search p50 latency is at most 80 ms")
+	if strings.Contains(line, "baseline") {
+		t.Errorf("a criterion with no baseline mentions one: %q", line)
+	}
+}
+
+// With no baseline on any criterion the output is exactly what it was before
+// baselines were shown, padding included.
+func TestObjectiveCriteriaWithoutBaselinesIsUnchanged(t *testing.T) {
+	got := strings.Join(showCriteria(t), "\n")
+
+	if got != criteriaGolden {
+		t.Errorf("krk objective criteria obj_42 changed:\n%s\nwant:\n%s", got, criteriaGolden)
+	}
+}
+
+const criteriaGolden = `obj_42  Speed up search
+
+Required:
+  tests-pass  verified  met                                                  The test suite passes
+  ci-green    verified  inconclusive: verifier_error                         CI is green on the pull request
+  p95         measured  not_met                       p95_latency <= 250 ms  Search p95 latency is at most 250 ms
+  changelog   judged    inconclusive: not_run                                The changelog explains the change
+
+Progress (required: false, not part of the gate):
+  coverage  measured  not yet met  statement_coverage >= 80.5 percent  Statement coverage is at least 80 percent
+  bundle    measured  met          bundle_size <= 300 kB               The bundle is at most 300 kB
+`
 
 // A missing objective exits non-zero naming the id the user typed; the API's
 // 404 body does not carry it.
