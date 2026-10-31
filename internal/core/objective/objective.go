@@ -216,6 +216,11 @@ type Criterion struct {
 	// not_met budget over a rolling window, read by reconcile. Nil is no
 	// sustain.
 	Sustain *Sustain `json:"sustain,omitempty"`
+	// SustainSince is when a person's change last restarted the criterion's
+	// sustain window, through the API and audited; passes before it are not
+	// counted. Nil is a window never restarted. The server sets it; a request
+	// does not.
+	SustainSince *time.Time `json:"sustain_since,omitempty"`
 
 	// Evidence names what the judge will look at to settle a judged
 	// criterion. A judged criterion without it is refused at create time.

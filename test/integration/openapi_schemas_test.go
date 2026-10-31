@@ -100,6 +100,7 @@ type criterionShape struct {
 
 func TestOpenAPIMarshalShapesMatchTheWire(t *testing.T) {
 	required, target := true, 0.8
+	since := time.Date(2026, 10, 31, 12, 0, 0, 0, time.UTC)
 	c := objective.Criterion{
 		ID: "c1", Description: "d", Verifier: "v", Threshold: 1, Weight: 1, Domain: "software",
 		Required: &required, State: objective.CriterionInconclusive, Reason: objective.ReasonVerifierError,
@@ -107,7 +108,7 @@ func TestOpenAPIMarshalShapesMatchTheWire(t *testing.T) {
 		Params: map[string]any{"packages": "./..."}, Evidence: "e",
 		Samples: 3, Reducer: objective.ReducerKOfN, K: 2, MinSamples: 3,
 		Baseline: &objective.Baseline{Value: 0.8}, Change: objective.ChangeAbsolute, BaselineValue: &target,
-		Sustain: &objective.Sustain{Window: "28d", Budget: 0.1, MinPasses: 3},
+		Sustain: &objective.Sustain{Window: "28d", Budget: 0.1, MinPasses: 3}, SustainSince: &since,
 	}
 	b, err := json.Marshal(c)
 	if err != nil {

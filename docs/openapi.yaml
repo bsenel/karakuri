@@ -6196,6 +6196,11 @@ components:
               description: The rolling window, days such as 28d or a duration such as 72h; never a calendar period.
               type: string
           type: object
+        sustain_since:
+          description: When a person's change through the API, audited, last restarted the sustain window; passes before it are not counted. Absent is a window never restarted. Set by the server, never by a request.
+          format: date-time
+          nullable: true
+          type: string
         target:
           description: The value a measured criterion is compared with.
           nullable: true
