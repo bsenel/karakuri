@@ -6041,6 +6041,9 @@ components:
           type: string
         id:
           type: string
+        k:
+          description: Under the k_of_n reducer, how many samples must meet the target.
+          type: integer
         kind:
           description: What settles the criterion (judged, verified or measured).
           type: string
@@ -6050,6 +6053,9 @@ components:
         metric:
           description: The verifier measurement a measured criterion compares.
           type: string
+        min_samples:
+          description: Below this many samples the criterion is inconclusive (too_few_samples).
+          type: integer
         op:
           description: How a measured value is compared with the target (<, <=, >, >= or ==).
           type: string
@@ -6061,10 +6067,16 @@ components:
         reason:
           description: Why the criterion is inconclusive, when it is.
           type: string
+        reducer:
+          description: How the samples become one state (all, k_of_n, median, p95, min, max or mean).
+          type: string
         required:
           description: Whether the criterion gates completion; null is required.
           nullable: true
           type: boolean
+        samples:
+          description: How many measurements of the metric a measured criterion takes.
+          type: integer
         state:
           description: What the last verify step settled (met, not_met or inconclusive).
           type: string
@@ -6125,6 +6137,18 @@ components:
           description: Values for parameters the metric declares.
           nullable: true
           type: object
+        samples:
+          description: How many measurements a measured criterion takes; not negative.
+          type: integer
+        reducer:
+          description: all, k_of_n, median, p95, min, max or mean; a measured criterion only.
+          type: string
+        k:
+          description: Under k_of_n, how many samples must meet the target; 1 to samples.
+          type: integer
+        min_samples:
+          description: Below this many samples the criterion is inconclusive; at most samples.
+          type: integer
       required:
       - id
       - description

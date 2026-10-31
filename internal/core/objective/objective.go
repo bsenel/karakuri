@@ -191,6 +191,15 @@ type Criterion struct {
 	// not declare is refused at create time.
 	Params map[string]any `json:"params,omitempty"`
 
+	// Samples is how many measurements of the metric a measured criterion
+	// takes, and Reducer how they become one state. K is how many must meet
+	// the target under k_of_n. Below MinSamples the criterion is
+	// inconclusive: too_few_samples.
+	Samples    int     `json:"samples,omitempty"`
+	Reducer    Reducer `json:"reducer,omitempty"`
+	K          int     `json:"k,omitempty"`
+	MinSamples int     `json:"min_samples,omitempty"`
+
 	// Evidence names what the judge will look at to settle a judged
 	// criterion. A judged criterion without it is refused at create time.
 	Evidence string `json:"evidence,omitempty"`
@@ -253,6 +262,28 @@ func (c Criterion) Compare(value float64, unit string) (CriterionState, Inconclu
 	return CriterionNotMet, ""
 }
 
+// Reducer turns a measured criterion's samples into one state. There is no
+// "any" reducer: rerunning until green hides real bugs.
+type Reducer string
+
+const (
+	ReducerAll    Reducer = "all"
+	ReducerKOfN   Reducer = "k_of_n"
+	ReducerMedian Reducer = "median"
+	ReducerP95    Reducer = "p95"
+	ReducerMin    Reducer = "min"
+	ReducerMax    Reducer = "max"
+	ReducerMean   Reducer = "mean"
+)
+
+// CompareSamples settles a measured criterion from several values in one
+// unit, through its reducer.
+//
+// Phase 41 step 7 part A: not implemented yet; the tests specify it.
+func (c Criterion) CompareSamples(_ []float64, _ string) (CriterionState, InconclusiveReason) {
+	return "", ""
+}
+
 // CriterionState is what a verify step settled about one criterion.
 type CriterionState string
 
@@ -277,6 +308,10 @@ const (
 	ReasonNoData      InconclusiveReason = "no_data"
 	ReasonNotRun      InconclusiveReason = "not_run"
 	ReasonUnsupported InconclusiveReason = "unsupported"
+
+	// ReasonTooFewSamples is fewer usable samples than the criterion's
+	// min_samples.
+	ReasonTooFewSamples InconclusiveReason = "too_few_samples"
 )
 
 // IsRequired reports whether the criterion gates completion.
