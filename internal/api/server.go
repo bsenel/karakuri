@@ -122,6 +122,11 @@ func NewApp(
 	// Objectives inherit their twin's containers, so a grant on an organisation
 	// reaches the work being done in it and not only the twins themselves.
 	objSvc := objective.NewService(store).WithContainers(containerSvc)
+	if capReg != nil {
+		// Criteria are checked against the verifiers they name when the
+		// objective is created, not when the loop first fails to settle them.
+		objSvc.WithVerifiers(capReg)
+	}
 	for _, t := range templates {
 		objSvc.RegisterTemplate(t)
 	}
@@ -377,6 +382,7 @@ func NewApp(
 				r.With(require(karakuriauth.ActionObjectiveRead, nil)).Get("/templates", objH.ListTemplates)
 				r.With(require(karakuriauth.ActionObjectiveRead, objectiveRes)).Get("/{id}", objH.Get)
 				r.With(require(karakuriauth.ActionObjectiveUpdate, objectiveRes)).Post("/{id}/status", objH.UpdateStatus)
+				r.With(require(karakuriauth.ActionObjectiveUpdate, objectiveRes)).Put("/{id}/criteria/{criterion_id}/baseline", objH.SetBaseline)
 				r.With(require(karakuriauth.ActionObjectiveRead, objectiveRes)).Get("/{id}/events", evtH.StreamObjective)
 
 				// Standing objectives (Phase 20). Declaring is its own

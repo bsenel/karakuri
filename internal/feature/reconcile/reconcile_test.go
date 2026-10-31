@@ -42,6 +42,8 @@ type fakeLoop struct {
 	failure     string
 	authority   coreagent.AuthorityBounds
 	rung        objective.AutonomyLevel
+	// criteria are the states the run's verify step settled.
+	criteria []objective.Criterion
 }
 
 func (f *fakeLoop) Run(ctx context.Context, req coreloop.Request) (coreloop.Result, error) {
@@ -64,6 +66,7 @@ func (f *fakeLoop) Run(ctx context.Context, req coreloop.Request) (coreloop.Resu
 		Status:       f.status,
 		CriteriaMet:  f.criteriaMet,
 		CheckpointID: f.checkpoint,
+		Criteria:     f.criteria,
 		Error:        f.failure,
 	}
 	if err := f.store.SaveLoopState(ctx, st); err != nil {

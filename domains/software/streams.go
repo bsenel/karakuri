@@ -26,7 +26,10 @@ package software
 // They must not be worded so that a pass which did not look can meet them.
 
 import (
+	"strings"
+
 	"github.com/bsenel/karakuri/internal/core/agent"
+	"github.com/bsenel/karakuri/internal/core/capability"
 	"github.com/bsenel/karakuri/internal/core/objective"
 )
 
@@ -39,13 +42,14 @@ const (
 
 // streamTemplates are the four standing streams.
 //
-// Every criterion is judged and none names a verifier: nothing deterministic
-// settles "the data was read and held nothing new", and a verifier answers
-// the criterion, it does not supply the material for answering it.
+// Each pass is required to leave a pull request a machine can check (Phase
+// 41): opened or updated in this pass, touching only the paths the stream
+// owns, with every check green at its head. What only a reader can tell is
+// kept as judged progress, required: false with a weight, so a model's reading
+// scores the pass but can no longer fail one that did the work. A pass that
+// found nothing new opens no pull request; stream_pr is then inconclusive:
+// no_data, which blocks completion without tripping the breaker.
 func streamTemplates() []objective.Template {
-	judged := func(id, desc string, weight float64) objective.Criterion {
-		return objective.Criterion{ID: id, Description: desc, Weight: weight}
-	}
 	hard := func(id, desc, expr string) objective.Constraint {
 		return objective.Constraint{ID: id, Description: desc, Hard: true, Expression: expr}
 	}
@@ -64,10 +68,9 @@ func streamTemplates() []objective.Template {
 			SuggestedAgents: []agent.Definition{{ID: "software.agent.strategist"}},
 			Description: "Research who the users are, what they need, where the field is moving and what is feasible, " +
 				"record it as a dated report with sources, and propose roadmap phases only where the evidence supports them.",
-			SuccessCriteria: []objective.Criterion{
-				judged("report", "This pass's actions produced a dated discovery report whose claims cite their sources, on a branch with an open pull request; or they show the previous report was read and state plainly that nothing material has changed since it", 0.5),
-				judged("roadmap", "Every roadmap phase this pass proposed is backed by evidence in the report and is in that pull request; or the pass proposed none and its actions say why", 0.5),
-			},
+			SuccessCriteria: append(pullRequestCriteria("docs/research/**"),
+				progress("findings-new", "The report's findings are new since the previous report and cite their sources, and every roadmap phase it proposes is backed by them", 0.3),
+			),
 			Constraints: []objective.Constraint{noMerge},
 		},
 		{
@@ -78,10 +81,9 @@ func streamTemplates() []objective.Template {
 			SuggestedAgents: []agent.Definition{{ID: "software.agent.maintainer"}},
 			Description: "Read this deployment's telemetry, audit log and logs, and record technical enhancements " +
 				"in the roadmap's Engineering Backlog, each with the data that shows the problem.",
-			SuccessCriteria: []objective.Criterion{
-				judged("data-read", "This pass's actions show the deployment's audit log and telemetry for the last day were actually read", 0.5),
-				judged("backlog", "A finding with its evidence was added to the Engineering Backlog in an open pull request; or the actions state that the data showed nothing not already recorded", 0.5),
-			},
+			SuccessCriteria: append(pullRequestCriteria("docs/roadmap.md"),
+				progress("evidence", "Each Engineering Backlog entry this pass added cites the audit log, telemetry or log data that shows the problem", 0.3),
+			),
 			Constraints: []objective.Constraint{noMerge},
 		},
 		{
@@ -92,10 +94,9 @@ func streamTemplates() []objective.Template {
 			Risk:            objective.RiskConsequential,
 			SuggestedAgents: []agent.Definition{{ID: "software.agent.implementer"}},
 			Description:     "Use the CLI and the web interface as a new user would and make as many small, tested improvements per pass as fit.",
-			SuccessCriteria: []objective.Criterion{
-				judged("improvement", "This pass's actions made one or more small user-experience improvements to the CLI or the web interface, each with a test, in an open pull request; or they state that they looked and found nothing worth changing", 0.6),
-				judged("verified", "The actions say exactly what was run to verify the change and what was not run", 0.4),
-			},
+			SuccessCriteria: append(pullRequestCriteria("cli/**", "web/**"),
+				progress("visible", "Each improvement in the pull request is visible to a user of the CLI or the web interface, and has a test", 0.3),
+			),
 			Constraints: []objective.Constraint{noMerge},
 		},
 		{
@@ -107,10 +108,44 @@ func streamTemplates() []objective.Template {
 			Description: "Implement the roadmap phases and backlog entries marked Planned on main, as many verified slices per pass as fit, " +
 				"and open each item's pull request when it is complete.",
 			SuccessCriteria: []objective.Criterion{
-				judged("slice", "This pass's actions delivered one or more slices of Planned roadmap items to those items' branches with their tests, or opened or updated their pull requests; or they state that nothing on main is Planned and not yet delivered", 0.6),
-				judged("verified", "Tests and lint were run against the tip of every branch this pass pushed to and their results are in the actions; or no slice was delivered in this pass", 0.4),
+				verified("pr", "The item's pull request was opened or updated in this pass (params: branch, since)", CapStreamPR, 0.2),
+				verified("ci", "Every check is green at the pull request's head (params: branch)", CapCIGreen, 0.2),
+				verified("tests-pass", "The test suite passes at the tip of the branch this pass pushed to", "software.verify.run_tests", 0.2),
+				progress("peer-review", "Peer review approved", 0.2),
+				progress("lead-review", "Tech lead review approved", 0.2),
 			},
 			Constraints: []objective.Constraint{noMerge},
 		},
+	}
+}
+
+// verified is a criterion its named verifier settles, and nothing else: when
+// the verifier did not run, the criterion is inconclusive, not judged.
+func verified(id, desc, verifier string, weight float64) objective.Criterion {
+	return objective.Criterion{ID: id, Description: desc, Verifier: capability.CapabilityID(verifier), Weight: weight}
+}
+
+// progress is a judged criterion kept to score progress: required: false, so
+// a model's reading can neither block nor grant completion.
+func progress(id, desc string, weight float64) objective.Criterion {
+	required := false
+	return objective.Criterion{ID: id, Description: desc, Weight: weight, Required: &required}
+}
+
+// pullRequestCriteria are the required criteria of a pass that delivers
+// through a pull request touching only paths: opened or updated in this pass,
+// inside those paths, and green at its head. Their weights sum to 0.7, which
+// leaves 0.3 for the template's judged progress.
+func pullRequestCriteria(paths ...string) []objective.Criterion {
+	return []objective.Criterion{
+		verified("pr", "The pull request on the stream's branch was opened or updated in this pass (params: branch, since)", CapStreamPR, 0.25),
+		{
+			ID:          "paths",
+			Description: "The pull request's diff touches only " + strings.Join(paths, ", ") + " (params: branch, and paths as this criterion's threshold)",
+			Verifier:    CapPathsDeclared,
+			Threshold:   paths,
+			Weight:      0.2,
+		},
+		verified("ci", "Every check is green at the pull request's head (params: branch)", CapCIGreen, 0.25),
 	}
 }

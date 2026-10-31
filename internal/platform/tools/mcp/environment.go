@@ -2,6 +2,7 @@ package mcp
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -166,7 +167,53 @@ func (e *Environment) Act(ctx context.Context, a environment.Action) (environmen
 			"tool":       tool,
 			"output":     res.Text(),
 		},
+		Measurements: measurementsOf(res, a.CapabilityID),
 	}, nil
+}
+
+// wireMeasurement is one entry of structuredContent's "measurements". Value is
+// a pointer so an entry with no number is told apart from a zero.
+type wireMeasurement struct {
+	Name  string   `json:"name"`
+	Value *float64 `json:"value"`
+	Unit  string   `json:"unit"`
+}
+
+// measurementsOf reads the numbers a tool returned as structured content.
+//
+// Only structuredContent is read, never the text beside it: a figure scraped
+// out of prose is a guess at what the server meant (Phase 41, decision 2). An
+// entry with no name or no number is left out rather than read as zero, and
+// content that does not hold the shape carries none, so the loop says no_data
+// instead of comparing something nobody measured.
+//
+// Each is TrustThirdParty because the server computed it, whoever runs the
+// server (AGENTS.md rule 9). Source is this deployment's name for the tool,
+// not anything the server says about itself.
+func measurementsOf(res ToolResult, capID capability.CapabilityID) []environment.Measurement {
+	if len(res.StructuredContent) == 0 {
+		return nil
+	}
+	var body struct {
+		Measurements []wireMeasurement `json:"measurements"`
+	}
+	if err := json.Unmarshal(res.StructuredContent, &body); err != nil {
+		return nil
+	}
+	var out []environment.Measurement
+	for _, m := range body.Measurements {
+		if m.Name == "" || m.Value == nil {
+			continue
+		}
+		out = append(out, environment.Measurement{
+			Name:   m.Name,
+			Value:  *m.Value,
+			Unit:   m.Unit,
+			Source: string(capID),
+			Trust:  environment.TrustThirdParty,
+		})
+	}
+	return out
 }
 
 func errorTextOf(res ToolResult) string {

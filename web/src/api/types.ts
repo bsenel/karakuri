@@ -17,11 +17,43 @@ export interface Twin {
   updated_at: string;
 }
 
+/** What the last verify step settled about a criterion (Phase 41). */
+export type CriterionState = 'met' | 'not_met' | 'inconclusive';
+
+/** Why a criterion could not be settled. */
+export type InconclusiveReason =
+  | 'verifier_error'
+  | 'no_data'
+  | 'not_run'
+  | 'unsupported'
+  | 'too_few_samples'
+  | 'no_baseline';
+
 export interface Criterion {
   id: string;
   description: string;
+  /** What settles the criterion: judged, verified or measured. */
+  kind?: string;
   verifier?: string;
+  /** A measured criterion is `metric op target unit`. */
+  metric?: string;
+  op?: string;
+  target?: number | null;
+  unit?: string;
+  /** What a relative target is measured against: at_start, or a number fixed by hand. */
+  baseline?: 'at_start' | number | null;
+  /** The frozen baseline; absent for at_start until it has been measured. */
+  baseline_value?: number | null;
+  /** How the measured value is set against the baseline. */
+  change?: 'absolute' | 'percent';
   weight?: number;
+  /** Absent means required, so a criterion written before the field still gates. */
+  required?: boolean;
+  /** Absent means no verify step has settled it yet. */
+  state?: CriterionState;
+  reason?: InconclusiveReason;
+  /** Derived from state on the server; true only when state is met. */
+  met?: boolean;
 }
 
 export type ObjectiveStatus =

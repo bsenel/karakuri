@@ -3090,6 +3090,12 @@ paths:
                   type: string
                 template_id:
                   type: string
+                success_criteria:
+                  description: Added after the template's criteria. One with a template criterion's id replaces it only when it tightens it (a stricter target, or required where the template had it optional).
+                  type: array
+                  nullable: true
+                  items:
+                    $ref: '#/components/schemas/CriterionRequest'
               required:
               - title
       responses:
@@ -3100,14 +3106,14 @@ paths:
               schema:
                 $ref: '#/components/schemas/Objective'
         '400':
-          description: 'Bad request: the body or a parameter could not be read.'
+          description: 'Bad request: the body could not be read or no criterion is required (plain text), or a success criterion is invalid (JSON naming the field to change).'
           content:
             text/plain:
               schema:
                 type: string
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: '#/components/schemas/FieldError'
         '401':
           description: Missing or invalid credential.
           content:
@@ -3276,6 +3282,92 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
         '404':
           description: No such resource.
+          content:
+            text/plain:
+              schema:
+                type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Over the caller's rate or quota limit.
+          content:
+            text/plain:
+              schema:
+                type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RateLimitError'
+  /objectives/{id}/criteria/{criterion_id}/baseline:
+    put:
+      operationId: setCriterionBaseline
+      tags:
+      - objectives
+      summary: Set a measured criterion's baseline
+      description: A person setting the baseline a measured criterion's change is read against, replacing a frozen one. Each set writes one baseline audit row naming the criterion, the value it replaced, the new value, the unit and the caller. A criterion whose at_start measurement was inconclusive (no_baseline) settles from this value at the next verify, and at_start never measures over it.
+      x-karakuri-permission: objective:update
+      parameters:
+      - name: id
+        in: path
+        required: true
+        description: Resource ID.
+        schema:
+          type: string
+      - name: criterion_id
+        in: path
+        required: true
+        description: The success criterion's id.
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                value:
+                  description: The baseline, a finite number in the criterion's unit.
+                  type: number
+              required:
+              - value
+      responses:
+        '200':
+          description: The objective, with the criterion's baseline_value set.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Objective'
+        '400':
+          description: 'Bad request: the body could not be read (plain text), or value is missing or not a finite number, or the criterion is not measured or has no change (JSON naming the field: value, kind or change).'
+          content:
+            text/plain:
+              schema:
+                type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FieldError'
+        '401':
+          description: Missing or invalid credential.
+          content:
+            text/plain:
+              schema:
+                type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: The principal lacks the permission.
+          content:
+            text/plain:
+              schema:
+                type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: No such objective, or no such criterion on it.
           content:
             text/plain:
               schema:
@@ -5796,6 +5888,30 @@ components:
             temperature_min:
               type: number
           type: object
+        metrics:
+          items:
+            additionalProperties: false
+            properties:
+              direction:
+                type: string
+              name:
+                type: string
+              params:
+                items:
+                  additionalProperties: false
+                  properties:
+                    name:
+                      type: string
+                    type:
+                      type: string
+                  type: object
+                nullable: true
+                type: array
+              unit:
+                type: string
+            type: object
+          nullable: true
+          type: array
         name:
           type: string
         needs_workspace:
@@ -6006,16 +6122,149 @@ components:
           type: string
         domain:
           type: string
+        evidence:
+          description: What the judge will look at; a judged criterion without it is refused at create time.
+          type: string
         id:
           type: string
+        baseline:
+          description: What a relative target is measured against, "at_start" or a number fixed by hand.
+          nullable: true
+          oneOf:
+          - enum:
+            - at_start
+            type: string
+          - type: number
+        baseline_value:
+          description: The frozen baseline; the number itself when one was given, absent for at_start until it has been measured.
+          nullable: true
+          type: number
+        change:
+          description: How the measured value is set against the baseline (absolute or percent); with no baseline value the criterion is inconclusive (no_baseline).
+          type: string
+        k:
+          description: Under the k_of_n reducer, how many samples must meet the target.
+          type: integer
+        kind:
+          description: What settles the criterion (judged, verified or measured).
+          type: string
         met:
+          description: Derived from state; true only when state is met.
           type: boolean
+        metric:
+          description: The verifier measurement a measured criterion compares.
+          type: string
+        min_samples:
+          description: Below this many samples the criterion is inconclusive (too_few_samples).
+          type: integer
+        op:
+          description: How a measured value is compared with the target (<, <=, >, >= or ==).
+          type: string
+        params:
+          additionalProperties: {}
+          description: Values for the parameters the metric declares; an undeclared name is refused at create time.
+          nullable: true
+          type: object
+        reason:
+          description: Why the criterion is inconclusive, when it is.
+          type: string
+        reducer:
+          description: How the samples become one state (all, k_of_n, median, p95, min, max or mean).
+          type: string
+        required:
+          description: Whether the criterion gates completion; null is required.
+          nullable: true
+          type: boolean
+        samples:
+          description: How many measurements of the metric a measured criterion takes.
+          type: integer
+        state:
+          description: What the last verify step settled (met, not_met or inconclusive).
+          type: string
+        target:
+          description: The value a measured criterion is compared with.
+          nullable: true
+          type: number
         threshold: {}
+        unit:
+          description: The unit of the target; it must equal the unit the verifier declares.
+          type: string
         verifier:
           type: string
         weight:
           type: number
       type: object
+    CriterionRequest:
+      description: A success criterion as a create request sends it; what settles it (state, reason, met) is the server's to write.
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+        description:
+          type: string
+        kind:
+          description: judged, verified or measured.
+          type: string
+        evidence:
+          description: What the judge will look at; required for a judged criterion.
+          type: string
+        verifier:
+          description: A registered verifying capability; required for a verified or measured criterion.
+          type: string
+        domain:
+          type: string
+        weight:
+          type: number
+        threshold: {}
+        required:
+          description: Whether the criterion gates completion; null or absent is required.
+          nullable: true
+          type: boolean
+        metric:
+          description: A metric the verifier declares.
+          type: string
+        op:
+          description: <, <=, >, >= or ==.
+          type: string
+        target:
+          nullable: true
+          type: number
+        unit:
+          description: Must equal the unit the verifier declares for the metric.
+          type: string
+        params:
+          additionalProperties: {}
+          description: Values for parameters the metric declares.
+          nullable: true
+          type: object
+        samples:
+          description: How many measurements a measured criterion takes; not negative.
+          type: integer
+        reducer:
+          description: all, k_of_n, median, p95, min, max or mean; a measured criterion only.
+          type: string
+        k:
+          description: Under k_of_n, how many samples must meet the target; 1 to samples.
+          type: integer
+        min_samples:
+          description: Below this many samples the criterion is inconclusive; at most samples.
+          type: integer
+        baseline:
+          description: '"at_start" or a number fixed by hand; a measured criterion only, and required with change.'
+          nullable: true
+          oneOf:
+          - enum:
+            - at_start
+            type: string
+          - type: number
+        change:
+          description: absolute or percent; a measured criterion only, and needs a baseline.
+          type: string
+      required:
+      - id
+      - description
+      - kind
     Digest:
       additionalProperties: false
       properties:
@@ -6099,6 +6348,23 @@ components:
                 type: string
               converged:
                 type: integer
+              criteria:
+                items:
+                  additionalProperties: false
+                  properties:
+                    description:
+                      type: string
+                    id:
+                      type: string
+                    passes:
+                      type: integer
+                    reason:
+                      type: string
+                    state:
+                      type: string
+                  type: object
+                nullable: true
+                type: array
               criteria_met:
                 type: number
               drift_detected:
@@ -6115,6 +6381,15 @@ components:
                 type: boolean
               paused_why:
                 type: string
+              progress:
+                additionalProperties: false
+                nullable: true
+                properties:
+                  earned:
+                    type: number
+                  of:
+                    type: number
+                type: object
               reconciles:
                 type: integer
               senses:
@@ -6175,6 +6450,19 @@ components:
       required:
       - error
       description: A refusal from the authorization layer; other errors are plain text.
+    FieldError:
+      type: object
+      additionalProperties: false
+      properties:
+        error:
+          type: string
+        field:
+          description: The request field to change, e.g. success_criteria[1].evidence.
+          type: string
+      required:
+      - error
+      - field
+      description: A request refused for one field, named the way the request spells it.
     Grant:
       additionalProperties: false
       properties:
@@ -6844,6 +7132,9 @@ components:
           type: boolean
         id:
           type: string
+        inconclusive:
+          description: The loop ended with a required criterion nobody could settle and none not_met.
+          type: boolean
         loop_id:
           type: string
         objective_id:
