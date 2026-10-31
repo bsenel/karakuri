@@ -164,6 +164,10 @@ const (
 	// per criterion for the life of the objective, because a baseline that
 	// could be measured again is one the work could choose.
 	ToolEventBaseline = "baseline"
+	// ToolEventTarget (Phase 41 step 8) records a person changing a measured
+	// criterion's target through the API: the value it replaced, the new one,
+	// who changed it, and when that restarted the criterion's sustain window.
+	ToolEventTarget = "target"
 )
 
 // ResolvedCheckpointFilter narrows the resolved-checkpoint listing. Empty

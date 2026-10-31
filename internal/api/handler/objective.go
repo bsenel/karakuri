@@ -161,6 +161,14 @@ func (h *ObjectiveHandler) SetBaseline(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// SetTarget serves PUT /objectives/{id}/criteria/{criterion_id}/target with
+// the body {"value": <number>}: a person changing a measured criterion's
+// target, which restarts its sustain window (Phase 41 step 8). Not
+// implemented yet.
+func (h *ObjectiveHandler) SetTarget(w http.ResponseWriter, _ *http.Request) {
+	http.Error(w, "set target: not implemented", http.StatusNotImplemented)
+}
+
 // writeFieldError is a 400 in JSON naming the field to change, so a client
 // reads it without parsing prose.
 func writeFieldError(w http.ResponseWriter, field string, err error) {
