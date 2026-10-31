@@ -1,5 +1,10 @@
 package capability
 
+import (
+	"path"
+	"strings"
+)
+
 type CapabilityID string
 
 type Capability struct {
@@ -123,10 +128,40 @@ func (c Capability) DeclaredMetric(name string) (Metric, bool) {
 // TouchesAnyGlob reports whether any of the changed paths matches one of the
 // globs, where "**" is any number of path segments and any other segment is a
 // path.Match pattern.
-//
-// Stub for Phase 41 step 9 slice 9a's tests; the next action fills it in.
 func TouchesAnyGlob(changed, globs []string) bool {
+	for _, file := range changed {
+		name := strings.Split(file, "/")
+		for _, g := range globs {
+			if matchGlob(strings.Split(g, "/"), name) {
+				return true
+			}
+		}
+	}
 	return false
+}
+
+// matchGlob matches a slash-separated path segment by segment, where "**"
+// is any number of segments, zero included, and any other segment is a
+// path.Match pattern.
+func matchGlob(pattern, name []string) bool {
+	if len(pattern) == 0 {
+		return len(name) == 0
+	}
+	if pattern[0] == "**" {
+		for i := 0; i <= len(name); i++ {
+			if matchGlob(pattern[1:], name[i:]) {
+				return true
+			}
+		}
+		return false
+	}
+	if len(name) == 0 {
+		return false
+	}
+	if ok, err := path.Match(pattern[0], name[0]); err != nil || !ok {
+		return false
+	}
+	return matchGlob(pattern[1:], name[1:])
 }
 
 type LLMHints struct {

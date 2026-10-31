@@ -40,6 +40,15 @@ func softwareEnvironmentFactories(reg *tools.Registry) []environment.Factory {
 			},
 		}
 	}
+	// boundVC is the twin's bound version control instance, or the no-op one.
+	boundVC := func(ctx environment.BuildContext) versioncontrol.VersionControlAdapter {
+		if reg != nil {
+			if a, ok := reg.VC.Resolve(ctx.AdapterBindings["versioncontrol"]); ok {
+				return a
+			}
+		}
+		return versioncontrol.NewNoOp()
+	}
 	return []environment.Factory{
 		{
 			EnvID:       EnvGit,
@@ -64,13 +73,7 @@ func softwareEnvironmentFactories(reg *tools.Registry) []environment.Factory {
 				CapPathsDeclared,
 			},
 			Build: func(ctx environment.BuildContext) (environment.Environment, error) {
-				var vc versioncontrol.VersionControlAdapter = versioncontrol.NewNoOp()
-				if reg != nil {
-					if a, ok := reg.VC.Resolve(ctx.AdapterBindings["versioncontrol"]); ok {
-						vc = a
-					}
-				}
-				return &gitEnv{id: EnvGit, vc: vc}, nil
+				return &gitEnv{id: EnvGit, vc: boundVC(ctx)}, nil
 			},
 		},
 		{
@@ -194,8 +197,8 @@ func softwareEnvironmentFactories(reg *tools.Registry) []environment.Factory {
 				"software.verify.run_tests",
 				"software.verify.lint",
 			},
-			Build: func(_ environment.BuildContext) (environment.Environment, error) {
-				return newVerifyEnv("software.env.verify", newShellEnv("software.env.verify", "", 600*time.Second)), nil
+			Build: func(ctx environment.BuildContext) (environment.Environment, error) {
+				return newVerifyEnv("software.env.verify", newShellEnv("software.env.verify", "", 600*time.Second), boundVC(ctx)), nil
 			},
 		},
 		{
@@ -920,10 +923,14 @@ func noopAct(a environment.Action) environment.ActionResult {
 type verifyEnv struct {
 	id    environment.EnvironmentID
 	shell *shellEnv
+	// git reads the files the branch's pull request changes, from the forge
+	// paths_declared reads them from, so the loop can tell a run whose pass
+	// edited its own measure (Phase 41 step 9).
+	git *gitEnv
 }
 
-func newVerifyEnv(id environment.EnvironmentID, sh *shellEnv) *verifyEnv {
-	return &verifyEnv{id: id, shell: sh}
+func newVerifyEnv(id environment.EnvironmentID, sh *shellEnv, vc versioncontrol.VersionControlAdapter) *verifyEnv {
+	return &verifyEnv{id: id, shell: sh, git: &gitEnv{id: EnvGit, vc: vc}}
 }
 
 func (e *verifyEnv) ID() environment.EnvironmentID { return e.id }
@@ -965,7 +972,38 @@ func (e *verifyEnv) Act(ctx context.Context, a environment.Action) (environment.
 		res.StateDelta = map[string]any{}
 	}
 	res.StateDelta["verifier"] = string(a.CapabilityID)
+	if files, trust, ok := e.changedFiles(ctx, a.Params); ok {
+		res.StateDelta["changed_files"] = files
+		if trust.IsThirdParty() {
+			res.Trust = trust
+		}
+	}
 	return res, nil
+}
+
+// changedFiles reads the files the open pull request on params.branch
+// changes, and their provenance, since a file name is typed by whoever wrote
+// the pull request. ok is false when they cannot be read, and then the result
+// carries no changed_files at all: an absent list is not an empty one, and the
+// loop does not settle a criterion whose measure paths it cannot check.
+func (e *verifyEnv) changedFiles(ctx context.Context, params map[string]any) (files []string, trust environment.Trust, ok bool) {
+	branch := asString(params, "branch")
+	if branch == "" || e.git.vc == nil || !e.git.vc.Active() {
+		return nil, "", false
+	}
+	repo := asString(params, "repo")
+	pr, found, err := e.git.branchPR(ctx, repo, branch, time.Time{})
+	if err != nil || !found {
+		return nil, "", false
+	}
+	files, err = e.git.vc.ChangedFiles(ctx, repo, pr.ID)
+	if err != nil {
+		return nil, "", false
+	}
+	if files == nil {
+		files = []string{}
+	}
+	return files, prTrust([]versioncontrol.PRSummary{pr}), true
 }
 
 func (e *verifyEnv) Subscribe(_ context.Context, _ environment.EventFilter) (<-chan environment.EnvironmentEvent, error) {

@@ -2,6 +2,7 @@ package software
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -13,7 +14,7 @@ import (
 )
 
 func newTestVerifyEnv() *verifyEnv {
-	return newVerifyEnv("software.env.verify", newShellEnv("software.env.verify", "", 30*time.Second))
+	return newVerifyEnv("software.env.verify", newShellEnv("software.env.verify", "", 30*time.Second), nil)
 }
 
 // The whole point: a criterion verified by run_tests is now settled by running
@@ -163,5 +164,63 @@ func TestGitObservationIsBounded(t *testing.T) {
 	age := time.Since(vc.sinceCommits)
 	if age < gitObservationWindow-time.Minute || age > gitObservationWindow+time.Minute {
 		t.Errorf("commit window is %v, want about %v", age, gitObservationWindow)
+	}
+}
+
+// docs/roadmap.md, Phase 41 step 9: run_tests carries the files its branch's
+// pull request changes, read from the forge paths_declared reads, so the loop
+// can tell a pass that edited its own tests. When they cannot be read the
+// result carries no list at all, never an empty one.
+func TestVerifyEnvCarriesTheChangedFilesOfTheBranchPR(t *testing.T) {
+	pr := []versioncontrol.PRSummary{streamPR(passStart, passStart)}
+	run := func(vc versioncontrol.VersionControlAdapter, params map[string]any) environment.ActionResult {
+		t.Helper()
+		params["cmd"] = "exit 0"
+		env := newVerifyEnv("software.env.verify", newShellEnv("software.env.verify", "", 30*time.Second), vc)
+		res, err := env.Act(context.Background(), environment.Action{CapabilityID: "software.verify.run_tests", Params: params})
+		if err != nil {
+			t.Fatalf("Act: %v", err)
+		}
+		return res
+	}
+
+	forge := &fakeForge{prs: pr, files: []string{"a.go", "a_test.go"}}
+	res := run(forge, map[string]any{"branch": streamBranch})
+	if got, _ := res.StateDelta["changed_files"].([]string); len(got) != 2 || got[1] != "a_test.go" {
+		t.Errorf("changed_files = %#v, want [a.go a_test.go]", res.StateDelta["changed_files"])
+	}
+	if forge.gotPRID != "201" {
+		t.Errorf("read the files of PR %q, want 201", forge.gotPRID)
+	}
+	if res.Trust.IsThirdParty() {
+		t.Error("the deployment's own pull request made the result third party")
+	}
+
+	theirs := streamPR(passStart, passStart)
+	theirs.OwnAuthor = false
+	if res := run(&fakeForge{prs: []versioncontrol.PRSummary{theirs}, files: []string{"a.go"}}, map[string]any{"branch": streamBranch}); !res.Trust.IsThirdParty() {
+		t.Error("file names from somebody else's pull request are not marked third party")
+	}
+
+	if res := run(&fakeForge{prs: pr}, map[string]any{"branch": streamBranch}); res.StateDelta["changed_files"] == nil {
+		t.Error("a pull request that changes no files carries no list; want an empty one")
+	}
+
+	for name, tc := range map[string]struct {
+		vc     versioncontrol.VersionControlAdapter
+		params map[string]any
+	}{
+		"no branch":            {&fakeForge{prs: pr, files: []string{"a.go"}}, map[string]any{}},
+		"no forge":             {nil, map[string]any{"branch": streamBranch}},
+		"no pull request":      {&fakeForge{files: []string{"a.go"}}, map[string]any{"branch": streamBranch}},
+		"files cannot be read": {&fakeForge{prs: pr, filesErr: errors.New("boom")}, map[string]any{"branch": streamBranch}},
+	} {
+		res := run(tc.vc, tc.params)
+		if _, ok := res.StateDelta["changed_files"]; ok {
+			t.Errorf("%s: changed_files = %#v, want none", name, res.StateDelta["changed_files"])
+		}
+		if !res.Success {
+			t.Errorf("%s: the test run itself failed: %s", name, res.Error)
+		}
 	}
 }

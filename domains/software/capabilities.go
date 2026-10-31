@@ -26,6 +26,14 @@ func softwareCapabilities() []capability.Capability {
 		c.NeedsWorkspace = true
 		return c
 	}
+	// run_tests' definition is the test files, so a pass that edits one changed
+	// the measure with the work (Phase 41, decision 6). The web globs are what
+	// web/ runs: vitest's include (web/vitest.config.ts) and Playwright's
+	// testDir (web/playwright.config.ts).
+	runTests := act("software.verify.run_tests", "Run Tests",
+		"Execute test suite in worktree. Pass params.branch, and params.repo when it is not the bound one, "+
+			"so the result names the files that branch's pull request changes; without them a criterion it verifies settles nothing", true)
+	runTests.MeasurePaths = []string{"**/*_test.go", "web/src/**/*.test.ts", "web/src/**/*.test.tsx", "web/e2e/**/*.spec.ts"}
 	return []capability.Capability{
 		// Inputs declared for the reason write_design_doc's are below. Neither
 		// read requires an input; both fail rather than return an empty list
@@ -197,7 +205,7 @@ func softwareCapabilities() []capability.Capability {
 			},
 			OutputSchema: capability.Schema{Type: "object"},
 		},
-		act("software.verify.run_tests", "Run Tests", "Execute test suite in worktree", true),
+		runTests,
 		act("software.verify.lint", "Lint", "Run linter in worktree", true),
 		act("software.verify.review", "Code Review", "Peer review of an artifact", true),
 		act("software.verify.tech_lead_review", "Tech Lead Review", "Senior review of an artifact against design doc", true),

@@ -4,10 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"path"
 	"strings"
 	"time"
 
+	"github.com/bsenel/karakuri/internal/core/capability"
 	"github.com/bsenel/karakuri/internal/core/environment"
 	"github.com/bsenel/karakuri/internal/core/objective"
 	"github.com/bsenel/karakuri/internal/platform/tools/versioncontrol"
@@ -264,7 +264,7 @@ func (e *gitEnv) verifyPathsDeclared(ctx context.Context, repo, branch string, p
 	trust := prTrust([]versioncontrol.PRSummary{pr})
 	var outside []string
 	for _, f := range files {
-		if !matchesAnyGlob(f, globs) {
+		if !capability.TouchesAnyGlob([]string{f}, globs) {
 			outside = append(outside, f)
 		}
 	}
@@ -299,37 +299,4 @@ func pathGlobsParam(params map[string]any) []string {
 		}
 	}
 	return globs
-}
-
-func matchesAnyGlob(file string, globs []string) bool {
-	for _, g := range globs {
-		if matchGlob(strings.Split(g, "/"), strings.Split(file, "/")) {
-			return true
-		}
-	}
-	return false
-}
-
-// matchGlob matches a slash-separated path segment by segment, where "**"
-// is any number of segments, zero included, and any other segment is a
-// path.Match pattern.
-func matchGlob(pattern, name []string) bool {
-	if len(pattern) == 0 {
-		return len(name) == 0
-	}
-	if pattern[0] == "**" {
-		for i := 0; i <= len(name); i++ {
-			if matchGlob(pattern[1:], name[i:]) {
-				return true
-			}
-		}
-		return false
-	}
-	if len(name) == 0 {
-		return false
-	}
-	if ok, err := path.Match(pattern[0], name[0]); err != nil || !ok {
-		return false
-	}
-	return matchGlob(pattern[1:], name[1:])
 }

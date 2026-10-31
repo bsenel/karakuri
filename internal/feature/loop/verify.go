@@ -12,6 +12,7 @@ import (
 	"unicode"
 
 	coreagent "github.com/bsenel/karakuri/internal/core/agent"
+	"github.com/bsenel/karakuri/internal/core/capability"
 	"github.com/bsenel/karakuri/internal/core/event"
 	"github.com/bsenel/karakuri/internal/core/loop"
 	"github.com/bsenel/karakuri/internal/core/objective"
@@ -92,6 +93,7 @@ func stepVerify(ctx context.Context, sc *stepContext, outcomes []actionOutcome) 
 		// hard-coded substrings. Everything else went to a model that was
 		// shown no results at all.
 		ran := outcomesFor(outcomes, verifier)
+		changed := sc.svc.measureChanged(criterion.Verifier, ran)
 		state := objective.CriterionNotMet
 		var reason objective.InconclusiveReason
 		switch {
@@ -106,6 +108,10 @@ func stepVerify(ctx context.Context, sc *stepContext, outcomes []actionOutcome) 
 			// criterion asks for, so no value it emits is one the author's
 			// target was written against, whichever unit it arrives in.
 			state, reason = objective.CriterionInconclusive, objective.ReasonUnsupported
+		case changed != "":
+			// The pass may have moved the measure with the work, so whatever
+			// the verifier reported settles nothing, and a person decides.
+			state, reason = objective.CriterionInconclusive, changed
 		case criterion.Kind == objective.KindMeasured && len(ran) > 0:
 			state, reason = settleByMeasurement(criterion, ran)
 		case criterion.Kind == objective.KindMeasured:
@@ -290,6 +296,61 @@ func (s *serviceImpl) declaresOtherUnit(c objective.Criterion) bool {
 	}
 	declared, ok := verifier.DeclaredMetric(c.Metric)
 	return ok && declared.Unit != c.Unit
+}
+
+// measureChanged is why the runs of a verifier settle nothing because of its
+// declared measure paths (Phase 41, decision 6, 'Anti-gaming'), or "" when
+// they settle as before.
+//
+// A run carries the files its pass changed in StateDelta "changed_files". One
+// that touches a declared path is measure_changed. One that carries no list
+// leaves the paths unchecked, which is a verifier_error, never a silent pass
+// (AGENTS.md rule 10). A run that errored reported nothing and is left out, as
+// in settleByVerifier. A verifier the registry does not hold, or one that
+// declares no paths, has nothing to check.
+func (s *serviceImpl) measureChanged(verifier capability.CapabilityID, ran []actionOutcome) objective.InconclusiveReason {
+	if s.capReg == nil || len(ran) == 0 {
+		return ""
+	}
+	declared, ok := s.capReg.Get(verifier)
+	if !ok || len(declared.MeasurePaths) == 0 {
+		return ""
+	}
+	var reason objective.InconclusiveReason
+	for _, o := range ran {
+		if o.Errored {
+			continue
+		}
+		files, ok := changedFiles(o.Result.StateDelta)
+		if !ok {
+			reason = objective.ReasonVerifierError
+			continue
+		}
+		if capability.TouchesAnyGlob(files, declared.MeasurePaths) {
+			return objective.ReasonMeasureChanged
+		}
+	}
+	return reason
+}
+
+// changedFiles reads StateDelta "changed_files" as a []string, or as []any off
+// JSON. ok is false when the key is absent or holds anything else.
+func changedFiles(delta map[string]any) ([]string, bool) {
+	switch v := delta["changed_files"].(type) {
+	case []string:
+		return v, true
+	case []any:
+		files := make([]string, 0, len(v))
+		for _, item := range v {
+			s, ok := item.(string)
+			if !ok {
+				return nil, false
+			}
+			files = append(files, s)
+		}
+		return files, true
+	}
+	return nil, false
 }
 
 // hasRequired reports whether any criterion gates completion.
