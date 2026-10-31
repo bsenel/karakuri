@@ -7,6 +7,7 @@ import (
 
 	"github.com/bsenel/karakuri/auth"
 	karakuriauth "github.com/bsenel/karakuri/internal/auth"
+	coreerrors "github.com/bsenel/karakuri/internal/core/errors"
 	"github.com/bsenel/karakuri/internal/core/objective"
 	featureobj "github.com/bsenel/karakuri/internal/feature/objective"
 	"github.com/bsenel/karakuri/internal/platform/storage"
@@ -52,10 +53,7 @@ func (h *ObjectiveHandler) Create(w http.ResponseWriter, r *http.Request) {
 	})
 	var invalid *featureobj.ValidationError
 	if errors.As(err, &invalid) {
-		// JSON, so a client reads the field to change without parsing prose.
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		_ = json.NewEncoder(w).Encode(map[string]string{"error": invalid.Err.Error(), "field": invalid.Field})
+		writeFieldError(w, invalid.Field, invalid.Err)
 		return
 	}
 	if errors.Is(err, featureobj.ErrNoRequiredCriterion) {
@@ -124,9 +122,51 @@ func (h *ObjectiveHandler) UpdateStatus(w http.ResponseWriter, r *http.Request) 
 
 // SetBaseline serves PUT /objectives/{id}/criteria/{criterion_id}/baseline
 // with the body {"value": <number>}: a person setting a measured criterion's
-// baseline (Phase 41 step 7 part D2). Not implemented yet.
-func (h *ObjectiveHandler) SetBaseline(w http.ResponseWriter, _ *http.Request) {
-	http.Error(w, "set baseline: not implemented", http.StatusNotImplemented)
+// baseline (Phase 41 step 7 part D2). The person in the audit row is the
+// authenticated caller, never a body field.
+func (h *ObjectiveHandler) SetBaseline(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Value json.RawMessage `json:"value"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	var value float64
+	if len(req.Value) == 0 || string(req.Value) == "null" {
+		writeFieldError(w, "value", errors.New("value is required"))
+		return
+	}
+	if err := json.Unmarshal(req.Value, &value); err != nil {
+		// A string, or a number out of float64's range.
+		writeFieldError(w, "value", errors.New("value must be a finite number"))
+		return
+	}
+	setBy := ""
+	if p, ok := auth.PrincipalFromContext(r.Context()); ok {
+		setBy = p.ID
+	}
+	obj, err := h.Objectives.SetBaseline(r.Context(), objective.ObjectiveID(chi.URLParam(r, "id")),
+		chi.URLParam(r, "criterion_id"), value, setBy)
+	var invalid *featureobj.ValidationError
+	switch {
+	case errors.As(err, &invalid):
+		writeFieldError(w, invalid.Field, invalid.Err)
+	case errors.Is(err, coreerrors.ErrObjectiveNotFound), errors.Is(err, featureobj.ErrCriterionNotFound):
+		http.Error(w, err.Error(), http.StatusNotFound)
+	case err != nil:
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	default:
+		writeJSON(w, obj)
+	}
+}
+
+// writeFieldError is a 400 in JSON naming the field to change, so a client
+// reads it without parsing prose.
+func writeFieldError(w http.ResponseWriter, field string, err error) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusBadRequest)
+	_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error(), "field": field})
 }
 
 func (h *ObjectiveHandler) ListTemplates(w http.ResponseWriter, _ *http.Request) {
