@@ -32,6 +32,11 @@ func stepVerify(ctx context.Context, sc *stepContext, outcomes []actionOutcome) 
 		Timestamp: time.Now().UTC(),
 	})
 
+	// Every measurement is audited before anything is settled, so a figure
+	// that settles nothing, or an objective with nothing to settle, still
+	// leaves its row.
+	sc.svc.auditMeasurements(ctx, sc, outcomes)
+
 	criteria := sc.obj.SuccessCriteria
 
 	// No criteria → refuse to score completion. Previously this path

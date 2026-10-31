@@ -34,7 +34,10 @@ import (
 type actionOutcome struct {
 	CapabilityID string
 	EnvID        string
-	Result       environment.ActionResult
+	// Params are the parameters the action ran with, so each measurement's
+	// audit row can say how it was taken.
+	Params map[string]any
+	Result environment.ActionResult
 
 	// Errored is true when the action could not be carried out at all — the
 	// environment returned an error, or nothing could take it — as distinct
@@ -328,6 +331,7 @@ func stepAct(ctx context.Context, sc *stepContext, p plan) []actionOutcome {
 		outcomes = append(outcomes, actionOutcome{
 			CapabilityID: action.CapabilityID,
 			EnvID:        envAdapter,
+			Params:       params,
 			Result:       result,
 			Errored:      errored,
 			Err:          actErr,
