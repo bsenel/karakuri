@@ -7129,6 +7129,23 @@ components:
           type: string
         converged:
           type: boolean
+        criteria:
+          description: The per-criterion states the pass's loop settled, each with the pass time; absent on a sense-only, deferred or escalated pass.
+          items:
+            additionalProperties: false
+            properties:
+              at:
+                format: date-time
+                type: string
+              criterion_id:
+                type: string
+              reason:
+                type: string
+              state:
+                type: string
+            type: object
+          nullable: true
+          type: array
         criteria_met:
           type: number
         deferred:
@@ -7258,6 +7275,31 @@ components:
           type: string
         score_streak:
           type: integer
+        sustain:
+          description: The sustain state of each criterion that declares one, over the rolling window of recorded passes; kept beside score_streak, not in its place.
+          items:
+            additionalProperties: false
+            properties:
+              budget_left:
+                type: number
+              criterion_id:
+                type: string
+              latest:
+                type: string
+              not_met:
+                type: integer
+              reason:
+                type: string
+              settled:
+                type: integer
+              state:
+                type: string
+              window_start:
+                format: date-time
+                type: string
+            type: object
+          nullable: true
+          type: array
         twin_id:
           type: string
         updated_at:

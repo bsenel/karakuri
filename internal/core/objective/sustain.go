@@ -30,9 +30,13 @@ type Sustain struct {
 // time of the pass. State was settled against the criterion's own target, so
 // sustain never compares a pass with earlier passes' values.
 type CriterionPass struct {
-	At     time.Time          `json:"at"`
-	State  CriterionState     `json:"state"`
-	Reason InconclusiveReason `json:"reason,omitempty"`
+	// CriterionID names the criterion the pass settled, so the passes one
+	// reconcile outcome records can be told apart. Evaluate reads one
+	// criterion's passes and ignores it.
+	CriterionID string             `json:"criterion_id,omitempty"`
+	At          time.Time          `json:"at"`
+	State       CriterionState     `json:"state"`
+	Reason      InconclusiveReason `json:"reason,omitempty"`
 }
 
 // SustainResult is what Evaluate made of the passes in the window. Settled
