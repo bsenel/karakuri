@@ -31,6 +31,12 @@ func (s *Service) mergeCriteria(fromTemplate, fromRequest []objective.Criterion)
 			return nil, &ValidationError{Field: field + ".id", Err: errors.New("another request criterion has this id")}
 		}
 		seen[c.ID] = true
+		if c.SustainSince != nil {
+			// The server's record of a person's audited change, whether the
+			// criterion is new or tightens a template's; a request that could
+			// set it could leave out passes it did not like.
+			return nil, &ValidationError{Field: field + ".sustain_since", Err: errors.New("sustain_since is set by the server when a person changes the criterion, never by a request")}
+		}
 		j, ok := position[c.ID]
 		if !ok {
 			if err := s.validateCriterion(field, c); err != nil {

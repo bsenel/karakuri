@@ -387,11 +387,17 @@ func (s *Service) evaluateSustain(ctx context.Context, st *reconcile.State, obj 
 	out := make([]reconcile.CriterionSustain, 0, len(sustained))
 	for _, c := range sustained {
 		entry := reconcile.CriterionSustain{CriterionID: c.ID}
+		// A person's change through the API restarts the window, recorded
+		// on the criterion as SustainSince; zero is never restarted.
+		var since time.Time
+		if c.SustainSince != nil {
+			since = *c.SustainSince
+		}
 		if window, werr := objective.ParseWindow(c.Sustain.Window); werr == nil {
-			// A person's target change restarts the window; until the
-			// objective records when that happened, the window starts at
-			// now less its length.
 			entry.WindowStart = now.Add(-window)
+			if since.After(entry.WindowStart) {
+				entry.WindowStart = since
+			}
 		}
 		if err != nil {
 			entry.State, entry.Reason = objective.CriterionInconclusive, objective.ReasonNoData
@@ -406,7 +412,7 @@ func (s *Service) evaluateSustain(ctx context.Context, st *reconcile.State, obj 
 				}
 			}
 		}
-		r := c.Sustain.Evaluate(passes, now, time.Time{})
+		r := c.Sustain.Evaluate(passes, now, since)
 		entry.State, entry.Reason = r.State, r.Reason
 		entry.Settled, entry.NotMet = r.Settled, r.NotMet
 		entry.BudgetLeft, entry.Latest = r.BudgetLeft, r.Latest
