@@ -232,6 +232,21 @@ func settleByVerifier(ran []actionOutcome) (objective.CriterionState, objective.
 // A third-party figure is not a sample either, and a value in another unit or
 // a NaN is not one any more than it settled anything before.
 func settleByMeasurement(c objective.Criterion, ran []actionOutcome) (objective.CriterionState, objective.InconclusiveReason) {
+	samples, reason := qualifyingSamples(c, ran)
+	if len(samples) == 0 {
+		return objective.CriterionInconclusive, reason
+	}
+	if c.Samples == 0 && c.Reducer == "" {
+		c.Reducer = objective.ReducerAll
+	}
+	return c.CompareSamples(samples, c.Unit)
+}
+
+// qualifyingSamples are the values of the criterion's metric in its unit that
+// the runs of its named verifier measured, and, when there are none, the reason
+// nothing qualified. Shared by verify and the at_start baseline, so a value
+// that could not settle a criterion cannot become its baseline either.
+func qualifyingSamples(c objective.Criterion, ran []actionOutcome) ([]float64, objective.InconclusiveReason) {
 	var samples []float64
 	reason := objective.ReasonNoData
 	for _, o := range ran {
@@ -256,13 +271,7 @@ func settleByMeasurement(c objective.Criterion, ran []actionOutcome) (objective.
 			}
 		}
 	}
-	if len(samples) == 0 {
-		return objective.CriterionInconclusive, reason
-	}
-	if c.Samples == 0 && c.Reducer == "" {
-		c.Reducer = objective.ReducerAll
-	}
-	return c.CompareSamples(samples, c.Unit)
+	return samples, reason
 }
 
 // declaresOtherUnit reports whether a measured criterion's verifier declares

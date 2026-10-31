@@ -162,6 +162,10 @@ func (s *serviceImpl) runLoop(ctx context.Context, loopID string, req loop.Reque
 		sleep:    s.sleep,
 	}
 
+	// 7. Measure each at_start baseline not measured yet, before the first
+	// plan's work can move it (Phase 41 step 7).
+	s.measureAtStartBaselines(ctx, sc)
+
 	var (
 		score       float64
 		criteriaMet bool

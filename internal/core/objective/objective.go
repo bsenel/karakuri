@@ -411,35 +411,66 @@ func (c Criterion) CompareSamples(values []float64, unit string) (CriterionState
 		return c.comparePasses(kept, k)
 	}
 
-	sorted := slices.Clone(kept)
+	statistic, ok := reduce(c.Reducer, kept)
+	if !ok {
+		return CriterionInconclusive, ReasonNoData
+	}
+	return c.Compare(statistic, unit)
+}
+
+// Reduce is the one value a measured criterion's samples come to, which is
+// what an at_start baseline freezes. NaNs are dropped first, and false means
+// no value is left or the reducer is one it does not know.
+//
+// all and k_of_n compare each sample with the target rather than one
+// statistic, so they have no value of their own; their baseline is the median,
+// the reading no reducer gets and the one a single outlier does not move.
+func (c Criterion) Reduce(values []float64) (float64, bool) {
+	kept := make([]float64, 0, len(values))
+	for _, v := range values {
+		if !math.IsNaN(v) {
+			kept = append(kept, v)
+		}
+	}
+	reducer := c.Reducer
+	if reducer == ReducerAll || reducer == ReducerKOfN {
+		reducer = ReducerMedian
+	}
+	return reduce(reducer, kept)
+}
+
+// reduce is one statistic of values, none of them NaN: the median for no
+// reducer, false for no values or a reducer that names no statistic.
+func reduce(reducer Reducer, values []float64) (float64, bool) {
+	if len(values) == 0 {
+		return 0, false
+	}
+	sorted := slices.Clone(values)
 	slices.Sort(sorted)
-	var statistic float64
-	switch c.Reducer {
+	switch reducer {
 	case ReducerMedian, "":
 		mid := len(sorted) / 2
-		statistic = sorted[mid]
 		if len(sorted)%2 == 0 {
-			statistic = (sorted[mid-1] + sorted[mid]) / 2
+			return (sorted[mid-1] + sorted[mid]) / 2, true
 		}
+		return sorted[mid], true
 	case ReducerP95:
 		// Nearest rank: the smallest sample with at least 95% of the samples
 		// at or below it, so the statistic is always a value that was measured.
 		rank := int(math.Ceil(0.95 * float64(len(sorted))))
-		statistic = sorted[rank-1]
+		return sorted[rank-1], true
 	case ReducerMin:
-		statistic = sorted[0]
+		return sorted[0], true
 	case ReducerMax:
-		statistic = sorted[len(sorted)-1]
+		return sorted[len(sorted)-1], true
 	case ReducerMean:
 		sum := 0.0
 		for _, v := range sorted {
 			sum += v
 		}
-		statistic = sum / float64(len(sorted))
-	default:
-		return CriterionInconclusive, ReasonNoData
+		return sum / float64(len(sorted)), true
 	}
-	return c.Compare(statistic, unit)
+	return 0, false
 }
 
 // comparePasses is met when at least k of the samples meet the target on
