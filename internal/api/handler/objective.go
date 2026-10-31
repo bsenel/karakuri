@@ -122,6 +122,13 @@ func (h *ObjectiveHandler) UpdateStatus(w http.ResponseWriter, r *http.Request) 
 	writeJSON(w, map[string]string{"status": req.Status})
 }
 
+// SetBaseline serves PUT /objectives/{id}/criteria/{criterion_id}/baseline
+// with the body {"value": <number>}: a person setting a measured criterion's
+// baseline (Phase 41 step 7 part D2). Not implemented yet.
+func (h *ObjectiveHandler) SetBaseline(w http.ResponseWriter, _ *http.Request) {
+	http.Error(w, "set baseline: not implemented", http.StatusNotImplemented)
+}
+
 func (h *ObjectiveHandler) ListTemplates(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, h.Objectives.ListTemplates())
 }
