@@ -168,6 +168,11 @@ const (
 	// criterion's target through the API: the value it replaced, the new one,
 	// who changed it, and when that restarted the criterion's sustain window.
 	ToolEventTarget = "target"
+	// ToolEventMeasurement (Phase 41 step 9) records one measurement an action
+	// returned: the capability that took it, its parameters, the value, unit,
+	// source and trust, and the commit it was taken at. One row per
+	// measurement, whether or not it settled a criterion.
+	ToolEventMeasurement = "measurement"
 )
 
 // ResolvedCheckpointFilter narrows the resolved-checkpoint listing. Empty
