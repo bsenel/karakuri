@@ -166,9 +166,13 @@ type shownCriterion struct {
 	Op          string   `json:"op"`
 	Target      *float64 `json:"target"`
 	Unit        string   `json:"unit"`
-	Required    *bool    `json:"required"`
-	State       string   `json:"state"`
-	Reason      string   `json:"reason"`
+	// Baseline is "at_start" or the number fixed by hand; BaselineValue is
+	// the frozen number, absent for at_start until it has been measured.
+	Baseline      any      `json:"baseline"`
+	BaselineValue *float64 `json:"baseline_value"`
+	Required      *bool    `json:"required"`
+	State         string   `json:"state"`
+	Reason        string   `json:"reason"`
 }
 
 // printCriteria writes the gate, then the progress. State and reason are the
@@ -222,13 +226,27 @@ func criterionState(cr shownCriterion, gate bool) string {
 	return cr.State
 }
 
-// comparison is "metric op target unit" for a measured criterion.
+// comparison is "metric op target unit" for a measured criterion, then its
+// baseline when it has one, so a target set against a start that was already
+// bad is read beside the number it is measured from.
 func comparison(cr shownCriterion) string {
 	if cr.Metric == "" || cr.Target == nil {
 		return ""
 	}
 	target := strconv.FormatFloat(*cr.Target, 'f', -1, 64)
-	return strings.TrimSpace(cr.Metric + " " + cr.Op + " " + target + " " + cr.Unit)
+	shown := strings.TrimSpace(cr.Metric + " " + cr.Op + " " + target + " " + cr.Unit)
+	if cr.Baseline == nil {
+		return shown
+	}
+	source := "fixed"
+	if cr.Baseline == "at_start" {
+		source = "at_start"
+	}
+	if cr.BaselineValue == nil {
+		return shown + ", baseline " + source + ", not measured"
+	}
+	value := strconv.FormatFloat(*cr.BaselineValue, 'f', -1, 64)
+	return shown + ", baseline " + strings.TrimSpace(value+" "+cr.Unit) + " (" + source + ")"
 }
 
 func objectiveTemplatesCmd() *cobra.Command {

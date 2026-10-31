@@ -149,6 +149,7 @@ function SuccessCriteria({ criteria }: { criteria: Criterion[] }) {
               {/* Spaces between the parts keep the text readable, so a state
                   never runs into the description before it. */}
               <span className="grow">{c.description}</span>{' '}
+              {comparison(c) && <span className="mono muted">{comparison(c)}</span>}{' '}
               {c.verifier && <span className="mono muted">{c.verifier}</span>}{' '}
               <span className={`pill ${stateColour(c.state)}`}>{stateLabel(c)}</span>
             </li>
@@ -165,6 +166,7 @@ function SuccessCriteria({ criteria }: { criteria: Criterion[] }) {
             {optional.map((c) => (
               <li key={c.id} className="row small">
                 <span className="grow">{c.description}</span>{' '}
+                {comparison(c) && <span className="mono muted">{comparison(c)}</span>}{' '}
                 {c.verifier && <span className="mono muted">{c.verifier}</span>}{' '}
                 <span className="mono muted">w={c.weight ?? 0}</span>{' '}
                 {/* An optional criterion nobody needed is not a failure. */}
@@ -186,6 +188,20 @@ function stateLabel(c: Criterion): string {
   if (!c.state) return 'inconclusive: not_run';
   if (c.state === 'inconclusive') return c.reason ? `inconclusive: ${c.reason}` : 'inconclusive';
   return c.state;
+}
+
+// A measured criterion's `metric op target unit`, then its baseline when it
+// has one, as `krk objective criteria` prints it: a target set against a start
+// that was already bad is read beside the number it is measured from. An
+// at_start baseline not measured yet says so rather than showing a number.
+function comparison(c: Criterion): string {
+  if (!c.metric || c.target == null) return '';
+  const shown = [c.metric, c.op, c.target, c.unit].filter((p) => p !== undefined && p !== '').join(' ');
+  if (c.baseline == null) return shown;
+  const source = c.baseline === 'at_start' ? 'at_start' : 'fixed';
+  if (c.baseline_value == null) return `${shown}, baseline ${source}, not measured`;
+  const value = [c.baseline_value, c.unit].filter((p) => p !== undefined && p !== '').join(' ');
+  return `${shown}, baseline ${value} (${source})`;
 }
 
 function stateColour(state: Criterion['state']): string {
