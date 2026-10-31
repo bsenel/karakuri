@@ -333,7 +333,86 @@ func (s *Service) reconcileNow(
 	default:
 		outcome.Converged = metRequired(final)
 	}
+	// Only a pass whose loop ran to its end settled anything. An escalated
+	// loop is still waiting on a person, and a deferred one never planned, so
+	// whatever its row holds is not this pass's answer.
+	if !escalated && outcome.Deferred == "" {
+		outcome.Criteria = criterionPasses(final.Criteria, outcome.EndedAt)
+	}
 	return s.finish(ctx, st, obj, cadence, outcome, &fp)
+}
+
+// criterionPasses records each criterion state a loop settled with the time of
+// the pass, for sustain to read later.
+func criterionPasses(criteria []objective.Criterion, at time.Time) []objective.CriterionPass {
+	if len(criteria) == 0 {
+		return nil
+	}
+	passes := make([]objective.CriterionPass, len(criteria))
+	for i, c := range criteria {
+		passes[i] = objective.CriterionPass{CriterionID: c.ID, At: at, State: c.State, Reason: c.Reason}
+	}
+	return passes
+}
+
+// sustainHistoryLimit bounds how many recorded passes a sustain evaluation
+// reads, as the report does.
+const sustainHistoryLimit = 2000
+
+// evaluateSustain settles the sustain state of every criterion the objective
+// declares one for, over the objective's recorded passes. It sits beside
+// ScoreStreak and moves nothing the breaker or the stall detector read.
+//
+// A history it cannot read leaves each sustained criterion inconclusive,
+// no_data, rather than keeping a state that is no longer known to hold
+// (AGENTS.md rule 10).
+func (s *Service) evaluateSustain(ctx context.Context, st *reconcile.State, obj objective.Objective, now time.Time) {
+	var sustained []objective.Criterion
+	for _, c := range obj.SuccessCriteria {
+		if c.Sustain != nil {
+			sustained = append(sustained, c)
+		}
+	}
+	if len(sustained) == 0 {
+		st.Sustain = nil
+		return
+	}
+
+	history, err := s.store.ListReconcileOutcomes(ctx, obj.ID, sustainHistoryLimit)
+	if err != nil {
+		slog.Warn("could not read reconcile history for sustain",
+			"objective", string(obj.ID), "error", err)
+	}
+
+	out := make([]reconcile.CriterionSustain, 0, len(sustained))
+	for _, c := range sustained {
+		entry := reconcile.CriterionSustain{CriterionID: c.ID}
+		if window, werr := objective.ParseWindow(c.Sustain.Window); werr == nil {
+			// A person's target change restarts the window; until the
+			// objective records when that happened, the window starts at
+			// now less its length.
+			entry.WindowStart = now.Add(-window)
+		}
+		if err != nil {
+			entry.State, entry.Reason = objective.CriterionInconclusive, objective.ReasonNoData
+			out = append(out, entry)
+			continue
+		}
+		var passes []objective.CriterionPass
+		for _, o := range history {
+			for _, p := range o.Criteria {
+				if p.CriterionID == c.ID {
+					passes = append(passes, p)
+				}
+			}
+		}
+		r := c.Sustain.Evaluate(passes, now, time.Time{})
+		entry.State, entry.Reason = r.State, r.Reason
+		entry.Settled, entry.NotMet = r.Settled, r.NotMet
+		entry.BudgetLeft, entry.Latest = r.BudgetLeft, r.Latest
+		out = append(out, entry)
+	}
+	st.Sustain = out
 }
 
 // awaitLoop waits for a loop to finish or to stop at a checkpoint, renewing
@@ -558,6 +637,11 @@ func (s *Service) finish(
 
 	if err := s.store.SaveReconcileOutcome(ctx, outcome); err != nil {
 		return fmt.Errorf("record outcome: %w", err)
+	}
+	// Read, never sensed: only a pass that settled criteria moves sustain,
+	// and a change in it is not drift (sense.go stays the only trigger).
+	if len(outcome.Criteria) > 0 {
+		s.evaluateSustain(ctx, st, obj, outcome.EndedAt)
 	}
 
 	if s.trip(ctx, st, obj) {
