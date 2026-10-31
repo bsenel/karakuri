@@ -52,6 +52,7 @@ Phases 27–32 were proposed from two kinds of evidence: what this repository de
 | 40    | Streams That Run Without a Coordinator     | **Planned**   |
 | 42    | An MCP Call Carries Only What the Tool Declared | **Planned** |
 | 43    | A Provider's Tool-Call Shape, Pinned by a Test | **Planned** |
+| 44    | Delivery That Shapes and Recovers Its Own Work | **Planned** |
 
 
 ---
@@ -6118,6 +6119,112 @@ adopt the Go SDK 2.0.0; whether to do either is what step 1 finds out.
 
 ---
 
+## Phase 44 — Delivery That Shapes and Recovers Its Own Work (Planned)
+
+Each step below is a task a person did by hand for the delivery stream between
+2026-10-17 and 2026-10-31, while Phase 41 was built. Phase 40 already takes
+over restarts, error checkpoints, quota, conflicts and review; these four are
+the ones it does not name.
+
+**Goal:** the delivery stream sizes its own pull requests, keeps the work a
+killed action had not committed, plans from what is delivered rather than from
+its brief, and fits each verification inside its time limit, with nobody
+watching.
+
+**Why.** Observed on this deployment:
+
+- *One pull request per phase.* #187 (Phase 41) was opened on 2026-10-17. By
+  2026-10-31 it held 62 commits, 112 files and about 14,300 added lines
+  (`git diff --shortstat origin/main...` on its head 8e0c4c4). Its steps 1 to
+  9 were green in CI, each on its own, but the brief said to mark it ready only
+  once the phase was complete, so they waited on steps 10 to 13. Meanwhile the
+  deployed server kept settling criteria with a model judge, the UX stream
+  stayed paused on it from 2026-10-16, and the owner would have reviewed 14,300
+  lines at once. On 2026-10-31 the owner set the rule: "Karakuri should mark a
+  PR ready when there is a meaningful and independent group of change lands."
+  A person then retitled #187 to steps 1 to 9 and marked it ready by hand.
+- *Work that a killed action had not committed.* A coding action is killed at
+  its time limit or stops on the provider's usage limit, and its uncommitted
+  edits stay in its worktree under `worktrees/<objective>/<loop>-<n>-*`, where
+  nothing reads them. On 2026-10-17 two Phase 36 slices died uncommitted; on
+  2026-10-24 Phase 41 step 3's code was found uncommitted in a worktree, applied
+  by a person at the branch tip, and pushed as 2fdda0e. Since 2026-10-24, at
+  least 35 coding actions failed on the usage limit and 2 were killed (`krk
+  --output json audit --kind execute --limit 1000`, counted on 2026-10-31; the
+  listing is capped, so these are lower bounds).
+- *Planning from a stale brief.* The delivery brief stated which Phase 41 steps
+  were done. On 2026-10-25 the planner re-planned delivered steps four times
+  (checkpoints fffdf43867dad215 and f248f49ff671d019, rejected; 2ae75ba44714e064
+  and 3ec2d1480f3f9692, sent back with a constraint naming the commits), each
+  time because the brief's list was older than the branch. The fix was a person
+  rewriting the brief to point at the pull request's checklist.
+- *Verifications that cannot finish, and a missing tool read as a failure.* A
+  `software.verify.run_tests` command is killed at 10 minutes
+  (`domains/software/shell_env.go`, lines 120 to 140, reports `command timed
+  out after` and a failed result). At least 5 test verifications ended that way
+  since 2026-10-24, each running several packages that CI ran green the same
+  day. One verification ran `npm` on a machine without Node, exited 127, and was
+  recorded as a failed test run like any other.
+
+**Steps.** Each step is independent of the others, so each is its own pull
+request.
+
+1. **Pull requests in groups.** The software pack's delivery template gains the
+   grouping rule as code, not only brief text: a pull request's checklist names
+   its group's steps; when every one is ticked and `software.verify.ci_green`
+   (Phase 41) is met at the head, the stream marks the pull request ready
+   (a `software.act.mark_ready` capability over the versioncontrol adapter,
+   behind the same authority bounds as opening one). A later group of the same
+   phase is opened stacked on the earlier one's head, and once that one merges
+   the repair action merges main into it. *Find out first:* whether the GitHub
+   adapter under `internal/platform/tools/versioncontrol/` already reads a pull
+   request's body and base; if not, add both there.
+2. **Keep what a killed action wrote.** When a coding action ends without a
+   commit of its own (killed, out of quota, exit 1), the software pack commits
+   whatever its worktree changed to a side branch,
+   `karakuri/salvage/<objective>/<action>`, never to the item's branch, and names
+   the branch and SHA in the action's result. The next pass's plan sees it in
+   the git observation and either cherry-picks it after its tests pass or
+   discards it, and says which.
+3. **Plan from what is delivered.** The git environment's observation gains, for
+   each open delivery pull request, its checklist (ticked and unticked steps,
+   each with the SHAs it names) and the commits on its branch since its base.
+   A drafted write action whose prompt targets a step the checklist ticks is
+   flagged at decide, so a plan that redoes delivered work escalates with that
+   reason instead of reaching a person as an ordinary plan.
+4. **Verification inside its limit.** `software.verify.run_tests` runs `go test
+   -json` and, when its time runs out, reports the packages that finished and
+   their results, and settles the run `inconclusive: timeout` (Phase 41's
+   states), not `not_met`. A command that exits 127 or 126 reports
+   `ErrUnsupported` for the missing tool, per AGENTS.md rule 10, rather than a
+   failed run.
+
+**Acceptance.**
+- Step 1: with a fake versioncontrol adapter, a pull request whose group is
+  ticked and green is marked ready in the same pass, and one with an unticked
+  step or a red check is not. A test opens a later group with the earlier
+  group's head as its base.
+- Step 2: a stub coding agent that edits a file and exits 1 leaves a commit on
+  `karakuri/salvage/...` with that edit, nothing on the item's branch, and the
+  SHA in the result. A stub that commits its own work leaves no salvage branch.
+- Step 3: a fixture pull request whose checklist ticks step 5 makes a plan that
+  writes step 5 escalate with the redo reason; a plan for step 6 does not.
+- Step 4: a fixture package that sleeps past the limit gives `inconclusive:
+  timeout` with the finished packages listed; a command that is not installed
+  gives `unsupported`, not a failure. `go test ./...` passes.
+- After a week of the delivery stream on the new code, the count of rejections
+  whose note says a plan "redoes" delivered work is 0, and no verification is
+  recorded as failed only because it ran out of time.
+
+**What this is not.** Not Phase 40 (Planned, streams without a coordinator):
+that one ends interrupted loops, treats quota as a state, repairs conflicts and
+adds a review objective; this phase adds the four tasks it does not name. Not
+EB-004 (Planned, an exit 1 leaves no reason), which step 2 builds on without
+redoing. It merges nothing: whether a ready pull request is merged stays the
+owner's decision.
+
+---
+
 ## Engineering Backlog
 
 These are enhancements found in this deployment's own telemetry and audit log, each recorded with the data that shows the problem. A human approves an entry by merging the pull request that adds it; the delivery stream implements entries whose status is Planned.
@@ -6179,6 +6286,7 @@ Phase 40 is ordered by what must be true before a stream runs with nobody watchi
 Phase 41 is ordered by the owner's request of 2026-10-14 and by what the streams fail on now.
 
 - **Phase 41** (success a machine can check) depends on **Phase 38** for the per-criterion settlement record it extends, on **Phase 39** and [ADR 028](adr/028-packs-are-autonomous-behind-one-gateway.md) for the pack manifest a verifier declares its metrics in, and on **Phase 40** for the streams whose criteria it replaces. Step 1 needs none of the three.
+- **Phase 44** (delivery that shapes and recovers its own work) depends on **Phase 41** for the `ci_green` verifier step 1 reads and the `inconclusive` states step 4 reports, and on **EB-004** for the exit reason step 2 records. It does not depend on **Phase 40**, and each of its four steps can ship on its own.
 
 ---
 
