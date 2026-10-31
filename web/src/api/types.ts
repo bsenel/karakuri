@@ -27,7 +27,8 @@ export type InconclusiveReason =
   | 'not_run'
   | 'unsupported'
   | 'too_few_samples'
-  | 'no_baseline';
+  | 'no_baseline'
+  | 'measure_changed';
 
 export interface Criterion {
   id: string;

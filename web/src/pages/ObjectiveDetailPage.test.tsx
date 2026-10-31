@@ -136,6 +136,21 @@ describe('ObjectiveDetailPage success criteria', () => {
     expect(criterion('coverage holds')).toHaveTextContent('inconclusive: unsupported');
   });
 
+  it('shows a criterion whose pass changed its declared measure as inconclusive: measure_changed, never met', async () => {
+    get.mockResolvedValue(withCriteria(
+      {
+        id: 'tests-pass', description: 'All tests pass', verifier: 'software.verify.run_tests',
+        weight: 1, state: 'inconclusive', reason: 'measure_changed', met: false,
+      },
+    ));
+
+    renderPage();
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Success criteria' })).toBeInTheDocument());
+    const item = criterion('All tests pass');
+    expect(item).toHaveTextContent('inconclusive: measure_changed');
+    expect(item).not.toHaveTextContent(met);
+  });
+
   it('shows a criterion whose verifier never ran as inconclusive: not_run, never met', async () => {
     // No state at all: no verify step has settled it. That is not a pass, the
     // way Gherkin's undefined step once was.
