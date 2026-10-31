@@ -159,6 +159,11 @@ const (
 	// allowed to, in the same log as the approvals and the refusals.
 	ToolEventPromotion = "promotion"
 	ToolEventDemotion  = "demotion"
+	// ToolEventBaseline (Phase 41 step 7) records an at_start baseline being
+	// measured once and frozen, or that measurement being inconclusive. One row
+	// per criterion for the life of the objective, because a baseline that
+	// could be measured again is one the work could choose.
+	ToolEventBaseline = "baseline"
 )
 
 // ResolvedCheckpointFilter narrows the resolved-checkpoint listing. Empty
