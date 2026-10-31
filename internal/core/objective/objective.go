@@ -212,6 +212,11 @@ type Criterion struct {
 	Change        Change    `json:"change,omitempty"`
 	BaselineValue *float64  `json:"baseline_value,omitempty"`
 
+	// Sustain is how a standing objective's criterion holds over time: a
+	// not_met budget over a rolling window, read by reconcile. Nil is no
+	// sustain.
+	Sustain *Sustain `json:"sustain,omitempty"`
+
 	// Evidence names what the judge will look at to settle a judged
 	// criterion. A judged criterion without it is refused at create time.
 	Evidence string `json:"evidence,omitempty"`

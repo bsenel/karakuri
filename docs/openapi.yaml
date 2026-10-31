@@ -6181,6 +6181,21 @@ components:
         state:
           description: What the last verify step settled (met, not_met or inconclusive).
           type: string
+        sustain:
+          additionalProperties: false
+          description: How a standing objective's criterion holds over time, a not_met budget over a rolling window that reconcile reads; absent is no sustain.
+          nullable: true
+          properties:
+            budget:
+              description: The share of settled passes in the window that may end not_met, 0 to 1.
+              type: number
+            min_passes:
+              description: Below this many settled passes in the window the sustain state is inconclusive (too_few_samples).
+              type: integer
+            window:
+              description: The rolling window, days such as 28d or a duration such as 72h; never a calendar period.
+              type: string
+          type: object
         target:
           description: The value a measured criterion is compared with.
           nullable: true
@@ -6261,6 +6276,21 @@ components:
         change:
           description: absolute or percent; a measured criterion only, and needs a baseline.
           type: string
+        sustain:
+          description: A not_met budget over a rolling window, read by reconcile; a request may not loosen a template's.
+          nullable: true
+          type: object
+          additionalProperties: false
+          properties:
+            window:
+              description: Days such as 28d or a duration such as 72h; positive.
+              type: string
+            budget:
+              description: The share of settled passes in the window that may end not_met; 0 to 1.
+              type: number
+            min_passes:
+              description: Below this many settled passes the sustain state is inconclusive; not negative.
+              type: integer
       required:
       - id
       - description
