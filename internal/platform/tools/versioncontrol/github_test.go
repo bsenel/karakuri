@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -104,8 +105,8 @@ func TestListPRsCarriesTheHeadAndTimes(t *testing.T) {
 // an error, because the page left out could hold the failing check.
 func TestListChecks(t *testing.T) {
 	body := `{"total_count":2,"check_runs":[
-		{"name":"build","head_sha":"c2","status":"completed","conclusion":"success"},
-		{"name":"test","head_sha":"c2","status":"in_progress","conclusion":null}]}`
+		{"id":11,"name":"build","head_sha":"c2","status":"completed","conclusion":"success"},
+		{"id":12,"name":"test","head_sha":"c2","status":"in_progress","conclusion":null}]}`
 	var gotPath string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotPath = r.URL.Path
@@ -119,7 +120,10 @@ func TestListChecks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []CheckRun{{"build", "c2", "completed", "success"}, {"test", "c2", "in_progress", ""}}
+	want := []CheckRun{
+		{ID: 11, Name: "build", HeadSHA: "c2", Status: "completed", Conclusion: "success"},
+		{ID: 12, Name: "test", HeadSHA: "c2", Status: "in_progress"},
+	}
 	if gotPath != "/repos/acme/api/commits/c2/check-runs" || len(checks) != 2 || checks[0] != want[0] || checks[1] != want[1] {
 		t.Errorf("path %s, checks %+v", gotPath, checks)
 	}
@@ -158,5 +162,25 @@ func TestChangedFilesReadsEveryPage(t *testing.T) {
 	}
 	if len(files) != 101 || files[100] != "docs/p2.md" {
 		t.Errorf("got %d files: %v", len(files), files)
+	}
+}
+
+// A rename touches the path the file left as well as the one it arrived at, so
+// moving a file out of a path is not hidden behind its new name.
+func TestChangedFilesNamesARenamesOldPath(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`[{"filename":"docs/x.go","previous_filename":"internal/x.go"},{"filename":"docs/y.md"}]`))
+	}))
+	defer srv.Close()
+	g := NewGitHub("t", "acme/api")
+	g.client = &http.Client{Transport: toServer{srv}}
+
+	files, err := g.ChangedFiles(context.Background(), "", "7")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"docs/x.go", "internal/x.go", "docs/y.md"}
+	if !slices.Equal(files, want) {
+		t.Errorf("files = %v, want %v", files, want)
 	}
 }

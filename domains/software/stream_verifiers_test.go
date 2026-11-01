@@ -92,6 +92,12 @@ func check(name, sha, status, conclusion string) versioncontrol.CheckRun {
 	return versioncontrol.CheckRun{Name: name, HeadSHA: sha, Status: status, Conclusion: conclusion}
 }
 
+// run is a check run with its forge ID, for cases where which run is the
+// latest matters.
+func run(id int64, name, conclusion string) versioncontrol.CheckRun {
+	return versioncontrol.CheckRun{ID: id, Name: name, HeadSHA: "c2", Status: "completed", Conclusion: conclusion}
+}
+
 func actVerifier(t *testing.T, vc versioncontrol.VersionControlAdapter, id capability.CapabilityID, params map[string]any) environment.ActionResult {
 	t.Helper()
 	res, err := (&gitEnv{id: EnvGit, vc: vc}).Act(context.Background(), environment.Action{CapabilityID: id, Params: params})
@@ -166,9 +172,11 @@ func TestStreamPRVerifier(t *testing.T) {
 	}
 }
 
-// Every check at the pull request's head must be green. Pending, absent,
-// skipped and neutral checks settle nothing, and neither does a green check
-// on a commit the head has moved past.
+// Every check at the pull request's head must be green, counting the latest
+// run of each check. Pending, absent, cancelled and awaiting-approval checks
+// settle nothing, and neither does a green check on a commit the head has
+// moved past. A skipped or neutral check blocks nothing, as on the forge's own
+// merge gate, but checks that were all skipped are no data.
 func TestCIGreenVerifier(t *testing.T) {
 	pr := []versioncontrol.PRSummary{streamPR(passStart.Add(time.Minute), passStart.Add(time.Minute))}
 
@@ -192,13 +200,37 @@ func TestCIGreenVerifier(t *testing.T) {
 			check("test", "c2", "in_progress", ""),
 		}, objective.CriterionInconclusive, ""},
 		{"absent", pr, nil, objective.CriterionInconclusive, ""},
-		{"skipped", pr, []versioncontrol.CheckRun{
+		// This repository's CI skips "SBOM (Syft)" on every pull request.
+		{"skipped beside green", pr, []versioncontrol.CheckRun{
 			check("build", "c2", "completed", "success"),
 			check("deploy-preview", "c2", "completed", "skipped"),
-		}, objective.CriterionInconclusive, "not_run"},
-		{"neutral", pr, []versioncontrol.CheckRun{
+		}, objective.CriterionMet, ""},
+		{"neutral beside green", pr, []versioncontrol.CheckRun{
 			check("build", "c2", "completed", "success"),
 			check("lint", "c2", "completed", "neutral"),
+		}, objective.CriterionMet, ""},
+		{"only skipped", pr, []versioncontrol.CheckRun{
+			check("deploy-preview", "c2", "completed", "skipped"),
+		}, objective.CriterionInconclusive, "no_data"},
+		// An edited pull request re-runs a check and cancels the first run, as
+		// "PR title" was on #189.
+		{"cancelled run superseded by a green one", pr, []versioncontrol.CheckRun{
+			run(20, "PR title", "cancelled"),
+			run(21, "PR title", "success"),
+			run(22, "build", "success"),
+		}, objective.CriterionMet, ""},
+		{"green run superseded by a red one", pr, []versioncontrol.CheckRun{
+			run(31, "test", "failure"),
+			run(30, "test", "success"),
+		}, objective.CriterionNotMet, ""},
+		{"latest run cancelled", pr, []versioncontrol.CheckRun{
+			run(40, "build", "success"),
+			run(41, "test", "success"),
+			run(42, "test", "cancelled"),
+		}, objective.CriterionInconclusive, "not_run"},
+		{"awaiting approval", pr, []versioncontrol.CheckRun{
+			run(50, "build", "success"),
+			run(51, "deploy", "action_required"),
 		}, objective.CriterionInconclusive, "not_run"},
 		{"green on an earlier commit than the head", pr, []versioncontrol.CheckRun{
 			check("build", "c1", "completed", "success"),

@@ -57,6 +57,9 @@ type PRSummary struct {
 // CheckRun is one CI check as the forge reports it. HeadSHA is the commit it
 // ran on, which may be older than the pull request's head.
 type CheckRun struct {
+	// ID is the forge's run ID. It grows with each run, so of two runs of one
+	// check on one commit the higher ID is the later, the one that counts.
+	ID      int64
 	Name    string
 	HeadSHA string
 	// Status is "queued", "in_progress" or "completed".

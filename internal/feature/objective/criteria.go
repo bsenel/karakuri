@@ -37,6 +37,10 @@ func (s *Service) mergeCriteria(fromTemplate, fromRequest []objective.Criterion)
 			// set it could leave out passes it did not like.
 			return nil, &ValidationError{Field: field + ".sustain_since", Err: errors.New("sustain_since is set by the server when a person changes the criterion, never by a request")}
 		}
+		// A state is what verify settled, and verify settles every criterion
+		// afresh on each pass. One sent with the request is dropped, like a
+		// baseline_value, so a new objective never reads as met before it ran.
+		c.State, c.Reason = "", ""
 		j, ok := position[c.ID]
 		if !ok {
 			if err := s.validateCriterion(field, c); err != nil {
