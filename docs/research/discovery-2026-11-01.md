@@ -202,6 +202,18 @@ Products 4 to 6, extending discovery-2026-10-25.md's part 4 (read first). Every 
 **(iv) Complaints.** No public issue tracker or forum was found [N]. Not filled a second cycle.
 
 **Matrix cells.** MCP server: C yes, and the post title names it as built for Claude (the extract calls it open source, not verified). Human checkpoints: U (time-bound access posts not opened). SRE/incident path: C yes (2026-10-25). Self-hosted open source: no, SaaS, inferred (2026-10-25).
+
+### 6. Langfuse
+
+Not reached this pass. The 2026-10-25 reading (v4.57.0 to v4.70.0, 2026-10-12 to 2026-10-24) and its matrix cells stand unchanged.
+
+### Still thin (part 4)
+
+1. **Langfuse: not reached.** Its releases for 2026-04-25 to 2026-10-11, its licence file and a complaint thread are all unread for a second cycle. Next cycle: open https://github.com/langfuse/langfuse/blob/main/LICENSE first (one short page), then the tags list, since an Atom feed holds only the newest ten entries.
+2. **Temporal's server history before 2026-09-11 is not in the Atom feed.** The feed holds ten entries from 2026-10-13 to 2026-10-28 with one-line bodies. Next cycle: try https://github.com/temporalio/temporal/tags or the releases HTML page with `?page=2`, and check whether activity pause (announced 2025-02-20 in #3006) shipped.
+3. **incident.io is still undated.** The blog index and changelog carry no dates, and both RSS guesses returned 404. Next cycle: open single post pages (start with "Introducing Agentic CTO" and "Avoiding the ironies of automation"), which may carry a date in the body, and look for a status page or community forum to use as a complaint source.
+4. **Stretch items not reached:** DBOS, Restate or Inngest; Rootly, PagerDuty or Datadog Bits AI SRE; a governance-only product (Credo AI). None of them has a matrix column yet.
+5. **Karakuri column:** it rests on the roadmap's Status Summary and phase headings, plus the LICENSE file and one grep for A2A. No Go file was opened for the matrix, so no cell reads 'code: path'. The digests, evidence export and earned-autonomy cells should be checked against `internal/feature/audit/export.go` and `internal/feature/reconcile/authority.go`.
 <!-- p4a:end -->
 
 ## Capability matrix
