@@ -346,9 +346,19 @@ Order (p2's ranking): (1) the repository's checks before a push (three operators
 - First slice: split the delegation so the CLI may edit and commit but not push (drop push from `AllowedTools`), then have `cliEnv.Act` run a configured check command in the worktree and push only on exit 0, recording the result on the `ActionResult`. Overlap to check first: Phase 41 (success settled by code) and open PRs #187, #202 and #200; only their titles were read.
 - Could not verify: how delivery pushes today (`internal/feature/delivery`, `git.WorktreeManager` not opened), and whether PR #187's code checks are a pre-push gate.
 
+**Candidate (4): MCP server and tool inventory in the evidence export.**
+- Exists: the export's top-level fields are window, retention, templates, decisions, oversight, autonomy changes, counts, pending checkpoints and the not-a-certification note (`internal/feature/audit/export.go:34-45`, opened); each row carries `adapter` and `capability` (`export.go:100-101`), so a tool *used* in the window appears, while a tool *available* and never called does not. Phase 39 (Planned) puts every pack and delegated agent behind one MCP gateway (`docs/roadmap.md:4342-4343`, read through grep hits only); whether its steps add an inventory to the export was not found by grepping 'inventory' or 'export' in its text.
+- Missing: an `mcp_servers` section (server name, URL, tools discovered, schema hash) in `Export`.
+- First slice: add it from the registry's MCP slot at export time; but the export is a pure read of a closed window (`export.go:144-148`), and today's registry is not the window's, so the slice needs the inventory recorded per pass first. Not verified: whether Phase 33 already records discovered tools in a row.
+
+**Candidate (5): serious-incident records.**
+- Exists: Phase 32 (Completed) wires `software.objective.incident_response` (`docs/roadmap.md:2976-2978`, read); the observability environment marks alert-carrying observations `TrustThirdParty` (`domains/software/observability_env.go:156-167`, opened). Those are incidents in the *operated* system, not incidents caused by Karakuri.
+- Missing: no record kind for an incident in Karakuri's own conduct, and no such field in `Export` (`export.go:34-45`). Inferred: Art. 73 as cited before concerns the latter, which no Phase 32 code addresses.
+- First slice: an operator-filed incident record (time, objective, rows cited by ID, description) as an audit row kind, exported in its own section. Not verified: whether a new `ToolEvent` kind needs a migration.
+
 ### Still thin (part 6)
 
-Not reached, by name: (3) a post-run check for actions outside the run's bounds; (4) MCP server and tool inventory in the evidence export; (5) serious-incident records; p1's one digest across many standing objectives; p1's objective that watches other standing objectives; p2's configured timeout honoured for every provider; p2's durable state that survives the database; p5's Bets 1, 2 and 3. Governance items (2) to (5) in p6a.
+Not reached, by name: (3) a post-run check for actions outside the run's bounds (Phase 38's text not read; the export's `bounds_violation` field at `export.go:106` exists); p1's one digest across many standing objectives; p1's objective that watches other standing objectives; p2's configured timeout honoured for every provider; p2's durable state that survives the database; p5's Bets 1, 2 and 3. Governance items (2) to (5) in p6a.
 <!-- p6b:end -->
 
 ## Fit and bets
@@ -456,7 +466,7 @@ All read 2026-11-01 (date read from `date -u +%F`) through an extract tool. P = 
 - http://data.europa.eu/eli/reg/2024/1689/oj, read 2026-11-01, primary; 307 redirect only [N].
 - https://eur-lex.europa.eu/eli/reg/2024/1689/oj, read 2026-11-01, primary; HTTP 202, 0 characters, model-written fetch extract [N]. Cited for nothing.
 
-Run log, part 6 (no '## Run log' heading or p6r marker exists in this report, so the line is kept here): opened audit export and retention, reconcile authority and Phase 35's `ExpireDue` and wrote the evidence table; read the delegation path for p6b candidates (1) and (2); EU AI Act text empty (HTTP 202); governance items (2) to (5) and p6b candidates (3) to (5) and the p1 and p5 candidates not reached; `gh pr view 203`: OPEN, label karakuri:discovery, head karakuri/discovery-2026-11-01; time 2026-11-01T15:44Z.
+Run log, part 6 (no '## Run log' heading or p6r marker exists in this report, so the line is kept here): opened audit export and retention, reconcile authority and Phase 35's `ExpireDue` and wrote the evidence table; read the delegation path for p6b candidates (1), (2), (4) and (5); EU AI Act text empty (HTTP 202); governance items (2) to (5), p6b candidate (3) and the p1, p2 and p5 candidates not reached; `gh pr view 203`: OPEN, label karakuri:discovery, head karakuri/discovery-2026-11-01; time 2026-11-01T15:45Z.
 <!-- s6:end -->
 
 <!-- s7:start -->
