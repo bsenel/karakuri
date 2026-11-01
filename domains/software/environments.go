@@ -143,6 +143,8 @@ func softwareEnvironmentFactories(reg *tools.Registry) []environment.Factory {
 				CapFetchLogs,
 				CapFetchMetrics,
 				CapAlertsResolved,
+				CapP95Latency,
+				CapErrorRate,
 			},
 			Build: func(ctx environment.BuildContext) (environment.Environment, error) {
 				// Left a true nil when nothing resolves: there is no no-op
