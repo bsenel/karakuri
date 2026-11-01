@@ -47,7 +47,18 @@ Inferred: the one segment this cycle strengthened is the one closest to Karakuri
 ## What they ask for and complain about
 
 <!-- p2:start -->
-_Pending: part 2._
+Written by part 2 on 2026-11-01. It extends the 2026-10-25 section (items A to D there) and the 2026-10-08 section (items 1 to 6), and does not restate them. GitHub threads were read through the api.github.com form with a fetch tool that returns a model-written extract, so quotations are [Q] only where the extract gave them as verbatim; the rest is [E]. Counts are as the API showed them on 2026-11-01. Session limit: 600 seconds.
+
+### 1. Candidate (A): a delegated or background agent carries the bounds of the run that started it. Second tracker found
+
+Last cycle this rested on one tracker (ZeroClaw #10968). This pass found two more organisations' trackers; one asks for exactly the escalation direction, the other for the opposite direction.
+
+- Observed: github/copilot-cli #3013, "Hooks don't fire for background (task) agents" (logar16, 2026-04-28, version 1.0.37; labels area:permissions, area:agents, area:plugins). Body: "Any `preToolUse` hook that enforces policy (file permissions, lock checks, security scanning) is bypassed entirely by sub-agents." Expected: "A preToolUse hook that returns {"permissionDecision":"deny"} should block the sub-agent's tool call, not just the parent's." (https://api.github.com/repos/github/copilot-cli/issues/3013, read 2026-11-01) [Q]
+- Observed: 4 comments, 0 reactions on the issue, no duplicates or linked issues named. Two comments promote a third-party product; one, 2026-10-22, asks whether it still reproduces. The assignee (szabta89, site admin) closed it as completed on 2026-08-05: "The hook bypass affecting tools run by background and sub-agents has been fixed in current releases: preToolUse and postToolUse hooks now apply to sub-agent tool calls. Session lifecycle hooks remain scoped to the parent session". No release version is named. (https://api.github.com/repos/github/copilot-cli/issues/3013/comments?per_page=100&page=1, read 2026-11-01) [Q]
+- Observed: anthropics/claude-code #37442, "Subagents don't inherit bypassPermissions mode from parent session" (sorfanit, 2026-03-22; labels bug, has repro, area:agents, area:permissions, stale), 11 comments, 1 reaction (eyes). Expected: "Subagents should inherit the parent session's permission mode, including `bypassPermissions` and all `allow` patterns." No MEMBER or COLLABORATOR reply; the bot proposed duplicates #26083, #26479 and #36225 and later closed it as not_planned for inactivity (2026-05-28). A user lists #29110, #32402, #37730, #40242 as "Related and likely the same underlying bug" and #45888 as fixed for Read/Edit in v2.1.97 with Bash still denied. ThatDragonOverThere (2026-04-22): "The parent window's permission state should be inherited by Task-spawned subagents, or at minimum there should be a flag to propagate it explicitly." (https://api.github.com/repos/anthropics/claude-code/issues/37442 and /comments?per_page=100&page=1, 11 of 11 comments read 2026-11-01) [Q]
+- Observed, not read in full (search-result titles only, cited for nothing): anthropics/claude-code #27661 (hooks and allow/deny rules not inherited by Task subagents), opencode PRs #13974 and #26845 (parent denies reaching subagents, once too little and once too much). [N]
+- Inferred: candidate (A) now passes a two-tracker gate in the escalation direction: ZeroClaw #10968 (scheduled turns skip approval) and copilot-cli #3013 (a deny hook does not reach sub-agents), different organisations. Both were treated by their maintainers as real bugs (ZeroClaw p1/risk:high; GitHub fixed it). Demand by count is weak: 0 reactions on #3013. claude-code #37442 and its five related issues show the same mechanism failing the other way (the child is stricter than the parent, so unattended runs stall on prompts); it is louder (at least nine issues in one tracker) but it is one tracker and asks for propagation of permissiveness, not of limits. What users want in both directions is one rule: the child's bounds are derived from the parent's, explicitly and testably.
+- Roadmap: see the Ranking below.
 <!-- p2:end -->
 
 ## Competitive teardown
@@ -128,7 +139,11 @@ _Pending: part 7._
 <!-- s1:end -->
 
 <!-- s2:start -->
-_Pending: part 2._
+### Sources, part 2
+
+- https://api.github.com/repos/github/copilot-cli/issues/3013 and /comments?per_page=100&page=1: read 2026-11-01, primary, full thread (body and 4 of 4 comments) as extracted, [Q]
+- https://api.github.com/repos/anthropics/claude-code/issues/37442 and /comments?per_page=100&page=1: read 2026-11-01, primary, full thread (body and 11 of 11 comments) as extracted, [Q]
+- anthropics/claude-code #27661, #37730; anomalyco/opencode PRs #13974, #26845, #30288: search-result titles only, not opened, [N]
 <!-- s2:end -->
 
 <!-- s3:start -->
