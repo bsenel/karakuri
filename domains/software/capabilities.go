@@ -34,6 +34,11 @@ func softwareCapabilities() []capability.Capability {
 		"Execute test suite in worktree. Pass params.branch, and params.repo when it is not the bound one, "+
 			"so the result names the files that branch's pull request changes; without them a criterion it verifies settles nothing", true)
 	runTests.MeasurePaths = []string{"**/*_test.go", "web/src/**/*.test.ts", "web/src/**/*.test.tsx", "web/e2e/**/*.spec.ts"}
+	// Scaffolding for Phase 41 step 10: registered so the verify environment
+	// routes it; its metric and measure paths are specified in
+	// coverage_test.go and land with the code.
+	coverage := act(capCoverage, "Coverage",
+		"Measure the statement coverage of params.packages by running go test -coverprofile in params.workdir", true)
 	return []capability.Capability{
 		// Inputs declared for the reason write_design_doc's are below. Neither
 		// read requires an input; both fail rather than return an empty list
@@ -206,6 +211,7 @@ func softwareCapabilities() []capability.Capability {
 			OutputSchema: capability.Schema{Type: "object"},
 		},
 		runTests,
+		coverage,
 		act("software.verify.lint", "Lint", "Run linter in worktree", true),
 		act("software.verify.review", "Code Review", "Peer review of an artifact", true),
 		act("software.verify.tech_lead_review", "Tech Lead Review", "Senior review of an artifact against design doc", true),
