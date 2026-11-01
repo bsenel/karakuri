@@ -59,6 +59,13 @@ Last cycle this rested on one tracker (ZeroClaw #10968). This pass found two mor
 - Observed, not read in full (search-result titles only, cited for nothing): anthropics/claude-code #27661 (hooks and allow/deny rules not inherited by Task subagents), opencode PRs #13974 and #26845 (parent denies reaching subagents, once too little and once too much). [N]
 - Inferred: candidate (A) now passes a two-tracker gate in the escalation direction: ZeroClaw #10968 (scheduled turns skip approval) and copilot-cli #3013 (a deny hook does not reach sub-agents), different organisations. Both were treated by their maintainers as real bugs (ZeroClaw p1/risk:high; GitHub fixed it). Demand by count is weak: 0 reactions on #3013. claude-code #37442 and its five related issues show the same mechanism failing the other way (the child is stricter than the parent, so unattended runs stall on prompts); it is louder (at least nine issues in one tracker) but it is one tracker and asks for propagation of permissiveness, not of limits. What users want in both directions is one rule: the child's bounds are derived from the parent's, explicitly and testably.
 - Roadmap: see the Ranking below.
+
+### 2. Candidate (B): the repository's own checks run before an agent pushes. Third organisation, read in full
+
+- Observed: Spotify Engineering, "Background Coding Agents: Predictable Results Through Strong Feedback Loops (Honk, Part 3)", Max Charas and Marc Bruggmann, 2025-12-09; whole page read (about 14,700 characters; the embedded images were not readable). "Without these feedback loops, the agents often produce code that simply doesn't work." "These verifiers that invoke formatting, building, and testing make sure our agent produces syntactically correct code that builds and passes tests." "If one of the verifiers fails, the PR isn't opened and the user is presented with an error message." (https://engineering.atspotify.com/2025/12/feedback-loops-background-coding-agents-part-3, read 2026-11-01) [Q]
+- Observed, same page [E]: verifiers are deterministic and selected by what the repository holds (a Maven verifier activates when it finds a `pom.xml` at the root); the agent does not know what they do; they are exposed as an MCP tool for mid-task feedback and all relevant ones run before a PR is attempted, through Claude Code's stop hook; failures are parsed down to the relevant error lines to save context. An LLM judge runs after them on the diff and the prompt and vetoes about a quarter of sessions, after which the agent corrects course about half the time; the judge has no evals yet. Verifiers run on Linux x86 only.
+- Note: the 2026-10-08 report cited this page for the judge's veto rate, not for candidate (B). It is a third organisation for (B), after Temporal and Stripe.
+- Inferred: (B) now has three independent primary sources, and Spotify's is the most specific: checks are chosen from the repository's own build files, run deterministically, block the PR on failure, and come back to the agent as short error text. For Karakuri that sets the bar as "the delivery stream discovers and runs the repository's checks and refuses to push on failure", not "the prompt asks the model to run tests".
 <!-- p2:end -->
 
 ## Competitive teardown
@@ -144,6 +151,7 @@ _Pending: part 7._
 - https://api.github.com/repos/github/copilot-cli/issues/3013 and /comments?per_page=100&page=1: read 2026-11-01, primary, full thread (body and 4 of 4 comments) as extracted, [Q]
 - https://api.github.com/repos/anthropics/claude-code/issues/37442 and /comments?per_page=100&page=1: read 2026-11-01, primary, full thread (body and 11 of 11 comments) as extracted, [Q]
 - anthropics/claude-code #27661, #37730; anomalyco/opencode PRs #13974, #26845, #30288: search-result titles only, not opened, [N]
+- https://engineering.atspotify.com/2025/12/feedback-loops-background-coding-agents-part-3: read 2026-11-01, primary, full text (images unreadable), [Q]
 <!-- s2:end -->
 
 <!-- s3:start -->
