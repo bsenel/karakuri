@@ -68,7 +68,10 @@ export function CheckpointsPage() {
           </p>
         )}
         {items.map((c) => (
-          <div key={c.id} className="card">
+          // A named group: every card has the same Approve, Modify and Reject
+          // buttons, and a screen reader landing on one has to hear which
+          // escalation it decides.
+          <div key={c.id} className="card" role="group" aria-label={`Checkpoint: ${c.reason}`}>
             <div className="row">
               <span className="pill amber">pending</span>
               <span className="muted small">{new Date(c.created_at).toLocaleString()}</span>
