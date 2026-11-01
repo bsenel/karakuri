@@ -142,6 +142,34 @@ New since last cycle (2.1.311 to 2.1.316):
 - Inferred: the loudest bug is a silent change of a default (effort, thinking) that moved behaviour without the user choosing it. That supports Karakuri's Phase 30 (Completed, an evaluation set that catches a change to a provider or prompt) and Phase 43 (Planned, a provider's tool-call shape pinned by a test); it does not prove either would have caught this.
 
 **Rows.** Scheduled agents: observed (cloud routines). Earned autonomy: unknown. A2A: none in the part read. The Agent SDK release notes were not read.
+
+### 3. LangGraph and LangSmith
+
+**(i) Shipped, part of window read.** Observed [E] (https://github.com/langchain-ai/langgraph/releases.atom, read 2026-11-01, whole feed): 10 entries, langgraph-sdk 0.4.9 (2026-10-23) to langgraph 1.2.19 (2026-10-30). The feed holds the newest ten releases only, so the asked-for gap, 2026-04-08 to 2026-06-29, is **not filled** a third cycle running. New since last cycle (which read to 1.2.17, 2026-10-24):
+- Durability: langgraph 1.2.18 (2026-10-26) lowers the default `DeltaChannel` snapshot frequency from 1,000 to 100 updates (`snapshot_frequency=1000` restores it) and fixes streaming of the last checkpoint when a run stops at `interrupt_after` or the recursion limit; langgraph-checkpoint 4.3.1 (2026-10-26): "reject NUL bytes in namespace labels" [Q].
+- Human approval: langgraph 1.2.19 (2026-10-30) includes "don't report a paused tool as failed on the tools stream" (#9406) [Q].
+- Client resilience: langgraph-sdk 0.4.10 and 0.4.11 (2026-10-26, 2026-10-30) retry and reconnect `runs.wait`, join and streams with backoff [E].
+- Inferred: two of last cycle's durability fixes (1.2.15, 1.2.16) now have a third, and the default change in 1.2.18 trades write volume for replay length; this is the same territory as part 2's section D (#3716).
+
+**(ii) What it does that Karakuri does not.** Inferred: a client SDK that reconnects a long wait or stream on its own. Karakuri's thin CLI talks HTTP and SSE to the server (ADR 001); this part did not check whether `krk` reconnects a dropped SSE stream.
+
+**(iii) What Karakuri does that it does not.** Checked against docs/roadmap.md: Phase 20 (Completed) holds a state rather than finishing a task; Phase 35 (Completed) ends a checkpoint nobody answered at an operator-set time. Inferred: LangGraph's `interrupt()` waits until resumed; nothing read in either cycle expires it. Phase 41 ("Success a Machine Can Check") is Planned, so typed success criteria are not claimed against LangGraph's `response_schema`.
+
+**(iv) Complaints.** The most-reacted LangGraph issue other than the two read last cycle is langchain-ai/langgraph #4973 "🚧 LangGraph v1 roadmap – feedback wanted!" (https://api.github.com/repos/langchain-ai/langgraph/issues/4973 and comments page 1; page 2 empty; read 2026-11-01). Observed [Q/E]: opened 2025-06-05 by sydney-runkle (COLLABORATOR), closed "not_planned" 2026-08-05, inside the window; 31 reactions (all heart, 0 +1), 85 comments; about 35 read verbatim, the rest summarised, the last 8 to 10 not read.
+- Staff (sydney-runkle): "Make documentation as clear as possible with plenty of examples" (2025-06-08), and later "Thank you everyone for your feedback!" with a promise to split open requests into their own issues [Q for quoted words, E otherwise].
+- Themes, approximate counts among comments read [E]: documentation and examples ~15; typing, Pydantic and state schema ~8; human-in-the-loop and interrupts, including that a database is required ~7; map-reduce, `Send` and `Command` for subgraphs ~5; MCP and A2A ~5; deployment and self-hosting docs ~5; streaming, tracing and debugging ~5; Azure Foundry ~5; DSPy ~4.
+- Most-reacted comments: mindful-time, 16 (summary only), DSPy integration; gsogol, 12, "DSPy native integration"; os1ma, 11, interrupts that return state to the client with checkpointing optional, because a database is required today.
+- Inferred: a feedback thread is not a complaint thread, and its counts are an order of magnitude below the coding agents'. The one agent-behaviour signal is os1ma's: people want a human pause without running a checkpoint store. Karakuri requires its store too (Phase 11, Phase 8), so this is not a Karakuri advantage.
+
+**Rows.** Unchanged from last cycle: crons (scheduled, not standing); earned autonomy unknown; A2A claimed by the vendor on LangSmith only. LangSmith was not read this pass.
+
+### Still thin (part 3)
+
+1. Codex: 2026-05-01 to 2026-10-28 not read. The Atom feed holds only the newest entries; next cycle try https://github.com/openai/codex/tags?after=rust-v0.160.0 or older release pages by tag, one page at a time. #9203: about 31 of 97 comments unread.
+2. Claude Code: releases dated only for 2026-10-20 to 2026-10-31; 2026-05-01 to 2026-10-19 still undated. Next cycle try the tags pages with `?after=v2.1.305`. #42796: about 368 of 583 comments not seen.
+3. LangGraph: 2026-04-08 to 2026-06-29 not read for the third cycle; the Atom feed cannot reach it. Next cycle try https://github.com/langchain-ai/langgraph/releases?page=N (HTML, one page) or tags with `?after=`.
+4. Stretch, all **not reached**: the Claude Code CHANGELOG past character 100,000; the Claude Agent SDK release notes; the OpenAI Agents SDK from 2026-04-25 to early September and its tracker; LangSmith from April to August.
+5. Whether `krk` reconnects a dropped SSE stream was not checked in the code.
 <!-- p3:end -->
 
 <!-- p4a:start -->
@@ -237,6 +265,10 @@ _Pending: part 7._
 - https://api.github.com/search/issues?q=repo:anthropics/claude-code+is:issue+label:bug&sort=reactions&order=desc&per_page=5: read 2026-11-01, primary (tracker metadata), extract, first item verbatim, [E]
 - https://api.github.com/repos/anthropics/claude-code/issues/42796 and its comments?per_page=100&page=1 to 6 (page 7 empty): read 2026-11-01, primary, extract, each page truncated, about 215 of 583 comments seen, [Q] for quoted lines and counts, [E] otherwise
 - docs/roadmap.md (Phases 23, 30, 31, 43 Goal lines): opened 2026-11-01, primary (this repository), [Q]
+- https://github.com/langchain-ai/langgraph/releases.atom: read 2026-11-01, primary (vendor release feed), extract of the whole feed (10 entries), [Q] for quoted lines, [E] otherwise
+- https://api.github.com/search/issues?q=repo:langchain-ai/langgraph+is:issue&sort=reactions&order=desc&per_page=5: read 2026-11-01, primary (tracker metadata), extract, [E]
+- https://api.github.com/repos/langchain-ai/langgraph/issues/4973 and its comments?per_page=100&page=1 (page 2 empty): read 2026-11-01, primary, extract, about 35 of 85 comments verbatim, last 8 to 10 unread, [Q] for quoted lines, [E] otherwise
+- docs/roadmap.md (Phases 8, 11, 41 headings and Goal lines): opened 2026-11-01, primary (this repository), [Q]
 <!-- s3:end -->
 
 <!-- s4:start -->
