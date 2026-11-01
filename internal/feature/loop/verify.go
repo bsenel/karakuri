@@ -268,6 +268,14 @@ func qualifyingSamples(c objective.Criterion, ran []actionOutcome) ([]float64, o
 			}
 			continue
 		}
+		// A verifier that ran and settled its own state inconclusive says why,
+		// as settleByVerifier reads it; without this, unsupported and
+		// verifier_error would read as no_data.
+		if state, _ := o.Result.StateDelta["state"].(string); state == string(objective.CriterionInconclusive) {
+			if r, _ := o.Result.StateDelta["reason"].(string); r != "" {
+				reason = objective.InconclusiveReason(r)
+			}
+		}
 		for _, m := range o.Result.Measurements {
 			if m.Name != c.Metric || (m.Trust.IsThirdParty() && c.IsRequired()) {
 				continue
