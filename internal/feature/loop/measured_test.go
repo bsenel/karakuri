@@ -141,6 +141,37 @@ func TestAMeasuredVerifierThatCannotMeasureIsInconclusive(t *testing.T) {
 	}
 }
 
+// A measured verifier that ran and settled its own state inconclusive, as the
+// runtime verifiers do (Phase 41 step 12), is read for its reason: unsupported
+// and verifier_error stay what they are rather than becoming no_data.
+func TestAMeasuredVerifierThatReportsItsReasonKeepsIt(t *testing.T) {
+	for _, want := range []objective.InconclusiveReason{
+		objective.ReasonUnsupported, objective.ReasonVerifierError, objective.ReasonNoData,
+	} {
+		t.Run(string(want), func(t *testing.T) {
+			sc, agent := measuredContext()
+
+			_, allMet := stepVerify(context.Background(), sc, []actionOutcome{{
+				CapabilityID: measuredVerifier,
+				Result: environment.ActionResult{Success: false, Error: "could not measure", StateDelta: map[string]any{
+					"state": string(objective.CriterionInconclusive), "reason": string(want),
+				}},
+			}})
+
+			got := sc.obj.SuccessCriteria[0]
+			if got.State != objective.CriterionInconclusive || got.Reason != want {
+				t.Errorf("state = %q, reason = %q; want inconclusive: %s", got.State, got.Reason, want)
+			}
+			if allMet {
+				t.Error("a verifier that could not measure completed the objective")
+			}
+			if agent.lastTask != "" {
+				t.Error("the judge was asked about a measured criterion")
+			}
+		})
+	}
+}
+
 // A number read out of somebody else's text may be shown but cannot settle a
 // required criterion (docs/roadmap.md:5541-5546, AGENTS.md rule 9): it is
 // neither met, however good it is, nor not_met. The roadmap names no reason

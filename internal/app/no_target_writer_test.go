@@ -68,8 +68,8 @@ var reviewedLoopCapabilities = []string{
 	"software.observe.fetch_prs", "software.observe.read_codebase",
 	"software.reason.analyse_repo", "software.reason.analyse_usage", "software.reason.architecture_review",
 	"software.reason.research",
-	"software.verify.alerts_resolved", "software.verify.ci_green", "software.verify.lint",
-	"software.verify.paths_declared", "software.verify.review", "software.verify.run_tests",
+	"software.verify.alerts_resolved", "software.verify.ci_green", "software.verify.error_rate",
+	"software.verify.lint", "software.verify.p95_latency_ms", "software.verify.paths_declared", "software.verify.review", "software.verify.run_tests",
 	"software.verify.stream_pr", "software.verify.tech_lead_review",
 }
 
