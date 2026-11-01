@@ -54,6 +54,7 @@ func loopStatusCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:     "status <loop-id>",
 		Short:   "Get loop status",
+		Long:    "Get loop status. <loop-id> is the loop_id that krk loop start prints.",
 		Example: `  krk loop status loop_123`,
 		Args:    cobra.ExactArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
@@ -74,6 +75,8 @@ func loopResumeCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "resume <loop-id>",
 		Short: "Resume a paused loop with a checkpoint decision",
+		Long: `Resume a paused loop with a checkpoint decision. <loop-id> is the loop_id
+that krk loop start prints; krk checkpoint list shows what the loop is waiting on.`,
 		Example: `  # Let the plan go ahead as drafted
   krk loop resume loop_123 --decision approve --note "plan looks right"
 
