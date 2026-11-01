@@ -94,7 +94,7 @@ func loopResumeCmd() *cobra.Command {
 	cmd.Flags().StringVar(&note, "note", "", "Free-form rationale stored on the audit row")
 	cmd.Flags().StringVar(&approver, "approver", "", "Identifier of the operator approving/rejecting (audit attribution)")
 	cmd.Flags().StringSliceVar(&removeActions, "remove-action", nil, "Capability ID to drop from the draft (repeatable; only valid with --decision modify)")
-	cmd.Flags().StringSliceVar(&constraints, "constraint", nil, "Constraint to feed into the revise pass (repeatable; only valid with --decision modify)")
+	cmd.Flags().StringArrayVar(&constraints, "constraint", nil, "Constraint to feed into the revise pass (repeatable; only valid with --decision modify)")
 	cmd.Flags().Float64Var(&revisedConfidence, "revised-confidence", -1, "Floor for the revised plan's confidence (only valid with --decision modify)")
 	_ = cmd.MarkFlagRequired("decision")
 	return cmd
