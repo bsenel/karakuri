@@ -952,6 +952,8 @@ func (e *verifyEnv) Act(ctx context.Context, a environment.Action) (environment.
 	case "software.verify.run_tests", "software.verify.lint":
 	case capWebBundle:
 		return e.webBundleBytes(ctx, a), nil
+	case capCLIStartup:
+		return e.cliStartupMs(ctx, a), nil
 	default:
 		return failureResult(e.id, a.CapabilityID,
 			fmt.Sprintf("verifyEnv does not handle capability %q", a.CapabilityID), nil), nil
