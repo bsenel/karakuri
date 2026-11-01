@@ -97,7 +97,28 @@ Inferred: this pass moves (A) and (B) across the two-source gate; (C) to (E) sti
 ## Competitive teardown
 
 <!-- p3:start -->
-_Pending: part 3._
+This part adds to products 1 to 3 of discovery-2026-10-25.md and does not restate them. Every page came through a fetch tool that returns a model-written extract; quotation marks are used only for words the extract gave as verbatim. The tool read long pages in part (about 40 KB verbatim, then a model summary, then nothing), so each item states how far it read. Vendor release notes are claims, not measurements. Window: 2026-05-01 to 2026-11-01.
+
+### 1. OpenAI Codex and the OpenAI Agents SDK
+
+**(i) Shipped, part of window read.** Observed [Q/E] (https://github.com/openai/codex/releases.atom, read 2026-11-01): the feed is about 303,000 characters; 78,800 were read verbatim and held only two dated entries, so only 2026-10-29 to 2026-10-30 of the window is covered. The rest was summarised as undated PR list items and is not relied on.
+- rust-v0.166.0 (2026-10-29). Approval: "Preserved acknowledged approval and permission settings when resuming or forking threads"; "Respect server approval policy defaults during TUI startup" (#56516). Durability: "Added `codex queue --resume`" "to resume unloaded threads after queueing a message"; reasoning-token accounting kept across resume and fork "to avoid premature compaction". Observability: "Add trace instrumentation for turn startup and response streaming" (#56515); the word OpenTelemetry does not appear. Sandbox: a Windows filesystem sandbox fix (#56468). Multi-agent: "Restored spawned descendant threads when unarchiving their parent."
+- rust-v0.167.0-alpha.1 (2026-10-30): no notes.
+- Undated PR titles in the feed, not placed in the window: "Allow advisory rollout budgets with optional limit enforcement" (#57187), "Add opt-in protocol discovery for local stdio MCP servers" (#57210), "Share eligible local stdio MCP connections across chats" (#57211).
+- Inferred: 2026-05-01 to 2026-10-28 of Codex is still unread; the Atom feed holds the newest entries only, so the window needs the tags list or older release pages.
+
+**(ii) What it does that Karakuri does not.** Inferred from the two entries: a queue of messages to threads that are not loaded, resumed on demand (`codex queue --resume`), and approval settings that carry across a fork of a thread. Karakuri has no notion of forking a run.
+
+**(iii) What Karakuri does that it does not.** Checked against docs/roadmap.md: Phase 20 (Completed), Goal "An objective can declare a state to be *held* rather than a task to be finished, and Karakuri converges the world to it on its own"; Phase 21 (Completed), a twin "sends one message on a cadence saying what its objectives did and what they need a person to decide"; Phase 35 (Completed), an unanswered checkpoint ends at an operator-set time. Inferred: nothing in the part of Codex read holds a state, reports on a cadence, or expires an approval. Not claimed: Phase 37 ("every run can be stopped at any time") is Planned, so a stop control is not a Karakuri advantage.
+
+**(iv) Complaints.** Part 2 of this report already covered the most-reacted Codex issue (#11023, Linux desktop client). This part read the most-reacted agent-behaviour issue instead, openai/codex #9203 "Please make "/undo" back" (https://api.github.com/repos/openai/codex/issues/9203 and its comments page 1; page 2 empty; read 2026-11-01). Observed [Q/E]: opened 2026-01-14, open, labels enhancement, TUI, session; 541 reactions (490 +1), 97 comments. About 19 comments read verbatim, about 47 through a summary, about 31 not read.
+- The one staff reply read, etraut-openai (2026-01-16): "the previous experimental implementation had problems" and "If we bring it back, it will need to be redesigned." No fix or date in the part read.
+- Themes, approximate comment counts of the ~66 read [E]: plain restore requests ~25; comparisons with Claude Code, Cursor, Gemini CLI rewind or checkpoints ~12; switching tools ~10; "use git" pushback ~8 against ~8 replies that git does not cover gitignored files, mid-session reverts or conversation state; conversation rewind wanted separately from code rewind ~6; lost untracked files ~4.
+- Most-reacted comments: b20lopez, 25 reactions, "Bro i lost too much progress just because the/undo is gone"; embedding-shapes, 22 reactions (20 -1), "Because you should be using git, a tool literally made for undoing changes to code when you need it."; RobRoyce, 21 (+1), "\"Use git\" is an asinine comment on this issue."
+- Duplicates flagged by a bot, unconfirmed: #8804, #8819, #8373, #8214, #7306. Linked across trackers (from the summary only): anthropics/claude-code #52209, anomalyco/opencode #31338.
+- Inferred: the pain is an agent changing a person's own working tree. Karakuri's delivery work runs in its own git worktree (ADR 003), so the person's checkout is not the one changed; that answers the deleted-files half, not the "rewind the conversation" half. This adds weight to last cycle's link between #9203 and Claude Code's `/rewind`.
+
+**Rows.** Scheduled or standing agents: still unknown for Codex (queueing, not scheduling, in the part read). Earned autonomy: unknown. A2A: none in the part read.
 <!-- p3:end -->
 
 <!-- p4a:start -->
@@ -184,7 +205,11 @@ _Pending: part 7._
 <!-- s2:end -->
 
 <!-- s3:start -->
-_Pending: part 3._
+### Sources, part 3
+
+- https://github.com/openai/codex/releases.atom: read 2026-11-01, primary (vendor release feed), extract, 78,800 of about 303,000 characters verbatim, rest summarised or unread, [Q] for quoted lines, [E] otherwise
+- https://api.github.com/repos/openai/codex/issues/9203 and https://api.github.com/repos/openai/codex/issues/9203/comments?per_page=100&page=1 (page 2 empty): read 2026-11-01, primary, extract, about 19 of 97 comments verbatim, about 47 summarised, about 31 unread, [Q] for quoted lines, [E] otherwise
+- docs/roadmap.md (Phases 20, 21, 35, 37 status and Goal lines): opened 2026-11-01, primary (this repository), [Q]
 <!-- s3:end -->
 
 <!-- s4:start -->
