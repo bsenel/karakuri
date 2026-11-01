@@ -119,6 +119,29 @@ This part adds to products 1 to 3 of discovery-2026-10-25.md and does not restat
 - Inferred: the pain is an agent changing a person's own working tree. Karakuri's delivery work runs in its own git worktree (ADR 003), so the person's checkout is not the one changed; that answers the deleted-files half, not the "rewind the conversation" half. This adds weight to last cycle's link between #9203 and Claude Code's `/rewind`.
 
 **Rows.** Scheduled or standing agents: still unknown for Codex (queueing, not scheduling, in the part read). Earned autonomy: unknown. A2A: none in the part read.
+
+### 2. Claude Code and the Claude Agent SDK
+
+**(i) Shipped, with dates.** Observed (https://github.com/anthropics/claude-code/releases.atom, read 2026-11-01): the feed holds 10 entries, v2.1.305 (2026-10-20) to v2.1.316 (2026-10-31); about 40% was read verbatim [Q], the rest through a summary [E]. Dates: v2.1.305 2026-10-20; v2.1.306 and v2.1.307 2026-10-21; v2.1.308 and v2.1.309 2026-10-22; v2.1.310 2026-10-23; v2.1.311 2026-10-26; v2.1.312 2026-10-27; v2.1.314 2026-10-30; v2.1.316 2026-10-31 (v2.1.311 and older from the summary). Inferred: this dates the tail of last cycle's undated CHANGELOG reading (2.1.305 to 2.1.310 fall on 2026-10-20 to 2026-10-23), and the project ships roughly one version a day; 2026-05-01 to 2026-10-19 is still undated.
+New since last cycle (2.1.311 to 2.1.316):
+- Permissions: "permissions.blockWritesOutsideWorkingDirectories" (v2.1.314), so file writes outside the working directories are refused in every permission mode [Q].
+- Telemetry reversal: v2.1.312 stops sending the "claude_code.safety_event" OpenTelemetry event [Q], which last cycle recorded as added in 2.1.307. Inferred: a safety signal lived about six days.
+- Durability: resume restores a plan (v2.1.316); background sessions that crash between turns are restarted under some conditions (v2.1.311, summary) [E].
+- Budgets: pooled group budgets for the Claude apps gateway (v2.1.316); idle compaction (v2.1.314) [E].
+- Sandbox: fix for "sandbox protections not applying to a worktree entered by claude -p --resume or --continue" (v2.1.314) [Q].
+- Multi-agent and scheduling: "CLAUDE_CODE_SUBAGENT_EFFORT" (v2.1.316); an effort level for cloud routines (v2.1.312) [Q]. MCP: a stale sign-in fix (v2.1.314). A2A: none.
+
+**(ii) What it does that Karakuri does not.** Inferred: a single setting that refuses writes outside the working directories whatever the permission mode, and crashed background sessions restarted between turns. Karakuri's run-level stop is Phase 37, Planned.
+
+**(iii) What Karakuri does that it does not.** Checked against docs/roadmap.md: Phase 21 digests (Completed); Phase 23 per-objective spend ceilings (Completed), Goal "An operator can cap what one objective may spend"; Phase 31 evidence pack (Completed), Goal "An operator can produce, for any past window, the record a high-risk" system needs. Inferred: Claude Code's pooled budgets are per gateway group, not per objective, and nothing read exports an evidence pack for a window. Withdrawing a safety telemetry event after six days is the kind of change an audit-led buyer would notice; Karakuri's audit log is a contract, not an event it can drop silently (Phase 13, Phase 31).
+
+**(iv) Complaints.** Last cycle read the two most-reacted open issues (surface requests). This part read the most-reacted bug-labelled issue, anthropics/claude-code #42796 "[MODEL] Claude Code is unusable for complex engineering tasks with the Feb updates" (https://api.github.com/repos/anthropics/claude-code/issues/42796, comment pages 1 to 6, page 7 empty, read 2026-11-01). Observed [Q/E]: opened 2026-04-02 by stellaraccident, closed "completed" 2026-04-06 and locked; 3,286 reactions (2,072 +1, 8 -1), 583 comments; each page truncated, about 215 of 583 comments seen (part verbatim, part summary). It opened just before the window; the thread ran into it through duplicates.
+- Body [E]: an analysis of about 6,852 session files ties a thinking-redaction rollout to a Read:Edit ratio falling from 6.6 to 2.0 and stop-hook violations rising from 0 to 173.
+- Staff: bcherny (COLLABORATOR), pinned, says the redaction header "does not impact thinking itself", that adaptive thinking began on 9 February and effort defaulted to medium on 3 March, and suggests `/effort high`, `/effort max` or `CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING`. That reply drew 714 reactions, 544 of them -1 [Q for counts]. No fix confirmed; users report downgrading to v2.1.63 [E].
+- Themes, rough overlapping counts [E]: quality and instruction-following ~90; thinking, adaptive thinking and effort defaults ~50; switching to Codex or cancelling ~45; why closed, or asking for a postmortem ~20; token drain including subagent "Warmup" calls ~15 (#47922); downgrades ~15. More than 25 duplicates or related issues named, e.g. #17457 (closed NOT_PLANNED), #43566, #44045, #47098.
+- Inferred: the loudest bug is a silent change of a default (effort, thinking) that moved behaviour without the user choosing it. That supports Karakuri's Phase 30 (Completed, an evaluation set that catches a change to a provider or prompt) and Phase 43 (Planned, a provider's tool-call shape pinned by a test); it does not prove either would have caught this.
+
+**Rows.** Scheduled agents: observed (cloud routines). Earned autonomy: unknown. A2A: none in the part read. The Agent SDK release notes were not read.
 <!-- p3:end -->
 
 <!-- p4a:start -->
@@ -210,6 +233,10 @@ _Pending: part 7._
 - https://github.com/openai/codex/releases.atom: read 2026-11-01, primary (vendor release feed), extract, 78,800 of about 303,000 characters verbatim, rest summarised or unread, [Q] for quoted lines, [E] otherwise
 - https://api.github.com/repos/openai/codex/issues/9203 and https://api.github.com/repos/openai/codex/issues/9203/comments?per_page=100&page=1 (page 2 empty): read 2026-11-01, primary, extract, about 19 of 97 comments verbatim, about 47 summarised, about 31 unread, [Q] for quoted lines, [E] otherwise
 - docs/roadmap.md (Phases 20, 21, 35, 37 status and Goal lines): opened 2026-11-01, primary (this repository), [Q]
+- https://github.com/anthropics/claude-code/releases.atom: read 2026-11-01, primary (vendor release feed), extract, about 40% verbatim, rest summarised, [Q] for quoted lines, [E] otherwise
+- https://api.github.com/search/issues?q=repo:anthropics/claude-code+is:issue+label:bug&sort=reactions&order=desc&per_page=5: read 2026-11-01, primary (tracker metadata), extract, first item verbatim, [E]
+- https://api.github.com/repos/anthropics/claude-code/issues/42796 and its comments?per_page=100&page=1 to 6 (page 7 empty): read 2026-11-01, primary, extract, each page truncated, about 215 of 583 comments seen, [Q] for quoted lines and counts, [E] otherwise
+- docs/roadmap.md (Phases 23, 30, 31, 43 Goal lines): opened 2026-11-01, primary (this repository), [Q]
 <!-- s3:end -->
 
 <!-- s4:start -->
