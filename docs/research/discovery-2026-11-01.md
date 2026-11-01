@@ -328,13 +328,27 @@ The requirement column names only what the 2026-10-25 section and Phase 31's own
 ## Feasibility
 
 <!-- p6b:start -->
-Written by part 6 on 2026-11-01. The session ran out of time after p6a; no candidate was assessed by reading code this pass.
+Written by part 6 on 2026-11-01. Read first: 'Feasibility' in docs/research/discovery-2026-10-25.md; not restated. Nothing was built or run.
 
-Coverage check done before stopping (Observed from `docs/roadmap.md` headings and `gh pr list --state open`, 2026-11-01): Phases 37 to 43 are Planned. Open PRs other than #203: #204, #202 (Phase 41 step 10), #201, #200 (proposes Phase 44, delivery that shapes and recovers its own work) and #187 (Phase 41 steps 1 to 9). Inferred from titles only: candidate (3) is Phase 38's subject; p2's (D) and (E) are Phases 42 and 43, as p2 says; candidate (1) may overlap Phase 41 and PR #200.
+Coverage check (Observed from `docs/roadmap.md` headings and `gh pr list --state open`, 2026-11-01): Phases 37 to 43 are Planned. Open PRs other than #203: #204, #202 (Phase 41 step 10), #201, #200 (proposes Phase 44, delivery that shapes and recovers its own work) and #187 (Phase 41 steps 1 to 9). Inferred from titles only: candidate (3) is Phase 38's subject; p2's (D) and (E) are Phases 42 and 43, as p2 says; candidate (1) may overlap Phase 41 and PR #200.
+
+Order (p2's ranking): (1) the repository's checks before a push (three operators), then (2) bounds carried by delegated runs (two trackers). p5's bets are not ranked by p2 and were not reached.
+
+**Candidate (2): a delegated coding agent carries the run's AuthorityBounds.**
+- Exists: `AuthorityBounds` has `CanDelegate` (`internal/core/agent/agent.go:43`, grep hit, not opened); reconcile narrows bounds by autonomy rung, including `CanDelegate = false` at `sense` and for unknown levels (`internal/feature/reconcile/authority.go:21-64`, opened). The only place a coding CLI is started is `cliEnv.Act` (`domains/software/environments.go:693-769`, opened; found by grepping `DelegateInput{` across the repository). What it passes is `cliagent.DelegateInput` (`internal/platform/tools/cliagent/adapter.go:14-30`, opened): prompt, worktree, files, `AllowedTools`, env, timeout and one MCP attachment. `AllowedTools` comes from the action's params or the instance config (`environments.go:732-744`); a Claude Code run with an empty list is refused (`environments.go:763-769`), because only `claude_code` denies unlisted tools; Cursor uses its defaults and Gemini and Copilot ignore the list (`environments.go:653-660`).
+- Missing (Observed): no field of `DelegateInput` carries the run's bounds, rung or `CanDelegate`. Inferred: once the loop has decided to delegate, the child's authority is the plan's or instance's tool list, not the run's bounds, and for three of four CLIs not even that. Not verified: whether the loop's decide step refuses a delegation action when `CanDelegate` is false (`internal/feature/loop` not opened).
+- First slice: in `cliEnv.Act`, refuse a delegation when the run's bounds say `CanDelegate: false`, and derive a narrower `AllowedTools` from the rung (no edit or shell below `act`), with a test per rung. Needs the bounds on the action or the context; how they reach an environment was not read.
+- Could not verify: the decide step, `ClaudeCode.Stream`'s flag mapping past line 64 of `claude.go`, and whether a reconcile pass and an API-started run reach `cliEnv.Act` the same way.
+
+**Candidate (1): the repository's own checks run before a delegated push.**
+- Exists (Observed): Karakuri itself issues no push from the software domain; grepping `push` in `domains/software/*.go` finds only the comment at `environments.go:656`, and no `func .*Push` exists under `internal/` except Prometheus (`internal/platform/observability/prometheus.go:118`, grep hit). Inferred: the push is done by the delegated CLI inside its worktree, with whatever tools its allow-list grants.
+- Missing: no step between the CLI's exit and the push where Karakuri runs `make test` or the repository's declared checks; the grep for `go test`, `make test` and similar under `internal/feature` and `internal/platform` returned nothing outside tests.
+- First slice: split the delegation so the CLI may edit and commit but not push (drop push from `AllowedTools`), then have `cliEnv.Act` run a configured check command in the worktree and push only on exit 0, recording the result on the `ActionResult`. Overlap to check first: Phase 41 (success settled by code) and open PRs #187, #202 and #200; only their titles were read.
+- Could not verify: how delivery pushes today (`internal/feature/delivery`, `git.WorktreeManager` not opened), and whether PR #187's code checks are a pre-push gate.
 
 ### Still thin (part 6)
 
-Not reached, by name: (1) running the repository's own checks before a delegated push; (2) every unattended path carrying the run's AuthorityBounds; (3) a post-run check for actions outside the run's bounds; (4) MCP server and tool inventory in the evidence export; (5) serious-incident records; p1's one digest across many standing objectives; p1's objective that watches other standing objectives; p2's configured timeout honoured for every provider; p2's durable state that survives the database; p5's Bets 1, 2 and 3. Governance items (2) to (5) in p6a.
+Not reached, by name: (3) a post-run check for actions outside the run's bounds; (4) MCP server and tool inventory in the evidence export; (5) serious-incident records; p1's one digest across many standing objectives; p1's objective that watches other standing objectives; p2's configured timeout honoured for every provider; p2's durable state that survives the database; p5's Bets 1, 2 and 3. Governance items (2) to (5) in p6a.
 <!-- p6b:end -->
 
 ## Fit and bets
@@ -442,7 +456,7 @@ All read 2026-11-01 (date read from `date -u +%F`) through an extract tool. P = 
 - http://data.europa.eu/eli/reg/2024/1689/oj, read 2026-11-01, primary; 307 redirect only [N].
 - https://eur-lex.europa.eu/eli/reg/2024/1689/oj, read 2026-11-01, primary; HTTP 202, 0 characters, model-written fetch extract [N]. Cited for nothing.
 
-Run log, part 6 (no '## Run log' heading or p6r marker exists in this report, so the line is kept here): opened audit export and retention, reconcile authority and Phase 35's `ExpireDue` and wrote the evidence table; EU AI Act text empty (HTTP 202); governance items (2) to (5) and every p6b candidate not reached; `gh pr view 203`: OPEN, label karakuri:discovery, head karakuri/discovery-2026-11-01; time 2026-11-01T15:49Z.
+Run log, part 6 (no '## Run log' heading or p6r marker exists in this report, so the line is kept here): opened audit export and retention, reconcile authority and Phase 35's `ExpireDue` and wrote the evidence table; read the delegation path for p6b candidates (1) and (2); EU AI Act text empty (HTTP 202); governance items (2) to (5) and p6b candidates (3) to (5) and the p1 and p5 candidates not reached; `gh pr view 203`: OPEN, label karakuri:discovery, head karakuri/discovery-2026-11-01; time 2026-11-01T15:44Z.
 <!-- s6:end -->
 
 <!-- s7:start -->
