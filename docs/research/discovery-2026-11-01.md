@@ -455,7 +455,89 @@ Written by part 1 on 2026-11-01 from `README.md`, `grep -n '^## Phase' docs/road
 <!-- p1w:end -->
 
 <!-- p7b:start -->
-_Pending: part 7._
+Written by part 7 on 2026-11-01. No web fetch; every source below is cited from the section that read it and keeps that section's grade.
+
+**Confirmed**
+- Running the repository's checks before the push matters more than the model: a third operator, Spotify, blocks the PR when a verifier fails (p2 §2; https://engineering.atspotify.com/2025/12/feedback-loops-background-coding-agents-part-3) [Q].
+- Unattended paths leak or mis-carry authority: copilot-cli #3013, fixed by GitHub, joins ZeroClaw #10968 (p2 §1; https://api.github.com/repos/github/copilot-cli/issues/3013) [Q].
+- Silent default changes move agent behaviour: claude-code #42796, 3,286 reactions (p3 §2(iv)) [Q for counts]; supports the case behind Phases 30 and 43, does not prove either would catch it.
+- Temporal's workflow pause is still open, and users want a stop that keeps state (p4a §4(iv); https://api.github.com/repos/temporalio/temporal/issues/3006) [Q]; supports Phase 37.
+
+**Contradicted**
+- 2026-10-25's "69 reactions" on Temporal #3006: all 69 are hearts, 0 +1 (p4a §4(iv)) [Q].
+- 2026-10-25's reading that Claude Code added a `claude_code.safety_event` OTel event (2.1.307): v2.1.312 stops sending it (p3 §2(i); https://github.com/anthropics/claude-code/releases.atom) [Q].
+- 2026-10-25's B2 bet (no widening of bounds mid-run): p5 B1 read the method of arXiv 2610.22987 and moved the risk to the stored, reusable approval (https://arxiv.org/html/2610.22987) [Q]. Part 7's (b2) found the Karakuri form of that risk: an approval counts toward promotion (`internal/feature/reconcile/run.go:439-442`, `:608-617`).
+
+**New**
+- A first-hand team running over 100 standing agentic workflows on one repository, whose pain is reading the output (p1; https://github.github.com/gh-aw/blog/2026-01-12-welcome-to-pelis-agent-factory/) [Q].
+- MCP authorization 2026-07-28 read in full; no phase plans MCP OAuth since Phase 33 named the gap (p5 A2) [Q].
+- arXiv 2610.35835 (I-HITL): agents approve themselves when the approval channel is one they can read (p5 B2) [Q/E]. Part 7's (b2) found the delegated CLI's own token is viewer-only (`internal/feature/delegation/issuer.go:132`), so Bet 2 is mostly proved wrong for that surface.
+- Observed in code by part 6: no field of `cliagent.DelegateInput` carries the run's bounds (`internal/platform/tools/cliagent/adapter.go:14-30`), and only `claude_code` honours an allow-list (`domains/software/environments.go:653-660`).
+
+### Thin spots of the last cycle
+
+This report has no p1t marker, so the items are the 'Still thin' lists of docs/research/discovery-2026-10-25.md, numbered as there.
+
+Part 1 (letters as there):
+- (a) SRE agent acting in an incident: STILL THIN (p1 Still thin, stretch (a) not reached).
+- (b) Talk with a transcript: STILL THIN (stretch (b) not reached).
+- (c) Second self-hoster: STILL THIN (stretch (c) not reached).
+- (d) Unattended coding agents: FILLED by p2 §2, Spotify Honk part 3, read in full [Q]; the Ona white paper still unread.
+- (e) Standing agent, first-hand: FILLED, thinly, by p1, GitHub Next [Q]; one introductory post.
+- (f) Regulated organisation first-hand: STILL THIN, fifth cycle counting 2026-10-04 (p1, one [N]).
+- (g) Anthropic report PDF: STILL THIN (not reached).
+- (h) Product teams and enterprises: STILL THIN (p1 table).
+
+Part 2:
+1. langgraph #5672 comments 32 to 52: STILL THIN (p2 Still thin 3).
+2. claude-code #16157 count: STILL THIN (p2 Still thin 3).
+3. Postmortem by the team that ran the agent: STILL THIN; Spotify's post is a design account, not a postmortem.
+4. Temporal forum, autogen, crewAI, codex: codex FILLED by p2 §3 (#11023) and p3 §1(iv) (#9203) [Q/E]; the other three STILL THIN.
+5. "$4,200 in 63 Hours": STILL THIN.
+6. "78% / under 15%": STILL THIN, unverified.
+7. Tails of n8n #21716 and langgraph #3716: STILL THIN (not attempted).
+8. docs/roadmap.md not read: FILLED by p2 table, p3 (iii) and p5 (phase text read).
+
+Part 3:
+1. Claude Code changelog and dates: FILLED in part, p3 §2 dates v2.1.305 to v2.1.316 [Q]; 2026-05-01 to 2026-10-19 STILL THIN; Agent SDK notes STILL THIN.
+2. Codex nothing read: FILLED in part, p3 §1, two dated entries; 2026-05-01 to 2026-10-28 STILL THIN.
+3. Agents SDK April to September and its tracker: STILL THIN.
+4. LangGraph 2026-04-08 to 2026-06-29; LangSmith: STILL THIN, third cycle (p3 Still thin 3).
+5. No issue's comments read: FILLED by p3 (#9203, #42796, #4973) and p2 (#3013, #37442) [Q/E].
+6. Roadmap not read: FILLED (p3 (iii) quotes phase Goal lines).
+
+Part 4:
+1. Opening-post extracts only: FILLED by p4a §4(iv), Temporal #3006 read 21 of 21 comments [Q/E]; incident.io tracker STILL THIN.
+2. Temporal server before 2026-09-11, SDKs, DBOS, Inngest, Restate: STILL THIN.
+3. incident.io undated: STILL THIN (p4a §5).
+4. Langfuse; governance product: STILL THIN (p4a §6 not reached).
+5. Karakuri column from headings only: STILL THIN for p4b; part 6 and part 7 opened code for some cells (`export.go`, `authority.go`), not folded into the matrix.
+6. A2A for Karakuri: FILLED, p4b grep found no Go file (Observed): Karakuri has none.
+
+Part 5:
+- A2A past 200,000 characters: STILL THIN.
+- MCP `ext-auth`, SEPs, agent-identity drafts: STILL THIN; the core authorization page FILLED by p5 A2 [Q].
+- OTel agent spans truncated: STILL THIN (p5, 39,343 of 141,572 characters).
+- B2's method (2610.22987): FILLED by p5 B1 [Q].
+- Google, Anthropic past 100,000, OpenAI: STILL THIN (p5 C not reached).
+- No phase text read: FILLED by p5 (Phases 28, 29, 33, 42).
+
+Part 6:
+- AI Act text: STILL THIN, fourth cycle (p6a [N]).
+- Omnibus, OWASP, NIST, ISO 42001, regulated organisations: STILL THIN.
+- Phase 35's code: FILLED by p6a (`internal/feature/checkpoint/service.go:213-239`).
+- 2026-10-25 Feasibility gaps (`client.go`, langchaingo source, loop-state schema): STILL THIN; not reopened this cycle.
+
+### Where this cycle is still thin
+
+1. How the run's bounds reach an environment, and whether the loop refuses a delegation when `CanDelegate` is false (`internal/feature/loop`, not opened by p6b or p7). Needed to size candidate 2.
+2. Whether the loop already ends or rejects a pass that read `TrustThirdParty` text before a checkpoint (Phase 27's path), which decides whether R2's kill criterion fires.
+3. Whether `DelegateInput.Env` can carry an operator token to a delegated CLI (the remaining half of p5 Bet 2).
+4. MCP OAuth, OTel `plan` span and checkpoint attribute, the post-run bounds check (Phase 38 text), Claude Code's write boundary: Gate 1 passed, code not read.
+5. The AI Act legal text, fourth cycle; try op.europa.eu first.
+6. A regulated organisation and a second self-hoster first-hand; GitHub Next's status page and one "Meet the Workflows" post.
+7. Release history gaps: Codex 2026-05-01 to 2026-10-28, Claude Code before 2026-10-20, LangGraph April to June, Temporal before 2026-09-11, Langfuse; use tags pages, not Atom feeds.
+8. Second sources for the one-tracker items: provider timeout, durable state, rewind (claude-code #52209, opencode #31338), one digest across many objectives.
 <!-- p7b:end -->
 
 ## Sources
