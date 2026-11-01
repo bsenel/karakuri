@@ -949,6 +949,8 @@ func (e *verifyEnv) Observe(_ context.Context, _ environment.ObservationQuery) (
 func (e *verifyEnv) Act(ctx context.Context, a environment.Action) (environment.ActionResult, error) {
 	switch string(a.CapabilityID) {
 	case "software.verify.run_tests", "software.verify.lint":
+	case capWebBundle:
+		return e.webBundleBytes(ctx, a), nil
 	default:
 		return failureResult(e.id, a.CapabilityID,
 			fmt.Sprintf("verifyEnv does not handle capability %q", a.CapabilityID), nil), nil
