@@ -45,6 +45,19 @@ func softwareCapabilities() []capability.Capability {
 		Params: []capability.MetricParam{{Name: "packages", Type: capability.ParamString}},
 	}}
 	coverage.MeasurePaths = []string{"**/*_test.go"}
+	// flaky_tests counts over the same test files, so it declares them too.
+	flakyTests := act(capFlakyTests, "Flaky Tests",
+		"Count the tests of params.packages (Go package patterns) that both passed and failed over params.runs runs "+
+			"(default 3, from 2 to 10) of go test -json in params.workdir. "+
+			"Pass params.branch, and params.repo when it is not the bound one, so the result names the files that branch's pull request changes", true)
+	flakyTests.Metrics = []capability.Metric{{
+		Name: "flaky_tests", Unit: "count", Direction: capability.DirectionLowerIsBetter,
+		Params: []capability.MetricParam{
+			{Name: "packages", Type: capability.ParamString},
+			{Name: "runs", Type: capability.ParamInteger},
+		},
+	}}
+	flakyTests.MeasurePaths = []string{"**/*_test.go"}
 	return []capability.Capability{
 		// Inputs declared for the reason write_design_doc's are below. Neither
 		// read requires an input; both fail rather than return an empty list
@@ -218,6 +231,7 @@ func softwareCapabilities() []capability.Capability {
 		},
 		runTests,
 		coverage,
+		flakyTests,
 		act("software.verify.lint", "Lint", "Run linter in worktree", true),
 		act("software.verify.review", "Code Review", "Peer review of an artifact", true),
 		act("software.verify.tech_lead_review", "Tech Lead Review", "Senior review of an artifact against design doc", true),
