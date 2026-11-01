@@ -173,7 +173,23 @@ New since last cycle (2.1.311 to 2.1.316):
 <!-- p3:end -->
 
 <!-- p4a:start -->
-_Pending: part 4._
+Products 4 to 6, extending discovery-2026-10-25.md's part 4 (read first). Every page came through a fetch tool that returns a model-written extract; words in quotation marks are ones the extract gave as verbatim [Q], the rest is [E]. Vendor notes are claims.
+
+### 4. Temporal (durable execution)
+
+**(i) Shipped, part of window read.** Observed [Q/E] (https://github.com/temporalio/temporal/releases.atom, whole feed, 5,992 characters, read 2026-11-01): 10 entries, all dated 2026-10-13 to 2026-10-28, titled like "v1.33.0-165.0" and "v1.32.0-163.8"; each body is one line, either "temporalio/temporal version 1.33.0" or "patched temporal version". The feed has no next-page link. So the asked-for gap, server releases before 2026-09-11, is **not filled**: the feed holds only the newest ten entries and they carry no notes. Inferred: a v1.33.0 line is in release candidates and patch builds since mid-October; what it contains is not in the feed. Last cycle's reading of v1.32.0 (2026-09-11, Standalone Activities GA, proactive activity cancellation) remains the only feature text for the server.
+
+**(ii) What it does that Karakuri does not.** Unchanged from 2026-10-25: replay-based durable execution across many SDKs, task-queue priority and fairness, a managed cloud with serverless workers. Observed in #3006 (below): activity-level pause was announced as coming by a Temporal contributor in February 2025; whether it shipped is not in any page read.
+
+**(iii) What Karakuri does that it does not.** Checked against docs/roadmap.md's Status Summary: Phase 20 standing objectives, Phase 21 digests, Phase 23 per-objective spend ceilings, Phase 31 evidence pack, Phase 35 checkpoint expiry, all Completed. Inferred: none is a Temporal product feature; Temporal is the layer they could be built on. Not claimed: stopping or pausing a run, which is Planned phase 37 for Karakuri, so Karakuri is not ahead of Temporal there.
+
+**(iv) Complaints, read in full.** temporalio/temporal #3006 "Workflow Pause / Unpause" (https://api.github.com/repos/temporalio/temporal/issues/3006 and comments page 1; all 21 of 21 comments read through an extract; read 2026-11-01). Observed: opened 2022-06-17 by yiminc (MEMBER), open, label enhancement, last updated 2026-07-08 (inside the window); reactions 69, every one a heart (0 +1), which corrects last cycle's unqualified "69 reactions".
+- Body [E]: pause so no new workflow tasks are scheduled; unpause by creating whatever task is needed; replicating the paused state to the passive side is "tricky" [E]; a default pause policy for workflows whose tasks keep failing; pausing on activity failure as part of the retry policy; paused workflows visible and batch-unpausable.
+- Only Temporal-side reply, drewhoskins-temporal (CONTRIBUTOR, 2025-02-20) [Q]: "Soon, we are shipping Activity pause, which should help some, though not all, of you." and "We are working on designing Workflow pause, though I don't have a timeline to announce yet."
+- Themes [E], of 21: bare +1 about 11; asking for status or a timeline about 5 (2023 to 2025); use cases about 5: GPU-heavy work kept from timing out while a worker is fixed, pausing through a known outage to stop retries, pausing specific workflows or queues, pausing an activity bound to fail (2025-09-09); workarounds about 2 (saving to S3, recovery workflows, "painful/complicated alternatives" [Q]). No comment links a release, PR or other issue; one links a third-party retry-on-signal sample.
+- Inferred: the need is four years old and the people asking want to stop retries during a known outage without losing state. That is the same shape as Karakuri's Planned phase 37, and it argues that a stop which keeps the run resumable is worth more than a cancel.
+
+**Matrix cells.** Stopping a running run: stays C partial (cancel; workflow pause still open, activity pause announced 2025-02-20, shipping not confirmed). Durable resume: C yes (2026-10-25). Other cells unchanged.
 <!-- p4a:end -->
 
 ## Capability matrix
@@ -294,7 +310,13 @@ _Pending: part 7._
 <!-- s3:end -->
 
 <!-- s4:start -->
-_Pending: part 4._
+### Sources, part 4
+
+All read 2026-11-01 (date read from `date -u +%F`).
+
+- https://github.com/temporalio/temporal/releases.atom — primary, full text (whole feed, 10 entries, one-line bodies) [Q] for titles and body lines.
+- https://api.github.com/repos/temporalio/temporal/issues/3006 and /comments?per_page=100&page=1 — primary, full thread (21 of 21 comments, through an extract) [Q] for the two quoted sentences, [E] otherwise.
+- docs/roadmap.md, docs/research/discovery-2026-10-25.md, LICENSE — repository files opened.
 <!-- s4:end -->
 
 <!-- s5:start -->
