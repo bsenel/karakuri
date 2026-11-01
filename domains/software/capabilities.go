@@ -34,6 +34,15 @@ func softwareCapabilities() []capability.Capability {
 		"Execute test suite in worktree. Pass params.branch, and params.repo when it is not the bound one, "+
 			"so the result names the files that branch's pull request changes; without them a criterion it verifies settles nothing", true)
 	runTests.MeasurePaths = []string{"**/*_test.go", "web/src/**/*.test.ts", "web/src/**/*.test.tsx", "web/e2e/**/*.spec.ts"}
+	// web_bundle_bytes measures a bundle an earlier step built; it builds
+	// nothing itself (Phase 41 step 11).
+	webBundle := act(capWebBundle, "Web Bundle Size",
+		"Measure the bytes of the built web bundle: the sum of the apparent sizes of the regular files under params.dir, "+
+			"a directory relative to params.workdir. Symlinks are not followed and nothing is built; build the bundle in an earlier step", true)
+	webBundle.Metrics = []capability.Metric{{
+		Name: "web_bundle_bytes", Unit: "bytes", Direction: capability.DirectionLowerIsBetter,
+		Params: []capability.MetricParam{{Name: "dir", Type: capability.ParamString}},
+	}}
 	return []capability.Capability{
 		// Inputs declared for the reason write_design_doc's are below. Neither
 		// read requires an input; both fail rather than return an empty list
@@ -206,6 +215,7 @@ func softwareCapabilities() []capability.Capability {
 			OutputSchema: capability.Schema{Type: "object"},
 		},
 		runTests,
+		webBundle,
 		act("software.verify.lint", "Lint", "Run linter in worktree", true),
 		act("software.verify.review", "Code Review", "Peer review of an artifact", true),
 		act("software.verify.tech_lead_review", "Tech Lead Review", "Senior review of an artifact against design doc", true),

@@ -196,6 +196,7 @@ func softwareEnvironmentFactories(reg *tools.Registry) []environment.Factory {
 			Serves: []capability.CapabilityID{
 				"software.verify.run_tests",
 				"software.verify.lint",
+				capWebBundle,
 			},
 			Build: func(ctx environment.BuildContext) (environment.Environment, error) {
 				return newVerifyEnv("software.env.verify", newShellEnv("software.env.verify", "", 600*time.Second), boundVC(ctx)), nil
