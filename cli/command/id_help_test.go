@@ -18,6 +18,12 @@ func TestIDHelpNamesListCommand(t *testing.T) {
 		{checkpointResolveCmd(), "krk checkpoint list"},
 		{loopStatusCmd(), "krk loop start"},
 		{loopResumeCmd(), "krk loop start"},
+		{objectiveStandingCmd(), "krk objective list"},
+		{objectiveUnstandingCmd(), "krk objective list"},
+		{objectiveReconcileCmd(), "krk objective list"},
+		{objectiveReconcileStatusCmd(), "krk objective list"},
+		{objectivePauseCmd(), "krk objective list"},
+		{objectiveResumeCmd(), "krk objective list"},
 	} {
 		requireExample(t, tc.cmd)
 		if !strings.Contains(tc.cmd.Long, tc.want) {
