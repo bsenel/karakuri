@@ -179,7 +179,29 @@ _Pending: part 4._
 ## Capability matrix
 
 <!-- p4b:start -->
-_Pending: part 4._
+Written first, without the web, from docs/roadmap.md (Status Summary table and the phase headings), the 2026-10-25 matrix, and part 3's text on this branch. Key for products: **O** observed (a page read says so), **C** claimed by the vendor, **U** unknown; then yes / partial / no. "(2026-10-25)" marks a cell carried over unchanged from last cycle. Karakuri cells name a roadmap phase and its status; no Go file was opened for this matrix. One shell check was run: `grep -rli a2a --include=*.go .` returned nothing (Observed), and the only roadmap mention of A2A (around line 2364) describes the field, not a phase. Columns updated by items 2 to 4 below carry a note when they change.
+
+| Capability | Karakuri | Claude Code | Codex / Agents SDK | LangGraph / LangSmith | Temporal | incident.io | Langfuse |
+|---|---|---|---|---|---|---|---|
+| Standing objectives on a cadence | Completed phase 20 | O yes, scheduled cloud routines (part 3) | U (queueing, not scheduling; part 3) | C partial, crons (2026-10-25) | U (2026-10-25) | U (2026-10-25) | no, observes only, inferred (2026-10-25) |
+| Human checkpoints | Completed phase 13.5; expiry Completed phase 35 | C yes, permission modes (2026-10-25) | O yes, approval settings kept across resume and fork (part 3) | O yes, `interrupt`; paused tool not reported failed (part 3) | U (2026-10-25) | U (2026-10-25) | no (2026-10-25) |
+| Autonomy that widens with a track record | Completed phase 20 (four rungs, promotion and demotion audited, per roadmap implementation table) | U | U | U | no (2026-10-25) | U (2026-10-25) | no (2026-10-25) |
+| Digests of unsupervised actions | Completed phase 21 | U | U | U | no, inferred | U | no, inferred |
+| Audit log | Completed phases 13, 19 | U | U | U | C partial, principal attribution pre-release (2026-10-25) | U | U |
+| Evidence export | Completed phase 31 | U | U | U | U | U | U |
+| MCP client | Completed phases 28, 33 | C yes (2026-10-25) | C yes (2026-10-25); opt-in stdio discovery, undated PR (part 3) | U | U | U | U |
+| MCP server | Completed phase 34 | U | U | C yes (2026-10-25) | U | C yes, beta (2026-10-25) | C yes (2026-10-25) |
+| A2A | no: no phase, no Go file matches | O none in part read (part 3) | O none in part read (part 3) | C yes on LangSmith only (2026-10-25) | no (2026-10-25) | U | no (2026-10-25) |
+| OpenTelemetry GenAI spans | Completed phase 29 | C yes (2026-10-25); a safety event withdrawn in v2.1.312 (part 3) | O partial, trace instrumentation, no OTel named (part 3) | U | no seen (2026-10-25) | U | C yes, ingest (2026-10-25) |
+| Durable resume after a crash | Completed phase 11 | O partial, crashed background sessions restarted between turns (part 3) | O partial, `codex queue --resume` (part 3) | O yes, checkpointers; snapshot default changed (part 3) | C yes (2026-10-25) | U | no (2026-10-25) |
+| Stopping a running run | Planned phase 37 | U | U | U | C partial, cancel; pause is open #3006 (2026-10-25) | U | no (2026-10-25) |
+| Per-run spend ceiling | Completed phase 23 (per objective) | O partial, pooled gateway group budgets (part 3) | O partial, advisory rollout budgets, undated PR (part 3) | U | no (2026-10-25) | U | partial, cost ledger not a ceiling (2026-10-25) |
+| RBAC and SSO | Completed phases 14, 16 | U | U | U | C partial, custom roles pre-release (2026-10-25) | U | U |
+| Domain packs | Completed phases 4, 10; Planned phase 39 (gateway) | no, inferred | no, inferred | no, inferred | no, inferred | no, inferred | no, inferred |
+| SRE/incident path | Completed phase 32 | no (2026-10-25) | no (2026-10-25) | no (2026-10-25) | no (2026-10-25) | C yes (2026-10-25) | no (2026-10-25) |
+| Self-hosted open source | Observed: LICENSE is Apache 2.0 (file opened) | no, inferred (2026-10-25) | C partial, SDK open source (2026-10-25) | U (2026-10-25) | O yes, MIT (2026-10-25) | no, SaaS, inferred (2026-10-25) | U (2026-10-25) |
+
+Inferred: the rows where Karakuri is alone among the seven columns are digests, evidence export and domain packs; the row where it is behind is stopping a running run (Planned phase 37), and it has no A2A at all.
 <!-- p4b:end -->
 
 ## Technical frontier
