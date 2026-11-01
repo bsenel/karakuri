@@ -6118,6 +6118,69 @@ adopt the Go SDK 2.0.0; whether to do either is what step 1 finds out.
 
 ---
 
+## Phase 45 — The Repository's Own Checks Run Before a Delegated Push (Planned)
+
+**Kind: DEMAND.** From docs/research/discovery-2026-11-01.md, '## Fit and
+bets', recommendation R1, resting on '## Feasibility' candidate (1). Three
+organisations, each first-hand, name running the repository's own checks
+before an agent's change lands as what separates working from broken code:
+Spotify's verifiers block the pull request on failure (Spotify Engineering,
+Honk part 3, https://engineering.atspotify.com/2025/12/feedback-loops-background-coding-agents-part-3,
+read 2026-11-01, [Q] in the report's Sources, part 2); Temporal
+(https://temporal.io/blog/using-coding-agents-on-a-migration-three-practices-that-mattered,
+read 2026-10-25, [Q] in docs/research/discovery-2026-10-25.md); and Stripe
+(2026-10-25 report, session page, summary only). These are the operators'
+own accounts, not measurements.
+
+**Goal:** a delegated coding agent's work reaches the remote only after a
+check command declared for the repository exits 0 in its worktree, and the
+result is recorded on the action.
+
+**Why.** Observed in the report's '## Feasibility' (candidate (1)): Karakuri
+itself issues no push from the software domain; the only place a coding CLI
+starts is `cliEnv.Act` in `domains/software/environments.go`, and the push is
+done by the delegated CLI with whatever its allow-list grants. No step between
+the CLI's exit and the push runs `make test` or a declared check. Inferred:
+for three of four CLIs the allow-list is not even enforced (Cursor uses its
+defaults, Gemini and Copilot ignore it, per the same section), so the
+repository's checks are optional to the agent.
+
+**Steps.**
+1. *Settle the overlap (read only).* Read `internal/feature/delivery`,
+   `git.WorktreeManager` and open PR #187 (Phase 41's `ci_green`); write in
+   this phase how delivery pushes today and whether anything checks before
+   the push. Phase 41's `ci_green` settles a criterion from the forge after
+   the pull request exists; this phase refuses the push itself. If step 1
+   finds a pre-push gate already exists, mark this phase Dropped with the
+   finding.
+2. Split the delegation: the CLI may edit and commit but not push (push
+   removed from `AllowedTools` for `claude_code`; for CLIs that ignore the
+   list, the push is taken out of their hands by step 3 alone).
+3. In `cliEnv.Act`, after the CLI exits, run a check command declared in the
+   instance config in the worktree, with a timeout; push only on exit 0.
+4. Record the command, exit code and duration on the `ActionResult`; a
+   failure is a failed action with the check's tail as its output, not a
+   silent skip.
+5. A test in `domains/software/environments_test.go` per outcome: check
+   passes and the push happens; check fails and no push happens; no check
+   declared and the action says so.
+
+**Acceptance.**
+- With a check declared, no delegated change reaches the remote unless the
+  check exited 0 in that worktree.
+- The check's command, exit code and duration appear on the action result.
+- `go test ./...` passes.
+
+**What this is not.** Not Phase 41 (Planned, success a machine can check):
+that settles a criterion after the pull request exists; this gates the push.
+Not Phase 44 (Planned on main, delivery that shapes and recovers its own
+work), whose timeout handling for test verification does not refuse a push
+(report, '## Fit and bets', ranking row 1). It does not carry the run's
+authority bounds into the delegated CLI; that was ranked but not recommended
+this cycle.
+
+---
+
 ## Engineering Backlog
 
 These are enhancements found in this deployment's own telemetry and audit log, each recorded with the data that shows the problem. A human approves an entry by merging the pull request that adds it; the delivery stream implements entries whose status is Planned.
