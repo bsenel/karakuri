@@ -66,6 +66,32 @@ Last cycle this rested on one tracker (ZeroClaw #10968). This pass found two mor
 - Observed, same page [E]: verifiers are deterministic and selected by what the repository holds (a Maven verifier activates when it finds a `pom.xml` at the root); the agent does not know what they do; they are exposed as an MCP tool for mid-task feedback and all relevant ones run before a PR is attempted, through Claude Code's stop hook; failures are parsed down to the relevant error lines to save context. An LLM judge runs after them on the diff and the prompt and vetoes about a quarter of sessions, after which the agent corrects course about half the time; the judge has no evals yet. Verifiers run on Linux x86 only.
 - Note: the 2026-10-08 report cited this page for the judge's veto rate, not for candidate (B). It is a third organisation for (B), after Temporal and Stripe.
 - Inferred: (B) now has three independent primary sources, and Spotify's is the most specific: checks are chosen from the repository's own build files, run deterministically, block the PR on failure, and come back to the agent as short error text. For Karakuri that sets the bar as "the delivery stream discovers and runs the repository's checks and refuses to push on failure", not "the prompt asks the model to run tests".
+
+### 3. The most-reacted openai/codex issue is a platform request, not an agent pain (partly read)
+
+- Observed: the search sorted by reactions returns openai/codex #11023, "Codex desktop app for Linux" (Suhaibinator, 2026-02-07), closed as completed 2026-08-11, 209 comments, 1,464 reactions (954 +1). On comment page 1 only 20 comment objects came back verbatim (the page was truncated at about 39 KB of 190 KB); no MEMBER or COLLABORATOR in them; the most-reacted are platform votes: skypher (348) "Arch and Ubuntu", kosumic (34) "NixOS". Page 2 and the rest of page 1 were not read. (https://api.github.com/search/issues?q=repo:openai/codex+is:issue&sort=reactions&order=desc&per_page=5 and https://api.github.com/repos/openai/codex/issues/11023/comments?per_page=100&page=1, read 2026-11-01) [Q for title and short bodies, E for the rest]
+- Inferred: the loudest Codex demand is where the client runs, which Karakuri's thin-CLI, server-side design (ADR 001) sidesteps rather than answers. It adds no agent-behaviour pain point; it is recorded so the next cycle does not repeat the search.
+
+### Ranking (part 2)
+
+| Pain point | Independent sources (this cycle and earlier) | Total reactions/duplicates seen | Strength | Phase that covers it |
+|---|---|---|---|---|
+| Repository's own checks run before an agent pushes (B) | 3: Temporal blog, Stripe session page (2026-10-25), Spotify Honk part 3 (this cycle) | none (blogs) | Moderate: three first-hand operators, no user votes | Partly Phase 41 (Goal: success stated "as numbers and checks that code settles", at objective level; not a pre-push gate). Gap: no phase states "discover and run the repo's checks, refuse to push on failure" |
+| A delegated, scheduled or sub-agent run carries the parent's bounds (A) | 2 escalation-direction: ZeroClaw #10968 (2026-10-25), github/copilot-cli #3013 (this cycle); plus 1 opposite-direction tracker, claude-code #37442 with 3 bot-named duplicates and 5 user-named related issues | #3013: 0 reactions, 4 comments; #37442: 1 reaction, 11 comments, about 9 issues | Moderate-weak: passes two trackers, low votes, maintainers treat it as a bug (fixed at GitHub) | Partly Phase 40 (Goal: streams governed by Karakuri; its steps declare which tools a delegated coding action may hold) and Phase 34 (credential scoped to one delegation); rule 8 of AGENTS.md puts bounds in `agent.AuthorityBounds`. Whether reconcile passes and sub-agents inherit them: not checked |
+| MCP client sends only declared arguments (D) | 1 (n8n #21500, #21716) | 77 + 27 comments; 12 on one reply | Strong in one tracker | Phase 42 (Goal: "an MCP tool call sends a server only the keys its discovered input schema declares, or is refused") |
+| A provider's tool-call shape change does not break the run (E) | 1 (n8n #22181, #9862) | 6 and 7 reactions | Moderate, one tracker | Phase 43 (Goal: a test fails when the parsed shape stops matching the provider's) |
+| A configured timeout is honoured for every provider | 1 (n8n #25360 and two earlier) | 8 reactions, 10 comments | Moderate, one tracker | not checked this pass |
+| Durable state survives the database and stays small | 1 (langgraph #3716, #5672) | 53 comments, 12 reactions | Moderate, one tracker | not checked this pass |
+| Native Linux client (openai/codex #11023) | 1 | 1,464 reactions, 209 comments | Strong but off-scope | none; ADR 001 thin CLI |
+
+Inferred: this pass moves (A) and (B) across the two-source gate; (C) to (E) still rest on one tracker each.
+
+### Still thin (part 2)
+
+1. openai/codex #11023: page 2 and most of page 1 not read; counts are from the issue object.
+2. claude-code #27661, #37730 and opencode PRs #13974, #26845, #30288 not opened; they could add a third tracker for (A), and opencode is a separate organisation.
+3. Not reached: langgraph #5672 comments 32 to the end; second sources for (C), (D), (E); claude-code #16157 reaction count; the "$4,200 in 63 Hours" author post; the "78% / under 15%" primary report (still unverified); crewAI, autogen and the Temporal forum.
+4. Whether Karakuri's reconcile path and `software.verify.review` sub-agents inherit `agent.AuthorityBounds` was not read in code; the next cycle's part 6 should test it first.
 <!-- p2:end -->
 
 ## Competitive teardown
@@ -152,6 +178,9 @@ _Pending: part 7._
 - https://api.github.com/repos/anthropics/claude-code/issues/37442 and /comments?per_page=100&page=1: read 2026-11-01, primary, full thread (body and 11 of 11 comments) as extracted, [Q]
 - anthropics/claude-code #27661, #37730; anomalyco/opencode PRs #13974, #26845, #30288: search-result titles only, not opened, [N]
 - https://engineering.atspotify.com/2025/12/feedback-loops-background-coding-agents-part-3: read 2026-11-01, primary, full text (images unreadable), [Q]
+- https://api.github.com/search/issues?q=repo:openai/codex+is:issue&sort=reactions&order=desc&per_page=5: read 2026-11-01, primary (tracker metadata), full, [Q]
+- https://api.github.com/repos/openai/codex/issues/11023/comments?per_page=100&page=1: read 2026-11-01, primary, extract truncated at about 39 KB of 190 KB (20 comments verbatim), [E]
+- docs/roadmap.md (Phase 34, 40, 41, 42, 43 Goal paragraphs): opened file, read 2026-11-01
 <!-- s2:end -->
 
 <!-- s3:start -->
