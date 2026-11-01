@@ -17,6 +17,31 @@ Written by part 1 on 2026-11-01. The segments and sources of 2026-10-04, 2026-10
 - Inferred: this is the first first-hand team in four cycles that runs many *standing* agents, not one migration loop (Temporal) or an on-demand fleet (Stripe). Its stated pain is the reader, not the writer: output outgrows the humans, and the team's answer is more agents reading agents. Inferred for Karakuri: digests (Phase 21) and the audit log are the same answer done by a deployment; a candidate need for parts 2 and 6 to test is **one digest across many standing objectives that says what needs a person and suppresses the rest**, and a **meta-objective that watches the health of other standing objectives**. Also Inferred: "strict constraints make experimenting safer" is the case for `agent.AuthorityBounds` from a team that has no reason to sell Karakuri's version of it.
 - Strength: one primary source, an introductory post; thin.
 
+### A regulated organisation speaking first-hand (thin spot f): not filled
+
+Two searches found no bank, insurer, health provider or public body writing about its own agent deployment on its own engineering blog. The nearest candidate was a write-up of a Lloyds Banking Group talk at Infosecurity Europe (June 2026); the page could not be fetched ("Socket is closed", twice) (https://www.pulse.bot/cybersecurity/news/infosecurity-europe-practical-lessons-from-lloyds-agentic-ai-security-playbook-95addba0-8826-4c52-9fa6-514224cffa45/, read 2026-11-01) [N], and it would have been secondary anyway. Nothing from it is claimed here. The search results (index only, cited for nothing) also pointed to a Barclays podcast and a Bank of England news report; neither was opened.
+
+### Segments
+
+| Segment | Added this cycle | Still thin? |
+|---|---|---|
+| Platform and SRE teams | Nothing new. Rests on SREcon26 (2026-10-25), Brex and HyperProbe (2026-10-08). | Yes: no postmortem where an agent acted; Redick's slides unread. |
+| Self-hosters | Nothing new. Rests on ZeroClaw #10968 (2026-10-25). | Yes: one tracker only. |
+| Teams running unattended or standing coding agents | GitHub Next, Peli's Agent Factory [Q]: over 100 workflows on one repository, PR-proposing, output volume as the stated pain. | Less thin: Temporal, Stripe and now GitHub Next are three organisations; but none of the three is a full account of a failure. |
+| Regulated organisations | Nothing; one [N]. | Yes, for four cycles; part 6 holds the governance reading. |
+| Product teams embedding agents | Nothing. | Yes: not attempted. |
+| Enterprises | Inferred only: GitHub Next's workflows are applied in GitHub internal repositories, per the same post [E]. | Yes. |
+
+Inferred: the one segment this cycle strengthened is the one closest to Karakuri's own standing streams, and its first-hand evidence says the bottleneck moves from doing work to reading what was done.
+
+### Still thin (part 1)
+
+- (f) Regulated organisation: not filled; one [N]. Next: a bank's own talk with a recording (Lloyds at Infosecurity Europe 2026, Barclays' Andy McMahon), or a public body's published algorithmic-transparency record (UK ATRS) for an agent.
+- (e) Standing agents: one introductory post. The schedule and failures are in the series' later posts and the status page, not read; next cycle should open https://github.github.io/gh-aw/agent-factory-status and one "Meet the Workflows" post.
+- Product teams and enterprises: not reached.
+- Stretch (b) InfoQ transcript, (a) agent-in-incident postmortem, (d) Ona white paper, (g) Anthropic report PDF, (c) second self-hoster: **not reached**.
+- **Candidate needs for parts 2 and 6 to test:** (1) one digest across many standing objectives that surfaces only what needs a person; (2) an objective that watches the health of other standing objectives (stuck, noisy, costly); (3) whether "nobody can read all these outputs" shows up as a complaint in any tracker.
+
 <!-- p1:end -->
 
 ## What they ask for and complain about
@@ -98,6 +123,7 @@ _Pending: part 7._
 
 - https://github.github.com/gh-aw/blog/2026-01-12-welcome-to-pelis-agent-factory/ — read 2026-11-01; primary (the team's own blog); full text of a short post, no truncation reported; [Q] for the five quoted sentences, [E] for the rest.
 - https://github.github.io/gh-aw/agent-factory-status — not opened; [N], cited for nothing.
+- https://www.pulse.bot/cybersecurity/news/infosecurity-europe-practical-lessons-from-lloyds-agentic-ai-security-playbook-95addba0-8826-4c52-9fa6-514224cffa45/ — fetch failed 2026-11-01 ("Socket is closed"); secondary; [N], cited for nothing.
 - Local files, read 2026-11-01: `README.md`, `docs/roadmap.md` (phase headings), `docs/research/discovery-2026-10-25.md`; `gh pr list` output. Primary for this repository.
 <!-- s1:end -->
 
