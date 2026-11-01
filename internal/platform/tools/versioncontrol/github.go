@@ -213,6 +213,7 @@ func (g *GitHub) ListChecks(ctx context.Context, repo, ref string) ([]CheckRun, 
 	var raw struct {
 		TotalCount int `json:"total_count"`
 		CheckRuns  []struct {
+			ID         int64  `json:"id"`
 			Name       string `json:"name"`
 			HeadSHA    string `json:"head_sha"`
 			Status     string `json:"status"`
@@ -230,7 +231,7 @@ func (g *GitHub) ListChecks(ctx context.Context, repo, ref string) ([]CheckRun, 
 	}
 	out := make([]CheckRun, 0, len(raw.CheckRuns))
 	for _, c := range raw.CheckRuns {
-		out = append(out, CheckRun{Name: c.Name, HeadSHA: c.HeadSHA, Status: c.Status, Conclusion: c.Conclusion})
+		out = append(out, CheckRun{ID: c.ID, Name: c.Name, HeadSHA: c.HeadSHA, Status: c.Status, Conclusion: c.Conclusion})
 	}
 	return out, nil
 }
@@ -251,6 +252,9 @@ func (g *GitHub) ChangedFiles(ctx context.Context, repo, prID string) ([]string,
 	for page := 1; page <= changedFilesMaxPages; page++ {
 		var raw []struct {
 			Filename string `json:"filename"`
+			// Set on a rename: the path the file left, which the diff touches
+			// as much as the one it arrived at.
+			PreviousFilename string `json:"previous_filename"`
 		}
 		path := fmt.Sprintf("/repos/%s/pulls/%s/files?per_page=100&page=%d", repo, url.PathEscape(prID), page)
 		if err := g.do(ctx, "GET", path, nil, &raw); err != nil {
@@ -258,6 +262,9 @@ func (g *GitHub) ChangedFiles(ctx context.Context, repo, prID string) ([]string,
 		}
 		for _, f := range raw {
 			out = append(out, f.Filename)
+			if f.PreviousFilename != "" {
+				out = append(out, f.PreviousFilename)
+			}
 		}
 		if len(raw) < 100 {
 			return out, nil

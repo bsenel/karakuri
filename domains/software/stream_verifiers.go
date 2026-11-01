@@ -144,9 +144,13 @@ func (e *gitEnv) verifyStreamPR(ctx context.Context, repo, branch string, params
 }
 
 // verifyCIGreen is met when every check at the pull request's head completed
-// with success. A check on an older commit settles nothing, a failure is not
-// met, and a check pending when the bounded wait ends, skipped or neutral did
-// not run as far as the verifier can tell.
+// with success, counting only the latest run of each check. A check on an
+// older commit settles nothing and a failure is not met. A check pending when
+// the bounded wait ends, or whose latest run was cancelled or awaits approval,
+// did not run as far as the verifier can tell. A skipped or neutral check
+// blocks nothing, as on the forge's own merge gate; a repository's CI skips
+// some jobs on every pull request, and counting those made the criterion
+// unreachable.
 func (e *gitEnv) verifyCIGreen(ctx context.Context, repo, branch string, params map[string]any) environment.ActionResult {
 	pr, found, err := e.branchPR(ctx, repo, branch, time.Time{})
 	if err != nil {
@@ -173,9 +177,10 @@ func (e *gitEnv) verifyCIGreen(ctx context.Context, repo, branch string, params 
 				atHead = append(atHead, c)
 			}
 		}
-		failing, pending, notRun, green := sortChecks(atHead)
+		failing, pending, notRun, nonBlocking, green := sortChecks(latestRuns(atHead))
 		extra := prRef(pr)
 		extra["green"], extra["failing"], extra["pending"], extra["not_run"] = green, failing, pending, notRun
+		extra["skipped_or_neutral"] = nonBlocking
 		switch {
 		case len(failing) > 0:
 			// Red wins over pending: a run still going cannot un-fail one that
@@ -195,7 +200,7 @@ func (e *gitEnv) verifyCIGreen(ctx context.Context, repo, branch string, params 
 				"still pending when the wait ended: "+strings.Join(pending, ", "), trust, extra)
 		case len(notRun) > 0:
 			return verdict(CapCIGreen, objective.CriterionInconclusive, objective.ReasonNotRun,
-				"skipped or neutral: "+strings.Join(notRun, ", "), trust, extra)
+				"cancelled or awaiting approval: "+strings.Join(notRun, ", "), trust, extra)
 		case len(green) == 0:
 			return verdict(CapCIGreen, objective.CriterionInconclusive, objective.ReasonNoData,
 				"no check has reported on the head commit "+pr.HeadSHA, trust, extra)
@@ -204,9 +209,32 @@ func (e *gitEnv) verifyCIGreen(ctx context.Context, repo, branch string, params 
 	}
 }
 
+// latestRuns keeps the latest run of each check by name. The forge lists every
+// run on a commit, so a run that a newer one superseded, often cancelled when a
+// pull request is edited, would otherwise speak for the check.
+func latestRuns(checks []versioncontrol.CheckRun) []versioncontrol.CheckRun {
+	latest := make(map[string]int, len(checks))
+	var order []string
+	for i, c := range checks {
+		j, seen := latest[c.Name]
+		if !seen {
+			order = append(order, c.Name)
+		}
+		if !seen || c.ID > checks[j].ID {
+			latest[c.Name] = i
+		}
+	}
+	out := make([]versioncontrol.CheckRun, 0, len(order))
+	for _, name := range order {
+		out = append(out, checks[latest[name]])
+	}
+	return out
+}
+
 // sortChecks splits checks by what they say: failed, still running, completed
-// without running (skipped or neutral), and green.
-func sortChecks(checks []versioncontrol.CheckRun) (failing, pending, notRun, green []string) {
+// without running (cancelled or awaiting approval), completed without blocking
+// (skipped or neutral), and green.
+func sortChecks(checks []versioncontrol.CheckRun) (failing, pending, notRun, nonBlocking, green []string) {
 	for _, c := range checks {
 		switch {
 		case c.Status != "completed":
@@ -214,12 +242,14 @@ func sortChecks(checks []versioncontrol.CheckRun) (failing, pending, notRun, gre
 		case c.Conclusion == "success":
 			green = append(green, c.Name)
 		case c.Conclusion == "skipped", c.Conclusion == "neutral":
+			nonBlocking = append(nonBlocking, c.Name)
+		case c.Conclusion == "cancelled", c.Conclusion == "action_required":
 			notRun = append(notRun, c.Name)
 		default:
 			failing = append(failing, c.Name)
 		}
 	}
-	return failing, pending, notRun, green
+	return failing, pending, notRun, nonBlocking, green
 }
 
 // ciGreenWaitSec reads params.wait_sec, where zero means "do not wait", so it
