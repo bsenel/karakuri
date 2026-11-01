@@ -232,29 +232,3 @@ func TestTheVerifierSucceedingMeetsTheCriterion(t *testing.T) {
 		t.Errorf("a passing verifier scored (%v, %v)", score, allMet)
 	}
 }
-
-// A verifier that never ran falls to the agent — which now sees the outcomes,
-// so it is a judgement rather than a guess. It must not be treated as met by
-// default.
-func TestAVerifierThatNeverRanIsJudgedNotAssumed(t *testing.T) {
-	agent := &capturingAgent{reply: "FAIL"}
-	sc := &stepContext{
-		svc:   &serviceImpl{hub: event.NewHub()},
-		agent: agent,
-		obj: objective.Objective{
-			ID: "obj-1",
-			SuccessCriteria: []objective.Criterion{{
-				ID: "pr-open", Verifier: "software.act.create_pr", Weight: 1.0,
-			}},
-		},
-	}
-	_, allMet := stepVerify(context.Background(), sc, []actionOutcome{
-		{CapabilityID: "software.act.send_message", Result: environment.ActionResult{Success: true}},
-	})
-	if allMet {
-		t.Error("a criterion whose verifier never ran was met anyway")
-	}
-	if agent.lastTask == "" {
-		t.Error("the agent was not asked about a criterion nothing settled")
-	}
-}

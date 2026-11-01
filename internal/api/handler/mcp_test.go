@@ -12,6 +12,7 @@ import (
 	"github.com/bsenel/karakuri/auth"
 	"github.com/bsenel/karakuri/internal/api/handler"
 	karakuriauth "github.com/bsenel/karakuri/internal/auth"
+	"github.com/bsenel/karakuri/internal/core/objective"
 	"github.com/bsenel/karakuri/internal/core/twin"
 	"github.com/bsenel/karakuri/internal/feature/audit"
 	featureobjective "github.com/bsenel/karakuri/internal/feature/objective"
@@ -55,7 +56,10 @@ func newMCPFixture(t *testing.T, allowed ...auth.Action) *mcpFixture {
 		t.Fatal(err)
 	}
 	objSvc := featureobjective.NewService(store)
-	if _, err := objSvc.Create(ctx, featureobjective.CreateRequest{Title: "Keep the build green", Domain: "software", TwinID: "twin-1"}); err != nil {
+	objSvc.RegisterTemplate(objective.Template{ID: "software.green", SuccessCriteria: []objective.Criterion{
+		{ID: "done", Description: "the build is green", Weight: 1},
+	}})
+	if _, err := objSvc.Create(ctx, featureobjective.CreateRequest{Title: "Keep the build green", Domain: "software", TwinID: "twin-1", TemplateID: "software.green"}); err != nil {
 		t.Fatal(err)
 	}
 

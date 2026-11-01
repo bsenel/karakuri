@@ -33,7 +33,7 @@ func TestUnknownSubcommandOfAGroupIsAnError(t *testing.T) {
 	if err == nil {
 		t.Fatal("krk objective lis: expected an error")
 	}
-	for _, want := range []string{`unknown command "lis" for "krk objective"`, "Did you mean list?", "Available commands: create, get, list", "Run 'krk objective --help' for details"} {
+	for _, want := range []string{`unknown command "lis" for "krk objective"`, "Did you mean list?", "Available commands: create, criteria, get, list", "Run 'krk objective --help' for details"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error %q does not contain %q", err, want)
 		}

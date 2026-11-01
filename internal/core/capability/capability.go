@@ -1,5 +1,10 @@
 package capability
 
+import (
+	"path"
+	"strings"
+)
+
 type CapabilityID string
 
 type Capability struct {
@@ -9,8 +14,23 @@ type Capability struct {
 	Description  string       `json:"description,omitempty"`
 	InputSchema  Schema       `json:"input_schema,omitempty"`
 	OutputSchema Schema       `json:"output_schema,omitempty"`
-	Verifiable   bool         `json:"verifiable,omitempty"`
-	LLMHints     LLMHints     `json:"llm_hints,omitempty"`
+	// Metrics declares each named number this capability can emit as a
+	// verifier (Phase 41, decision 2, 'Declaration'). It sits beside
+	// OutputSchema rather than inside a JSON Schema, so validation and the
+	// loop read it without interpreting one.
+	//
+	// The roadmap puts the declaration in the pack manifest (Phase 39, ADR
+	// 028), and that manifest is not on main, so it lives on the capability
+	// a pack registers until it is.
+	Metrics []Metric `json:"metrics,omitempty"`
+	// MeasurePaths are the path globs this verifier's definition is read
+	// from, such as its test files or its benchmark, where "**" is any number
+	// of directories. A pass that changes one of them changed the measure as
+	// well as the work, so a criterion naming this verifier settles nothing in
+	// it (Phase 41, decision 6, 'Anti-gaming'). Empty declares none.
+	MeasurePaths []string `json:"measure_paths,omitempty"`
+	Verifiable   bool     `json:"verifiable,omitempty"`
+	LLMHints     LLMHints `json:"llm_hints,omitempty"`
 
 	// NeedsWorkspace says this capability writes files and must be given an
 	// isolated git worktree before it runs. The loop provisions one and puts
@@ -58,6 +78,90 @@ type SchemaProperty struct {
 	Type        string   `json:"type,omitempty"`
 	Description string   `json:"description,omitempty"`
 	Enum        []string `json:"enum,omitempty"`
+}
+
+// Metric is one number a verifier declares it can emit: its name, the unit
+// every value of it is in, which way is better, and the parameters it takes.
+// Which names exist is a pack's business; the core knows only the shape.
+type Metric struct {
+	Name      string        `json:"name"`
+	Unit      string        `json:"unit"`
+	Direction Direction     `json:"direction"`
+	Params    []MetricParam `json:"params,omitempty"`
+}
+
+// Direction says which way a metric improves.
+type Direction string
+
+const (
+	DirectionHigherIsBetter Direction = "higher_is_better"
+	DirectionLowerIsBetter  Direction = "lower_is_better"
+)
+
+// MetricParam is one typed parameter a metric takes, such as the packages a
+// coverage figure is computed over.
+type MetricParam struct {
+	Name string    `json:"name"`
+	Type ParamType `json:"type"`
+}
+
+// ParamType is the type of a metric parameter's value.
+type ParamType string
+
+const (
+	ParamString  ParamType = "string"
+	ParamNumber  ParamType = "number"
+	ParamInteger ParamType = "integer"
+	ParamBoolean ParamType = "boolean"
+)
+
+// DeclaredMetric returns the metric this capability declares under name.
+func (c Capability) DeclaredMetric(name string) (Metric, bool) {
+	for _, m := range c.Metrics {
+		if m.Name == name {
+			return m, true
+		}
+	}
+	return Metric{}, false
+}
+
+// TouchesAnyGlob reports whether any of the changed paths matches one of the
+// globs, where "**" is any number of path segments and any other segment is a
+// path.Match pattern.
+func TouchesAnyGlob(changed, globs []string) bool {
+	for _, file := range changed {
+		name := strings.Split(file, "/")
+		for _, g := range globs {
+			if matchGlob(strings.Split(g, "/"), name) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// matchGlob matches a slash-separated path segment by segment, where "**"
+// is any number of segments, zero included, and any other segment is a
+// path.Match pattern.
+func matchGlob(pattern, name []string) bool {
+	if len(pattern) == 0 {
+		return len(name) == 0
+	}
+	if pattern[0] == "**" {
+		for i := 0; i <= len(name); i++ {
+			if matchGlob(pattern[1:], name[i:]) {
+				return true
+			}
+		}
+		return false
+	}
+	if len(name) == 0 {
+		return false
+	}
+	if ok, err := path.Match(pattern[0], name[0]); err != nil || !ok {
+		return false
+	}
+	return matchGlob(pattern[1:], name[1:])
 }
 
 type LLMHints struct {

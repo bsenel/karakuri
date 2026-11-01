@@ -3,7 +3,7 @@ import { Link, useParams } from 'react-router-dom';
 import { api } from '@/api/client';
 import { streamObjective } from '@/api/sse';
 import { StandingPanel } from '@/components/StandingPanel';
-import type { LoopStatus, Objective, SSEEvent } from '@/api/types';
+import type { Criterion, LoopStatus, Objective, SSEEvent } from '@/api/types';
 
 // Drill-down for one objective + the live SSE loop runner. Subscribes to the
 // objective's /events stream and renders a coloured per-step timeline. The
@@ -84,11 +84,6 @@ export function ObjectiveDetailPage() {
     );
   }
 
-  // Weighted-score progress: derived from the latest verify event payload OR
-  // the status object when polling kicks in.
-  const score = status?.weighted_score ??
-    Number((events.findLast?.((e) => (e.payload as Record<string, unknown> | undefined)?.weighted_score !== undefined)?.payload as Record<string, unknown> | undefined)?.weighted_score ?? 0);
-
   return (
     <>
       <p className="muted small"><Link to="/objectives">← Objectives</Link></p>
@@ -120,20 +115,7 @@ export function ObjectiveDetailPage() {
       <StandingPanel objectiveID={id} budget={obj?.budget} />
 
       {obj.success_criteria && obj.success_criteria.length > 0 && (
-        <div className="card" style={{ marginTop: 16 }}>
-          <h3>Success criteria</h3>
-          <div className="col">
-            {obj.success_criteria.map((c) => (
-              <div key={c.id}>
-                <div className="row small">
-                  <span className="grow">{c.description}</span>
-                  <span className="mono muted">w={c.weight ?? 1}</span>
-                </div>
-                <div className="progress"><div style={{ width: `${Math.round(score * 100)}%` }} /></div>
-              </div>
-            ))}
-          </div>
-        </div>
+        <SuccessCriteria criteria={obj.success_criteria} />
       )}
 
       <h2>Loop timeline</h2>
@@ -143,6 +125,96 @@ export function ObjectiveDetailPage() {
       </div>
     </>
   );
+}
+
+// What the last verify step settled about each criterion, the same states the
+// digest and `krk objective criteria` show. Required criteria are the gate:
+// completion waits on each of them. Optional ones are a score, so they show as
+// progress apart from the gate, and a partial score is expected rather than a
+// failure.
+function SuccessCriteria({ criteria }: { criteria: Criterion[] }) {
+  // Absent required means required, as the server reads it.
+  const gate = criteria.filter((c) => c.required !== false);
+  const optional = criteria.filter((c) => c.required === false);
+  const of = optional.reduce((sum, c) => sum + (c.weight ?? 0), 0);
+  const earned = optional.reduce((sum, c) => sum + (c.state === 'met' ? c.weight ?? 0 : 0), 0);
+
+  return (
+    <div className="card" style={{ marginTop: 16 }}>
+      <h3>Success criteria</h3>
+      {gate.length > 0 && (
+        <ul aria-label="Required criteria" className="col" style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+          {gate.map((c) => (
+            <li key={c.id} className="row small">
+              {/* Spaces between the parts keep the text readable, so a state
+                  never runs into the description before it. */}
+              <span className="grow">{c.description}</span>{' '}
+              {comparison(c) && <span className="mono muted">{comparison(c)}</span>}{' '}
+              {c.verifier && <span className="mono muted">{c.verifier}</span>}{' '}
+              <span className={`pill ${stateColour(c.state)}`}>{stateLabel(c)}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+      {optional.length > 0 && (
+        <>
+          <p className="muted small" style={{ margin: '16px 0 8px 0' }}>
+            progress {weight(earned)} of {weight(of)} on optional criteria
+          </p>
+          {of > 0 && <div className="progress"><div style={{ width: `${Math.round((earned / of) * 100)}%` }} /></div>}
+          <ul aria-label="Optional criteria" className="col" style={{ listStyle: 'none', margin: '12px 0 0 0', padding: 0 }}>
+            {optional.map((c) => (
+              <li key={c.id} className="row small">
+                <span className="grow">{c.description}</span>{' '}
+                {comparison(c) && <span className="mono muted">{comparison(c)}</span>}{' '}
+                {c.verifier && <span className="mono muted">{c.verifier}</span>}{' '}
+                <span className="mono muted">w={c.weight ?? 0}</span>{' '}
+                {/* An optional criterion nobody needed is not a failure. */}
+                <span className={`pill ${c.state === 'not_met' ? '' : stateColour(c.state)}`}>
+                  {c.state === 'not_met' ? 'not earned' : stateLabel(c)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+    </div>
+  );
+}
+
+// A criterion with no state was never run by its verifier: inconclusive:
+// not_run, never met.
+function stateLabel(c: Criterion): string {
+  if (!c.state) return 'inconclusive: not_run';
+  if (c.state === 'inconclusive') return c.reason ? `inconclusive: ${c.reason}` : 'inconclusive';
+  return c.state;
+}
+
+// A measured criterion's `metric op target unit`, then its baseline when it
+// has one, as `krk objective criteria` prints it: a target set against a start
+// that was already bad is read beside the number it is measured from. An
+// at_start baseline not measured yet says so rather than showing a number.
+function comparison(c: Criterion): string {
+  if (!c.metric || c.target == null) return '';
+  const shown = [c.metric, c.op, c.target, c.unit].filter((p) => p !== undefined && p !== '').join(' ');
+  if (c.baseline == null) return shown;
+  const source = c.baseline === 'at_start' ? 'at_start' : 'fixed';
+  if (c.baseline_value == null) return `${shown}, baseline ${source}, not measured`;
+  const value = [c.baseline_value, c.unit].filter((p) => p !== undefined && p !== '').join(' ');
+  return `${shown}, baseline ${value} (${source})`;
+}
+
+function stateColour(state: Criterion['state']): string {
+  if (state === 'met') return 'green';
+  if (state === 'not_met') return 'red';
+  return 'amber';
+}
+
+// A criterion weight to two places without trailing zeros, keeping one so a
+// whole weight reads as 1.0, as the digest renders it.
+function weight(w: number): string {
+  const r = Math.round(w * 100) / 100;
+  return Number.isInteger(r) ? r.toFixed(1) : String(r);
 }
 
 function EventRow({ event }: { event: SSEEvent }) {

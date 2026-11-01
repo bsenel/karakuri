@@ -77,6 +77,14 @@ func (v *recordingVC) GetCommits(context.Context, string, time.Time) ([]versionc
 	return nil, nil
 }
 
+func (v *recordingVC) ListChecks(context.Context, string, string) ([]versioncontrol.CheckRun, error) {
+	return nil, versioncontrol.ErrUnsupported
+}
+
+func (v *recordingVC) ChangedFiles(context.Context, string, string) ([]string, error) {
+	return nil, versioncontrol.ErrUnsupported
+}
+
 // ── the acceptance test ──────────────────────────────────────────────────────
 
 // The write path, end to end, against a scratch repository.

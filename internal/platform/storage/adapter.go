@@ -159,6 +159,20 @@ const (
 	// allowed to, in the same log as the approvals and the refusals.
 	ToolEventPromotion = "promotion"
 	ToolEventDemotion  = "demotion"
+	// ToolEventBaseline (Phase 41 step 7) records an at_start baseline being
+	// measured once and frozen, or that measurement being inconclusive. One row
+	// per criterion for the life of the objective, because a baseline that
+	// could be measured again is one the work could choose.
+	ToolEventBaseline = "baseline"
+	// ToolEventTarget (Phase 41 step 8) records a person changing a measured
+	// criterion's target through the API: the value it replaced, the new one,
+	// who changed it, and when that restarted the criterion's sustain window.
+	ToolEventTarget = "target"
+	// ToolEventMeasurement (Phase 41 step 9) records one measurement an action
+	// returned: the capability that took it, its parameters, the value, unit,
+	// source and trust, and the commit it was taken at. One row per
+	// measurement, whether or not it settled a criterion.
+	ToolEventMeasurement = "measurement"
 )
 
 // ResolvedCheckpointFilter narrows the resolved-checkpoint listing. Empty

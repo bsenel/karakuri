@@ -43,6 +43,7 @@ func (s *GORMStorage) SaveReconcileState(ctx context.Context, st reconcile.State
 		CriteriaMet:         st.CriteriaMet,
 		ScoreStreak:         st.ScoreStreak,
 		ConsecutiveFailures: st.ConsecutiveFailures,
+		SustainJSON:         jsonArray(st.Sustain),
 
 		Autonomy:  string(st.Autonomy),
 		CleanRuns: st.CleanRuns,
@@ -189,6 +190,8 @@ func (s *GORMStorage) SaveReconcileOutcome(ctx context.Context, o reconcile.Outc
 		Escalated:    o.Escalated,
 		CheckpointID: o.CheckpointID,
 		Error:        o.Error,
+		Inconclusive: o.Inconclusive,
+		CriteriaJSON: jsonArray(o.Criteria),
 		Deferred:     o.Deferred,
 		DeferredUntil: func() *time.Time {
 			if o.DeferredUntil.IsZero() {
@@ -219,6 +222,10 @@ func (s *GORMStorage) ListReconcileOutcomes(ctx context.Context, objectiveID obj
 	for i, m := range models {
 		var drift reconcile.Drift
 		_ = json.Unmarshal([]byte(m.DriftJSON), &drift)
+		var criteria []objective.CriterionPass
+		if m.CriteriaJSON != "" {
+			_ = json.Unmarshal([]byte(m.CriteriaJSON), &criteria)
+		}
 		out[i] = reconcile.Outcome{
 			ID:           m.ID,
 			ObjectiveID:  objective.ObjectiveID(m.ObjectiveID),
@@ -232,6 +239,8 @@ func (s *GORMStorage) ListReconcileOutcomes(ctx context.Context, objectiveID obj
 			Escalated:    m.Escalated,
 			CheckpointID: m.CheckpointID,
 			Error:        m.Error,
+			Inconclusive: m.Inconclusive,
+			Criteria:     criteria,
 			Deferred:     m.Deferred,
 			DeferredUntil: func() time.Time {
 				if m.DeferredUntil == nil {
@@ -246,10 +255,27 @@ func (s *GORMStorage) ListReconcileOutcomes(ctx context.Context, objectiveID obj
 	return out, nil
 }
 
+// jsonArray encodes a slice for a JSON column whose default is '[]', so an
+// empty slice is stored as the column default rather than as null.
+func jsonArray[T any](items []T) string {
+	if len(items) == 0 {
+		return "[]"
+	}
+	b, err := json.Marshal(items)
+	if err != nil {
+		return "[]"
+	}
+	return string(b)
+}
+
 func reconcileStateFromModel(m schema.ReconcileStateModel) reconcile.State {
 	var converged reconcile.Fingerprint
 	if m.ConvergedJSON != "" {
 		_ = json.Unmarshal([]byte(m.ConvergedJSON), &converged)
+	}
+	var sustain []reconcile.CriterionSustain
+	if m.SustainJSON != "" {
+		_ = json.Unmarshal([]byte(m.SustainJSON), &sustain)
 	}
 	return reconcile.State{
 		ObjectiveID:  objective.ObjectiveID(m.ObjectiveID),
@@ -275,6 +301,7 @@ func reconcileStateFromModel(m schema.ReconcileStateModel) reconcile.State {
 		CriteriaMet:         m.CriteriaMet,
 		ScoreStreak:         m.ScoreStreak,
 		ConsecutiveFailures: m.ConsecutiveFailures,
+		Sustain:             sustain,
 
 		Autonomy:  objective.AutonomyLevel(m.Autonomy),
 		CleanRuns: m.CleanRuns,

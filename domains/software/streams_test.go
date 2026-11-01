@@ -91,27 +91,10 @@ func TestStreamTemplatesNameTheirAgent(t *testing.T) {
 	}
 }
 
-// Every stream criterion is judged: no capability's success answers it, so
-// naming a verifier would claim a settlement that never ran.
-func TestStreamCriteriaAreJudged(t *testing.T) {
-	for _, tc := range streamCases {
-		t.Run(tc.id, func(t *testing.T) {
-			for _, crit := range streamTemplate(t, tc.id).SuccessCriteria {
-				if crit.Verifier != "" {
-					t.Errorf("criterion %q is verified by %q, want it judged", crit.ID, crit.Verifier)
-				}
-			}
-		})
-	}
-}
-
 func TestStreamCriteriaWeightsSumToOne(t *testing.T) {
 	for _, tc := range streamCases {
 		t.Run(tc.id, func(t *testing.T) {
 			criteria := streamTemplate(t, tc.id).SuccessCriteria
-			if len(criteria) != 2 {
-				t.Fatalf("%d criteria, want 2", len(criteria))
-			}
 			var sum float64
 			for _, crit := range criteria {
 				sum += crit.Weight

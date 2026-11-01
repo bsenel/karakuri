@@ -4,12 +4,31 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"time"
 
+	"github.com/bsenel/karakuri/internal/core/capability"
 	"github.com/bsenel/karakuri/internal/core/objective"
 	"github.com/bsenel/karakuri/internal/platform/storage"
 )
+
+// ErrNoRequiredCriterion rejects an objective that could never complete: with
+// no required criterion, the verify step fails it after spending every
+// iteration it is given.
+var ErrNoRequiredCriterion = errors.New("objective has no required success criterion")
+
+// ValidationError is a create request refused for one field, named the way the
+// request spells it, for example success_criteria[1].unit, so the caller knows
+// what to change.
+type ValidationError struct {
+	Field string
+	Err   error
+}
+
+func (e *ValidationError) Error() string { return e.Field + ": " + e.Err.Error() }
+
+func (e *ValidationError) Unwrap() error { return e.Err }
 
 type CreateRequest struct {
 	Title             string
@@ -20,6 +39,16 @@ type CreateRequest struct {
 	MaxIterations     int // 0 = use server default at loop-start time
 	TwinID            string
 	TemplateID        string // optional; populates criteria/constraints if set
+	// SuccessCriteria are added after the template's. One with a template
+	// criterion's ID may tighten it, never loosen it. Each is checked against
+	// the verifier it names, and a refusal is a *ValidationError.
+	SuccessCriteria []objective.Criterion
+}
+
+// Verifiers is how create looks up the verifier a criterion names and the
+// metrics it declares. The capability registry satisfies it.
+type Verifiers interface {
+	Get(id capability.CapabilityID) (capability.Capability, bool)
 }
 
 // Containers places an objective in the tenancy tree. It is an interface so
@@ -33,6 +62,7 @@ type Service struct {
 	store      storage.StorageAdapter
 	templates  map[string]objective.Template
 	containers Containers
+	verifiers  Verifiers
 }
 
 func NewService(store storage.StorageAdapter) *Service {
@@ -44,6 +74,14 @@ func NewService(store storage.StorageAdapter) *Service {
 // twins themselves.
 func (s *Service) WithContainers(c Containers) *Service {
 	s.containers = c
+	return s
+}
+
+// WithVerifiers lets create check each criterion against the verifier it
+// names: that it exists, is a pack's, and declares the metric, unit and
+// parameters the criterion uses.
+func (s *Service) WithVerifiers(v Verifiers) *Service {
+	s.verifiers = v
 	return s
 }
 
@@ -73,6 +111,18 @@ func (s *Service) Create(ctx context.Context, req CreateRequest) (objective.Obje
 				o.AgentID = string(tmpl.SuggestedAgents[0].ID)
 			}
 		}
+	}
+	criteria, err := s.mergeCriteria(o.SuccessCriteria, req.SuccessCriteria)
+	if err != nil {
+		return objective.Objective{}, err
+	}
+	o.SuccessCriteria = criteria
+	if !hasRequiredCriterion(o.SuccessCriteria) {
+		if len(req.SuccessCriteria) > 0 {
+			// The request's own list is what the caller can fix.
+			return objective.Objective{}, &ValidationError{Field: "success_criteria", Err: ErrNoRequiredCriterion}
+		}
+		return objective.Objective{}, ErrNoRequiredCriterion
 	}
 	if err := s.store.SaveObjective(ctx, o); err != nil {
 		return objective.Objective{}, fmt.Errorf("save objective: %w", err)
@@ -107,6 +157,15 @@ func (s *Service) ListTemplates() []objective.Template {
 		out = append(out, t)
 	}
 	return out
+}
+
+func hasRequiredCriterion(criteria []objective.Criterion) bool {
+	for _, c := range criteria {
+		if c.IsRequired() {
+			return true
+		}
+	}
+	return false
 }
 
 func newID() (string, error) {

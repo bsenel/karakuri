@@ -3,15 +3,21 @@ package loop
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"math"
+	"slices"
 	"strings"
 	"time"
 	"unicode"
 
 	coreagent "github.com/bsenel/karakuri/internal/core/agent"
+	"github.com/bsenel/karakuri/internal/core/capability"
 	"github.com/bsenel/karakuri/internal/core/event"
 	"github.com/bsenel/karakuri/internal/core/loop"
 	"github.com/bsenel/karakuri/internal/core/objective"
+	"github.com/bsenel/karakuri/internal/platform/tools/observability"
+	"github.com/bsenel/karakuri/internal/platform/tools/versioncontrol"
 )
 
 func stepVerify(ctx context.Context, sc *stepContext, outcomes []actionOutcome) (float64, bool) {
@@ -26,6 +32,11 @@ func stepVerify(ctx context.Context, sc *stepContext, outcomes []actionOutcome) 
 		Timestamp: time.Now().UTC(),
 	})
 
+	// Every measurement is audited before anything is settled, so a figure
+	// that settles nothing, or an objective with nothing to settle, still
+	// leaves its row.
+	sc.svc.auditMeasurements(ctx, sc, outcomes)
+
 	criteria := sc.obj.SuccessCriteria
 
 	// No criteria → refuse to score completion. Previously this path
@@ -34,7 +45,11 @@ func stepVerify(ctx context.Context, sc *stepContext, outcomes []actionOutcome) 
 	// no-ops: no criteria, trivial pass, falsified status. Honest
 	// failure: returns 0.0/false so the loop iterates (or finalizes
 	// as Failed) and operators add criteria before retrying.
-	if len(criteria) == 0 {
+	//
+	// Counted over required criteria, not all of them: an objective whose
+	// criteria are all optional has nothing that can grant completion, and
+	// would otherwise complete vacuously once they happened to be met.
+	if !hasRequired(criteria) {
 		sc.svc.hub.Publish(ctx, event.Event{
 			Type:        event.TypeLoopStepCompleted,
 			ObjectiveID: string(sc.obj.ID),
@@ -71,12 +86,11 @@ func stepVerify(ctx context.Context, sc *stepContext, outcomes []actionOutcome) 
 			domainTotal[criterion.Domain] += weight
 		}
 
-		met := false
 		verifier := string(criterion.Verifier)
 
 		// A criterion naming a verifier is settled by the action that ran that
-		// verifier, when one did. Deterministic beats asking a model, and it
-		// is the only reading of "verified by run_tests" that means anything.
+		// verifier and by nothing else. Deterministic beats asking a model, and
+		// it is the only reading of "verified by run_tests" that means anything.
 		//
 		// It used to be "met if any action succeeded", for verifiers whose ID
 		// merely *contained* run_tests or lint — so a criterion about the test
@@ -84,6 +98,9 @@ func stepVerify(ctx context.Context, sc *stepContext, outcomes []actionOutcome) 
 		// hard-coded substrings. Everything else went to a model that was
 		// shown no results at all.
 		ran := outcomesFor(outcomes, verifier)
+		changed := sc.svc.measureChanged(criterion.Verifier, ran)
+		state := objective.CriterionNotMet
+		var reason objective.InconclusiveReason
 		switch {
 		case criterion.VerifierIsReserved():
 			// A tool a third party controls never settles whether this
@@ -91,26 +108,40 @@ func stepVerify(ctx context.Context, sc *stepContext, outcomes []actionOutcome) 
 			// objective — boot only warns about templates, so this is the
 			// place that refuses (ADR 022). Not met, and not handed to the
 			// agent either: its judgement would be read off that tool's output.
-			met = false
+		case criterion.Kind == objective.KindMeasured && sc.svc.declaresOtherUnit(criterion):
+			// The verifier does not measure this metric in the unit the
+			// criterion asks for, so no value it emits is one the author's
+			// target was written against, whichever unit it arrives in.
+			state, reason = objective.CriterionInconclusive, objective.ReasonUnsupported
+		case changed != "":
+			// The pass may have moved the measure with the work, so whatever
+			// the verifier reported settles nothing, and a person decides.
+			state, reason = objective.CriterionInconclusive, changed
+		case criterion.Kind == objective.KindMeasured && len(ran) > 0:
+			state, reason = settleByMeasurement(criterion, ran)
+		case criterion.Kind == objective.KindMeasured:
+			// A number nobody measured is not handed to a model to guess,
+			// whether the verifier was not run or none was named.
+			state, reason = objective.CriterionInconclusive, objective.ReasonNotRun
 		case verifier != "" && len(ran) > 0:
-			// Every run of it has to have succeeded. One failing test run is
-			// a failing test run, however many passed beside it.
-			met = true
-			for _, o := range ran {
-				if !o.Result.Success {
-					met = false
-					break
-				}
-			}
+			state, reason = settleByVerifier(ran)
+		case verifier != "":
+			// The declared verifier never ran. Only its result settles the
+			// criterion, so it is not run rather than handed to the agent: a
+			// model's reading of other capabilities' results is how passes
+			// that did the work were judged failed (Phase 41).
+			state, reason = objective.CriterionInconclusive, objective.ReasonNotRun
 		default:
-			// No verifier declared, or the declared one never ran. The agent
-			// judges — now from the actual outcomes, which is the difference
-			// between a judgement and a guess.
-			met = evaluateWithAgent(ctx, sc, criterion, outcomes)
+			// No verifier declared. The agent judges — from the actual
+			// outcomes, which is the difference between a judgement and a guess.
+			if evaluateWithAgent(ctx, sc, criterion, outcomes) {
+				state = objective.CriterionMet
+			}
 		}
 
-		criteria[i].Met = met
-		if met {
+		criteria[i].State = state
+		criteria[i].Reason = reason
+		if state == objective.CriterionMet {
 			metWeight += weight
 			metCount++
 			if criterion.Domain != "" {
@@ -119,18 +150,23 @@ func stepVerify(ctx context.Context, sc *stepContext, outcomes []actionOutcome) 
 		}
 	}
 
-	// 3. Compute weighted score
+	// 3. Compute weighted score. Optional criteria count towards it, as
+	// progress; only the required ones decide completion, and they are read
+	// over the states just settled from this one set of outcomes.
 	score := 0.0
 	if totalWeight > 0 {
 		score = metWeight / totalWeight
 	}
-	allMet := metCount == len(criteria)
+	allMet := objective.AllRequiredMet(criteria)
 
 	// 4. Emit step completed
 	payload := map[string]any{
 		"step":               string(loop.StepVerify),
 		"criteria_met_count": metCount,
 		"weighted_score":     score,
+		// The states themselves, so why the objective did or did not
+		// complete outlives the in-memory objective.
+		"criteria": slices.Clone(criteria),
 	}
 	if len(domainTotal) > 0 {
 		perDomain := make(map[string]float64, len(domainTotal))
@@ -149,6 +185,187 @@ func stepVerify(ctx context.Context, sc *stepContext, outcomes []actionOutcome) 
 	})
 
 	return score, allMet
+}
+
+// settleByVerifier reads the runs of a criterion's named verifier.
+//
+// Every run that reported has to have succeeded: one failing test run is a
+// failing test run, however many passed beside it. A run that could not be
+// carried out at all reported nothing, so it is left out, and when no run
+// reported the criterion is inconclusive — never not_met, and never handed to
+// the judge: an adapter refusing the call says nothing about the work.
+//
+// A verifier that settles its own state says so in StateDelta "state" and
+// "reason". An inconclusive run is left out like one that could not run, and
+// its reason is the criterion's when no run settled anything; read as a plain
+// failure it would be not_met, and a pass with no data would trip the breaker.
+func settleByVerifier(ran []actionOutcome) (objective.CriterionState, objective.InconclusiveReason) {
+	reported := 0
+	reason := objective.ReasonVerifierError
+	for _, o := range ran {
+		if o.Errored {
+			continue
+		}
+		if state, _ := o.Result.StateDelta["state"].(string); state == string(objective.CriterionInconclusive) {
+			if r, _ := o.Result.StateDelta["reason"].(string); r != "" {
+				reason = objective.InconclusiveReason(r)
+			}
+			continue
+		}
+		reported++
+		if !o.Result.Success {
+			return objective.CriterionNotMet, ""
+		}
+	}
+	if reported == 0 {
+		return objective.CriterionInconclusive, reason
+	}
+	return objective.CriterionMet, ""
+}
+
+// settleByMeasurement compares the criterion's metric, as its named verifier
+// measured it, with the target.
+//
+// Only the runs of that verifier are read, and only the measurement the
+// criterion names. Every settled value has to meet the target, as every run
+// has to succeed in settleByVerifier. A third-party figure may sit on the
+// result, but it cannot settle a required criterion (AGENTS.md rule 9).
+//
+// Nothing settled is inconclusive: no measurement is no_data, a verifier that
+// says it cannot measure is unsupported and any other error is a
+// verifier_error (AGENTS.md rule 10). None of them is not_met, so none counts
+// against the work.
+//
+// Every qualifying value is a sample, and the samples are settled together by
+// the criterion's reducer, so the median of three runs is read off all three
+// and min_samples counts them. A criterion that asks for no samples and names
+// no reducer is settled as it always was: every value has to meet the target.
+// A third-party figure is not a sample either, and a value in another unit or
+// a NaN is not one any more than it settled anything before.
+func settleByMeasurement(c objective.Criterion, ran []actionOutcome) (objective.CriterionState, objective.InconclusiveReason) {
+	samples, reason := qualifyingSamples(c, ran)
+	if len(samples) == 0 {
+		return objective.CriterionInconclusive, reason
+	}
+	if c.Samples == 0 && c.Reducer == "" {
+		c.Reducer = objective.ReducerAll
+	}
+	return c.CompareSamples(samples, c.Unit)
+}
+
+// qualifyingSamples are the values of the criterion's metric in its unit that
+// the runs of its named verifier measured, and, when there are none, the reason
+// nothing qualified. Shared by verify and the at_start baseline, so a value
+// that could not settle a criterion cannot become its baseline either.
+func qualifyingSamples(c objective.Criterion, ran []actionOutcome) ([]float64, objective.InconclusiveReason) {
+	var samples []float64
+	reason := objective.ReasonNoData
+	for _, o := range ran {
+		if o.Errored {
+			reason = objective.ReasonVerifierError
+			if errors.Is(o.Err, versioncontrol.ErrUnsupported) || errors.Is(o.Err, observability.ErrUnsupported) {
+				reason = objective.ReasonUnsupported
+			}
+			continue
+		}
+		for _, m := range o.Result.Measurements {
+			if m.Name != c.Metric || (m.Trust.IsThirdParty() && c.IsRequired()) {
+				continue
+			}
+			switch {
+			case math.IsNaN(m.Value):
+				reason = objective.ReasonNoData
+			case m.Unit != c.Unit:
+				reason = objective.ReasonVerifierError
+			default:
+				samples = append(samples, m.Value)
+			}
+		}
+	}
+	return samples, reason
+}
+
+// declaresOtherUnit reports whether a measured criterion's verifier declares
+// its metric in another unit than the criterion's.
+//
+// Read off the registry, where the loop reads every capability. A verifier the
+// registry does not hold, or one that declares no such metric, has nothing to
+// disagree with, and its measurements are compared as they arrive.
+func (s *serviceImpl) declaresOtherUnit(c objective.Criterion) bool {
+	if s.capReg == nil {
+		return false
+	}
+	verifier, ok := s.capReg.Get(c.Verifier)
+	if !ok {
+		return false
+	}
+	declared, ok := verifier.DeclaredMetric(c.Metric)
+	return ok && declared.Unit != c.Unit
+}
+
+// measureChanged is why the runs of a verifier settle nothing because of its
+// declared measure paths (Phase 41, decision 6, 'Anti-gaming'), or "" when
+// they settle as before.
+//
+// A run carries the files its pass changed in StateDelta "changed_files". One
+// that touches a declared path is measure_changed. One that carries no list
+// leaves the paths unchecked, which is a verifier_error, never a silent pass
+// (AGENTS.md rule 10). A run that errored reported nothing and is left out, as
+// in settleByVerifier. A verifier the registry does not hold, or one that
+// declares no paths, has nothing to check.
+func (s *serviceImpl) measureChanged(verifier capability.CapabilityID, ran []actionOutcome) objective.InconclusiveReason {
+	if s.capReg == nil || len(ran) == 0 {
+		return ""
+	}
+	declared, ok := s.capReg.Get(verifier)
+	if !ok || len(declared.MeasurePaths) == 0 {
+		return ""
+	}
+	var reason objective.InconclusiveReason
+	for _, o := range ran {
+		if o.Errored {
+			continue
+		}
+		files, ok := changedFiles(o.Result.StateDelta)
+		if !ok {
+			reason = objective.ReasonVerifierError
+			continue
+		}
+		if capability.TouchesAnyGlob(files, declared.MeasurePaths) {
+			return objective.ReasonMeasureChanged
+		}
+	}
+	return reason
+}
+
+// changedFiles reads StateDelta "changed_files" as a []string, or as []any off
+// JSON. ok is false when the key is absent or holds anything else.
+func changedFiles(delta map[string]any) ([]string, bool) {
+	switch v := delta["changed_files"].(type) {
+	case []string:
+		return v, true
+	case []any:
+		files := make([]string, 0, len(v))
+		for _, item := range v {
+			s, ok := item.(string)
+			if !ok {
+				return nil, false
+			}
+			files = append(files, s)
+		}
+		return files, true
+	}
+	return nil, false
+}
+
+// hasRequired reports whether any criterion gates completion.
+func hasRequired(criteria []objective.Criterion) bool {
+	for _, c := range criteria {
+		if c.IsRequired() {
+			return true
+		}
+	}
+	return false
 }
 
 // evaluateWithAgent asks the agent whether a criterion is met, given what the

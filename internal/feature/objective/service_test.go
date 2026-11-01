@@ -2,6 +2,7 @@ package objective
 
 import (
 	"context"
+	"errors"
 	"path/filepath"
 	"testing"
 
@@ -27,7 +28,9 @@ func newTestService(t *testing.T) *Service {
 // decision.
 func TestCreateRecordsTheTemplateItUsed(t *testing.T) {
 	svc := newTestService(t)
-	svc.RegisterTemplate(coreobjective.Template{ID: "software.bugfix"})
+	svc.RegisterTemplate(coreobjective.Template{ID: "software.bugfix", SuccessCriteria: []coreobjective.Criterion{
+		{ID: "done", Description: "the bug is fixed", Weight: 1},
+	}})
 
 	o, err := svc.Create(context.Background(), CreateRequest{
 		Title: "fix it", Domain: "software", TemplateID: "software.bugfix",
@@ -48,7 +51,8 @@ func TestCreateRecordsTheTemplateItUsed(t *testing.T) {
 }
 
 // A template that was asked for but is not registered shaped nothing, so the
-// objective does not claim it.
+// objective does not claim it. Since Phase 41 such an objective has no
+// required criterion either, so it is refused and nothing is saved to claim it.
 func TestCreateLeavesTemplateIDEmptyWhenNoTemplateWasUsed(t *testing.T) {
 	svc := newTestService(t)
 
@@ -57,11 +61,20 @@ func TestCreateLeavesTemplateIDEmptyWhenNoTemplateWasUsed(t *testing.T) {
 		"unknown template": {Title: "plain", Domain: "software", TemplateID: "nope"},
 	} {
 		o, err := svc.Create(context.Background(), req)
-		if err != nil {
-			t.Fatalf("%s: create: %v", name, err)
+		if !errors.Is(err, ErrNoRequiredCriterion) {
+			t.Fatalf("%s: err = %v, want ErrNoRequiredCriterion", name, err)
 		}
 		if o.TemplateID != "" {
 			t.Errorf("%s: TemplateID = %q, want empty", name, o.TemplateID)
+		}
+	}
+	saved, err := svc.List(context.Background(), storage.ObjectiveFilter{})
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	for _, o := range saved {
+		if o.TemplateID != "" {
+			t.Errorf("saved objective %s claims template %q", o.ID, o.TemplateID)
 		}
 	}
 }

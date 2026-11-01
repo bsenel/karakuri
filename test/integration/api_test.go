@@ -45,11 +45,13 @@ func startServer(t *testing.T) (baseURL string, adminToken string, cleanup func(
 
 // startServerWith is startServer with a hook to adjust configuration before the
 // app is built. The quota tests use it to set a limit low enough to trip
-// deliberately; everything else takes the defaults.
-func startServerWith(t *testing.T, configure func(*config.Config)) (baseURL string, adminToken string, cleanup func()) {
+// deliberately; everything else takes the defaults. extra registers
+// capabilities no pack ships, such as a verifier declaring a metric for a
+// measured criterion.
+func startServerWith(t *testing.T, configure func(*config.Config), extra ...capability.Capability) (baseURL string, adminToken string, cleanup func()) {
 	t.Helper()
 
-	apiApp, token, removeDB := newTestApp(t, configure)
+	apiApp, token, removeDB := newTestApp(t, configure, extra...)
 	// Listen on a random port
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -83,7 +85,7 @@ func startServerWith(t *testing.T, configure func(*config.Config)) (baseURL stri
 // newTestApp builds the whole app on a temporary database and returns it with
 // an admin token, without serving it. A test that inspects the router itself
 // (the OpenAPI coverage check) needs the app, not a URL.
-func newTestApp(t *testing.T, configure func(*config.Config)) (*api.App, string, func()) {
+func newTestApp(t *testing.T, configure func(*config.Config), extra ...capability.Capability) (*api.App, string, func()) {
 	t.Helper()
 
 	// Create a temp SQLite file
@@ -173,6 +175,12 @@ func newTestApp(t *testing.T, configure func(*config.Config)) (*api.App, string,
 	}
 	for _, cap := range swPack.Capabilities() {
 		_ = capReg.Register(cap)
+	}
+	for _, c := range extra {
+		if err := capReg.Register(c); err != nil {
+			os.Remove(dbPath)
+			t.Fatalf("register %s: %v", c.ID, err)
+		}
 	}
 	for _, factory := range swPack.EnvironmentFactories() {
 		_ = envReg.Register(factory)
@@ -390,6 +398,7 @@ func TestObjectiveCRUD(t *testing.T) {
 			"domain":      "software",
 			"priority":    1,
 			"twin_id":     twinID,
+			"template_id": "software.objective.code_review",
 		})
 		assertStatus(t, resp, http.StatusOK)
 		m := decodeJSON(t, resp)
@@ -399,8 +408,9 @@ func TestObjectiveCRUD(t *testing.T) {
 
 	t.Run("create_then_get", func(t *testing.T) {
 		resp := doJSON(t, adminToken, http.MethodPost, baseURL+"/api/v1/objectives", map[string]any{
-			"title":  "Objective for Get",
-			"domain": "software",
+			"title":       "Objective for Get",
+			"domain":      "software",
+			"template_id": "software.objective.code_review",
 		})
 		assertStatus(t, resp, http.StatusOK)
 		created := decodeJSON(t, resp)
@@ -422,8 +432,9 @@ func TestObjectiveCRUD(t *testing.T) {
 
 	t.Run("update_status", func(t *testing.T) {
 		resp := doJSON(t, adminToken, http.MethodPost, baseURL+"/api/v1/objectives", map[string]any{
-			"title":  "Status Objective",
-			"domain": "software",
+			"title":       "Status Objective",
+			"domain":      "software",
+			"template_id": "software.objective.code_review",
 		})
 		assertStatus(t, resp, http.StatusOK)
 		created := decodeJSON(t, resp)
@@ -454,7 +465,7 @@ func TestLoopStartStatus(t *testing.T) {
 	twinID := twinM["id"].(string)
 
 	objResp := doJSON(t, adminToken, http.MethodPost, baseURL+"/api/v1/objectives", map[string]any{
-		"title": "Loop Objective", "domain": "software",
+		"title": "Loop Objective", "domain": "software", "template_id": "software.objective.code_review",
 	})
 	assertStatus(t, objResp, http.StatusOK)
 	objM := decodeJSON(t, objResp)
