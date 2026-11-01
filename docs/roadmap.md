@@ -49,7 +49,9 @@ Phases 27–32 were proposed from two kinds of evidence: what this repository de
 | 36    | A Provider's Refusal Is Not a Plan         | **Completed** |
 | 37    | Any Run Can Be Stopped at Any Time         | **Planned**   |
 | 38    | What Was Required and Not Done             | **Planned**   |
+| 39    | Autonomous Domain Packs Behind One Gateway | **Planned**   |
 | 40    | Streams That Run Without a Coordinator     | **Planned**   |
+| 41    | Success a Machine Can Check (steps 1 to 9 shipped in #187; 10 to 13 follow) | **In progress** |
 | 42    | An MCP Call Carries Only What the Tool Declared | **Planned** |
 | 43    | A Provider's Tool-Call Shape, Pinned by a Test | **Planned** |
 | 44    | Delivery That Shapes and Recovers Its Own Work | **Planned** |
@@ -5400,6 +5402,8 @@ the owner's (step 14c).
 ---
 
 ## Phase 41 — Success a Machine Can Check (Planned)
+
+**Delivered so far:** steps 1 to 9 shipped in #187 (merged 2026-11-01). Steps 10 to 13 follow, one pull request per step; the step that holds step 13 marks this phase Completed.
 
 **The owner's request (2026-10-14).** "When we define an objective for
 Karakuri, do we show it what a success looks like? Do we provide something like
