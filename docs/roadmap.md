@@ -53,6 +53,8 @@ Phases 27–32 were proposed from two kinds of evidence: what this repository de
 | 42    | An MCP Call Carries Only What the Tool Declared | **Planned** |
 | 43    | A Provider's Tool-Call Shape, Pinned by a Test | **Planned** |
 | 44    | Delivery That Shapes and Recovers Its Own Work | **Planned** |
+| 45    | The Repository's Own Checks Run Before a Delegated Push | **Planned** |
+| 46    | An Approval After Third-Party Text Buys One Action, Never a Rung | **Planned** |
 
 
 ---
@@ -6249,6 +6251,130 @@ read this forge correctly. Not
 EB-004 (Planned, an exit 1 leaves no reason), which step 2 builds on without
 redoing. It merges nothing: whether a ready pull request is merged stays the
 owner's decision.
+
+---
+
+## Phase 45 — The Repository's Own Checks Run Before a Delegated Push (Planned)
+
+**Kind: DEMAND.** From docs/research/discovery-2026-11-01.md, '## Fit and
+bets', recommendation R1, resting on '## Feasibility' candidate (1). Three
+organisations, each first-hand, name running the repository's own checks
+before an agent's change lands as what separates working from broken code:
+Spotify's verifiers block the pull request on failure (Spotify Engineering,
+Honk part 3, https://engineering.atspotify.com/2025/12/feedback-loops-background-coding-agents-part-3,
+read 2026-11-01, [Q] in the report's Sources, part 2); Temporal
+(https://temporal.io/blog/using-coding-agents-on-a-migration-three-practices-that-mattered,
+read 2026-10-25, [Q] in docs/research/discovery-2026-10-25.md); and Stripe
+(2026-10-25 report, session page, summary only). These are the operators'
+own accounts, not measurements.
+
+**Goal:** a delegated coding agent's work reaches the remote only after a
+check command declared for the repository exits 0 in its worktree, and the
+result is recorded on the action.
+
+**Why.** Observed in the report's '## Feasibility' (candidate (1)): Karakuri
+itself issues no push from the software domain; the only place a coding CLI
+starts is `cliEnv.Act` in `domains/software/environments.go`, and the push is
+done by the delegated CLI with whatever its allow-list grants. No step between
+the CLI's exit and the push runs `make test` or a declared check. Inferred:
+for three of four CLIs the allow-list is not even enforced (Cursor uses its
+defaults, Gemini and Copilot ignore it, per the same section), so the
+repository's checks are optional to the agent.
+
+**Steps.**
+1. *Settle the overlap (read only).* Read `internal/feature/delivery`,
+   `git.WorktreeManager` and open PR #187 (Phase 41's `ci_green`); write in
+   this phase how delivery pushes today and whether anything checks before
+   the push. Phase 41's `ci_green` settles a criterion from the forge after
+   the pull request exists; this phase refuses the push itself. If step 1
+   finds a pre-push gate already exists, mark this phase Dropped with the
+   finding.
+2. Split the delegation: the CLI may edit and commit but not push (push
+   removed from `AllowedTools` for `claude_code`; for CLIs that ignore the
+   list, the push is taken out of their hands by step 3 alone).
+3. In `cliEnv.Act`, after the CLI exits, run a check command declared in the
+   instance config in the worktree, with a timeout; push only on exit 0.
+4. Record the command, exit code and duration on the `ActionResult`; a
+   failure is a failed action with the check's tail as its output, not a
+   silent skip.
+5. A test in `domains/software/environments_test.go` per outcome: check
+   passes and the push happens; check fails and no push happens; no check
+   declared and the action says so.
+
+**Acceptance.**
+- With a check declared, no delegated change reaches the remote unless the
+  check exited 0 in that worktree.
+- The check's command, exit code and duration appear on the action result.
+- `go test ./...` passes.
+
+**What this is not.** Not Phase 41 (Planned, success a machine can check):
+that settles a criterion after the pull request exists; this gates the push.
+Not Phase 44 (Planned on main, delivery that shapes and recovers its own
+work), whose timeout handling for test verification does not refuse a push
+(report, '## Fit and bets', ranking row 1). It does not carry the run's
+authority bounds into the delegated CLI; that was ranked but not recommended
+this cycle.
+
+---
+
+## Phase 46 — An Approval After Third-Party Text Buys One Action, Never a Rung (Planned)
+
+**Kind: FRONTIER BET.** From docs/research/discovery-2026-11-01.md, '## Fit
+and bets', recommendation R2, resting on '(b2) Feasibility read by part 7',
+candidate 3. The bet: one plausible approval on a run that read
+attacker-controlled text should buy that one action, never a step up the
+autonomy ladder. The evidence is arXiv 2610.22987
+(https://arxiv.org/html/2610.22987, read 2026-11-01, method §2.1, §3.1 and
+§4.1 read, [Q] in the report's Sources, part 5): the attack it measures works
+by turning one approval into lasting permission; its 58% and 81.0% figures
+are the authors' measurement on their own benchmark, not a measurement of
+Karakuri. It is proved wrong if the loop already refuses to raise a
+checkpoint, or treats its approval as a rejection, once a run has read
+`TrustThirdParty` text (Phase 27's escalation path, not opened by the
+report), or if the paper's later sections show a defence that does not need
+it.
+
+**Goal:** a reconcile pass that read third-party text before an approved
+checkpoint does not count toward `CleanRuns`, so it cannot promote the
+objective.
+
+**Why.** Observed in the report's (b2): `Record` in
+`internal/feature/checkpoint/service.go` writes one approval row and stores
+nothing reusable; in `internal/feature/reconcile/run.go` only a `reject`
+counts against the objective, and a converged pass whose checkpoint was
+approved goes to `applyCleanRun`, which increments `CleanRuns` and calls
+`promote` in `internal/feature/reconcile/authority.go`. No identifier `Trust`
+or `ThirdParty` appears in `internal/feature/reconcile/*.go`. Inferred: an
+approval after a run read `TrustThirdParty` text counts toward the next rung
+like any other. Not verified: whether the loop state already records which
+observations were third-party (`internal/feature/loop` was not opened).
+
+**Steps.**
+1. *Find out (one pull request, time-boxed).* Write a test that drives a
+   reconcile pass with a `TrustThirdParty` observation and an approved
+   checkpoint and asserts `CleanRuns` does not move. **Kill criterion:** if
+   the test passes before any code change (the third-party path already ends
+   the pass some other way), ship the test, write the finding here and mark
+   this phase Completed with no further steps.
+2. Carry a `read_third_party` mark from the loop state to the reconcile
+   outcome (ADR 021: set from what the observation carries, never inferred in
+   the loop).
+3. In `applyCleanRun`, skip the `CleanRuns` increment when the mark is set,
+   and write an audit row saying why the pass did not count.
+4. One test per autonomy rung: a marked pass never promotes; an unmarked
+   pass promotes as today.
+
+**Acceptance.**
+- The test of step 1 passes, with or without the guard as step 1 found.
+- No objective climbs a rung on a pass that read third-party text; the audit
+  row names the pass.
+- `go test ./...` passes.
+
+**What this is not.** It does not block the approval or the approved action:
+the one action still runs. It does not change who may resolve a checkpoint;
+the report's (b2) found the delegated credential already cannot (candidate 4,
+proved mostly wrong). Not Phase 38 (Planned, unmet obligations) nor Phase 35's
+expiry of earned autonomy.
 
 ---
 
