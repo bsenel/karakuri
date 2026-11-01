@@ -13,7 +13,7 @@ on:
   pull_request:
     types: [opened, edited, synchronize, reopened]
     # The same filter as ci.yml, so a stacked PR is checked too.
-    branches: [main, "claude/**"]
+    branches: [main, "claude/**", "karakuri/**"]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
