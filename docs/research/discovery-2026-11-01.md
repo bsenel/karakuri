@@ -190,6 +190,18 @@ Products 4 to 6, extending discovery-2026-10-25.md's part 4 (read first). Every 
 - Inferred: the need is four years old and the people asking want to stop retries during a known outage without losing state. That is the same shape as Karakuri's Planned phase 37, and it argues that a stop which keeps the run resumable is worth more than a cancel.
 
 **Matrix cells.** Stopping a running run: stays C partial (cancel; workflow pause still open, activity pause announced 2025-02-20, shipping not confirmed). Durable resume: C yes (2026-10-25). Other cells unchanged.
+
+### 5. incident.io (AI SRE)
+
+**(i) Shipped, part of window read.** Observed [E] (https://incident.io/blog, read 2026-11-01; first 39,430 of 110,486 characters through the extract, the rest summarised): the blog index carries **no dates**, like the changelog last cycle. https://incident.io/changelog/rss and https://incident.io/blog/rss.xml returned 404 [N]. So nothing can yet be placed in 2026-05-01 to 2026-11-01. Undated posts on the index relevant to the matrix, titles as the extract gave them [Q]: "Introducing Agentic CTO: executive oversight in every incident"; "We built an MCP server so Claude can access your incidents" (the extract summarises it as open source, creating incidents and updating statuses); "Avoiding the ironies of automation" (summarised as principles for keeping people in control of AI-driven response); "We gave cloud agents a phone to QA"; "Building Investigations: what it takes to build an AI SRE"; and two just-in-time production access integrations (Apono, Opal). Inferred: the newer threads are an executive-facing agent and time-bound access for on-call engineers, which is the incident vendor moving onto approvals; the dates are still missing, so none of this counts as in-window.
+
+**(ii) What it does that Karakuri does not.** Inferred: paging and a Slack-native incident channel with the agent investigating from declaration (2026-10-25); just-in-time, time-bound production access through access-management partners, which Karakuri's authority bounds do not grant to people.
+
+**(iii) What Karakuri does that it does not.** Checked against docs/roadmap.md's Status Summary: Phase 20 (earned autonomy on standing objectives), Phase 21 (digests), Phase 31 (evidence pack), Phase 32 (SRE path), all Completed, and an Apache 2.0 self-hosted server (LICENSE opened). Inferred: nothing on the index describes autonomy that widens with a record or an evidence export; the "ironies of automation" post was not opened, so this is unchecked against its text.
+
+**(iv) Complaints.** No public issue tracker or forum was found [N]. Not filled a second cycle.
+
+**Matrix cells.** MCP server: C yes, and the post title names it as built for Claude (the extract calls it open source, not verified). Human checkpoints: U (time-bound access posts not opened). SRE/incident path: C yes (2026-10-25). Self-hosted open source: no, SaaS, inferred (2026-10-25).
 <!-- p4a:end -->
 
 ## Capability matrix
@@ -316,6 +328,9 @@ All read 2026-11-01 (date read from `date -u +%F`).
 
 - https://github.com/temporalio/temporal/releases.atom — primary, full text (whole feed, 10 entries, one-line bodies) [Q] for titles and body lines.
 - https://api.github.com/repos/temporalio/temporal/issues/3006 and /comments?per_page=100&page=1 — primary, full thread (21 of 21 comments, through an extract) [Q] for the two quoted sentences, [E] otherwise.
+- https://incident.io/blog — primary (vendor), extract, first 39,430 of 110,486 characters verbatim to the extractor, rest summarised; no dates on the page [E], post titles [Q].
+- https://incident.io/changelog/rss — 404 [N], cited for nothing.
+- https://incident.io/blog/rss.xml — 404 [N], cited for nothing.
 - docs/roadmap.md, docs/research/discovery-2026-10-25.md, LICENSE — repository files opened.
 <!-- s4:end -->
 
