@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"math"
+	"strconv"
 	"strings"
 	"time"
 
@@ -152,6 +154,22 @@ func Plain(d digest.Digest) string {
 				fmt.Fprintf(&b, ", %d failures", o.Failures)
 			}
 			fmt.Fprintf(&b, " · criteria %.0f%%\n", o.CriteriaMet*100)
+			for _, c := range o.Criteria {
+				state := string(c.State)
+				if c.Reason != "" {
+					state += ": " + string(c.Reason)
+				}
+				fmt.Fprintf(&b, "    %s %s for %s", c.ID, state, passes(c.Passes))
+				if c.Description != "" {
+					fmt.Fprintf(&b, " — %s", c.Description)
+				}
+				b.WriteString("\n")
+			}
+			// Apart from the gate: optional criteria are a score, and a
+			// partial one is expected rather than a failure.
+			if o.Progress != nil {
+				fmt.Fprintf(&b, "    progress %s of %s on optional criteria\n", weight(o.Progress.Earned), weight(o.Progress.Of))
+			}
 			if o.Paused {
 				fmt.Fprintf(&b, "    PAUSED: %s\n", o.PausedWhy)
 			} else if o.LastError != "" {
@@ -199,6 +217,23 @@ func plural(n int, unit string) string {
 		return fmt.Sprintf("1 %s", unit)
 	}
 	return fmt.Sprintf("%d %ss", n, unit)
+}
+
+func passes(n int) string {
+	if n == 1 {
+		return "1 pass"
+	}
+	return fmt.Sprintf("%d passes", n)
+}
+
+// weight renders a criterion weight to two places without trailing zeros,
+// keeping one so a whole weight reads as 1.0 rather than 1.
+func weight(w float64) string {
+	s := strconv.FormatFloat(math.Round(w*100)/100, 'f', -1, 64)
+	if !strings.Contains(s, ".") {
+		s += ".0"
+	}
+	return s
 }
 
 // times renders a count the way a sentence wants it.

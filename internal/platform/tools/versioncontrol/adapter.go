@@ -2,8 +2,13 @@ package versioncontrol
 
 import (
 	"context"
+	"errors"
 	"time"
 )
+
+// ErrUnsupported is what an adapter returns, wrapped with its own name, for a
+// read its forge does not offer, never an empty result (AGENTS.md rule 10).
+var ErrUnsupported = errors.New("read not supported by this version control adapter")
 
 type PullRequest struct {
 	Title        string
@@ -38,6 +43,30 @@ type PRSummary struct {
 	// deployment or its operator, not by a stranger. False when no list is
 	// configured, so every pull request counts as somebody else's writing.
 	OwnAuthor bool
+
+	// HeadBranch and HeadSHA name the branch the pull request is opened from
+	// and the commit at its tip.
+	HeadBranch string
+	HeadSHA    string
+	// CreatedAt and UpdatedAt say whether the pull request was opened or
+	// updated within a pass.
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
+
+// CheckRun is one CI check as the forge reports it. HeadSHA is the commit it
+// ran on, which may be older than the pull request's head.
+type CheckRun struct {
+	// ID is the forge's run ID. It grows with each run, so of two runs of one
+	// check on one commit the higher ID is the later, the one that counts.
+	ID      int64
+	Name    string
+	HeadSHA string
+	// Status is "queued", "in_progress" or "completed".
+	Status string
+	// Conclusion is set once Status is "completed": "success", "failure",
+	// "neutral", "skipped", "cancelled", "timed_out" or "action_required".
+	Conclusion string
 }
 
 type Commit struct {
@@ -52,5 +81,10 @@ type VersionControlAdapter interface {
 	CreatePR(ctx context.Context, pr PullRequest) (prURL string, err error)
 	ListPRs(ctx context.Context, repo string, since time.Time) ([]PRSummary, error)
 	GetCommits(ctx context.Context, repo string, since time.Time) ([]Commit, error)
+	// ListChecks returns the check runs the forge holds for ref, a branch or a
+	// commit SHA.
+	ListChecks(ctx context.Context, repo, ref string) ([]CheckRun, error)
+	// ChangedFiles returns the paths a pull request's diff touches.
+	ChangedFiles(ctx context.Context, repo, prID string) ([]string, error)
 	Active() bool
 }

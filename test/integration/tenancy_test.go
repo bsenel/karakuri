@@ -89,7 +89,7 @@ func createTwin(t *testing.T, baseURL, token, name string) string {
 func createObjective(t *testing.T, baseURL, token, twinID, title string) string {
 	t.Helper()
 	resp := doJSON(t, token, http.MethodPost, baseURL+"/api/v1/objectives",
-		map[string]any{"title": title, "domain": "software", "twin_id": twinID})
+		map[string]any{"title": title, "domain": "software", "twin_id": twinID, "template_id": "software.objective.code_review"})
 	defer resp.Body.Close()
 	assertStatus(t, resp, http.StatusOK)
 

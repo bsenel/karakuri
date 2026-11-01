@@ -203,6 +203,8 @@ type LoopStateModel struct {
 	Status       string    `gorm:"column:status;not null;default:''"`
 	CriteriaMet  float64   `gorm:"column:criteria_met;not null;default:0.0"`
 	CheckpointID string    `gorm:"column:checkpoint_id;not null;default:''"`
+	Outcome      string    `gorm:"column:outcome;not null;default:''"`
+	CriteriaJSON string    `gorm:"column:criteria_json;not null;default:'[]'"`
 	Error        string    `gorm:"column:error;not null;default:''"`
 	RequestJSON  string    `gorm:"column:request_json;not null;default:'{}'"`
 	CreatedAt    time.Time `gorm:"column:created_at;autoCreateTime"`
@@ -259,6 +261,11 @@ type ReconcileStateModel struct {
 	ScoreStreak         int     `gorm:"column:score_streak;not null;default:0"`
 	ConsecutiveFailures int     `gorm:"column:consecutive_failures;not null;default:0"`
 
+	// SustainJSON is each sustained criterion's state over its rolling
+	// window (Phase 41), beside ScoreStreak. JSON because which criteria
+	// declare a sustain is the objective's to change, not the schema's.
+	SustainJSON string `gorm:"column:sustain_json;not null;default:'[]'"`
+
 	Autonomy  string `gorm:"column:autonomy;not null;default:''"`
 	CleanRuns int    `gorm:"column:clean_runs;not null;default:0"`
 
@@ -296,6 +303,11 @@ type ReconcileOutcomeModel struct {
 	Escalated    bool   `gorm:"column:escalated;not null;default:false"`
 	CheckpointID string `gorm:"column:checkpoint_id;not null;default:''"`
 	Error        string `gorm:"column:error;not null;default:''"`
+	Inconclusive bool   `gorm:"column:inconclusive;not null;default:false"`
+
+	// CriteriaJSON is the per-criterion states the pass's loop settled, each
+	// with the pass time (Phase 41). Sustain is evaluated over these.
+	CriteriaJSON string `gorm:"column:criteria_json;not null;default:'[]'"`
 
 	StartedAt     time.Time  `gorm:"column:started_at;index:idx_reconcile_outcomes_objective_time,priority:2,sort:desc"`
 	EndedAt       time.Time  `gorm:"column:ended_at"`

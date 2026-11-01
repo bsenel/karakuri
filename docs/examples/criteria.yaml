@@ -1,0 +1,45 @@
+# Success criteria for krk objective create --criteria-file. The shape is the
+# success_criteria field of POST /objectives in docs/openapi.yaml.
+#
+# Each criterion is one outcome somebody can observe, not an activity: "the
+# suite passes", not "write tests". The server checks the fields; it cannot
+# tell an outcome from an activity, so that part is yours.
+#
+# kind says what settles a criterion:
+#   verified  the verifier's pass or fail
+#   measured  a number the verifier reports, compared with target (metric op target unit)
+#   judged    a model, reading what evidence names
+- id: tests-pass
+  description: The test suite passes on the delivery branch
+  kind: verified
+  verifier: software.verify.run_tests
+  required: true
+  weight: 0.4
+
+- id: lint-clean
+  description: The linter reports no findings on the delivery branch
+  kind: verified
+  verifier: software.verify.lint
+  required: true
+  weight: 0.2
+
+# The verifier must declare the metric and its unit (see the verifier's
+# metrics); a measured criterion with required: false counts as progress
+# without gating completion.
+- id: coverage
+  description: Statement coverage of the changed packages is at least 80 percent
+  kind: measured
+  verifier: ci.coverage
+  metric: statement_coverage
+  op: ">="
+  target: 80
+  unit: percent
+  required: false
+  weight: 0.2
+
+- id: changelog-explains
+  description: The changelog entry tells a user what changed for them
+  kind: judged
+  evidence: The CHANGELOG.md diff on the delivery branch
+  required: true
+  weight: 0.2

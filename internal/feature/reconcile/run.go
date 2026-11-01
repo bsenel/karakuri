@@ -323,12 +323,102 @@ func (s *Service) reconcileNow(
 			"detail":  final.Error,
 			"loop_id": res.LoopID,
 		})
+	case inconclusivePass(final):
+		// Checked before failure: the loop ends failed when it cannot
+		// complete, and one that could not settle a required criterion has not
+		// failed at the work.
+		outcome.Inconclusive = true
 	case final.Status == objective.StatusFailed:
 		outcome.Error = failureReason(final)
 	default:
-		outcome.Converged = final.CriteriaMet >= 1.0
+		outcome.Converged = metRequired(final)
+	}
+	// Only a pass whose loop ran to its end settled anything. An escalated
+	// loop is still waiting on a person, and a deferred one never planned, so
+	// whatever its row holds is not this pass's answer.
+	if !escalated && outcome.Deferred == "" {
+		outcome.Criteria = criterionPasses(final.Criteria, outcome.EndedAt)
 	}
 	return s.finish(ctx, st, obj, cadence, outcome, &fp)
+}
+
+// criterionPasses records each criterion state a loop settled with the time of
+// the pass, for sustain to read later.
+func criterionPasses(criteria []objective.Criterion, at time.Time) []objective.CriterionPass {
+	if len(criteria) == 0 {
+		return nil
+	}
+	passes := make([]objective.CriterionPass, len(criteria))
+	for i, c := range criteria {
+		passes[i] = objective.CriterionPass{CriterionID: c.ID, At: at, State: c.State, Reason: c.Reason}
+	}
+	return passes
+}
+
+// sustainHistoryLimit bounds how many recorded passes a sustain evaluation
+// reads, as the report does.
+const sustainHistoryLimit = 2000
+
+// evaluateSustain settles the sustain state of every criterion the objective
+// declares one for, over the objective's recorded passes. It sits beside
+// ScoreStreak and moves nothing the breaker or the stall detector read.
+//
+// A history it cannot read leaves each sustained criterion inconclusive,
+// no_data, rather than keeping a state that is no longer known to hold
+// (AGENTS.md rule 10).
+func (s *Service) evaluateSustain(ctx context.Context, st *reconcile.State, obj objective.Objective, now time.Time) {
+	var sustained []objective.Criterion
+	for _, c := range obj.SuccessCriteria {
+		if c.Sustain != nil {
+			sustained = append(sustained, c)
+		}
+	}
+	if len(sustained) == 0 {
+		st.Sustain = nil
+		return
+	}
+
+	history, err := s.store.ListReconcileOutcomes(ctx, obj.ID, sustainHistoryLimit)
+	if err != nil {
+		slog.Warn("could not read reconcile history for sustain",
+			"objective", string(obj.ID), "error", err)
+	}
+
+	out := make([]reconcile.CriterionSustain, 0, len(sustained))
+	for _, c := range sustained {
+		entry := reconcile.CriterionSustain{CriterionID: c.ID}
+		// A person's change through the API restarts the window, recorded
+		// on the criterion as SustainSince; zero is never restarted.
+		var since time.Time
+		if c.SustainSince != nil {
+			since = *c.SustainSince
+		}
+		if window, werr := objective.ParseWindow(c.Sustain.Window); werr == nil {
+			entry.WindowStart = now.Add(-window)
+			if since.After(entry.WindowStart) {
+				entry.WindowStart = since
+			}
+		}
+		if err != nil {
+			entry.State, entry.Reason = objective.CriterionInconclusive, objective.ReasonNoData
+			out = append(out, entry)
+			continue
+		}
+		var passes []objective.CriterionPass
+		for _, o := range history {
+			for _, p := range o.Criteria {
+				if p.CriterionID == c.ID {
+					passes = append(passes, p)
+				}
+			}
+		}
+		r := c.Sustain.Evaluate(passes, now, since)
+		entry.State, entry.Reason = r.State, r.Reason
+		entry.Settled, entry.NotMet = r.Settled, r.NotMet
+		entry.BudgetLeft, entry.Latest = r.BudgetLeft, r.Latest
+		out = append(out, entry)
+	}
+	st.Sustain = out
 }
 
 // awaitLoop waits for a loop to finish or to stop at a checkpoint, renewing
@@ -436,7 +526,7 @@ func (s *Service) settleActiveLoop(ctx context.Context, st *reconcile.State, obj
 		return true, false, s.store.SaveReconcileState(ctx, *st)
 	}
 
-	if ls.CriteriaMet >= 1.0 {
+	if metRequired(ls) {
 		st.LastConvergedAt = &now
 		st.ScoreStreak = 0
 		s.applyCleanRun(ctx, st, obj, decl)
@@ -512,6 +602,15 @@ func (s *Service) finish(
 		st.LastError = ""
 		st.LastReconciledAt = &now
 
+	case outcome.Inconclusive:
+		// Neither either: a required criterion could not be settled, so
+		// nothing is known about the work. The failure count stays where it
+		// was — a verifier that is down must not trip the breaker on work
+		// that may well be done — and so does the stall count.
+		st.LastError = ""
+		st.LastReconciledAt = &now
+		st.Phase = reconcile.PhaseIdle
+
 	default:
 		st.ConsecutiveFailures = 0
 		st.LastError = ""
@@ -544,6 +643,11 @@ func (s *Service) finish(
 
 	if err := s.store.SaveReconcileOutcome(ctx, outcome); err != nil {
 		return fmt.Errorf("record outcome: %w", err)
+	}
+	// Read, never sensed: only a pass that settled criteria moves sustain,
+	// and a change in it is not drift (sense.go stays the only trigger).
+	if len(outcome.Criteria) > 0 {
+		s.evaluateSustain(ctx, st, obj, outcome.EndedAt)
 	}
 
 	if s.trip(ctx, st, obj) {
@@ -712,6 +816,38 @@ func backoff(failures int, max time.Duration) time.Duration {
 // status but not the cause, so a rejected checkpoint is named as such and
 // everything else is reported as what it is: unexplained here, and explained
 // in the audit log the loop already wrote.
+// metRequired reports whether a finished loop met every required criterion. A
+// loop that recorded no criterion states — one from before they existed —
+// met them when its score reached 1.0, as it always did.
+func metRequired(ls coreloop.State) bool {
+	if len(ls.Criteria) == 0 {
+		return ls.CriteriaMet >= 1.0
+	}
+	return objective.AllRequiredMet(ls.Criteria)
+}
+
+// inconclusivePass reports whether a loop that ran to its end left a required
+// criterion inconclusive and none not_met. Only a required not_met is a failed
+// pass; an errored run is a failure whatever its criteria say.
+func inconclusivePass(ls coreloop.State) bool {
+	if ls.Outcome == coreloop.RunErrored {
+		return false
+	}
+	inconclusive := false
+	for _, c := range ls.Criteria {
+		if !c.IsRequired() {
+			continue
+		}
+		switch c.State {
+		case objective.CriterionNotMet:
+			return false
+		case objective.CriterionInconclusive:
+			inconclusive = true
+		}
+	}
+	return inconclusive
+}
+
 func failureReason(ls coreloop.State) string {
 	if ls.CheckpointID != "" {
 		return "loop ended failed after checkpoint " + ls.CheckpointID

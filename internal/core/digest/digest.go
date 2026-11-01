@@ -108,6 +108,33 @@ type ObjectiveSummary struct {
 	Paused      bool                    `json:"paused,omitempty"`
 	PausedWhy   string                  `json:"paused_why,omitempty"`
 	LastError   string                  `json:"last_error,omitempty"`
+
+	// Criteria lists the required criteria a reader should look at (Phase 41):
+	// one not_met in the latest pass, or inconclusive for more than one pass in
+	// a row. A required criterion its verifier never settled is inconclusive:
+	// not_run, never met.
+	Criteria []CriterionLine `json:"criteria,omitempty"`
+	// Progress is the optional weighted criteria, apart from the gate, so an
+	// expected partial score does not read as failure. Nil when the objective
+	// has no optional weighted criterion.
+	Progress *Progress `json:"progress,omitempty"`
+}
+
+// CriterionLine is one required criterion in its latest state.
+type CriterionLine struct {
+	ID          string                       `json:"id"`
+	Description string                       `json:"description,omitempty"`
+	State       objective.CriterionState     `json:"state"`
+	Reason      objective.InconclusiveReason `json:"reason,omitempty"`
+	// Passes counts the consecutive latest passes that settled this state.
+	Passes int `json:"passes"`
+}
+
+// Progress is the weight the optional criteria earned out of their total, as
+// of the latest pass.
+type Progress struct {
+	Earned float64 `json:"earned"`
+	Of     float64 `json:"of"`
 }
 
 // Decision is a pending checkpoint, rendered as the question it is.

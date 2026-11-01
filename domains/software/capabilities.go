@@ -26,6 +26,14 @@ func softwareCapabilities() []capability.Capability {
 		c.NeedsWorkspace = true
 		return c
 	}
+	// run_tests' definition is the test files, so a pass that edits one changed
+	// the measure with the work (Phase 41, decision 6). The web globs are what
+	// web/ runs: vitest's include (web/vitest.config.ts) and Playwright's
+	// testDir (web/playwright.config.ts).
+	runTests := act("software.verify.run_tests", "Run Tests",
+		"Execute test suite in worktree. Pass params.branch, and params.repo when it is not the bound one, "+
+			"so the result names the files that branch's pull request changes; without them a criterion it verifies settles nothing", true)
+	runTests.MeasurePaths = []string{"**/*_test.go", "web/src/**/*.test.ts", "web/src/**/*.test.tsx", "web/e2e/**/*.spec.ts"}
 	return []capability.Capability{
 		// Inputs declared for the reason write_design_doc's are below. Neither
 		// read requires an input; both fail rather than return an empty list
@@ -149,7 +157,55 @@ func softwareCapabilities() []capability.Capability {
 			},
 			OutputSchema: capability.Schema{Type: "object"},
 		},
-		act("software.verify.run_tests", "Run Tests", "Execute test suite in worktree", true),
+		// The stream verifiers. Each returns the criterion's state in
+		// result.state ("met", "not_met" or "inconclusive") and, when
+		// inconclusive, the reason in result.reason; it succeeds only when met.
+		{
+			ID: CapStreamPR, Name: "Stream PR", Domain: "software",
+			Description: "Verify that the open pull request on the stream's branch was opened or updated in this pass, by asking the twin's bound version control instance. Requires params.branch and params.since (RFC 3339, the start of the pass). No such pull request is inconclusive: no_data, never a failure.",
+			Verifiable:  true,
+			InputSchema: capability.Schema{
+				Type: "object",
+				Properties: map[string]capability.SchemaProperty{
+					"branch": {Type: "string", Description: "The stream's branch, the pull request's head"},
+					"since":  {Type: "string", Description: "When the pass began, as an RFC 3339 time"},
+					"repo":   {Type: "string", Description: "Repository to read. Defaults to the bound instance's repository"},
+				},
+				Required: []string{"branch", "since"},
+			},
+			OutputSchema: capability.Schema{Type: "object"},
+		},
+		{
+			ID: CapCIGreen, Name: "CI Green", Domain: "software",
+			Description: "Verify that every check at the head commit of the open pull request on params.branch completed with success. Waits up to params.wait_sec (default 120, max 900, 0 for no wait) for pending checks. A failure is not_met; a check still pending when the wait ends, skipped or neutral is inconclusive: not_run; no check at the head is inconclusive: no_data.",
+			Verifiable:  true,
+			InputSchema: capability.Schema{
+				Type: "object",
+				Properties: map[string]capability.SchemaProperty{
+					"branch":   {Type: "string", Description: "The stream's branch, the pull request's head"},
+					"wait_sec": {Type: "integer", Description: "How long to wait for pending checks, in seconds. Default 120, max 900"},
+					"repo":     {Type: "string", Description: "Repository to read. Defaults to the bound instance's repository"},
+				},
+				Required: []string{"branch"},
+			},
+			OutputSchema: capability.Schema{Type: "object"},
+		},
+		{
+			ID: CapPathsDeclared, Name: "Paths Declared", Domain: "software",
+			Description: "Verify that the diff of the open pull request on params.branch touches only params.paths, globs where ** is any number of directories. Not met names the paths outside; an empty diff is inconclusive: no_data.",
+			Verifiable:  true,
+			InputSchema: capability.Schema{
+				Type: "object",
+				Properties: map[string]capability.SchemaProperty{
+					"branch": {Type: "string", Description: "The stream's branch, the pull request's head"},
+					"paths":  {Type: "array", Description: "Path globs the diff may touch, e.g. docs/research/**. A list of strings, or one comma-separated string"},
+					"repo":   {Type: "string", Description: "Repository to read. Defaults to the bound instance's repository"},
+				},
+				Required: []string{"branch", "paths"},
+			},
+			OutputSchema: capability.Schema{Type: "object"},
+		},
+		runTests,
 		act("software.verify.lint", "Lint", "Run linter in worktree", true),
 		act("software.verify.review", "Code Review", "Peer review of an artifact", true),
 		act("software.verify.tech_lead_review", "Tech Lead Review", "Senior review of an artifact against design doc", true),

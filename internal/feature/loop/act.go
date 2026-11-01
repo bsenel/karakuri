@@ -34,7 +34,19 @@ import (
 type actionOutcome struct {
 	CapabilityID string
 	EnvID        string
-	Result       environment.ActionResult
+	// Params are the parameters the action ran with, so each measurement's
+	// audit row can say how it was taken.
+	Params map[string]any
+	Result environment.ActionResult
+
+	// Errored is true when the action could not be carried out at all — the
+	// environment returned an error, or nothing could take it — as distinct
+	// from one that ran and reported failure. For a verifier it is a
+	// verifier_error, which says nothing about the work.
+	Errored bool
+	// Err is the error the environment returned, when it returned one, so
+	// verify can tell a verifier that cannot measure from one that failed.
+	Err error
 }
 
 // results extracts the bare results, for the callers that genuinely do not
@@ -91,6 +103,7 @@ func stepAct(ctx context.Context, sc *stepContext, p plan) []actionOutcome {
 					Success: false,
 					Error:   "capability quota exhausted for the day",
 				},
+				Errored: true,
 			})
 			continue
 		}
@@ -136,6 +149,10 @@ func stepAct(ctx context.Context, sc *stepContext, p plan) []actionOutcome {
 		}
 
 		var result environment.ActionResult
+		// Whether the action could not be carried out at all, as opposed to
+		// ran and reported failure.
+		errored := true
+		var actErr error
 		if provisionErr != nil {
 			// The environment would refuse for want of a worktree anyway; say
 			// why there is none instead.
@@ -163,6 +180,8 @@ func stepAct(ctx context.Context, sc *stepContext, p plan) []actionOutcome {
 					Error:   err.Error(),
 				}
 			}
+			errored = err != nil
+			actErr = err
 			if !result.Success {
 				span.SetError(result.Error)
 			}
@@ -312,7 +331,10 @@ func stepAct(ctx context.Context, sc *stepContext, p plan) []actionOutcome {
 		outcomes = append(outcomes, actionOutcome{
 			CapabilityID: action.CapabilityID,
 			EnvID:        envAdapter,
+			Params:       params,
 			Result:       result,
+			Errored:      errored,
+			Err:          actErr,
 		})
 	}
 

@@ -234,9 +234,13 @@ type Tool struct {
 // ToolResult is what tools/call returns. IsError is the protocol's way of
 // reporting a tool that ran and failed, as distinct from a transport or
 // dispatch failure, which is a JSON-RPC Error.
+//
+// StructuredContent is kept raw: the only part of it read here is a verifier's
+// measurements (see measurementsOf), and the rest is the server's own shape.
 type ToolResult struct {
-	Content []Content `json:"content,omitempty"`
-	IsError bool      `json:"isError,omitempty"`
+	Content           []Content       `json:"content,omitempty"`
+	StructuredContent json.RawMessage `json:"structuredContent,omitempty"`
+	IsError           bool            `json:"isError,omitempty"`
 }
 
 // Content is one block of a tool result. Only text is modelled: an image or an

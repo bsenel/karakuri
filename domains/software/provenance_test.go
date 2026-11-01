@@ -51,6 +51,14 @@ func (s *vcStub) GetCommits(_ context.Context, repo string, since time.Time) ([]
 	return s.commits, nil
 }
 
+func (s *vcStub) ListChecks(context.Context, string, string) ([]versioncontrol.CheckRun, error) {
+	return nil, versioncontrol.ErrUnsupported
+}
+
+func (s *vcStub) ChangedFiles(context.Context, string, string) ([]string, error) {
+	return nil, versioncontrol.ErrUnsupported
+}
+
 // A pull request title is typed by whoever opened it, which on a public
 // repository is anybody. The observation that carries one says so.
 func TestGitObservationIsThirdPartyOnlyWhenItCarriesAPullRequest(t *testing.T) {
