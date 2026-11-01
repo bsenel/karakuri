@@ -6122,13 +6122,14 @@ adopt the Go SDK 2.0.0; whether to do either is what step 1 finds out.
 ## Phase 44 — Delivery That Shapes and Recovers Its Own Work (Planned)
 
 Each step below is a task a person did by hand for the delivery stream between
-2026-10-17 and 2026-10-31, while Phase 41 was built. Phase 40 already takes
-over restarts, error checkpoints, quota, conflicts and review; these four are
+2026-10-17 and 2026-11-01, while Phase 41 was built. Phase 40 already takes
+over restarts, error checkpoints, quota, conflicts and review; these five are
 the ones it does not name.
 
 **Goal:** the delivery stream sizes its own pull requests, keeps the work a
 killed action had not committed, plans from what is delivered rather than from
-its brief, and fits each verification inside its time limit, with nobody
+its brief, fits each verification inside its time limit, and tries a new
+verifier on this deployment's own data before asking for review, with nobody
 watching.
 
 **Why.** Observed on this deployment:
@@ -6165,6 +6166,16 @@ watching.
   since 2026-10-24, each running several packages that CI ran green the same
   day. One verification ran `npm` on a machine without Node, exited 127, and was
   recorded as a failed test run like any other.
+- *A verifier that is right on fixtures and wrong on this repository.* #187's
+  `software.verify.ci_green` passed every test, and on 2026-11-01 a person's
+  review compared its rules with the check runs GitHub reports on this
+  repository's own pull requests. It counted a skipped check as not run, and
+  this repository's CI skips "SBOM (Syft)" on every pull request, so it could
+  never be met here. It counted every run of a check, and #189's head carries
+  a cancelled "PR title" run beside the green one, so a pull request whose
+  checks all passed was `not_met`. Phase 40's review (step 11) builds and runs
+  the branch, but its tests run on fixtures, and that review names behaviour
+  against a real system among what it cannot verify.
 
 **Steps.** Each step is independent of the others, so each is its own pull
 request.
@@ -6198,6 +6209,15 @@ request.
    states), not `not_met`. A command that exits 127 or 126 reports
    `ErrUnsupported` for the missing tool, per AGENTS.md rule 10, rather than a
    failed run.
+5. **A new verifier meets this deployment's data before review.** When a pull
+   request adds or changes a verifier, the delivery stream runs it read-only
+   against this deployment's own forge and repository (its open and most
+   recently merged pull requests, their check runs and diffs) and writes each
+   verdict beside what the forge itself reports in the pull request's body. A
+   disagreement, such as a pull request the forge shows green that the verifier
+   calls `not_met` or `inconclusive`, is a finding the stream fixes on that
+   branch before it marks the pull request ready, with a test built from the
+   recorded response.
 
 **Acceptance.**
 - Step 1: with a fake versioncontrol adapter, a pull request whose group is
@@ -6212,13 +6232,20 @@ request.
 - Step 4: a fixture package that sleeps past the limit gives `inconclusive:
   timeout` with the finished packages listed; a command that is not installed
   gives `unsupported`, not a failure. `go test ./...` passes.
+- Step 5: a fixture verifier whose rule disagrees with a recorded forge
+  response (a skipped check, a cancelled run superseded by a green one) is
+  reported as a finding and its pull request is not marked ready; one that
+  agrees with every recorded response is.
 - After a week of the delivery stream on the new code, the count of rejections
   whose note says a plan "redoes" delivered work is 0, and no verification is
   recorded as failed only because it ran out of time.
 
 **What this is not.** Not Phase 40 (Planned, streams without a coordinator):
 that one ends interrupted loops, treats quota as a state, repairs conflicts and
-adds a review objective; this phase adds the four tasks it does not name. Not
+adds a review objective; this phase adds the five tasks it does not name.
+Step 5 is not that review either: it runs before the review, on the
+deployment's own data, so the review starts from a verifier already shown to
+read this forge correctly. Not
 EB-004 (Planned, an exit 1 leaves no reason), which step 2 builds on without
 redoing. It merges nothing: whether a ready pull request is merged stays the
 owner's decision.
@@ -6286,7 +6313,7 @@ Phase 40 is ordered by what must be true before a stream runs with nobody watchi
 Phase 41 is ordered by the owner's request of 2026-10-14 and by what the streams fail on now.
 
 - **Phase 41** (success a machine can check) depends on **Phase 38** for the per-criterion settlement record it extends, on **Phase 39** and [ADR 028](adr/028-packs-are-autonomous-behind-one-gateway.md) for the pack manifest a verifier declares its metrics in, and on **Phase 40** for the streams whose criteria it replaces. Step 1 needs none of the three.
-- **Phase 44** (delivery that shapes and recovers its own work) depends on **Phase 41** for the `ci_green` verifier step 1 reads and the `inconclusive` states step 4 reports, and on **EB-004** for the exit reason step 2 records. It does not depend on **Phase 40**, and each of its four steps can ship on its own.
+- **Phase 44** (delivery that shapes and recovers its own work) depends on **Phase 41** for the `ci_green` verifier step 1 reads and the `inconclusive` states step 4 reports, and on **EB-004** for the exit reason step 2 records. It does not depend on **Phase 40**, and each of its five steps can ship on its own.
 
 ---
 
