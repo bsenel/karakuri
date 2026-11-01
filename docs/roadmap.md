@@ -50,6 +50,9 @@ Phases 27–32 were proposed from two kinds of evidence: what this repository de
 | 37    | Any Run Can Be Stopped at Any Time         | **Planned**   |
 | 38    | What Was Required and Not Done             | **Planned**   |
 | 40    | Streams That Run Without a Coordinator     | **Planned**   |
+| 42    | An MCP Call Carries Only What the Tool Declared | **Planned** |
+| 43    | A Provider's Tool-Call Shape, Pinned by a Test | **Planned** |
+| 44    | Delivery That Shapes and Recovers Its Own Work | **Planned** |
 
 
 ---
@@ -5986,6 +5989,269 @@ It changes how rule 10 is read for measurements (no data is
 
 ---
 
+## Phase 42 — An MCP Call Carries Only What the Tool Declared (Planned)
+
+**Kind: FRONTIER BET.** The bet: when Karakuri's MCP client forwards an
+argument the tool never declared, it hands the platform's own parameters to a
+third-party server, and filtering `Call`'s arguments against the tool's
+discovered input schema removes that leak without breaking a server that
+declares its properties. The primary technical evidence is n8n pull request
+#23167, merged 2026-01-06, which keeps only the arguments in the tool's input
+schema, passes all of them through when the schema allows additional
+properties, and sends none to a tool without parameters
+(https://api.github.com/repos/n8n-io/n8n/pulls/23167, read 2026-10-25,
+extract only). It is proved wrong if `internal/platform/tools/mcp/client.go`
+already strips undeclared keys, or if the servers Karakuri binds mostly allow
+additional properties, so a filter passes everything.
+
+**Goal:** an MCP tool call sends a server only the keys its discovered input
+schema declares, or is refused, and a test says which.
+
+**Why.** Observed in the discovery report of 2026-10-25 ('## Feasibility',
+candidate 1): `Call` in `internal/platform/tools/mcp/instance.go` (lines 259
+to 273) checks state and the allowlist and then passes `args` to
+`client.CallTool` unchanged; `schemaOf` (lines 296 to 339) narrows the schema
+for the planner only, and its comment says the server does the validation.
+The demand behind it comes from one tracker, so it is not a DEMAND phase: n8n
+#21716 has 77 comments, one of them "this makes n8n useless if you can't run
+mcp tools."
+(https://api.github.com/repos/n8n-io/n8n/issues/21716/comments?per_page=100,
+read 2026-10-25, first 100,000 of about 158,700 characters). Inferred, not
+verified: the same leak path exists in Karakuri, because `client.go` was not
+opened.
+
+**Steps.**
+1. *Find out (one slice, time-boxed to one delivery pass).* Read
+   `internal/platform/tools/mcp/client.go`, `instance.go` and the MCP servers
+   configured in `config/default.yaml`. Write a table test in
+   `internal/platform/tools/mcp/instance_test.go` (with
+   `fakeserver_test.go`) that calls a tool with a key absent from its declared
+   `properties` and records what the fake server receives. **Kill criterion:**
+   if no path is found by which an undeclared key reaches `client.CallTool`,
+   keep the test, ship no filter, and mark this phase Dropped with the
+   finding.
+2. If the test shows the key arrives: in `Call`, when the discovered
+   `InputSchema` declares `properties` and does not allow additional ones,
+   refuse the call with an error naming the undeclared keys (refusing, not
+   dropping, so the planner learns; the step records the choice and why).
+   A schema that allows additional properties passes arguments unchanged; a
+   tool with no parameters receives none.
+3. Record the refusal as the tool call's result, so it reaches the loop like
+   any other failed act.
+
+**Acceptance.**
+- The step 1 test exists and runs under `go test ./internal/platform/tools/mcp/...`.
+- If step 2 ships: a call with an undeclared key to a tool whose schema
+  declares properties and forbids extras never reaches the fake server, and
+  returns an error naming the key; a call to a tool whose schema allows extras
+  reaches it unchanged; `go test ./...` passes.
+- If the kill criterion fires: the phase is marked Dropped here with what
+  `client.go` does.
+
+**What this is not.** Not Phase 39 (Planned, one MCP gateway for every tool
+call): this checks arguments against a schema, not where calls route. Not
+Phase 34 (Completed, a credential scoped to one delegation) nor Phase 33
+(Completed, MCP after the handshake). Not Phase 27's escalation on
+third-party text. It does not validate argument types or values, only which
+keys are sent.
+
+---
+
+## Phase 43 — A Provider's Tool-Call Shape, Pinned by a Test (Planned)
+
+**Kind: FRONTIER BET (weak).** The bet: a provider's change to how tool calls
+are requested or returned reaches Karakuri's loop as a wrong plan or a silent
+failure, and a recorded-fixture test per provider catches it before a run
+does. The primary technical evidence is Anthropic's release notes, which list
+API version `2026-10-21` and a Go SDK 2.0.0 with breaking changes
+(https://platform.claude.com/docs/en/release-notes/overview, read 2026-10-25,
+first 100,000 of 133,497 characters); that is the vendor's own statement, not
+a measurement of any effect on Karakuri. It is proved wrong if langchaingo
+v0.1.15 pins a request version the providers keep serving unchanged, so no
+change in the window would have reached Karakuri.
+
+**Goal:** a test fails when the tool-call shape Karakuri parses for a provider
+stops matching the shape that provider returns today.
+
+**Why.** Observed in the discovery report of 2026-10-25 ('## Feasibility',
+candidate 4): `internal/platform/llm/claude.go` hard-codes the model ID at
+line 32, `Complete` (lines 78 to 89) sends no tools, and tool calling goes
+through `AsLLM()` (line 76) into the agent factory; `go.mod` pins
+`github.com/tmc/langchaingo v0.1.15`; no test pins a tool-call request or
+response shape. The demand comes from one tracker, so it is not a DEMAND
+phase: n8n #22181 (Gemini `thought_signature`) was closed and is still
+reported, "this is still happening in newest release."
+(https://api.github.com/repos/n8n-io/n8n/issues/22181/comments?per_page=100,
+read 2026-10-25). Not verified: which `anthropic-version` header langchaingo
+v0.1.15 sends; the module cache was not read.
+
+**Steps.**
+1. *Find out (one slice, time-boxed to one delivery pass).* Read
+   `internal/platform/agent/factory.go`, `internal/platform/llm/claude.go`,
+   `internal/platform/llm/gemini.go` and the langchaingo v0.1.15 Anthropic
+   and Google clients in the module cache; record the request version each
+   sends. Add a recorded-fixture test beside `internal/platform/agent/factory_test.go`
+   that feeds a tool-use response in the current Anthropic shape, and one in
+   the Gemini shape carrying a `thought_signature`, through the langchaingo
+   model and asserts the parsed call. **Kill criterion:** if both fixtures
+   parse correctly today and no provider change since 2026-07-01 is found
+   that would alter them, keep the test and mark this phase Dropped with the
+   finding.
+2. If a fixture fails or a change is found: fix the parse path inside
+   `internal/platform/` (langchaingo stays behind that boundary) and keep the
+   fixture as the regression test.
+3. Move the hard-coded model ID in `claude.go` to `config/default.yaml`, so a
+   provider's deprecation is a config change, not a code change.
+
+**Acceptance.**
+- The fixtures from step 1 run under `go test ./internal/platform/...` with no
+  network and no API key.
+- The request version each provider sends is written in this phase.
+- If step 3 ships: no model ID literal remains in `claude.go`, and the
+  default is read from `config/default.yaml`; `go test ./...` and
+  `scripts/check_langchaingo_imports.sh` pass.
+
+**What this is not.** Not Phase 36 (Completed, a provider's refusal or rate
+limit is not a plan): that classifies errors; this pins the shape of a
+successful tool call. Not Phase 41 (Planned, success a machine can check) nor
+Phase 38 (Planned, unmet obligations). It does not upgrade langchaingo or
+adopt the Go SDK 2.0.0; whether to do either is what step 1 finds out.
+
+---
+
+## Phase 44 — Delivery That Shapes and Recovers Its Own Work (Planned)
+
+Each step below is a task a person did by hand for the delivery stream between
+2026-10-17 and 2026-11-01, while Phase 41 was built. Phase 40 already takes
+over restarts, error checkpoints, quota, conflicts and review; these five are
+the ones it does not name.
+
+**Goal:** the delivery stream sizes its own pull requests, keeps the work a
+killed action had not committed, plans from what is delivered rather than from
+its brief, fits each verification inside its time limit, and tries a new
+verifier on this deployment's own data before asking for review, with nobody
+watching.
+
+**Why.** Observed on this deployment:
+
+- *One pull request per phase.* #187 (Phase 41) was opened on 2026-10-17. By
+  2026-10-31 it held 62 commits, 112 files and about 14,300 added lines
+  (`git diff --shortstat origin/main...` on its head 8e0c4c4). Its steps 1 to
+  9 were green in CI, each on its own, but the brief said to mark it ready only
+  once the phase was complete, so they waited on steps 10 to 13. Meanwhile the
+  deployed server kept settling criteria with a model judge, the UX stream
+  stayed paused on it from 2026-10-16, and the owner would have reviewed 14,300
+  lines at once. On 2026-10-31 the owner set the rule: "Karakuri should mark a
+  PR ready when there is a meaningful and independent group of change lands."
+  A person then retitled #187 to steps 1 to 9 and marked it ready by hand.
+- *Work that a killed action had not committed.* A coding action is killed at
+  its time limit or stops on the provider's usage limit, and its uncommitted
+  edits stay in its worktree under `worktrees/<objective>/<loop>-<n>-*`, where
+  nothing reads them. On 2026-10-17 two Phase 36 slices died uncommitted; on
+  2026-10-24 Phase 41 step 3's code was found uncommitted in a worktree, applied
+  by a person at the branch tip, and pushed as 2fdda0e. Since 2026-10-24, at
+  least 35 coding actions failed on the usage limit and 2 were killed (`krk
+  --output json audit --kind execute --limit 1000`, counted on 2026-10-31; the
+  listing is capped, so these are lower bounds).
+- *Planning from a stale brief.* The delivery brief stated which Phase 41 steps
+  were done. On 2026-10-25 the planner re-planned delivered steps four times
+  (checkpoints fffdf43867dad215 and f248f49ff671d019, rejected; 2ae75ba44714e064
+  and 3ec2d1480f3f9692, sent back with a constraint naming the commits), each
+  time because the brief's list was older than the branch. The fix was a person
+  rewriting the brief to point at the pull request's checklist.
+- *Verifications that cannot finish, and a missing tool read as a failure.* A
+  `software.verify.run_tests` command is killed at 10 minutes
+  (`domains/software/shell_env.go`, lines 120 to 140, reports `command timed
+  out after` and a failed result). At least 5 test verifications ended that way
+  since 2026-10-24, each running several packages that CI ran green the same
+  day. One verification ran `npm` on a machine without Node, exited 127, and was
+  recorded as a failed test run like any other.
+- *A verifier that is right on fixtures and wrong on this repository.* #187's
+  `software.verify.ci_green` passed every test, and on 2026-11-01 a person's
+  review compared its rules with the check runs GitHub reports on this
+  repository's own pull requests. It counted a skipped check as not run, and
+  this repository's CI skips "SBOM (Syft)" on every pull request, so it could
+  never be met here. It counted every run of a check, and #189's head carries
+  a cancelled "PR title" run beside the green one, so a pull request whose
+  checks all passed was `not_met`. Phase 40's review (step 11) builds and runs
+  the branch, but its tests run on fixtures, and that review names behaviour
+  against a real system among what it cannot verify.
+
+**Steps.** Each step is independent of the others, so each is its own pull
+request.
+
+1. **Pull requests in groups.** The software pack's delivery template gains the
+   grouping rule as code, not only brief text: a pull request's checklist names
+   its group's steps; when every one is ticked and `software.verify.ci_green`
+   (Phase 41) is met at the head, the stream marks the pull request ready
+   (a `software.act.mark_ready` capability over the versioncontrol adapter,
+   behind the same authority bounds as opening one). A later group of the same
+   phase is opened stacked on the earlier one's head, and once that one merges
+   the repair action merges main into it. *Find out first:* whether the GitHub
+   adapter under `internal/platform/tools/versioncontrol/` already reads a pull
+   request's body and base; if not, add both there.
+2. **Keep what a killed action wrote.** When a coding action ends without a
+   commit of its own (killed, out of quota, exit 1), the software pack commits
+   whatever its worktree changed to a side branch,
+   `karakuri/salvage/<objective>/<action>`, never to the item's branch, and names
+   the branch and SHA in the action's result. The next pass's plan sees it in
+   the git observation and either cherry-picks it after its tests pass or
+   discards it, and says which.
+3. **Plan from what is delivered.** The git environment's observation gains, for
+   each open delivery pull request, its checklist (ticked and unticked steps,
+   each with the SHAs it names) and the commits on its branch since its base.
+   A drafted write action whose prompt targets a step the checklist ticks is
+   flagged at decide, so a plan that redoes delivered work escalates with that
+   reason instead of reaching a person as an ordinary plan.
+4. **Verification inside its limit.** `software.verify.run_tests` runs `go test
+   -json` and, when its time runs out, reports the packages that finished and
+   their results, and settles the run `inconclusive: timeout` (Phase 41's
+   states), not `not_met`. A command that exits 127 or 126 reports
+   `ErrUnsupported` for the missing tool, per AGENTS.md rule 10, rather than a
+   failed run.
+5. **A new verifier meets this deployment's data before review.** When a pull
+   request adds or changes a verifier, the delivery stream runs it read-only
+   against this deployment's own forge and repository (its open and most
+   recently merged pull requests, their check runs and diffs) and writes each
+   verdict beside what the forge itself reports in the pull request's body. A
+   disagreement, such as a pull request the forge shows green that the verifier
+   calls `not_met` or `inconclusive`, is a finding the stream fixes on that
+   branch before it marks the pull request ready, with a test built from the
+   recorded response.
+
+**Acceptance.**
+- Step 1: with a fake versioncontrol adapter, a pull request whose group is
+  ticked and green is marked ready in the same pass, and one with an unticked
+  step or a red check is not. A test opens a later group with the earlier
+  group's head as its base.
+- Step 2: a stub coding agent that edits a file and exits 1 leaves a commit on
+  `karakuri/salvage/...` with that edit, nothing on the item's branch, and the
+  SHA in the result. A stub that commits its own work leaves no salvage branch.
+- Step 3: a fixture pull request whose checklist ticks step 5 makes a plan that
+  writes step 5 escalate with the redo reason; a plan for step 6 does not.
+- Step 4: a fixture package that sleeps past the limit gives `inconclusive:
+  timeout` with the finished packages listed; a command that is not installed
+  gives `unsupported`, not a failure. `go test ./...` passes.
+- Step 5: a fixture verifier whose rule disagrees with a recorded forge
+  response (a skipped check, a cancelled run superseded by a green one) is
+  reported as a finding and its pull request is not marked ready; one that
+  agrees with every recorded response is.
+- After a week of the delivery stream on the new code, the count of rejections
+  whose note says a plan "redoes" delivered work is 0, and no verification is
+  recorded as failed only because it ran out of time.
+
+**What this is not.** Not Phase 40 (Planned, streams without a coordinator):
+that one ends interrupted loops, treats quota as a state, repairs conflicts and
+adds a review objective; this phase adds the five tasks it does not name.
+Step 5 is not that review either: it runs before the review, on the
+deployment's own data, so the review starts from a verifier already shown to
+read this forge correctly. Not
+EB-004 (Planned, an exit 1 leaves no reason), which step 2 builds on without
+redoing. It merges nothing: whether a ready pull request is merged stays the
+owner's decision.
+
+---
+
 ## Engineering Backlog
 
 These are enhancements found in this deployment's own telemetry and audit log, each recorded with the data that shows the problem. A human approves an entry by merging the pull request that adds it; the delivery stream implements entries whose status is Planned.
@@ -5995,7 +6261,8 @@ These are enhancements found in this deployment's own telemetry and audit log, e
 | EB-001 | The git environment's provenance escalation fires on almost every plan | Read 2026-10-04. `krk --output json audit --limit 300 --kind escalation` returned 85 escalation events (2026-09-26 to 2026-10-04, local +02:00 timestamps); `grep -o` on `escalation_reason` counted 83 of them as `plan drew on material written outside this deployment: software.env.git`, and the other 2 as confidence below threshold. `krk audit export --from 2026-10-03T00:00:00Z --to 2026-10-04T00:00:00Z` held 28 `kind: escalation` events, 27 with that same reason and `bounds_violation: true`. Code read: `domains/software/environments.go` sets `TrustThirdParty` whenever the 7-day window (`gitObservationWindow`) holds any pull request. `gh pr list --state all --limit 15` showed 11 pull requests by the repository owner and 4 by dependabot. Inferred, not verified: the escalations come from the deployment's own pull requests, so the reason no longer tells a reviewer anything. Not measured: how many of the 83 were approved unchanged. | In `domains/software/environments.go` (git environment `Observe`), mark the observation third party only when the window carries a pull request whose author is not in an operator-configured list of the deployment's own logins (default empty, so today's behaviour is kept until configured); still computed from the payload, per ADR 021. No change to `internal/core/agent/decide.go`. Unverified: whether the git adapter's pull request type carries the author; if not, add it in the adapter under `internal/platform/`. Verify with a table test in `domains/software` (own-author PRs only gives operator trust; one outside author gives third party; empty list gives third party) and by re-running the escalation count over a later day. Delivered: the `own_authors` option on a `github` versioncontrol instance; the escalation count over a later day has not been re-run yet. | M | Completed |
 | EB-002 | Objectives whose work is already delivered end by a human rejecting a checkpoint | Read 2026-10-05. `krk audit export --from 2026-10-04T00:00:00Z --to 2026-10-05T00:00:00Z`, counted with `grep -o`: 24 `kind: rejection` events over 12 distinct `objective_id` values, two per objective (one carrying the `checkpoint_id`, one with `escalation_reason: rejected_at_checkpoint`), all with approver `admin`. Of the 12 distinct rejection notes, 9 say the slice or template is already delivered (a commit or pull request is named) and that "this plan would redo it"; 2 name a failed planner call (one on the usage limit); 1 replaces an objective whose brief was too broad. Same export: 68 `execute` events (5 with `success: false`: 4 `software.act.write_code`, 1 `software.verify.run_tests`), 29 `escalation` strings (28 with the reason EB-001 covers), 18 `approval`. Inferred, not verified: after a delivery has been pushed the loop proposes a further plan instead of converging, and the operator's only way to end the objective is to reject it, which records a completed delivery as a rejection and a failed loop. Not measured: what those 9 plans proposed, how long each checkpoint waited, whether the objectives were re-run by hand rather than by the loop, and any day other than 2026-10-04. | First reproduce, then fix. Unverified in code beyond `internal/feature/loop/runner.go`, where a rejected checkpoint is recorded as `rejected_at_checkpoint` and the loop is finalized with an error: find why a plan is raised for an objective whose success criteria already hold, and have the loop evaluate the criteria before planning so that it converges without a checkpoint. If the reproduction shows the plans were legitimate re-plans and the operator was closing objectives by hand, propose instead a distinct terminal reason for "already delivered" so the audit log does not count it as a rejection. Verify with a test in `internal/feature/loop` (an objective whose criteria are met on the first observation finishes with no checkpoint and no rejection event) and by re-running the count of rejection notes containing "would redo it" over a later day. | S | Planned |
 | EB-003 | `krk audit export` returns a window two hours earlier than the one asked for | Read 2026-10-05, about 20:36Z, against the server started 2026-10-05T21:29:19+02:00 (`karakuri-obs/server.log` line 8703), which is after the newest commit on main (3f14f83, 21:18:33+02:00). `krk audit export --from 2026-10-04T00:00:00Z --to 2026-10-05T00:00:00Z`, counted with `grep -o '"created_at":"..."'`: 131 `created_at` values, of which 51 are dated 2026-10-03T22 or 2026-10-03T23 (before the window start) and 80 are dated 2026-10-04; the first is 2026-10-03T22:29:34Z, the last 2026-10-04T20:07:23Z, and none falls between 2026-10-04T21:00Z and the window end. `krk audit export --from 2026-10-05T19:30:00Z --to 2026-10-05T20:36:00Z` returned `"rows":[]`, while `krk --output json audit --limit 300` listed 26 distinct event timestamps between 21:30 and 22:36 at +02:00, which is that same hour. Both observations fit a window read two hours early, the host's offset. Inferred, not verified: the stored `created_at` text carries the local offset and SQLite compares it as text against the UTC bounds that `ListToolEvents` passes (`internal/platform/storage/gorm_storage.go`, whose comment says SQLite compares datetimes as text). Also inferred: the counts in EB-001 and EB-002 that name a UTC day describe 2026-10-03T22:00Z to 2026-10-04T22:00Z instead. Thin in one respect: one host, one offset, two windows, read in one pass; not measured on PostgreSQL, and the 131 values may include rows that are not tool events. No commit on main in the last 15 addresses this. | In `internal/platform/storage` make the window filter of `ListToolEvents` (and `ListResolvedCheckpoints`, which the export also uses) independent of the host's zone: store `created_at` in UTC at write and compare existing rows by instant, not by text; decide in the slice whether old rows are rewritten, since the export promises the same bytes for a past window. Verify with a storage test that writes an event stamped in a non-UTC zone just inside and just outside a UTC window and expects only the inside one, and by re-running the two exports above: no value before the window start, and a non-empty result for an hour the audit list shows events in. | S | Planned |
-| EB-004 | A coding agent that exits 1 leaves no reason in the audit log, and the failure is repeated seconds apart | Read 2026-10-09, about 06:41Z. `krk --output json audit --limit 300 --kind execute`, counted with `grep -o`: 220 `created_at` values dated 2026-09-26 to 2026-10-08 (local +02:00 timestamps; 13 days, not one day), of which 22 carry the error `claude_code: exit 1 (stderr: )`, that is, with nothing after `stderr:`; it is the most frequent error string in that listing (next: `command exited with code 1`, 3). Not counted: how the 22 are spread over those days, except for 2026-10-08. `krk audit export --from 2026-10-08T00:00:00Z --to 2026-10-09T00:00:00Z` held 31 `created_at` values, all between 2026-10-08T18:56Z and 2026-10-08T19:16Z (about 20 minutes, not a full day), 23 of them `kind: execute`; 6 `software.act.write_code` events have `success: false`, and 5 of those are on one objective (`7e8a1db9dbc08bde`) at 19:16:27, 19:16:31, 19:16:33, 19:16:37 and 19:16:40Z, 13 seconds from first to last. `krk --output json audit --limit 40 --kind execute --objective 7e8a1db9dbc08bde --since 2026-10-08T21:16:00+02:00` shows all 5 with `claude_code: exit 1 (stderr: )`, after 3 successful `write_code` events on the same objective at 21:01, 21:06 and 21:11 (+02:00). Inferred, not verified: the CLI wrote its reason to stdout (or nowhere), so the adapter's message drops it; and the 5 are the same action tried again at once, each failing within about 3 seconds, on a cause a retry could not clear. Not measured: what the cause was (a usage limit is one guess, with no data behind it), whether the 5 came from one plan or from several loop iterations, and what the sixth failure (objective `9c995331b5156493`, 19:15:17Z) recorded. Update, read 2026-10-10, about 09:45Z: the same error on a second capability and across objectives in the same minute. `krk audit export --from 2026-10-09T00:00:00Z --to 2026-10-10T00:00:00Z`, counted with `grep -o`: 62 `created_at` values (2026-10-09T06Z to 18Z), 49 `kind: execute`; 10 execute events have `success: false`, 9 of them on adapter `software.env.cli_agent`, and the export holds 9 `claude_code: exit 1 (stderr: )` strings (the tenth failure is `software.verify.run_tests`, `command exited with code 1`). Of the 9, 2 are `software.act.write_test`, a capability this entry did not record before, and 7 are `software.act.write_code`. 6 of the 9 fall within 42 seconds on two objectives: `7e8a1db9dbc08bde` at 11:19:17Z, then `1f7da10bdc01bf22` at 11:19:47, :50, :53, :56 and :59Z (write_code and write_test alternating, 3 seconds apart, after a successful `write_code` on that objective at 11:18:48Z per `krk --output json audit --limit 40 --kind execute --objective 1f7da10bdc01bf22`); the others are `808a413d6657bc2e` at 07:06:13Z and `4a30030046a83264` at 18:20:15 and 18:20:19Z. Inferred, not verified: each of the 9 strings belongs to one of the 9 failed `cli_agent` events (the counts match; the pairing was not read row by row), and two objectives failing in the same minute points to a cause outside any one objective. Not measured: the cause, again; and the count (9 in a day) is not materially higher than the one recorded above. | In `internal/platform/tools/cliagent` (`claude.go`, where the message `claude_code: exit %d (stderr: %s)` is built, and the sibling adapters with the same message), when the process exits non-zero with an empty stderr, put the tail of what it wrote to stdout (bounded, for example the last 2000 bytes) into the error, so the audit row says why. Reproduce first: run the adapter against a stub binary that prints a reason to stdout and exits 1. Only after the reason is visible, decide in a second slice whether an immediate identical failure should stop the action instead of being tried again; that part is not proposed here because the caller of the 5 attempts was not identified. Verify with a test in `internal/platform/tools/cliagent` (stub exits 1 with empty stderr and a stdout line; the error contains that line) and by re-running the count of `claude_code: exit 1 (stderr: )` over a later listing: it should be 0. | S | Planned |
+| EB-004 | A coding agent that exits 1 leaves no reason in the audit log, and the failure is repeated seconds apart | Read 2026-10-09, about 06:41Z. `krk --output json audit --limit 300 --kind execute`, counted with `grep -o`: 220 `created_at` values dated 2026-09-26 to 2026-10-08 (local +02:00 timestamps; 13 days, not one day), of which 22 carry the error `claude_code: exit 1 (stderr: )`, that is, with nothing after `stderr:`; it is the most frequent error string in that listing (next: `command exited with code 1`, 3). Not counted: how the 22 are spread over those days, except for 2026-10-08. `krk audit export --from 2026-10-08T00:00:00Z --to 2026-10-09T00:00:00Z` held 31 `created_at` values, all between 2026-10-08T18:56Z and 2026-10-08T19:16Z (about 20 minutes, not a full day), 23 of them `kind: execute`; 6 `software.act.write_code` events have `success: false`, and 5 of those are on one objective (`7e8a1db9dbc08bde`) at 19:16:27, 19:16:31, 19:16:33, 19:16:37 and 19:16:40Z, 13 seconds from first to last. `krk --output json audit --limit 40 --kind execute --objective 7e8a1db9dbc08bde --since 2026-10-08T21:16:00+02:00` shows all 5 with `claude_code: exit 1 (stderr: )`, after 3 successful `write_code` events on the same objective at 21:01, 21:06 and 21:11 (+02:00). Inferred, not verified: the CLI wrote its reason to stdout (or nowhere), so the adapter's message drops it; and the 5 are the same action tried again at once, each failing within about 3 seconds, on a cause a retry could not clear. Not measured: what the cause was (a usage limit is one guess, with no data behind it), whether the 5 came from one plan or from several loop iterations, and what the sixth failure (objective `9c995331b5156493`, 19:15:17Z) recorded. Update, read 2026-10-10, about 09:45Z: the same error on a second capability and across objectives in the same minute. `krk audit export --from 2026-10-09T00:00:00Z --to 2026-10-10T00:00:00Z`, counted with `grep -o`: 62 `created_at` values (2026-10-09T06Z to 18Z), 49 `kind: execute`; 10 execute events have `success: false`, 9 of them on adapter `software.env.cli_agent`, and the export holds 9 `claude_code: exit 1 (stderr: )` strings (the tenth failure is `software.verify.run_tests`, `command exited with code 1`). Of the 9, 2 are `software.act.write_test`, a capability this entry did not record before, and 7 are `software.act.write_code`. 6 of the 9 fall within 42 seconds on two objectives: `7e8a1db9dbc08bde` at 11:19:17Z, then `1f7da10bdc01bf22` at 11:19:47, :50, :53, :56 and :59Z (write_code and write_test alternating, 3 seconds apart, after a successful `write_code` on that objective at 11:18:48Z per `krk --output json audit --limit 40 --kind execute --objective 1f7da10bdc01bf22`); the others are `808a413d6657bc2e` at 07:06:13Z and `4a30030046a83264` at 18:20:15 and 18:20:19Z. Inferred, not verified: each of the 9 strings belongs to one of the 9 failed `cli_agent` events (the counts match; the pairing was not read row by row), and two objectives failing in the same minute points to a cause outside any one objective. Not measured: the cause, again; and the count (9 in a day) is not materially higher than the one recorded above. Update, read 2026-11-01, about 10:05Z: the reason is now in the audit row. `krk audit export --from 2026-10-31T00:00:00Z --to 2026-11-01T00:00:00Z` returned `created_at` values from 2026-10-31T09:33:18Z to 2026-10-31T22:31:31Z (so 22:31Z to 24:00Z held nothing, or was not returned; whether EB-003's offset shifted it by the host's +01:00 was not checked); 89 events (56 `execute`, 12 `escalation`, 11 `rejection`, 8 `approval`, 1 `blocked_objective`, 1 `stale_decision`) and 38 `"success":false`. Grouping the result's `"Error"` strings with `grep -o`: 9 `claude_code: exit 1 (stderr: ); last output: You've hit your 5-hour limit ...`, 1 `claude_code: signal: killed (stderr: ); last output: ...` (a worktree path), 4 `command exited with code 1`, 2 `command timed out after 10m0s`, 1 `command exited with code 127`; no `claude_code` error ends at `(stderr: )` any more. The stdout tail this entry proposed is on main: `internal/platform/tools/cliagent/claude.go` line 190 returns `%w; last output: %s`, added by a297d05 (#186). It also answers this entry's open question: the cause of the 9 is the Claude subscription's usage limit. Not measured: whether the 9 still come seconds apart (the timestamps were not read row by row), so the second slice above (stopping an identical failure instead of trying again) is still not proposed; and how the 38 `"success":false` values pair with these 17 non-empty errors (38 `"Error"` values in the same export are empty) was not read. | In `internal/platform/tools/cliagent` (`claude.go`, where the message `claude_code: exit %d (stderr: %s)` is built, and the sibling adapters with the same message), when the process exits non-zero with an empty stderr, put the tail of what it wrote to stdout (bounded, for example the last 2000 bytes) into the error, so the audit row says why. Reproduce first: run the adapter against a stub binary that prints a reason to stdout and exits 1. Only after the reason is visible, decide in a second slice whether an immediate identical failure should stop the action instead of being tried again; that part is not proposed here because the caller of the 5 attempts was not identified. Verify with a test in `internal/platform/tools/cliagent` (stub exits 1 with empty stderr and a stdout line; the error contains that line) and by re-running the count of `claude_code: exit 1 (stderr: )` over a later listing: it should be 0. Delivered by a297d05 (#186); the count over 2026-10-31 is 0. | S | Completed |
+| EB-005 | The local exporter drops every span, so this deployment has kept no trace since 2026-09-27 | Read 2026-10-25, about 09:20Z. Grep of `karakuri-obs/server.log` for `exporter does not support spans`: 33 lines, all `exporter=local`, the first at 2026-09-27T22:09:41+02:00 (line 1878) and the last at 2026-10-25T10:11:22+01:00 (line 37464, `dropped_spans=2`); the two inside or next to the window are 2026-10-24T23:54:09+02:00 (`dropped_spans=1`) and that last one. They are the only WARN lines Grep found dated 2026-10-24 or 2026-10-25 apart from one long line it omitted. Glob of `karakuri-obs/traces/**` and `karakuri-obs/spans/**` found no files; `karakuri-obs/` holds `logs/` and `metrics/` only. Code read: `internal/platform/observability/local.go` (`LocalFileExporter`) has `ExportMetrics` and `ExportLogs` and no `ExportSpans`, so `spanExporterFor` fails and `OTel.exportSpans` (`otel.go`, lines 65 to 82) returns, logging the warning only the first time per exporter per process. The roadmap's "What's deferred" list for span export (around line 2545) lists the local exporter among those that "warn once ... and drop them" as deferred work, with no entry or phase that picks it up. Inferred, not verified: the 33 lines are 33 server starts, and `dropped_spans` counts only the first batch of each, so the real number of dropped spans is not known and is much larger; and because no other exporter is configured here, the `invoke_agent`, `chat` and tool spans that section describes have never been kept on this deployment, which is why this stream can count audit rows but cannot say which loop step's duration dominates. Not measured: the deployment's exporter configuration was not read (only the log's `exporter=local`); a Grep of `karakuri-obs/metrics/2026-10-24` for metric names containing `duration` or `step` found nothing, so there is no metric substitute either. Same read, already covered elsewhere: `krk audit export --from 2026-10-24T00:00:00Z --to 2026-10-25T00:00:00Z` returned 17 events, all between 2026-10-24T21:52:57Z and 21:59:25Z (9 `rejection`, 8 of them noting a plan "paused since a restart, 6+ days old", which Phase 40 step 4 covers), and `krk checkpoint list` holds one `reconcile_circuit_breaker` checkpoint pending since 2026-10-16T11:58Z, which Phase 40 calls the intended outcome. | In `internal/platform/observability/local.go`, give `LocalFileExporter` an `ExportSpans` that writes `SpanRecord`s through the same `write` path to `<path>/spans/<YYYY-MM-DD>/spans-NNNNN.<ext>`, with the same rotation and pruning, in NDJSON and JSON first (CSV and Parquet return an error naming the format until a row type is added, rather than writing nothing, per AGENTS.md rule 10). Keep the once-per-process warning for exporters that still lack spans. Verify with a test in `internal/platform/observability` (one `ExportSpans` call writes one NDJSON line per span with trace and parent IDs and duration, and `spanExporterFor` now accepts the local exporter) and, after a restart, by Glob of `karakuri-obs/spans/<date>/*` finding a file and Grep of `server.log` finding no new `exporter=local` drop line. | S | Planned |
 
 ---
 
@@ -6046,6 +6313,7 @@ Phase 40 is ordered by what must be true before a stream runs with nobody watchi
 Phase 41 is ordered by the owner's request of 2026-10-14 and by what the streams fail on now.
 
 - **Phase 41** (success a machine can check) depends on **Phase 38** for the per-criterion settlement record it extends, on **Phase 39** and [ADR 028](adr/028-packs-are-autonomous-behind-one-gateway.md) for the pack manifest a verifier declares its metrics in, and on **Phase 40** for the streams whose criteria it replaces. Step 1 needs none of the three.
+- **Phase 44** (delivery that shapes and recovers its own work) depends on **Phase 41** for the `ci_green` verifier step 1 reads and the `inconclusive` states step 4 reports, and on **EB-004** for the exit reason step 2 records. It does not depend on **Phase 40**, and each of its five steps can ship on its own.
 
 ---
 

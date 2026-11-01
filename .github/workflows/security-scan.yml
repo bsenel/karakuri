@@ -12,7 +12,7 @@ name: Security Scan
 
 on:
   pull_request:
-    branches: [main, "claude/**"]
+    branches: [main, "claude/**", "karakuri/**"]
   push:
     branches: [main]
   schedule:
