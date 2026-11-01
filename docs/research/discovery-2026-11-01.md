@@ -247,7 +247,20 @@ Inferred: the rows where Karakuri is alone among the seven columns are digests, 
 ## Technical frontier
 
 <!-- p5:start -->
-_Pending: part 5._
+Written by part 5 on 2026-11-01 (date read: 2026-11-01). Read first: the 2026-10-25 'Technical frontier' in full; nothing below repeats it. Pages came through an extract tool. [Q] = words the extract gave as verbatim; [E] = paraphrase. For phase coverage this part read the phase text, not only the title: Phase 28 (steps and acceptance), Phase 29 (steps, acceptance, 'Shipped' notes for steps 1, 2 and 4), Phase 33 ('What this is not' and the closing 'not built' notes), and Phase 42's bet and 'Why'.
+
+### A. Protocols and standards
+
+**A1. MCP: no release after 2026-07-28.** Observed: the release feed has nine entries. The newest are `2026-07-28` ("stable release") and `2026-07-28-RC`, both dated 28 July 2026, and nothing later (https://github.com/modelcontextprotocol/modelcontextprotocol/releases.atom, read in full) [Q]. Inferred: together with last cycle's empty draft changelog, MCP has shipped no revision in the three months since 2026-07-28. Maturity: a stable spec, widely adopted. Nothing new for Karakuri to track here this week.
+
+**A2. MCP authorization, read in full this time.** Observed, on the 2026-07-28 page: "Authorization is **OPTIONAL** for MCP implementations"; "Authorization servers **MUST** implement OAuth 2.1"; clients and servers "**SHOULD** support OAuth Client ID Metadata Documents"; "Dynamic Client Registration is deprecated and retained for backwards compatibility"; clients "**MUST** implement Resource Indicators for OAuth 2.0"; servers "**MUST** only accept tokens that are valid for use with their own resources." The page names no enterprise-managed authorization, token exchange, agent identity or delegation. The only wording close to delegation is "on behalf of a resource owner" (https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization, about 25,500 characters, read in full) [Q]. Extract: the draft page has the same substance, and the differences seen were only URL paths. The two pages were compared by reading, not diffed (https://modelcontextprotocol.io/specification/draft/basic/authorization) [E]. The client-registration subpage was not read.
+- What it would let Karakuri do: hold a per-issuer OAuth token for each remote MCP instance instead of the static header it uses now. Inferred: no spec text lets an MCP client tell a server that a human approved this call, or that a standing grant authorised it. The delegated-versus-autonomous split that last cycle's WIMSE bet (2026-10-25 A4) wanted has no slot in MCP authorization.
+- Coverage. Observed: Phase 33's 'What this is not' says "It is not OAuth for remote MCP servers". It lists the revision's issuer validation, credentials keyed by issuer and Client ID Metadata Documents, and says this "sizes it as a phase of its own". Phase 33's closing notes repeat that OAuth for remote MCP servers was "not built". Phase 28 step 5 puts Karakuri's own MCP server behind "the existing bearer auth". Phases 37 to 43 were searched for "oauth" with no match. **No phase covers MCP OAuth.** The gap was named in Phase 33 and never planned.
+
+**A3. OpenTelemetry GenAI agent spans: still all Development, and now nine kinds of span.** Observed: the page-level banner reads "**Status**: [Development]". The create-agent span is "Development". The invoke-agent client span is `invoke_agent {gen_ai.agent.name}`, kind CLIENT, and it requires `gen_ai.operation.name` and `gen_ai.provider.name`. `gen_ai.conversation.id` is conditionally required (https://raw.githubusercontent.com/open-telemetry/semantic-conventions-genai/main/docs/gen-ai/gen-ai-agent-spans.md; the first 39,343 of 141,572 characters verbatim, the rest as an extract, the last 2,229 characters not read) [Q for that part]. Extract, from the unread-verbatim remainder: the table of contents lists invoke-agent internal, invoke workflow (`invoke_workflow {gen_ai.workflow.name}`), plan, execute tool, an agent-as-a-tool "transfer" span carrying `gen_ai.transfer.mode` (`pass_control` or `return_to_caller`), and three skill spans (load skill, read skill resource, command execution) [E]. The status of each of those spans was not shown. No attribute for human approval, authorization or user identity appears in either part.
+- Maturity: a spec draft. Development status means names may still change.
+- What it would let Karakuri do. Inferred: Karakuri runs a plan step and a checkpoint on every run. A `plan` span is now defined. No convention has a span or attribute for "a human approved this". Karakuri could emit checkpoint waits as `karakuri.checkpoint.*` attributes, or a namespaced span, on the `invoke_agent` tree, and propose an upstream attribute. That would be first-of-kind, but only as a proposal.
+- Coverage. Observed: Phase 29's steps plan `invoke_agent`, `chat` and `execute_tool` only. Its 'Shipped (step 2)' note says `runLoop` opens one `invoke_agent <agent>` span per iteration and `stepAct` opens `execute_tool <capability>` children carrying `gen_ai.tool.name` and `karakuri.environment.id`. Phase 29's text names no `plan`, `invoke_workflow` or checkpoint span, and does not mention the conventions' Development status. Inferred: Phase 29 covers the base tree. The plan span, a workflow span for reconcile, and a checkpoint attribute are **not covered**. Because the conventions are Development, Phase 29's pinned names may need a rename later.
 <!-- p5:end -->
 
 ## Governance and buying criteria
@@ -347,7 +360,13 @@ All read 2026-11-01 (date read from `date -u +%F`).
 <!-- s4:end -->
 
 <!-- s5:start -->
-_Pending: part 5._
+### Sources, part 5
+
+All read 2026-11-01 (date read from `date -u +%F`) through an extract tool. P = primary.
+- https://github.com/modelcontextprotocol/modelcontextprotocol/releases.atom: P, full text [Q]
+- https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization: P, full text [Q]
+- https://modelcontextprotocol.io/specification/draft/basic/authorization: P, full text, compared by reading [E]
+- https://raw.githubusercontent.com/open-telemetry/semantic-conventions-genai/main/docs/gen-ai/gen-ai-agent-spans.md: P, first 39,343 of 141,572 characters verbatim [Q], the rest extract [E], the last 2,229 characters not read
 <!-- s5:end -->
 
 <!-- s6:start -->
