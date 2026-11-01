@@ -433,7 +433,13 @@ Two. Candidate 2 passes both gates but its first slice cannot be sized (p6b 'Cou
 <!-- p7a:end -->
 
 <!-- p8:start -->
-_Pending: part 8._
+Written by part 8 on 2026-11-01. Nothing was built, run or tested; no web page was fetched by this part.
+
+**Phases written:** Phase 45, The Repository's Own Checks Run Before a Delegated Push (DEMAND, from p7a R1 and p6b candidate (1)); Phase 46, An Approval After Third-Party Text Buys One Action, Never a Rung (FRONTIER BET, from p7a R2 and (b2) candidate 3). Part 7 recommended two; part 8 did not rank, add or drop any.
+
+**Numbering (Step 1).** Observed: `git grep '^## Phase' origin/main -- docs/roadmap.md` shows Phase 44 (Delivery That Shapes and Recovers Its Own Work, from #200) as the highest on main, above the 43 this cycle was planned with; `gh pr list --state open` found no open pull request other than #203 that changes `docs/roadmap.md`. This report has no p1h line beginning 'Highest phase number:'. Next number: 45. #203 held no phase from an earlier run of this part.
+
+**Consistency check.** Observed: `grep -n '^## Phase' docs/roadmap.md` on this branch shows the numbers ascending (`sort -n -c` passed); the only repeated integer is 13, which is Phase 13 and Phase 13.5, not a duplicate. Phases 45 and 46 sit after Phase 43 and immediately before '## Engineering Backlog'. Inferred: this branch forked before Phase 44 reached main, so the branch's roadmap goes 43, 45, 46, and a merge with main will conflict at that insertion point; the reviewer keeps main's Phase 44 and places 45 and 46 after it. The phase-status table under '## Current Implementation Status' lists no phase from 41 on, so it was not changed. Every file the two phases name was checked with `ls`; `internal/feature/reconcile/run_test.go` does not exist, so Phase 46 names no test file.
 <!-- p8:end -->
 
 ## What changed since the last report
@@ -629,5 +635,10 @@ Run log, part 7 (no '## Run log' heading or p7r marker exists; kept here as part
 <!-- s7:end -->
 
 <!-- s8:start -->
-_Pending: part 8._
+### Sources, part 8
+
+- No web page was fetched and no URL is newly cited by this part. Phases 45 and 46 cite only URLs already graded in Sources, parts 2, 5 and 7, and the 2026-10-25 report.
+- Local, opened 2026-11-01: `docs/roadmap.md` (Phase 43 in full, headings), this report (p6b, p7a, Sources); `gh pr list --state open`, `gh pr view 203`.
+
+Run log, part 8 (no p8s or p8r marker exists in this report, so sources and this line are kept in s8 as parts 6 and 7 did): wrote Phases 45 and 46, p8 and the final #203 title and body; did not read main's Phase 44 in full nor open any code; time 2026-11-01T15:48Z (from `date -u`).
 <!-- s8:end -->
