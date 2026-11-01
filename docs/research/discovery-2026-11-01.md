@@ -364,7 +364,72 @@ Not reached, by name: (3) a post-run check for actions outside the run's bounds 
 ## Fit and bets
 
 <!-- p7a:start -->
-_Pending: part 7._
+Written by part 7 on 2026-11-01 from this report (parts 1 to 6, read line by line), the 2026-10-25 report's 'Fit and bets' and 'What changed since the last report', six Go files opened for (b2) below, and `gh pr view` of #187 and #200 (bodies grepped for push, check and verif). No web page was fetched; nothing was built, run or tested. Every ranking is Inferred. Upstream state: p6b is written but reached only candidates (1), (2), (4) and (5); p8 is still '_Pending'. This report has no p1t ('Thin spots inherited') or p1h marker; part 1's 'How earlier proposals fared' sits in p1w and is used as p1h. `gh pr list --state all --label karakuri:discovery`, re-run by this part: #148, #158 and #195 merged, #203 open. **No discovery proposal was declined.**
+
+### (a) Fit by segment
+
+**Platform and SRE teams: WEAK.** Unchanged in substance from 2026-10-25 (STRONG in shape, weak in proof). Nothing new this cycle (p1 table). Reasons they would NOT want Karakuri: no run can yet be stopped mid-pass, Phase 37 is Planned (p4b matrix row; Temporal #3006 shows the stop users want keeps state, p4a [Q]); no postmortem shows an agent acting well in an incident (p1 Still thin); incident.io ships paging, Slack-native channels and time-bound human access, which Karakuri does not (p4a 5(ii), [E]).
+
+**Engineering teams delegating coding work, unattended or standing: STRONG on the record, WEAK on what reaches the push.** Strengthened by GitHub Next running over 100 standing workflows on one repository (p1, [Q]), closest to Karakuri's own streams. Reasons they would NOT want Karakuri: Observed (p6b), Karakuri runs none of the repository's checks before a delegated CLI pushes (`domains/software/environments.go`, no push and no check command under `internal/feature` or `internal/platform`), while Spotify's verifiers block the PR on failure (p2 §2, [Q]); Observed (p6b), the delegated CLI's authority is a tool list, honoured by one CLI of four (`environments.go:653-660`); their own reader is the bottleneck, "No one can read all these outputs" (p1, [Q]), and Karakuri's digest is per twin, not across many objectives (p1 Inferred, not checked in code).
+
+**Self-hosters: WEAK.** Still one tracker (ZeroClaw #10968, p1 table). What fits: the run's authority is written into it (`internal/feature/reconcile/authority.go:21-64`, p6a). Reasons they would NOT want it: it needs its own Postgres store (p3 §3(iv) Inferred, same as the LangGraph complaint); the loudest Codex demand is a native client where people work (p2 §3, 1,464 reactions [Q]), which a thin-CLI server (ADR 001) does not answer.
+
+**Regulated organisations: STRONG on mechanism, WEAK on proof, fourth cycle.** Observed (p6a): 183-day retention floor (`internal/feature/audit/retention.go:16`), oversight and provenance per decision row (`export.go:73-118`), reproducible closed-window export (`export.go:149-169`). Reasons they would NOT want it: the AI Act text is unread for the fourth cycle, so no row is a compliance finding (p6a [N]); no first-hand regulated deployer was found (p1, [N]); the export carries no MCP inventory and no record of an incident in Karakuri's own conduct (`export.go:34-45`, p6b (4) and (5)).
+
+**Small product teams embedding agents: IRRELEVANT.** No new source (p1 table); they embed an SDK and Karakuri offers none to embed (2026-10-25 p7a).
+
+**New segment from p1, teams running many standing agents on one repository (GitHub Next): STRONG, one source.** Its stated pain is reading, not writing (p1, [Q]). Reason it would NOT want Karakuri: its workflows compile to GitHub Actions with scoped permissions (p1, [E]), so it already has scheduling and permissions where its code lives.
+
+### (b) Ranking of every candidate
+
+Gate 1 counts one tracker once. Gate 2 needs the code read in p6b or (b2), no phase on main or open PR other than #203 covering it, and no decline (none exists).
+
+| # | Candidate (section) | Type | Gate 1 | Gate 2 | Result |
+|---|---|---|---|---|---|
+| 1 | Repository's own checks run before a delegated push (p2 B, p6b (1)) | DEMAND | PASS: Temporal, Stripe (2026-10-25), Spotify (p2 §2, [Q]): three organisations | PASS with a caveat: p6b read the code. Observed in `gh pr view 187`: Phase 41's `ci_green` verifier settles a criterion from the forge after the PR exists, not before the push; #200 (Phase 44) adds `inconclusive: timeout` for test verification. Neither refuses a push. Overlap with `ci_green` is real | **PASS** |
+| 2 | A delegated coding agent carries the run's bounds (p2 A, p6b (2)) | DEMAND | PASS: ZeroClaw #10968, copilot-cli #3013 (p2 §1, [Q]) | PASS: p6b found no bounds field in `cliagent.DelegateInput` (`internal/platform/tools/cliagent/adapter.go:14-30`). Phase 40 declares tools per delegated action (p2 table) but does not carry the rung; partly covered | **PASS** |
+| 3 | An approval after third-party text never counts toward earned autonomy (p5 Bet 1) | FRONTIER BET | PASS: arXiv 2610.22987, method §2.1, §3.1, §4.1 read [Q] (p5 B1) | PASS via (b2) | **PASS** |
+| 4 | The approval channel is out of the run's own token's reach (p5 Bet 2) | FRONTIER BET | PASS: arXiv 2610.35835 §II, §III read (p5 B2) | (b2) finds it largely already true for the delegated credential, which is the bet's own proof-wrong test | **FAIL (proved mostly wrong)** |
+| 5 | MCP OAuth for remote servers (p5 A2) | FRONTIER BET | PASS: MCP 2026-07-28 authorization spec read in full [Q] | NOT READ: (b2) budget spent on 3 and 4; Phase 33 names the gap, no phase plans it (p5) | NOT ASSESSED |
+| 6 | Checkpoint in the trace, `plan` span (p5 Bet 3) | FRONTIER BET (weak) | PASS: OTel GenAI agent spans, Development [Q] | NOT READ | NOT ASSESSED |
+| 7 | Post-run check for actions outside bounds (2026-10-25 rank 9, p6b (3)) | FRONTIER BET | PASS on 2026-10-25's arXiv 2610.27548 | NOT READ; `bounds_violation` field exists (`export.go:106`, p6b); Phase 38 text unread | NOT ASSESSED |
+| 8 | MCP inventory in the export (p6b (4)) | DEMAND | FAIL: the requirement is second-hand; OWASP unread (p6a [N]) | code read (p6b) | FAIL |
+| 9 | Serious-incident records (p6b (5)) | DEMAND | FAIL: AI Act Art. 73 unread [N] | code read (p6b) | FAIL |
+| 10 | One digest across many standing objectives; an objective watching others (p1) | DEMAND | FAIL: one source (GitHub Next) | not read | FAIL |
+| 11 | MCP arguments filtered to the schema (p2 D); tool-call shape pinned (p2 E) | — | — | FAIL: Phases 42 and 43 on main | FAIL |
+| 12 | Configured timeout for every provider; durable state that survives the store (p2) | DEMAND | FAIL: one tracker each | not read | FAIL |
+| 13 | A stop that keeps the run resumable (p4a Temporal #3006) | DEMAND | one tracker | FAIL: Phase 37 | FAIL |
+| 14 | Rewind of an agent's changes (p3 Codex #9203) | DEMAND | FAIL: one tracker read; claude-code #52209 and opencode #31338 unread | worktree delivery (ADR 003) answers half | FAIL |
+| 15 | Refuse writes outside the working directories in every mode (p3, Claude Code v2.1.314) | FRONTIER BET | PASS on a leader's shipped capability, release note [Q] | NOT READ | NOT ASSESSED |
+| 16 | Native desktop client (p2 §3) | DEMAND | one tracker; off-scope by ADR 001 | — | FAIL |
+
+### (b2) Feasibility read by part 7
+
+**Candidate 3 (p5 Bet 1).** Exists, Observed: `checkpoint.Service.Resolve` records the decision and resumes the loop (`internal/feature/checkpoint/service.go:138-150`); `Record` writes one approval, rejection or modification row (`service.go:161-200`) and stores nothing reusable, so a resolution is one-shot. In reconcile, only a `reject` choice counts against the objective (`internal/feature/reconcile/run.go:420-436`); a converged pass whose checkpoint was approved goes to `applyCleanRun` (`run.go:439-442`), which increments `CleanRuns` and calls `promote` (`run.go:608-617`, `authority.go:78-87`), one rung after `PromoteAfter` clean runs. No identifier `Trust` or `ThirdParty` appears in `internal/feature/reconcile/*.go` (grep). Inferred: an approval given after a run read `TrustThirdParty` text counts toward the next rung exactly like any other; the bet's first proof-wrong test (resolutions never feed earned autonomy) fails, so the bet stands. Missing: a mark on the pass that third-party text was read before the checkpoint, and a rule in `applyCleanRun` that such a pass does not count. First slice: carry a `read_third_party` flag from the loop state to the reconcile outcome; skip the `CleanRuns++` when it is set, audited; a test per rung. Could not verify: whether the loop state already records which observations were third-party (`internal/feature/loop` not opened), and whether a non-checkpointed act pass also counts (it does by the same path, Inferred).
+
+**Candidate 4 (p5 Bet 2).** Observed: the only grant of `checkpoint:resolve` is the operator role (`internal/auth/roles.go:99`; grep of `ActionCheckpointResolve` across the repository finds no other `Allow`); the route requires it (`internal/api/server.go:405`). The delegated CLI's credential is minted with `Roles: []string{RoleViewer}` and audited as `read_only` (`internal/feature/delegation/issuer.go:132-143`), passed only as the MCP bearer (`domains/software/environments.go:815-820`, `internal/platform/tools/cliagent/claude.go:139`), and revoked after the action (`environments.go:804-811`). Inferred: on the HTTP API and MCP, the delegated agent's own token cannot resolve a checkpoint, which is the bet's own proof-wrong condition. Could not verify: whether the CLI's environment (`DelegateInput.Env`) can carry an operator token from the server's own environment, and whether the loop's built-in tools act under the server's identity.
+
+### Order of the candidates that pass
+
+1. **Candidate 1, repository's checks before a delegated push.** User value high: three operators name it as the difference between working and broken code (p2). Evidence: strongest of the cycle (three primary, first-hand). First slice: small and local to `cliEnv.Act` (p6b). Highest value-times-evidence over cost.
+2. **Candidate 3, third-party text blocks promotion.** Value: it closes the one path where a measured attack (58% elicitation, p5 [Q], the authors' figure on their benchmark) could become standing authority in Karakuri. Evidence: one paper, method read; the gap was observed in code by (b2). First slice: one flag and one guard in `applyCleanRun`, the cheapest of the three.
+3. **Candidate 2, delegated runs carry bounds.** Value: high in principle, two trackers. Evidence: weak votes (0 reactions on #3013, p2). Cost: the highest, since how bounds reach an environment was not read (p6b), and Phase 40 partly overlaps.
+
+### (c) Recommended
+
+Two. Candidate 2 passes both gates but its first slice cannot be sized (p6b 'Could not verify'), and Phase 40 partly covers it, so it is not recommended this cycle; it heads next cycle's Feasibility.
+
+**R1. The repository's own checks run before a delegated push. DEMAND.**
+- Sources: Spotify Engineering, Honk part 3 (https://engineering.atspotify.com/2025/12/feedback-loops-background-coding-agents-part-3, read 2026-11-01) [Q]; Temporal (https://temporal.io/blog/using-coding-agents-on-a-migration-three-practices-that-mattered, read 2026-10-25) [Q]; Stripe session page (2026-10-25) [Q, summary only].
+- Rests on: p6b candidate (1).
+- Overlap to settle first: #187's `ci_green` settles after the PR exists; R1 is the gate before the push. A phase must say why both are needed.
+
+**R2. An approval given after third-party text never counts toward earned autonomy. FRONTIER BET.**
+- Sources: arXiv 2610.22987 (https://arxiv.org/html/2610.22987, read 2026-11-01) [Q] for method §2.1, §3.1, §4.1 and the 58% and 81.0% figures (the authors' measurement on their setup).
+- Rests on: (b2) candidate 3.
+- The bet: one plausible approval on a run that read attacker-controlled text should buy that one action, never a rung, because the attack the paper measures works by turning one approval into lasting permission.
+- Proved wrong if: the loop already refuses to raise a checkpoint, or treats its approval as a rejection, once a run has read `TrustThirdParty` text (Phase 27's escalation path, not opened by this part); or 2610.22987 §5 onward shows a defence that does not need it.
+- First slice, time-boxed to one pull request: a test that drives a reconcile pass with a third-party observation and an approved checkpoint and asserts `CleanRuns` does not move; then the guard. Kill criterion: if the test passes before any code change (the third-party path already ends the pass otherwise), ship the test and stop.
 <!-- p7a:end -->
 
 <!-- p8:start -->
@@ -470,7 +535,15 @@ Run log, part 6 (no '## Run log' heading or p6r marker exists in this report, so
 <!-- s6:end -->
 
 <!-- s7:start -->
-_Pending: part 7._
+### Sources, part 7
+
+No web page was fetched by this part.
+- https://temporal.io/blog/using-coding-agents-on-a-migration-three-practices-that-mattered: newly cited in this report; not re-read; read 2026-10-25 per docs/research/discovery-2026-10-25.md, primary, [Q] there.
+- Other URLs in p7a and p7b are cited from parts 1 to 6 and keep their entries and grades there.
+- Local files opened 2026-11-01, primary for this repository: `internal/feature/checkpoint/service.go`, `internal/feature/reconcile/run.go`, `internal/feature/reconcile/authority.go`, `internal/auth/roles.go`, `internal/feature/delegation/issuer.go`, `domains/software/environments.go`, `internal/platform/tools/cliagent/claude.go`, `docs/research/discovery-2026-10-25.md`; grep hits in `internal/api/server.go`, `internal/auth/*.go`, `internal/core/agent/agent.go`, `docs/roadmap.md`.
+- `gh pr view 187`, `gh pr view 200`, `gh pr view 201`, `gh pr view 204` (titles and bodies grepped), `gh pr list --state all --label karakuri:discovery`, run 2026-11-01.
+
+Run log, part 7 (no '## Run log' heading or p7r marker exists; kept here as part 6 did): at start p7a, p7b, p8 and s8 were '_Pending'; wrote p7a with a (b2) reading of p5 Bets 1 and 2 in code and p7b; could not reach MCP OAuth, Bet 3, the post-run bounds check or the Claude Code write-boundary in code, nor the loop's handling of third-party text; time 2026-11-01T15:45Z (from `date -u`).
 <!-- s7:end -->
 
 <!-- s8:start -->
