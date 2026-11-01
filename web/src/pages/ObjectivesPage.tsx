@@ -99,11 +99,13 @@ export function ObjectivesPage() {
 
       {err && (
         <p>
-          <span className="pill red">{err}</span>{' '}
+          {/* Live regions: text that appears on its own is silent to a screen
+              reader, so a failed load or create would go unnoticed. */}
+          <span className="pill red" role="alert">{err}</span>{' '}
           {!loaded && <button onClick={() => void load()}>Retry</button>}
         </p>
       )}
-      <table>
+      <table aria-label="Objectives">
         <thead><tr><th>Title</th><th>Domain</th><th>Status</th><th>Twin</th><th>Created</th></tr></thead>
         <tbody>
           {items.map((o) => (
@@ -117,7 +119,7 @@ export function ObjectivesPage() {
           ))}
           {/* Neither "not loaded yet" nor "could not load" is "no objectives". */}
           {!loaded && !err && (
-            <tr><td colSpan={5} className="muted">Loading…</td></tr>
+            <tr><td colSpan={5} className="muted"><span role="status">Loading…</span></td></tr>
           )}
           {loaded && items.length === 0 && (
             <tr>
