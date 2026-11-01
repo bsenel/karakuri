@@ -34,11 +34,17 @@ func softwareCapabilities() []capability.Capability {
 		"Execute test suite in worktree. Pass params.branch, and params.repo when it is not the bound one, "+
 			"so the result names the files that branch's pull request changes; without them a criterion it verifies settles nothing", true)
 	runTests.MeasurePaths = []string{"**/*_test.go", "web/src/**/*.test.ts", "web/src/**/*.test.tsx", "web/e2e/**/*.spec.ts"}
-	// Scaffolding for Phase 41 step 10: registered so the verify environment
-	// routes it; its metric and measure paths are specified in
-	// coverage_test.go and land with the code.
+	// coverage is the first verifier that declares a metric (Phase 41 step
+	// 10). Its figure is defined by the test files of the measured packages,
+	// so it declares them as its measure paths, the way run_tests does.
 	coverage := act(capCoverage, "Coverage",
-		"Measure the statement coverage of params.packages by running go test -coverprofile in params.workdir", true)
+		"Measure the statement coverage of params.packages (Go package patterns) by running go test -coverprofile in params.workdir. "+
+			"Pass params.branch, and params.repo when it is not the bound one, so the result names the files that branch's pull request changes", true)
+	coverage.Metrics = []capability.Metric{{
+		Name: "coverage", Unit: "percent", Direction: capability.DirectionHigherIsBetter,
+		Params: []capability.MetricParam{{Name: "packages", Type: capability.ParamString}},
+	}}
+	coverage.MeasurePaths = []string{"**/*_test.go"}
 	return []capability.Capability{
 		// Inputs declared for the reason write_design_doc's are below. Neither
 		// read requires an input; both fail rather than return an empty list
