@@ -196,6 +196,8 @@ func softwareEnvironmentFactories(reg *tools.Registry) []environment.Factory {
 			Serves: []capability.CapabilityID{
 				"software.verify.run_tests",
 				"software.verify.lint",
+				capWebBundle,
+				capCLIStartup,
 			},
 			Build: func(ctx environment.BuildContext) (environment.Environment, error) {
 				return newVerifyEnv("software.env.verify", newShellEnv("software.env.verify", "", 600*time.Second), boundVC(ctx)), nil
@@ -949,6 +951,10 @@ func (e *verifyEnv) Observe(_ context.Context, _ environment.ObservationQuery) (
 func (e *verifyEnv) Act(ctx context.Context, a environment.Action) (environment.ActionResult, error) {
 	switch string(a.CapabilityID) {
 	case "software.verify.run_tests", "software.verify.lint":
+	case capWebBundle:
+		return e.webBundleBytes(ctx, a), nil
+	case capCLIStartup:
+		return e.cliStartupMs(ctx, a), nil
 	default:
 		return failureResult(e.id, a.CapabilityID,
 			fmt.Sprintf("verifyEnv does not handle capability %q", a.CapabilityID), nil), nil

@@ -68,9 +68,9 @@ var reviewedLoopCapabilities = []string{
 	"software.observe.fetch_prs", "software.observe.read_codebase",
 	"software.reason.analyse_repo", "software.reason.analyse_usage", "software.reason.architecture_review",
 	"software.reason.research",
-	"software.verify.alerts_resolved", "software.verify.ci_green", "software.verify.lint",
+	"software.verify.alerts_resolved", "software.verify.ci_green", "software.verify.cli_startup_ms", "software.verify.lint",
 	"software.verify.paths_declared", "software.verify.review", "software.verify.run_tests",
-	"software.verify.stream_pr", "software.verify.tech_lead_review",
+	"software.verify.stream_pr", "software.verify.tech_lead_review", "software.verify.web_bundle_bytes",
 }
 
 // loopCapabilitySet is what bootstrap registers for the software domain: the
