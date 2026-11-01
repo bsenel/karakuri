@@ -181,24 +181,12 @@ func (e *observabilityEnv) Act(ctx context.Context, a environment.Action) (envir
 	case CapAlertsResolved:
 		return e.alertsResolved(ctx, a.Params), nil
 	case CapP95Latency:
-		return e.p95Latency(ctx, a.Params), nil
+		return e.measureLatest(ctx, CapP95Latency, "p95_latency_ms", "ms", a.Params), nil
 	case CapErrorRate:
-		return e.errorRate(ctx, a.Params), nil
+		return e.measureLatest(ctx, CapErrorRate, "error_rate", "ratio", a.Params), nil
 	}
 	return observabilityRefusal("%s serves %s, %s, %s, %s and %s; %s cannot be executed here",
 		e.id, CapFetchLogs, CapFetchMetrics, CapAlertsResolved, CapP95Latency, CapErrorRate, a.CapabilityID), nil
-}
-
-// p95Latency is Phase 41 step 12's latency verifier. Not implemented yet: it
-// fails rather than report a value it did not measure.
-func (e *observabilityEnv) p95Latency(_ context.Context, _ map[string]any) environment.ActionResult {
-	return observabilityRefusal("%s: not implemented yet", CapP95Latency)
-}
-
-// errorRate is Phase 41 step 12's error rate verifier. Not implemented yet: it
-// fails rather than report a value it did not measure.
-func (e *observabilityEnv) errorRate(_ context.Context, _ map[string]any) environment.ActionResult {
-	return observabilityRefusal("%s: not implemented yet", CapErrorRate)
 }
 
 // alertsResolved settles "the alert is gone" by asking the instance what is
