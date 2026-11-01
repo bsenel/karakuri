@@ -304,13 +304,37 @@ Not reached (see Still thin). Last cycle's C1 and C2 stand as written.
 ## Governance and buying criteria
 
 <!-- p6a:start -->
-_Pending: part 6._
+Written by part 6 on 2026-11-01. Read first: 'Governance and buying criteria' in docs/research/discovery-2026-10-25.md; not restated. Session limit 600 seconds; this pass reached item (1) only, and it failed.
+
+- (1) EU AI Act legal text: **not read, fourth cycle running.** Observed: http://data.europa.eu/eli/reg/2024/1689/oj redirected (307) to https://eur-lex.europa.eu/eli/reg/2024/1689/oj, which returned HTTP 202 with 0 characters, through a model-written fetch extract [N]. Articles 12, 14, 26, 72, 73 and 113: nothing quoted, nothing claimed. op.europa.eu and a Commission-hosted text: not tried (time).
+- (2) Digital Omnibus on AI, (3) OWASP Top 10 for Agentic Applications 2026, (4) NIST AI 600-1, ISO/IEC 42001, a questionnaire, (5) a regulated organisation: **not reached.** No Article 113 date is claimed to have moved.
+
+The requirement column names only what the 2026-10-25 section and Phase 31's own code comment already cite; none was re-read.
+
+| Requirement (as cited before) | Primary source and date read | What Karakuri can evidence (file:line opened this pass) |
+|---|---|---|
+| Event logs kept at least six months (EU AI Act Art. 12 and 26, as cited 2026-10-25) | EUR-Lex [N], 2026-11-01 | Observed: 183-day floor, upward only, refused below (`internal/feature/audit/retention.go:16`, `:29-37`); `Prune` re-checks it (`retention.go:59-62`). |
+| Records show human oversight (Art. 14, as cited before) | [N] | Observed: `oversight` with `person_consulted`, checkpoint counts and every approval, rejection and modification row (`internal/feature/audit/export.go:73-79`, `:199-200`); checkpoints pending at window close (`export.go:125-131`). |
+| Each decision traceable to model, template and authority | [N] | Observed: provider, model, template, rung, risk class and bounds per row (`export.go:83-118`); rows without provenance counted (`export.go:196-198`). |
+| Autonomy narrows below "act" | [N] | Observed: `effectiveAuthority` pins `sense`, `propose` and unknown levels shut (`internal/feature/reconcile/authority.go:21-64`). |
+| An unanswered approval is not consent (Phase 35) | [N] | Observed: `ExpireDue` rejects as `system:timeout` via `Resolve` (`internal/feature/checkpoint/service.go:213-239`). Its reconcile caller: not opened. |
+| Reproducible export of a closed window | [N] | Observed: refuses an open window, store-independent order, writes nothing (`export.go:149-169`); `not_a_certification` field (`export.go:44`). |
+| Post-market monitoring (Art. 72), serious incidents (Art. 73) | [N] | not evidenced: no such field in `Export` (`export.go:34-45`). |
+| MCP server and tool inventory | [N] | not evidenced in `Export` (`export.go:34-45`). |
+
+**No row is a compliance finding.** Every requirement is second-hand, the legal text was not read, and nothing was run.
 <!-- p6a:end -->
 
 ## Feasibility
 
 <!-- p6b:start -->
-_Pending: part 6._
+Written by part 6 on 2026-11-01. The session ran out of time after p6a; no candidate was assessed by reading code this pass.
+
+Coverage check done before stopping (Observed from `docs/roadmap.md` headings and `gh pr list --state open`, 2026-11-01): Phases 37 to 43 are Planned. Open PRs other than #203: #204, #202 (Phase 41 step 10), #201, #200 (proposes Phase 44, delivery that shapes and recovers its own work) and #187 (Phase 41 steps 1 to 9). Inferred from titles only: candidate (3) is Phase 38's subject; p2's (D) and (E) are Phases 42 and 43, as p2 says; candidate (1) may overlap Phase 41 and PR #200.
+
+### Still thin (part 6)
+
+Not reached, by name: (1) running the repository's own checks before a delegated push; (2) every unattended path carrying the run's AuthorityBounds; (3) a post-run check for actions outside the run's bounds; (4) MCP server and tool inventory in the evidence export; (5) serious-incident records; p1's one digest across many standing objectives; p1's objective that watches other standing objectives; p2's configured timeout honoured for every provider; p2's durable state that survives the database; p5's Bets 1, 2 and 3. Governance items (2) to (5) in p6a.
 <!-- p6b:end -->
 
 ## Fit and bets
@@ -413,7 +437,12 @@ All read 2026-11-01 (date read from `date -u +%F`) through an extract tool. P = 
 <!-- s5:end -->
 
 <!-- s6:start -->
-_Pending: part 6._
+### Sources, part 6
+
+- http://data.europa.eu/eli/reg/2024/1689/oj, read 2026-11-01, primary; 307 redirect only [N].
+- https://eur-lex.europa.eu/eli/reg/2024/1689/oj, read 2026-11-01, primary; HTTP 202, 0 characters, model-written fetch extract [N]. Cited for nothing.
+
+Run log, part 6 (no '## Run log' heading or p6r marker exists in this report, so the line is kept here): opened audit export and retention, reconcile authority and Phase 35's `ExpireDue` and wrote the evidence table; EU AI Act text empty (HTTP 202); governance items (2) to (5) and every p6b candidate not reached; `gh pr view 203`: OPEN, label karakuri:discovery, head karakuri/discovery-2026-11-01; time 2026-11-01T15:49Z.
 <!-- s6:end -->
 
 <!-- s7:start -->
