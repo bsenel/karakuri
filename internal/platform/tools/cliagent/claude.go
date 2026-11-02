@@ -41,7 +41,13 @@ func (c *ClaudeCode) Delegate(ctx context.Context, in DelegateInput) (DelegateOu
 	if err != nil {
 		return out, err
 	}
+	// Drain to close even after an error: Stream removes the per-run MCP
+	// configuration, which holds the credential, before it closes the channel.
+	var runErr error
 	for chunk := range stream {
+		if runErr != nil {
+			continue
+		}
 		raw.WriteString(chunk.Content)
 		switch chunk.Kind {
 		case "text":
@@ -52,9 +58,12 @@ func (c *ClaudeCode) Delegate(ctx context.Context, in DelegateInput) (DelegateOu
 			}
 		case "error":
 			if chunk.Err != nil {
-				return out, withOutputTail(chunk.Err, out.Summary)
+				runErr = withOutputTail(chunk.Err, out.Summary)
 			}
 		}
+	}
+	if runErr != nil {
+		return out, runErr
 	}
 	out.RawOutput = raw.String()
 	return out, nil
