@@ -520,3 +520,33 @@ func TestTheFlakyTestVerifierCarriesTheChangedFilesOfTheBranchPR(t *testing.T) {
 		t.Error("a pass that edited flaky_test.go does not touch the flaky-test verifier's measure paths")
 	}
 }
+
+// A pull request from outside own_authors runs its own tests inside go test,
+// so it can write the -json stream itself: the count is third party, on the
+// measurement as on the result, and so cannot settle a required criterion
+// (verify reads only the measurement's trust; ADR 021).
+func TestTheFlakyTestVerifierMarksTheMeasurementOfAThirdPartyPRThirdParty(t *testing.T) {
+	if testing.Short() {
+		t.Skip("runs go test on the fixture module")
+	}
+	withFlakyCounter(t)
+	pr := streamPR(passStart, passStart)
+	pr.OwnAuthor = false
+	forge := &fakeForge{prs: []versioncontrol.PRSummary{pr}, files: []string{"flaky_test.go"}}
+	env := newVerifyEnv("software.env.verify", newShellEnv("software.env.verify", "", 60*time.Second), forge)
+	res := actFlaky(t, env, map[string]any{
+		"packages": "./...", "runs": 2, "workdir": flakyFixtureDir(t), "branch": streamBranch,
+	})
+	if !res.Success {
+		t.Fatalf("flaky tests of the fixture failed: %s", res.Error)
+	}
+	if len(res.Measurements) != 1 {
+		t.Fatalf("measurements = %#v, want exactly one", res.Measurements)
+	}
+	if m := res.Measurements[0]; m.Trust != environment.TrustThirdParty {
+		t.Errorf("measurement trust = %q, want %q: a third-party pull request wrote the tests that produced it", m.Trust, environment.TrustThirdParty)
+	}
+	if res.Trust != environment.TrustThirdParty {
+		t.Errorf("result trust = %q, want %q", res.Trust, environment.TrustThirdParty)
+	}
+}

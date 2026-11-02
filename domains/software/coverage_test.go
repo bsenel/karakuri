@@ -280,3 +280,30 @@ func TestTheCoverageVerifierCarriesTheChangedFilesOfTheBranchPR(t *testing.T) {
 		t.Error("a pass that edited sign_test.go does not touch the coverage verifier's measure paths")
 	}
 }
+
+// A pull request from outside own_authors runs its own tests inside go test,
+// so it can write the cover profile itself: the figure is third party, on the
+// measurement as on the result, and so cannot settle a required criterion
+// (verify reads only the measurement's trust; ADR 021).
+func TestTheCoverageVerifierMarksTheMeasurementOfAThirdPartyPRThirdParty(t *testing.T) {
+	if testing.Short() {
+		t.Skip("runs go test on the fixture module")
+	}
+	pr := streamPR(passStart, passStart)
+	pr.OwnAuthor = false
+	forge := &fakeForge{prs: []versioncontrol.PRSummary{pr}, files: []string{"sign_test.go"}}
+	env := newVerifyEnv("software.env.verify", newShellEnv("software.env.verify", "", 60*time.Second), forge)
+	res := actCoverage(t, env, map[string]any{"packages": "./...", "workdir": coverFixtureDir(t), "branch": streamBranch})
+	if !res.Success {
+		t.Fatalf("coverage of the fixture failed: %s", res.Error)
+	}
+	if len(res.Measurements) != 1 {
+		t.Fatalf("measurements = %#v, want exactly one", res.Measurements)
+	}
+	if m := res.Measurements[0]; m.Trust != environment.TrustThirdParty {
+		t.Errorf("measurement trust = %q, want %q: a third-party pull request wrote the tests that produced it", m.Trust, environment.TrustThirdParty)
+	}
+	if res.Trust != environment.TrustThirdParty {
+		t.Errorf("result trust = %q, want %q", res.Trust, environment.TrustThirdParty)
+	}
+}

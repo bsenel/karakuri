@@ -159,7 +159,10 @@ func (e *verifyEnv) coverage(ctx context.Context, a environment.Action) environm
 	if files, trust, ok := e.changedFiles(ctx, a.Params); ok {
 		res.StateDelta["changed_files"] = files
 		if trust.IsThirdParty() {
+			// The pull request's own tests ran inside go test and could write the
+			// profile: verify reads the measurement's trust, so it carries it too.
 			res.Trust = trust
+			res.Measurements[0].Trust = trust
 		}
 	}
 	return res

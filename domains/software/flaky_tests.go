@@ -221,7 +221,10 @@ func (e *verifyEnv) flakyTests(ctx context.Context, a environment.Action) enviro
 	if files, trust, ok := e.changedFiles(ctx, a.Params); ok {
 		res.StateDelta["changed_files"] = files
 		if trust.IsThirdParty() {
+			// The pull request's own tests ran inside go test and could write the
+			// -json stream: verify reads the measurement's trust, so it carries it too.
 			res.Trust = trust
+			res.Measurements[0].Trust = trust
 		}
 	}
 	return res
