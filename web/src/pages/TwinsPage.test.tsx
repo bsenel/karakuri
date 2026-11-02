@@ -56,4 +56,27 @@ describe('TwinsPage', () => {
     expect(screen.queryByText(/No twins yet/)).not.toBeInTheDocument();
     expect(screen.queryByText('Loading…')).not.toBeInTheDocument();
   });
+
+  it('tells a screen reader that it is loading, and then what went wrong', async () => {
+    // Text that appears on its own is silent unless it sits in a live region.
+    let fail: (e: unknown) => void = () => {};
+    get.mockReturnValue(new Promise((_, reject) => { fail = reject; }));
+
+    renderPage();
+    expect(screen.getByRole('status')).toHaveTextContent('Loading…');
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+
+    fail(new APIError(403, '{"message":"twin:read is not granted"}'));
+    await waitFor(() =>
+      expect(screen.getByRole('alert')).toHaveTextContent('twin:read is not granted'),
+    );
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+  });
+
+  it('names the twins table for a screen reader', async () => {
+    get.mockResolvedValue([]);
+
+    renderPage();
+    await waitFor(() => expect(screen.getByRole('table', { name: 'Twins' })).toBeInTheDocument());
+  });
 });
