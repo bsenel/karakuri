@@ -39,7 +39,8 @@ func objectiveStandingCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "standing <id>",
 		Short: "Declare an objective standing: held at its desired state on a cadence",
-		Long: `Declare an objective standing.
+		Long: `Declare an objective standing. <id> is an objective ID shown by
+'krk objective list'.
 
 A one-shot objective converges once and stops. A standing objective is a
 desired state Karakuri holds: it senses cheaply on --sense, reconciles when
@@ -153,7 +154,8 @@ func objectiveUnstandingCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "unstanding <id>",
 		Short: "Stop holding an objective; it becomes one-shot again",
-		Long: `Return a standing objective to a one-shot one.
+		Long: `Return a standing objective to a one-shot one. <id> is an objective ID
+shown by 'krk objective list'.
 
 The objective and its history survive. Only the supervision stops: its control
 loop is dropped, and nothing runs again unless somebody starts a loop.`,
@@ -176,7 +178,8 @@ func objectiveReconcileCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "reconcile <id>",
 		Short: "Reconcile a standing objective now, outside its cadence",
-		Long: `Ask for a reconcile now.
+		Long: `Ask for a reconcile now. <id> is an objective ID shown by
+'krk objective list'.
 
 It still goes through the lease and the concurrency bound: "now" means as soon
 as this replica has a slot and nobody else holds the objective, not in addition
@@ -203,7 +206,8 @@ func objectiveReconcileStatusCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "reconcile-status <id>",
 		Short: "Show a standing objective's control loop and recent passes",
-		Long: `Show what the supervisor has been doing with an objective.
+		Long: `Show what the supervisor has been doing with an objective. <id> is an
+objective ID shown by 'krk objective list'.
 
 The history includes the cheap sense-only passes, which are the majority and
 the point: "checked forty-eight times today and spent nothing" is the evidence
@@ -233,7 +237,8 @@ func objectivePauseCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "pause <id>",
 		Short: "Stop a standing objective",
-		Long: `Take a standing objective out of rotation.
+		Long: `Take a standing objective out of rotation. <id> is an objective ID
+shown by 'krk objective list'.
 
 The pause survives a restart, which is the point: a supervisor that forgot it
 had been told to stop would put the objective straight back to work.
@@ -265,7 +270,8 @@ func objectiveResumeCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "resume <id>",
 		Short: "Put a paused standing objective back into rotation",
-		Long: `Resume a standing objective.
+		Long: `Resume a standing objective. <id> is an objective ID shown by
+'krk objective list'.
 
 This clears the failure count and the stall streak that stopped it. Clearing
 them is the point rather than a convenience: resuming says somebody has looked
