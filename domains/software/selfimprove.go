@@ -60,6 +60,12 @@ const (
 	// and a phase proposed from observed pain are different claims and should
 	// not be presented identically.
 	CapAnalyseRepo = "software.reason.analyse_repo"
+
+	// CapCostPerPass and CapEscalationApprovalRate measure the deployment
+	// from its own telemetry (Phase 41 step 13): spend per reconcile pass and
+	// the share of resolved escalations that were approved.
+	CapCostPerPass            = "software.verify.cost_per_pass"
+	CapEscalationApprovalRate = "software.verify.escalation_approval_rate"
 )
 
 // telemetryWindow is how far back the telemetry environment looks.
