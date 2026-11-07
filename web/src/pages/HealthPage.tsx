@@ -69,7 +69,8 @@ export function HealthPage() {
       {Array.from(bySlot.entries()).map(([slot, list]) => (
         <div key={slot} className="card" style={{ marginBottom: 12 }}>
           <h3>{slot}</h3>
-          <table>
+          {/* One table per slot: the name tells a screen reader which one it is in. */}
+          <table aria-label={`${slot} adapters`}>
             <thead><tr><th>Instance</th><th>Type</th><th>Active</th><th>Default</th></tr></thead>
             <tbody>
               {list.map((a) => (

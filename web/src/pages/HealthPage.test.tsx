@@ -65,4 +65,17 @@ describe('HealthPage', () => {
     );
     expect(screen.getByText('No adapters are configured.')).toBeInTheDocument();
   });
+
+  it('names each adapter table by its slot', async () => {
+    get.mockResolvedValue({
+      status: 'ok',
+      providers: {},
+      adapters: [{ slot: 'storage', instance: 'sqlite', type: 'gorm', active: true, is_default: true }],
+    });
+
+    render(<HealthPage />);
+    await waitFor(() =>
+      expect(screen.getByRole('table', { name: 'storage adapters' })).toBeInTheDocument(),
+    );
+  });
 });
