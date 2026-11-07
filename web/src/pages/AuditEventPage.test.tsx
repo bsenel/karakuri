@@ -63,4 +63,13 @@ describe('AuditEventPage', () => {
     await waitFor(() => expect(screen.getByRole('heading', { name: 'tool_call' })).toBeInTheDocument());
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
+
+  it('names the region that holds the event details', async () => {
+    get.mockResolvedValue(auditEvent);
+
+    renderPage();
+    await waitFor(() =>
+      expect(screen.getByRole('region', { name: 'Audit event details' })).toHaveTextContent('succeeded'),
+    );
+  });
 });

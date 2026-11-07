@@ -82,7 +82,7 @@ func twinCreateCmd() *cobra.Command {
 	}
 	cmd.Flags().StringVar(&name, "name", "", "Twin name (required)")
 	cmd.Flags().StringVar(&kind, "kind", "team", "Twin kind: person|team|organization")
-	cmd.Flags().StringVar(&domain, "domain", "software", "Domain")
+	cmd.Flags().StringVar(&domain, "domain", "software", "Domain pack the twin works in (see: krk domain list)")
 	_ = cmd.MarkFlagRequired("name")
 	return cmd
 }

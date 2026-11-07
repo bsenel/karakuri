@@ -29,6 +29,10 @@ func TestCreateHelp(t *testing.T) {
 	if usage := flags.Lookup("description").Usage; usage == "Description" {
 		t.Errorf("--description usage %q only repeats the flag name", usage)
 	}
+	// "Domain" repeats the flag name; twin list --domain already points at the list.
+	if usage := twinCreateCmd().Flags().Lookup("domain").Usage; !strings.Contains(usage, "krk domain list") {
+		t.Errorf("twin create --domain usage %q does not say where a domain comes from", usage)
+	}
 }
 
 // A filter flag that takes a twin ID should say where the ID comes from.
