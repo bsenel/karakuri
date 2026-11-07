@@ -154,8 +154,15 @@ func (r *Reader) Snapshot(ctx context.Context, q coretelemetry.Query) (coretelem
 // deployment. Without it a twin-scoped snapshot reported every other tenant's
 // escalations, approvals and actions as its own, which for a pack reasoning
 // about its own trustworthiness is worse than no number at all.
+//
+// Rejections counts only the rows that record a person's decision, the ones
+// the checkpoint service writes with an empty EscalationReason. A rejection
+// that ends the loop also leaves the loop's terminal row of the same kind,
+// with EscalationReason "rejected_at_checkpoint" or "modify_loop_exceeded";
+// counting it too made each rejection count twice, and made a modify that ran
+// past the modify limit count as a rejection nobody made.
 func (r *Reader) readAudit(ctx context.Context, snap *coretelemetry.Snapshot, scope []string, since, until time.Time) {
-	count := func(kind string) int {
+	count := func(kind string, decisionsOnly bool) int {
 		events, err := r.store.ListToolEvents(ctx, storage.ToolEventFilter{
 			Kind: kind, ObjectiveIDs: scope, CreatedAtSince: &since, Limit: 5000,
 		})
@@ -164,15 +171,19 @@ func (r *Reader) readAudit(ctx context.Context, snap *coretelemetry.Snapshot, sc
 		}
 		n := 0
 		for _, e := range events {
-			if !e.CreatedAt.After(until) {
-				n++
+			if e.CreatedAt.After(until) {
+				continue
 			}
+			if decisionsOnly && e.EscalationReason != "" {
+				continue
+			}
+			n++
 		}
 		return n
 	}
-	snap.Escalation.Escalations = count(storage.ToolEventEscalation)
-	snap.Escalation.Approvals = count(storage.ToolEventApproval)
-	snap.Escalation.Rejections = count(storage.ToolEventRejection)
+	snap.Escalation.Escalations = count(storage.ToolEventEscalation, false)
+	snap.Escalation.Approvals = count(storage.ToolEventApproval, false)
+	snap.Escalation.Rejections = count(storage.ToolEventRejection, true)
 
 	executes, err := r.store.ListToolEvents(ctx, storage.ToolEventFilter{
 		Kind: storage.ToolEventExecute, ObjectiveIDs: scope, CreatedAtSince: &since, Limit: 5000,

@@ -60,6 +60,12 @@ const (
 	// and a phase proposed from observed pain are different claims and should
 	// not be presented identically.
 	CapAnalyseRepo = "software.reason.analyse_repo"
+
+	// CapCostPerPass and CapEscalationApprovalRate measure the deployment
+	// from its own telemetry (Phase 41 step 13): spend per reconcile pass and
+	// the share of resolved escalations that were approved.
+	CapCostPerPass            = "software.verify.cost_per_pass"
+	CapEscalationApprovalRate = "software.verify.escalation_approval_rate"
 )
 
 // telemetryWindow is how far back the telemetry environment looks.
@@ -242,27 +248,8 @@ func (e *telemetryEnv) Act(ctx context.Context, a environment.Action) (environme
 			}, nil
 		}
 
-		window := telemetryWindow
-		if s, ok := a.Params["window"].(string); ok && s != "" {
-			if d, err := time.ParseDuration(s); err == nil && d > 0 {
-				window = d
-			}
-		}
-
-		// The environment's twin is a ceiling, not a default. A plan asking
-		// for another tenant's numbers — or for the whole deployment from
-		// inside one tenant — is asking for the cross-tenant read that the
-		// telemetry reader was fixed to prevent, and it gets the same answer
-		// here: narrowing is allowed, widening is not.
-		twinID := e.twinID
-		if s, ok := a.Params["twin_id"].(string); ok && s != "" && e.twinID == "" {
-			twinID = s
-		}
-
-		snap, err := e.reader.Snapshot(ctx, coretelemetry.Query{
-			Since:  time.Now().UTC().Add(-window),
-			TwinID: twinID,
-		})
+		q, window := e.telemetryQuery(a.Params)
+		snap, err := e.reader.Snapshot(ctx, q)
 		if err != nil {
 			return environment.ActionResult{Success: false, Error: err.Error()}, nil
 		}
@@ -270,6 +257,12 @@ func (e *telemetryEnv) Act(ctx context.Context, a environment.Action) (environme
 		state["capability"] = string(CapAnalyseUsage)
 		state["window"] = window.String()
 		return environment.ActionResult{Success: true, StateDelta: state}, nil
+	}
+
+	// Measuring is looking too: the two telemetry verifiers read the same
+	// snapshot and change nothing.
+	if res, ok := e.telemetryVerify(ctx, a); ok {
+		return res, nil
 	}
 
 	// Anything else is refused out loud rather than succeeding quietly. The
@@ -679,8 +672,8 @@ func platformTelemetryFactory() environment.Factory {
 	return environment.Factory{
 		EnvID:       EnvPlatformTelemetry,
 		Domain:      "software",
-		Description: "This deployment's own behaviour: escalation rates, spend, failing objectives, unanswered decisions",
-		Serves:      []capability.CapabilityID{CapAnalyseUsage},
+		Description: "This deployment's own behaviour: escalation rates, spend, failing objectives, unanswered decisions, and the cost per pass and approval rate verifiers measured from them",
+		Serves:      []capability.CapabilityID{CapAnalyseUsage, CapCostPerPass, CapEscalationApprovalRate},
 		Build: func(bc environment.BuildContext) (environment.Environment, error) {
 			// A nil reader is the ordinary case for a deployment that has not
 			// wired telemetry. The environment says so rather than reporting
