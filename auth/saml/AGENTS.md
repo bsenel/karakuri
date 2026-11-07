@@ -34,6 +34,12 @@ SAML.
 - **`AllowIDPInitiated` is off by default.** With it on there is no request of ours to
   correlate against, so the guarantee that a response answers a request we actually sent is
   gone. Some deployments need it; it should stay a decision an operator makes.
+- **`guardResponse` is temporary.** crewjam/saml v0.5.1 has no fix for GO-2026-6909 (a
+  foreign-namespace `NameID` becomes the subject; a missing `Subject` panics), so the ACS
+  handler refuses those shapes before crewjam reads them, refuses artifact and encrypted
+  responses it cannot inspect, and recovers crewjam's panics. It only ever refuses, which
+  is why it does not break rule 2. Remove it, its errors and its entry in
+  `.govulncheck-exceptions` when crewjam ships a fix.
 - **Failures say why.** `crewjam.InvalidResponseError.Error()` is deliberately vague
   ("Authentication failed") and the real cause hides in `PrivateErr`. The ACS handler
   unwraps it before reporting, because a host that logs an authentication failure wants the
