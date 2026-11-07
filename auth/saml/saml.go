@@ -27,11 +27,14 @@
 package saml
 
 import (
+	"bytes"
 	"crypto"
 	"crypto/x509"
+	"encoding/base64"
 	"encoding/xml"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"slices"
@@ -76,6 +79,26 @@ var (
 	// ErrNoSubject is returned when an assertion carries no NameID. There is
 	// nothing to key a principal on.
 	ErrNoSubject = errors.New("saml: assertion has no subject NameID")
+
+	// ErrMalformedAssertion is returned when crewjam panics on a response.
+	// GO-2026-6909: a signed assertion missing an element crewjam assumes is
+	// present dereferences nil after the signature has been checked.
+	ErrMalformedAssertion = errors.New("saml: malformed assertion")
+
+	// ErrForeignNameID is returned when a response carries a NameID outside the
+	// SAML assertion namespace. GO-2026-6909: crewjam matches NameID in any
+	// namespace, so such an element would become the subject.
+	ErrForeignNameID = errors.New("saml: NameID outside the SAML assertion namespace")
+
+	// ErrEncryptedAssertion is returned for an encrypted assertion. Its NameID
+	// cannot be checked before crewjam decrypts and reads it, so until
+	// GO-2026-6909 is fixed upstream it is refused rather than trusted.
+	ErrEncryptedAssertion = errors.New("saml: encrypted assertions are refused until GO-2026-6909 is fixed upstream")
+
+	// ErrArtifactBinding is returned for an artifact (SAMLart) response. This
+	// provider asks for the POST binding only, and crewjam would fetch the
+	// artifact's assertion itself, past the GO-2026-6909 guard.
+	ErrArtifactBinding = errors.New("saml: artifact binding is not accepted")
 )
 
 // Config parameterises a Provider.
@@ -307,7 +330,11 @@ func (p *Provider) ACSHandler(
 			return
 		}
 
-		assertion, err := p.sp.ParseResponse(r, p.possibleRequestIDs(r))
+		if err := guardResponse(r); err != nil {
+			fail(w, r, err)
+			return
+		}
+		assertion, err := p.parseResponse(r)
 		if err != nil {
 			// crewjam wraps the real cause in an InvalidResponseError whose
 			// Error() is deliberately vague; the private one is where the
@@ -332,6 +359,65 @@ func (p *Provider) ACSHandler(
 		}
 		onSuccess(w, r, principal)
 	})
+}
+
+// assertionNamespace is the SAML 2.0 assertion namespace, the only one a
+// NameID may legitimately be in.
+const assertionNamespace = "urn:oasis:names:tc:SAML:2.0:assertion"
+
+// guardResponse refuses the response shapes GO-2026-6909 abuses before crewjam
+// reads them. crewjam/saml v0.5.1 has no fix; drop this guard, and the errors
+// only it returns, once a release does.
+//
+// It only ever refuses. Signature, audience and time checks stay crewjam's,
+// which is why a well-formed response that passes here proves nothing yet.
+func guardResponse(r *http.Request) error {
+	if r.Form.Get("SAMLart") != "" {
+		return ErrArtifactBinding
+	}
+	raw, err := base64.StdEncoding.DecodeString(r.PostForm.Get("SAMLResponse"))
+	if err != nil {
+		return fmt.Errorf("saml: decode assertion: %w", err)
+	}
+
+	decoder := xml.NewDecoder(bytes.NewReader(raw))
+	for {
+		token, err := decoder.Token()
+		if errors.Is(err, io.EOF) {
+			return nil
+		}
+		if err != nil {
+			return fmt.Errorf("saml: read assertion: %w", err)
+		}
+		start, ok := token.(xml.StartElement)
+		if !ok {
+			continue
+		}
+		switch {
+		case start.Name.Local == "EncryptedAssertion":
+			return ErrEncryptedAssertion
+		// Any NameID, not only one directly under Subject: the namespace is
+		// what crewjam ignores, and a legitimate NameID is never elsewhere.
+		case start.Name.Local == "NameID" && start.Name.Space != assertionNamespace:
+			return ErrForeignNameID
+		}
+	}
+}
+
+// parseResponse is crewjam's ParseResponse with its panics turned into errors.
+//
+// GO-2026-6909: a signed assertion without a Subject dereferences nil inside
+// crewjam after the signature check. net/http would recover it too, but by
+// dropping the connection, so the host would never learn a login failed.
+func (p *Provider) parseResponse(r *http.Request) (assertion *crewjam.Assertion, err error) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			// The value is a runtime error, not assertion content, so it is
+			// safe to hand a host that logs failures.
+			assertion, err = nil, fmt.Errorf("%w: %v", ErrMalformedAssertion, recovered)
+		}
+	}()
+	return p.sp.ParseResponse(r, p.possibleRequestIDs(r))
 }
 
 // possibleRequestIDs returns the request IDs an assertion may answer.
