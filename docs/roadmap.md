@@ -51,7 +51,7 @@ Phases 27–32 were proposed from two kinds of evidence: what this repository de
 | 38    | What Was Required and Not Done             | **Planned**   |
 | 39    | Autonomous Domain Packs Behind One Gateway | **Planned**   |
 | 40    | Streams That Run Without a Coordinator     | **Planned**   |
-| 41    | Success a Machine Can Check (steps 1 to 9 shipped in #187; 10 to 13 follow) | **In progress** |
+| 41    | Success a Machine Can Check                | **Completed** |
 | 42    | An MCP Call Carries Only What the Tool Declared | **Planned** |
 | 43    | A Provider's Tool-Call Shape, Pinned by a Test | **Planned** |
 | 44    | Delivery That Shapes and Recovers Its Own Work | **Planned** |
@@ -5401,9 +5401,11 @@ the owner's (step 14c).
 
 ---
 
-## Phase 41 — Success a Machine Can Check (Planned)
+## Phase 41 — Success a Machine Can Check (Completed)
 
-**Delivered so far:** steps 1 to 9 shipped in #187 (merged 2026-11-01). Steps 10 to 13 follow, one pull request per step; the step that holds step 13 marks this phase Completed.
+**Delivered:** steps 1 to 9 in #187, and steps 10 to 13 in one pull request
+each (#202, #205, #208 and #211). The Shipped notes at the end of this phase
+say which of those were merged when they were written.
 
 **The owner's request (2026-10-14).** "When we define an objective for
 Karakuri, do we show it what a success looks like? Do we provide something like
@@ -5992,6 +5994,63 @@ It changes how rule 10 is read for measurements (no data is
   stream templates' source (the report's Code reading was relied on), the web
   objective page, the digest code and the audit log of the 2026-10-14 trip.
   Every step that touches one of these begins by reading it.
+
+**Shipped (steps 1 to 9).** Steps 1 to 9 shipped in #187, merged 2026-11-01.
+
+**Shipped (step 10).** Coverage and the flaky-test count shipped in #202,
+merged 2026-11-02.
+
+**Step 11 (its own pull request, not merged yet).** Web bundle size and CLI
+startup time ship in their own pull request, #205, which was still open, not
+merged, when this was written.
+
+**Shipped (step 12).** p95 latency and error rate shipped in #208, merged
+2026-11-02.
+
+**Shipped (step 13).** Cost per pass and escalation approval rate are in this
+pull request, #211. A source was found for each, so neither verifier was
+dropped and the kill criterion did not fire. Both are pack capabilities,
+`software.verify.cost_per_pass` and `software.verify.escalation_approval_rate`
+(`domains/software/selfimprove.go:67-68`), measured in
+`domains/software/telemetry_metrics.go` and served by `telemetryEnv`, whose
+`Act` hands them to `telemetryVerify` (`selfimprove.go:264`). Each reads one
+telemetry snapshot and emits one first-party measurement.
+
+- *Cost per pass.* The source is `readSpend` in
+  `internal/platform/telemetry/reader.go:226`, which sets `Spend.Cost` and
+  `Spend.Priced` (`SpendStats`, `internal/core/telemetry/telemetry.go:91`),
+  divided by `Work.Reconciles`, counted at `reader.go:113`. A pass is a
+  reconcile outcome carrying a loop ID; a sense without one spends no model
+  call and is not counted. The unit is `usd`. No pass in the window, or spend
+  that is not priced, is `inconclusive: no_data`.
+- *Escalation approval rate.* The source is `ApprovalRate` in
+  `internal/core/telemetry/telemetry.go:83`, approvals over approvals plus
+  rejections, which are counted from audit tool events by `readAudit` in
+  `reader.go:157`. The unit is `ratio`. Nothing approved or rejected in the
+  window is `inconclusive: no_data`, because "nobody decided" is the opposite
+  of "all rejected".
+
+A deployment with no telemetry reader gives `inconclusive: unsupported`, and a
+reader error gives `inconclusive: verifier_error` (rule 10). The window comes
+from `params.window`, and a criterion cannot widen past its twin. The tests are
+in `domains/software/telemetry_metrics_test.go`, and
+`internal/app/telemetry_metric_criterion_test.go` creates a required
+`cost_per_pass <= 1.00 usd` criterion against the pack's declaration and
+settles it from the verifier's measurement.
+
+Not verified:
+
+- Neither verifier has been measured on a live deployment. Every test feeds
+  the verifiers a fixed telemetry snapshot; none runs `readSpend` or
+  `readAudit` against a real store or cost report.
+- Cost per pass is only as good as the configured rate table. `Priced` says a
+  rate table priced the units; it does not say the prices are right.
+- An approval rate counts audit events in the window, not distinct
+  checkpoints. An escalation raised before the window and resolved inside it
+  counts as a resolution with no escalation in the window.
+- Steps 10 to 12 ship in separate pull requests. Steps 10 (#202) and 12
+  (#208) are merged; step 11 (#205) was still open when this was written, so
+  main has this phase Completed before step 11 is on it, until #205 merges.
 
 ---
 
