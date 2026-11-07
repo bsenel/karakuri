@@ -11,6 +11,29 @@ import (
 	"github.com/bsenel/karakuri/internal/platform/procenv"
 )
 
+// stopGrace is how long a cancelled run's process group has to end after it is
+// asked to, before the group is killed (Phase 37 step 2; the roadmap's working
+// figure).
+const stopGrace = 10 * time.Second
+
+// stopBound is the bound runStreaming waits on a cancelled run; tests shorten
+// it. TODO(phase 37 step 2): runStreaming does not read it yet.
+var stopBound = stopGrace
+
+// cutError marks a run that a stop ended before it finished. groupExited says
+// whether the process group was seen to exit by the time runStreaming
+// returned. TODO(phase 37 step 2): runStreaming does not return it yet.
+type cutError struct {
+	groupExited bool
+}
+
+func (e *cutError) Error() string {
+	if e.groupExited {
+		return "run cut by a stop; the process group exited"
+	}
+	return "run cut by a stop; the process group was not seen to exit"
+}
+
 // runStreaming launches a CLI subprocess and forwards each stdout line to
 // `onLine`. Stderr is collected separately and returned in the final report.
 // Honors in.WorktreePath as cwd, in.Env (merged onto os.Environ()), and
