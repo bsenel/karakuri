@@ -853,6 +853,12 @@ func (e *cliEnv) Act(ctx context.Context, a environment.Action) (environment.Act
 	}
 	if err != nil {
 		delta := map[string]any{"adapter": e.cli.Name()}
+		// A run its context ended says so, and says whether its process
+		// group was seen to exit (Phase 37 step 2).
+		if cut, groupExited := cliagent.RunCut(err); cut {
+			delta["cut"] = true
+			delta["group_exited"] = groupExited
+		}
 		if credential != nil {
 			delta["delegation_credential"] = credential
 		}
