@@ -46,6 +46,11 @@ func objectiveCreateCmd() *cobra.Command {
       --criteria-file docs/examples/criteria.yaml \
       --criterion 'id=p95;description=Search p95 latency is at most 250 ms;kind=measured;verifier=ci.latency;metric=p95_latency;op=<=;target=250;unit=ms'`,
 		RunE: func(_ *cobra.Command, _ []string) error {
+			// MarkFlagRequired only checks that --title was given; an empty or
+			// blank one would still create an objective with no name.
+			if strings.TrimSpace(title) == "" {
+				return fmt.Errorf(`--title is empty; give the objective a name, e.g. --title "Ship the export endpoint"`)
+			}
 			body := map[string]any{
 				"title": title, "description": description, "domain": domain,
 				"twin_id": twinID, "template_id": templateID,

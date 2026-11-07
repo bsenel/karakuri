@@ -19,6 +19,11 @@ const (
 	CapFetchMetrics = "software.observe.fetch_metrics"
 	// CapAlertsResolved verifies that the named alerts are no longer open.
 	CapAlertsResolved = "software.verify.alerts_resolved"
+	// CapP95Latency measures p95_latency_ms, in ms, from the latest point of
+	// the one series params.query returns (Phase 41 step 12).
+	CapP95Latency = "software.verify.p95_latency_ms"
+	// CapErrorRate measures error_rate, as a ratio, the same way.
+	CapErrorRate = "software.verify.error_rate"
 )
 
 const (
@@ -175,9 +180,13 @@ func (e *observabilityEnv) Act(ctx context.Context, a environment.Action) (envir
 		return e.fetchMetrics(ctx, a.Params), nil
 	case CapAlertsResolved:
 		return e.alertsResolved(ctx, a.Params), nil
+	case CapP95Latency:
+		return e.measureLatest(ctx, CapP95Latency, "p95_latency_ms", "ms", a.Params), nil
+	case CapErrorRate:
+		return e.measureLatest(ctx, CapErrorRate, "error_rate", "ratio", a.Params), nil
 	}
-	return observabilityRefusal("%s serves %s, %s and %s; %s cannot be executed here",
-		e.id, CapFetchLogs, CapFetchMetrics, CapAlertsResolved, a.CapabilityID), nil
+	return observabilityRefusal("%s serves %s, %s, %s, %s and %s; %s cannot be executed here",
+		e.id, CapFetchLogs, CapFetchMetrics, CapAlertsResolved, CapP95Latency, CapErrorRate, a.CapabilityID), nil
 }
 
 // alertsResolved settles "the alert is gone" by asking the instance what is

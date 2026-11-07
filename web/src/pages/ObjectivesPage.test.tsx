@@ -65,4 +65,28 @@ describe('ObjectivesPage', () => {
     expect(screen.getByRole('textbox', { name: 'Domain' })).toHaveValue('software');
     expect(screen.getByRole('combobox', { name: 'Template' })).toBeInTheDocument();
   });
+
+  it('tells a screen reader that it is loading, and then what went wrong', async () => {
+    // Text that appears on its own is silent unless it sits in a live region.
+    let fail: (e: unknown) => void = () => {};
+    get.mockReturnValue(new Promise((_, reject) => { fail = reject; }));
+
+    render(<ObjectivesPage />);
+    expect(screen.getByRole('status')).toHaveTextContent('Loading…');
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+
+    fail(new APIError(403, '{"message":"objective:read is not granted"}'));
+    await waitFor(() =>
+      expect(screen.getByRole('alert')).toHaveTextContent('objective:read is not granted'),
+    );
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+  });
+
+  it('names the objectives table for a screen reader', async () => {
+    get.mockResolvedValue([]);
+
+    render(<ObjectivesPage />);
+    await waitFor(() => expect(screen.getByText(/No objectives yet/)).toBeInTheDocument());
+    expect(screen.getByRole('table', { name: 'Objectives' })).toBeInTheDocument();
+  });
 });

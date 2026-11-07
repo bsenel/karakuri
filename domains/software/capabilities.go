@@ -57,6 +57,30 @@ func softwareCapabilities() []capability.Capability {
 			{Name: "args", Type: capability.ParamString},
 		},
 	}}
+	// coverage is the first verifier that declares a metric (Phase 41 step
+	// 10). Its figure is defined by the test files of the measured packages,
+	// so it declares them as its measure paths, the way run_tests does.
+	coverage := act(capCoverage, "Coverage",
+		"Measure the statement coverage of params.packages (Go package patterns) by running go test -coverprofile in params.workdir. "+
+			"Pass params.branch, and params.repo when it is not the bound one, so the result names the files that branch's pull request changes", true)
+	coverage.Metrics = []capability.Metric{{
+		Name: "coverage", Unit: "percent", Direction: capability.DirectionHigherIsBetter,
+		Params: []capability.MetricParam{{Name: "packages", Type: capability.ParamString}},
+	}}
+	coverage.MeasurePaths = []string{"**/*_test.go"}
+	// flaky_tests counts over the same test files, so it declares them too.
+	flakyTests := act(capFlakyTests, "Flaky Tests",
+		"Count the tests of params.packages (Go package patterns) that both passed and failed over params.runs runs "+
+			"(default 3, from 2 to 10) of go test -json in params.workdir. "+
+			"Pass params.branch, and params.repo when it is not the bound one, so the result names the files that branch's pull request changes", true)
+	flakyTests.Metrics = []capability.Metric{{
+		Name: "flaky_tests", Unit: "count", Direction: capability.DirectionLowerIsBetter,
+		Params: []capability.MetricParam{
+			{Name: "packages", Type: capability.ParamString},
+			{Name: "runs", Type: capability.ParamInteger},
+		},
+	}}
+	flakyTests.MeasurePaths = []string{"**/*_test.go"}
 	return []capability.Capability{
 		// Inputs declared for the reason write_design_doc's are below. Neither
 		// read requires an input; both fail rather than return an empty list
@@ -180,6 +204,12 @@ func softwareCapabilities() []capability.Capability {
 			},
 			OutputSchema: capability.Schema{Type: "object"},
 		},
+		// The runtime verifiers (Phase 41 step 12). Each reads the latest point
+		// of the one series params.query returns, already in the declared unit.
+		observabilityVerifier(CapP95Latency, "P95 Latency", "p95_latency_ms", "ms",
+			"Measure p95_latency_ms, in ms, from the twin's bound observability instance. Requires params.query, in the backend's query language, whose result is already in ms; optional params.since_minutes (default 60, max 1440). The value is the latest point of exactly one series. No data is inconclusive: no_data, never 0."),
+		observabilityVerifier(CapErrorRate, "Error Rate", "error_rate", "ratio",
+			"Measure error_rate, as a ratio, from the twin's bound observability instance. Requires params.query, in the backend's query language, whose result is already a ratio; optional params.since_minutes (default 60, max 1440). The value is the latest point of exactly one series. No data is inconclusive: no_data, never 0."),
 		// The stream verifiers. Each returns the criterion's state in
 		// result.state ("met", "not_met" or "inconclusive") and, when
 		// inconclusive, the reason in result.reason; it succeeds only when met.
@@ -229,6 +259,8 @@ func softwareCapabilities() []capability.Capability {
 			OutputSchema: capability.Schema{Type: "object"},
 		},
 		runTests,
+		coverage,
+		flakyTests,
 		webBundle,
 		cliStartup,
 		act("software.verify.lint", "Lint", "Run linter in worktree", true),
@@ -237,5 +269,31 @@ func softwareCapabilities() []capability.Capability {
 
 		act("software.learn.extract_patterns", "Extract Patterns", "Extract reusable patterns from completed objective", false),
 		act("software.learn.update_tech_radar", "Update Tech Radar", "Update the team's technology assessment", false),
+	}
+}
+
+// observabilityVerifier declares a verifier that measures one lower-is-better
+// metric from the bound observability instance, with the query that computes
+// it and the window to read.
+func observabilityVerifier(id, name, metric, unit, desc string) capability.Capability {
+	return capability.Capability{
+		ID: capability.CapabilityID(id), Name: name, Domain: "software",
+		Description: desc, Verifiable: true,
+		InputSchema: capability.Schema{
+			Type: "object",
+			Properties: map[string]capability.SchemaProperty{
+				"query":         {Type: "string", Description: "The metric query, in the bound backend's query language, whose result is already in " + unit},
+				"since_minutes": {Type: "integer", Description: "How far back to look, in minutes. Default 60, max 1440"},
+			},
+			Required: []string{"query"},
+		},
+		OutputSchema: capability.Schema{Type: "object"},
+		Metrics: []capability.Metric{{
+			Name: metric, Unit: unit, Direction: capability.DirectionLowerIsBetter,
+			Params: []capability.MetricParam{
+				{Name: "query", Type: capability.ParamString},
+				{Name: "since_minutes", Type: capability.ParamInteger},
+			},
+		}},
 	}
 }
