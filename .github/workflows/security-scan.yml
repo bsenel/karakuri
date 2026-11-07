@@ -140,13 +140,13 @@ jobs:
           node-version: "20"
       - run: npm ci --no-audit --no-fund && npm run build
         working-directory: web
+      # The gate fails on any reachable advisory, like govulncheck itself,
+      # except one listed in .govulncheck-exceptions with a date that has not
+      # lapsed. govulncheck cannot accept a single advisory on its own.
       - name: govulncheck (root + submodules)
         run: |
           go install golang.org/x/vuln/cmd/govulncheck@latest
-          fail=0
-          govulncheck ./... || fail=1
-          for m in auth quota; do (cd $m && govulncheck ./...) || fail=1; done
-          exit $fail
+          python3 scripts/govulncheck_gate.py . auth quota
 
   # ── npm SCA — production dependencies only (dev toolchain triaged separately) ─
   npm-audit:

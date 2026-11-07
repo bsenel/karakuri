@@ -3,6 +3,7 @@ package saml_test
 import (
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"math/big"
@@ -13,8 +14,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/beevik/etree"
 	crewjam "github.com/crewjam/saml"
 	"github.com/crewjam/saml/logger"
+	dsig "github.com/russellhaering/goxmldsig"
 )
 
 // stubIdP is a real crewjam/saml IdentityProvider, not a fake.
@@ -30,6 +33,13 @@ type stubIdP struct {
 	// Session is what the IdP asserts about the user. Tests mutate it.
 	Session *crewjam.Session
 
+	// Tamper, when set, edits the assertion after the default maker builds it
+	// and before the IdP signs it. It is how a test gets a genuinely signed
+	// assertion of a shape no honest identity provider would send.
+	Tamper func(t *testing.T, s *stubIdP, req *crewjam.IdpAuthnRequest)
+
+	t *testing.T
+
 	sps map[string]*crewjam.EntityDescriptor
 }
 
@@ -38,6 +48,7 @@ func newStubIdP(t *testing.T) *stubIdP {
 	key, cert := selfSigned(t, "idp.example.com")
 
 	s := &stubIdP{
+		t:   t,
 		sps: map[string]*crewjam.EntityDescriptor{},
 		Session: &crewjam.Session{
 			ID:           "session-1",
@@ -65,6 +76,7 @@ func newStubIdP(t *testing.T) *stubIdP {
 		SSOURL:                  *base.JoinPath("/sso"),
 		ServiceProviderProvider: s,
 		SessionProvider:         s,
+		AssertionMaker:          s,
 	}
 
 	mux.HandleFunc("/metadata", s.IDP.ServeMetadata)
@@ -89,6 +101,36 @@ func (s *stubIdP) GetServiceProvider(_ *http.Request, id string) (*crewjam.Entit
 // GetSession stands in for the login page: the user is always authenticated.
 func (s *stubIdP) GetSession(_ http.ResponseWriter, _ *http.Request, _ *crewjam.IdpAuthnRequest) *crewjam.Session {
 	return s.Session
+}
+
+// MakeAssertion builds the assertion the way the library does, then lets the
+// test tamper with it.
+func (s *stubIdP) MakeAssertion(req *crewjam.IdpAuthnRequest, session *crewjam.Session) error {
+	if err := (crewjam.DefaultAssertionMaker{}).MakeAssertion(req, session); err != nil {
+		return err
+	}
+	if s.Tamper != nil {
+		s.Tamper(s.t, s, req)
+	}
+	return nil
+}
+
+// SignAssertion signs el with the IdP's key and installs it as the assertion
+// the IdP sends, for a Tamper that has to edit the XML itself rather than the
+// struct crewjam would serialise.
+func (s *stubIdP) SignAssertion(t *testing.T, req *crewjam.IdpAuthnRequest, el *etree.Element) {
+	t.Helper()
+	signer := dsig.NewDefaultSigningContext(dsig.TLSCertKeyStore(tls.Certificate{
+		Certificate: [][]byte{s.IDP.Certificate.Raw},
+		PrivateKey:  s.IDP.Key,
+		Leaf:        s.IDP.Certificate,
+	}))
+	signer.Canonicalizer = dsig.MakeC14N10ExclusiveCanonicalizerWithPrefixList("")
+	signed, err := signer.SignEnveloped(el)
+	if err != nil {
+		t.Fatalf("sign assertion: %v", err)
+	}
+	req.AssertionEl = signed
 }
 
 // Metadata returns the IdP's parsed metadata, which is what an SP is configured
