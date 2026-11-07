@@ -42,6 +42,7 @@ func checkpointGetCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:     "get <id>",
 		Short:   "Get a checkpoint by ID",
+		Long:    "Get a checkpoint by ID. krk checkpoint list shows the ID of each pending\ncheckpoint.",
 		Example: `  krk checkpoint get cp_123`,
 		Args:    cobra.ExactArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
@@ -62,6 +63,8 @@ func checkpointResolveCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "resolve <id>",
 		Short: "Resolve a checkpoint with a decision",
+		Long: `Resolve a checkpoint with a decision. <id> is a checkpoint ID shown by
+'krk checkpoint list'.`,
 		Example: `  # Let the plan go ahead as drafted
   krk checkpoint resolve cp_123 --decision approve --note "plan looks right"
 
@@ -85,7 +88,7 @@ func checkpointResolveCmd() *cobra.Command {
 	cmd.Flags().StringVar(&note, "note", "", "Free-form rationale stored on the audit row")
 	cmd.Flags().StringVar(&approver, "approver", "", "Identifier of the operator approving/rejecting (audit attribution)")
 	cmd.Flags().StringSliceVar(&removeActions, "remove-action", nil, "Capability ID to drop from the draft (repeatable; only valid with --decision modify)")
-	cmd.Flags().StringSliceVar(&constraints, "constraint", nil, "Constraint to feed into the revise pass (repeatable; only valid with --decision modify)")
+	cmd.Flags().StringArrayVar(&constraints, "constraint", nil, "Constraint to feed into the revise pass (repeatable; only valid with --decision modify)")
 	cmd.Flags().Float64Var(&revisedConfidence, "revised-confidence", -1, "Floor for the revised plan's confidence (only valid with --decision modify)")
 	_ = cmd.MarkFlagRequired("decision")
 	return cmd

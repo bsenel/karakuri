@@ -6000,8 +6000,9 @@ It changes how rule 10 is read for measurements (no data is
 **Shipped (step 10).** Coverage and the flaky-test count shipped in #202,
 merged 2026-11-02.
 
-**Step 11 (not merged yet).** Web bundle size and CLI startup time are in #205, which
-is still open, not merged, at the time of writing.
+**Step 11 (its own pull request, not merged yet).** Web bundle size and CLI
+startup time ship in their own pull request, #205, which was still open, not
+merged, when this was written.
 
 **Shipped (step 12).** p95 latency and error rate shipped in #208, merged
 2026-11-02.
@@ -6047,9 +6048,9 @@ Not verified:
 - An approval rate counts audit events in the window, not distinct
   checkpoints. An escalation raised before the window and resolved inside it
   counts as a resolution with no escalation in the window.
-- Steps 10 to 12 ship in separate pull requests, so main has this phase
-  Completed only once all four are merged. #205 (step 11) was still open when
-  this was written.
+- Steps 10 to 12 ship in separate pull requests. Steps 10 (#202) and 12
+  (#208) are merged; step 11 (#205) was still open when this was written, so
+  main has this phase Completed before step 11 is on it, until #205 merges.
 
 ---
 

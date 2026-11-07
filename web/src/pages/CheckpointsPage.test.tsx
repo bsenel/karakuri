@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // vi.mock is hoisted above the imports, so the stub has to be created inside
@@ -84,5 +85,28 @@ describe('CheckpointsPage', () => {
     render(<CheckpointsPage />);
     await waitFor(() => expect(screen.getByText(/No pending checkpoints/)).toBeInTheDocument());
     expect(screen.queryByRole('button', { name: 'Retry' })).not.toBeInTheDocument();
+  });
+
+  it('names each checkpoint card by its reason, so its buttons say what they decide', async () => {
+    get.mockResolvedValue([
+      {
+        id: 'cp-1',
+        objective_id: 'obj-1',
+        reason: 'Deploy to production',
+        status: 'pending',
+        created_at: '2026-11-01T10:00:00Z',
+      },
+    ]);
+
+    // The card links to its objective, and a Link needs a router.
+    render(
+      <MemoryRouter>
+        <CheckpointsPage />
+      </MemoryRouter>,
+    );
+    await waitFor(() =>
+      expect(screen.getByRole('group', { name: 'Checkpoint: Deploy to production' })).toBeInTheDocument(),
+    );
+    expect(screen.getByRole('button', { name: 'Approve' })).toBeInTheDocument();
   });
 });

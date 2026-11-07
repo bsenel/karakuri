@@ -85,12 +85,14 @@ export function TwinsPage() {
 
       {err && (
         <p>
-          <span className="pill red">{err}</span>{' '}
+          {/* Live regions: text that appears on its own is silent to a screen
+              reader, so a failed load or create would go unnoticed. */}
+          <span className="pill red" role="alert">{err}</span>{' '}
           {!loaded && <button onClick={() => void load()}>Retry</button>}
         </p>
       )}
-      {loading ? <p className="muted">Loading…</p> : loaded && (
-        <table>
+      {loading ? <p className="muted" role="status">Loading…</p> : loaded && (
+        <table aria-label="Twins">
           <thead>
             <tr><th>Name</th><th>Kind</th><th>Domain</th><th>Bindings</th><th>Created</th></tr>
           </thead>
