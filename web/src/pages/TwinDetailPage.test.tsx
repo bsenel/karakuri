@@ -28,6 +28,21 @@ describe('TwinDetailPage', () => {
     put.mockReset();
   });
 
+  it('tells a screen reader that it is loading, and then what to do about a failure', async () => {
+    let fail: (e: unknown) => void = () => {};
+    get.mockReturnValue(new Promise((_, reject) => { fail = reject; }));
+
+    renderPage();
+    expect(screen.getByRole('status')).toHaveTextContent('Loading…');
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+
+    fail(new Error('API 500: boom'));
+    await waitFor(() =>
+      expect(screen.getByRole('alert')).toHaveTextContent('Check that the server is running, then retry.'),
+    );
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+  });
+
   it('says the twin could not be loaded, with a way back and a retry', async () => {
     get.mockRejectedValue(new Error('API 404: twin not found'));
 

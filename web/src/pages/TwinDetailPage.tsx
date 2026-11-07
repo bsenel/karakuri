@@ -45,11 +45,14 @@ export function TwinDetailPage() {
   };
 
   if (!twin) {
-    if (!err) return <p className="muted">Loading…</p>;
+    // A live region: text that appears on its own is silent to a screen reader.
+    if (!err) return <p className="muted" role="status">Loading…</p>;
     return (
       <>
         <p className="muted small"><Link to="/twins">← Twins</Link></p>
-        <p className="pill red" role="alert">Could not load this twin: {err}</p>
+        <p className="pill red" role="alert">
+          Could not load this twin: {err}. Check that the server is running, then retry.
+        </p>
         <div className="row" style={{ marginTop: 12 }}>
           <button onClick={() => void load()}>Retry</button>
         </div>
