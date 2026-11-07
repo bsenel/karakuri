@@ -1,9 +1,7 @@
 //go:build unix
 
-// Process groups are a Unix feature, so these tests run on Unix only.
-// TODO(phase 37 step 2): say on the roadmap which platforms the server
-// supports that have no process groups, and that the stop bound does not hold
-// there.
+// Process groups are a Unix feature, so these tests run on Unix only; the
+// roadmap's Phase 37 step 2 says the stop bound does not hold elsewhere.
 
 package cliagent
 
