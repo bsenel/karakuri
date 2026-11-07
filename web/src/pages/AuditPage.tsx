@@ -107,11 +107,14 @@ export function AuditPage() {
 
       {err && (
         <div className="row" style={{ marginTop: 12 }}>
-          <p className="pill red" role="alert">Could not load audit events: {err}</p>
+          <p className="pill red" role="alert">
+            Could not load audit events: {err}. Check that the server is running, then retry.
+          </p>
           <button onClick={() => void load()}>Retry</button>
         </div>
       )}
-      {loading && <p className="muted small" style={{ marginTop: 12 }}>Loading…</p>}
+      {/* A live region: text that appears on its own is silent to a screen reader. */}
+      {loading && <p className="muted small" role="status" style={{ marginTop: 12 }}>Loading…</p>}
 
       <div className="col" style={{ marginTop: 16 }}>
         {!loading && !err && events.length === 0 && (

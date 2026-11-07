@@ -32,6 +32,21 @@ describe('AuditPage', () => {
     expect(screen.queryByText(/No audit events yet/)).not.toBeInTheDocument();
   });
 
+  it('tells a screen reader that it is loading, and then what to do about a failure', async () => {
+    let fail: (e: unknown) => void = () => {};
+    get.mockReturnValue(new Promise((_, reject) => { fail = reject; }));
+
+    renderPage();
+    expect(screen.getByRole('status')).toHaveTextContent('Loading…');
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+
+    fail(new Error('API 500: boom'));
+    await waitFor(() =>
+      expect(screen.getByRole('alert')).toHaveTextContent('Check that the server is running, then retry.'),
+    );
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+  });
+
   it('asks again when Retry is pressed', async () => {
     get.mockRejectedValueOnce(new Error('API 500: boom'));
     // The server answers a nil slice as null.
