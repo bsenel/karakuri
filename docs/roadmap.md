@@ -57,6 +57,7 @@ Phases 27–32 were proposed from two kinds of evidence: what this repository de
 | 44    | Delivery That Shapes and Recovers Its Own Work | **Planned** |
 | 45    | The Repository's Own Checks Run Before a Delegated Push | **Planned** |
 | 46    | An Approval After Third-Party Text Buys One Action, Never a Rung | **Planned** |
+| 47    | First Alpha Release (`v0.1.0-alpha.1`, tagged once 37 to 41 and 47 are Completed) | **Planned** |
 
 
 ---
@@ -6379,6 +6380,138 @@ the one action still runs. It does not change who may resolve a checkpoint;
 the report's (b2) found the delegated credential already cannot (candidate 4,
 proved mostly wrong). Not Phase 38 (Planned, unmet obligations) nor Phase 35's
 expiry of earned autonomy.
+
+---
+
+## Phase 47 — First Alpha Release (Planned)
+
+**Goal:** `v0.1.0-alpha.1` can be installed from a GitHub release (binaries,
+a container image, the Helm chart), and nothing in it answers a caller who
+has not logged in, beyond what logging in needs.
+
+**The owner's decision (2026-11-07).** Recorded here, not reopened: "we
+should aim for the first alpha release soon. It should not allow
+unauthenticated use of karakuri". On what comes before it: "We should not do
+any reprioritization; phase 41 to be complete and the roadmap items until
+phase 40 is complete, including phase 40. So Before the alpha, phases 38, 39,
+and 40 with the ones listed above." "The ones listed above" are this phase's
+steps. The owner's two principles for the release, "If there is an item in
+the roadmap, delivery continues until no items are left, independent of the
+cycle" and "If all items in the roadmap have been delivered, the discovery
+cycle should start immediately, independent of the cycle", are Phase 40 step
+13 as written, and stay there. This phase adds no mechanism for them.
+
+**The release gate.** `v0.1.0-alpha.1` is tagged once Phases 37, 38, 39, 40,
+41 and 47 are all Completed on main. Delivery's order is unchanged; this phase
+comes right after Phase 39 and before Phase 42. The owner pushes the tag.
+Releasing is the owner's decision, like merging.
+
+**Why.** Read 2026-11-07. There is no development-mode bypass: every
+`/api/v1` route except the public group in `internal/api/server.go` (lines
+316 to 339) goes through `auth.Authenticate`, and the server refuses to start
+without a signing key or a bootstrap password (`config/default.yaml`,
+`auth.jwt.keys` and `auth.bootstrap`). Three gaps remain:
+- `GET /api/v1/health` is public and returns the configured providers, the
+  tool adapters, the MCP tools the deployment allowed and refused, the
+  exporters and the server's repository path (`internal/api/handler/health.go`
+  line 23). Two callers read that body: `cli/client/client.go` (line 160,
+  before a session exists) and `web/src/components/Layout.tsx` (lines 27 to
+  30, the provider and adapter counts).
+- `/metrics` is mounted at the router root, outside authentication, whenever
+  the Prometheus exporter is enabled (`internal/api/server.go` line 183).
+- Nothing tests that a route added later stays behind a login.
+  `internal/auth.Routes()` and the integration suite check 200 and 403 per
+  role, but no test sends the request without any credential at all.
+
+There are no release mechanics for the server or the CLI. The workflows
+release the `auth` and `quota` modules and the Helm chart, but no binary and
+no image. `deploy/values.yaml` points at `image.repository: karakuri` with
+`tag: latest`, which nothing publishes. No build stamps a version.
+
+**Steps.** Two groups, one pull request each: steps 1 to 3 (nothing answers
+without a login), then steps 4 to 6 (the release).
+1. **Health without a login says only that the server is up.** Public
+   `GET /api/v1/health` returns `{"status":"ok"}` and nothing else. Today's
+   body moves to an authenticated `GET /api/v1/health/details`, behind a
+   permission in `internal/auth.Routes()` that every built-in role holds, and
+   gains the server's version from step 4. `docs/openapi.yaml` lists both
+   routes and schemas. The CLI and the web layout read the details route once
+   a session exists; before one exists, the CLI reads only `status`.
+   *Acceptance:* an integration test reads both routes. Without a credential,
+   the body is exactly `{"status":"ok"}` and the details route answers 401.
+   With a credential, the details route returns today's fields.
+2. **`/metrics` needs a scrape token.** When the Prometheus exporter is
+   enabled, `/metrics` requires `Authorization: Bearer <token>`, with the
+   token read from an environment variable that the configuration names
+   (`scrape_token_env`), compared in constant time. With the exporter enabled
+   and no token configured, the server refuses to start and says why, as it
+   does for a missing signing key: a public scrape endpoint is not a default.
+   `deploy/values.yaml` and its templates carry the token as a secret.
+   *Acceptance:* no token, a wrong token and a correct token give 401, 401
+   and 200; a configuration with the exporter enabled and no token fails to
+   load, with an error naming the setting.
+3. **An anonymous sweep keeps it that way.** A test in `test/integration`
+   walks every route mounted on the router (`chi.Walk`), sends each one
+   without any credential, and expects 401. The only exceptions are an
+   explicit list in the test: `GET /api/v1/health`, `POST /api/v1/auth/token`,
+   `POST /api/v1/auth/refresh`, the `/api/v1/auth/sso/*` and
+   `/api/v1/auth/saml/*` routes, and the web interface's catch-all. A route
+   added later that answers without a login fails the test until someone adds
+   it to that list on purpose.
+   *Acceptance:* the test passes on the branch, and fails when a test-only
+   route is mounted outside the authenticated group.
+4. **Every build says which version it is.** A package-level version
+   variable (default `dev`), set with `-ldflags -X` by `make build`, the
+   `Dockerfile` and the release workflow from `git describe --tags`.
+   `krk version` prints the CLI's version and, with a session, the server's,
+   read from the details route of step 1.
+   *Acceptance:* a test builds with `-ldflags -X` and reads the value back;
+   `krk version` is covered by a CLI test against a test server.
+5. **A tag publishes the release.** `.github/workflows/release.yml` runs on a
+   `v*.*.*` tag:
+   - The server and `krk` for linux and darwin on amd64 and arm64, with
+     `CGO_ENABLED=0`, as the `Dockerfile` already builds, and a `SHA256SUMS`
+     file.
+   - A multi-arch container image on `ghcr.io/<owner>/karakuri`, tagged with
+     the version (no `latest` for a prerelease).
+   - The CycloneDX SBOM (Syft, as `security-scan.yml` makes it), attached to
+     the release.
+   - Release notes generated from the Conventional Commit titles since the
+     previous tag, grouped feat / fix / perf, with every other type under one
+     heading.
+   - A tag with a suffix (`-alpha.1`) makes a prerelease.
+   
+   Actions follow the repository's pinning convention (see
+   `security-scan.yml`'s header). `deploy/values.yaml` points at the GHCR
+   image, with its tag defaulting to the chart's `appVersion`, so the chart
+   that `release-helm.yml` already publishes on the same tag installs the same
+   version.
+   *Acceptance:* the workflow passes `actionlint`. It is exercised on a
+   throwaway tag in a fork or by `workflow_dispatch` without publishing, and
+   its log is linked in the pull request. A real tag is never pushed by
+   delivery.
+6. **What the alpha is, written down.** `docs/release.md`: what
+   `v0.1.0-alpha.1` contains (the phases above), how to install it from the
+   release (binary, image, chart), what it does not promise (no migration
+   guarantee between alpha versions), and its known issues. The known issues
+   start with GO-2026-6909: crewjam/saml has no fix, `auth/saml` guards the
+   abused shapes, and the CI exception in `.govulncheck-exceptions` lapses on
+   2026-12-07. The README's install section links to it.
+   *Acceptance:* the document's install commands are run once against the
+   workflow's dry-run output, and the pull request says what was and was not
+   run.
+
+**Acceptance of the phase.** Steps 1 to 6 are on main. The anonymous sweep
+passes. A dry run of the release workflow produced all four artifact kinds.
+The owner can push `v0.1.0-alpha.1` once the gate above holds, and nothing in
+this phase needs to change for that.
+
+**What this is not.** Not Phase 40 step 13, which holds the owner's two
+principles and stays where it is. Not a stability promise: an alpha may
+change any API, with the OpenAPI spec kept accurate as always. Not signing or
+provenance attestation of the artifacts (SLSA): worth proposing after the
+alpha, not required for it. Not a change to who may log in or what a role may
+do.
 
 ---
 
