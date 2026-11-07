@@ -71,9 +71,9 @@ func (e *telemetryEnv) telemetryVerify(ctx context.Context, a environment.Action
 // Work.Reconciles at internal/platform/telemetry/reader.go:113; an outcome
 // without one is a sense, which spends no model call and is not a pass.
 // Spend.Cost and Spend.Priced (internal/core/telemetry/telemetry.go:91-97)
-// are set by readSpend at internal/platform/telemetry/reader.go:226-259:
-// Priced stays false when the cost report could not be read (:232-235) and is
-// cleared when units were counted at no cost, which is no rate table (:256-258).
+// are set by readSpend at internal/platform/telemetry/reader.go:237-270:
+// Priced stays false when the cost report could not be read (:243-246) and is
+// cleared when units were counted at no cost, which is no rate table (:267-269).
 func costPerPass(snap coretelemetry.Snapshot, window time.Duration) environment.ActionResult {
 	if snap.Work.Reconciles == 0 {
 		return inconclusive(CapCostPerPass, objective.ReasonNoData,
@@ -90,8 +90,10 @@ func costPerPass(snap coretelemetry.Snapshot, window time.Duration) environment.
 // escalationApprovalRate is EscalationStats.ApprovalRate, as a ratio.
 //
 // Approvals and rejections are counted from audit tool events by readAudit at
-// internal/platform/telemetry/reader.go:157-175, which counts 0 for a kind it
-// could not list. ApprovalRate (internal/core/telemetry/telemetry.go:83-89)
+// internal/platform/telemetry/reader.go:164-186, which counts 0 for a kind it
+// could not list. A rejection is counted once, from the checkpoint service's
+// row of the decision; the loop's terminal row for the same rejection, which
+// carries an EscalationReason, is not counted. ApprovalRate (internal/core/telemetry/telemetry.go:83-89)
 // returns -1 when nothing was resolved, and pending escalations are not
 // resolved: "nobody decided" is no data, the opposite of "all rejected".
 func escalationApprovalRate(snap coretelemetry.Snapshot, window time.Duration) environment.ActionResult {

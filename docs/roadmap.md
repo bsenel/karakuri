@@ -6018,7 +6018,7 @@ dropped and the kill criterion did not fire. Both are pack capabilities,
 telemetry snapshot and emits one first-party measurement.
 
 - *Cost per pass.* The source is `readSpend` in
-  `internal/platform/telemetry/reader.go:226`, which sets `Spend.Cost` and
+  `internal/platform/telemetry/reader.go:237`, which sets `Spend.Cost` and
   `Spend.Priced` (`SpendStats`, `internal/core/telemetry/telemetry.go:91`),
   divided by `Work.Reconciles`, counted at `reader.go:113`. A pass is a
   reconcile outcome carrying a loop ID; a sense without one spends no model
@@ -6027,7 +6027,11 @@ telemetry snapshot and emits one first-party measurement.
 - *Escalation approval rate.* The source is `ApprovalRate` in
   `internal/core/telemetry/telemetry.go:83`, approvals over approvals plus
   rejections, which are counted from audit tool events by `readAudit` in
-  `reader.go:157`. The unit is `ratio`. Nothing approved or rejected in the
+  `reader.go:164`. A rejection is counted once, from the checkpoint service's
+  row of the decision; the loop's terminal row for it (`escalation_reason`
+  `rejected_at_checkpoint` or `modify_loop_exceeded`) is not counted, and
+  `internal/platform/telemetry/reader_test.go` holds that against a real
+  store. The unit is `ratio`. Nothing approved or rejected in the
   window is `inconclusive: no_data`, because "nobody decided" is the opposite
   of "all rejected".
 
@@ -6042,8 +6046,9 @@ settles it from the verifier's measurement.
 Not verified:
 
 - Neither verifier has been measured on a live deployment. Every test feeds
-  the verifiers a fixed telemetry snapshot; none runs `readSpend` or
-  `readAudit` against a real store or cost report.
+  the verifiers a fixed telemetry snapshot; none runs `readSpend` against a
+  real cost report. `readAudit`'s approval and rejection counts are tested
+  against a real store, but not through the verifier.
 - Cost per pass is only as good as the configured rate table. `Priced` says a
   rate table priced the units; it does not say the prices are right.
 - An approval rate counts audit events in the window, not distinct
