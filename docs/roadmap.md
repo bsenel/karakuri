@@ -58,6 +58,7 @@ Phases 27–32 were proposed from two kinds of evidence: what this repository de
 | 45    | The Repository's Own Checks Run Before a Delegated Push | **Planned** |
 | 46    | An Approval After Third-Party Text Buys One Action, Never a Rung | **Planned** |
 | 47    | First Alpha Release (`v0.1.0-alpha.1`, tagged once 37 to 41 and 47 are Completed) | **Planned** |
+| 48    | Independent Groups Run in Parallel         | **Planned**   |
 
 
 ---
@@ -6422,19 +6423,30 @@ without a signing key or a bootstrap password (`config/default.yaml`,
 - Nothing tests that a route added later stays behind a login.
   `internal/auth.Routes()` and the integration suite check 200 and 403 per
   role, but no test sends the request without any credential at all.
+- Code a coding agent wrote runs with the server's secrets. The shell
+  environment (`domains/software/shell_env.go` line 112), the coverage
+  verifier (`coverage_verifier.go` line 124) and the CLI startup verifier
+  (`cli_startup.go` line 105, #205) start their processes without setting
+  `cmd.Env`, so `go test` and any binary built from a branch inherit the
+  server's whole environment: `KARAKURI_AUTH_JWT_SECRET`, the bootstrap
+  password and the provider API keys. A test file that reads the signing key
+  can mint an administrator's token, which gets around the login from inside.
+  Found in the review of #205 on 2026-11-07. The owner's ruling: "It should
+  be a step in phase 47."
 
 There are no release mechanics for the server or the CLI. The workflows
 release the `auth` and `quota` modules and the Helm chart, but no binary and
 no image. `deploy/values.yaml` points at `image.repository: karakuri` with
 `tag: latest`, which nothing publishes. No build stamps a version.
 
-**Steps.** Two groups, one pull request each: steps 1 to 3 (nothing answers
-without a login), then steps 4 to 6 (the release).
+**Steps.** Two groups, one pull request each: steps 1 to 4 (nothing answers
+without a login, and nothing an agent wrote holds a credential), then steps 5
+to 7 (the release).
 1. **Health without a login says only that the server is up.** Public
    `GET /api/v1/health` returns `{"status":"ok"}` and nothing else. Today's
    body moves to an authenticated `GET /api/v1/health/details`, behind a
    permission in `internal/auth.Routes()` that every built-in role holds, and
-   gains the server's version from step 4. `docs/openapi.yaml` lists both
+   gains the server's version from step 5. `docs/openapi.yaml` lists both
    routes and schemas. The CLI and the web layout read the details route once
    a session exists; before one exists, the CLI reads only `status`.
    *Acceptance:* an integration test reads both routes. Without a credential,
@@ -6460,14 +6472,31 @@ without a login), then steps 4 to 6 (the release).
    it to that list on purpose.
    *Acceptance:* the test passes on the branch, and fails when a test-only
    route is mounted outside the authenticated group.
-4. **Every build says which version it is.** A package-level version
+4. **What an agent wrote runs without the server's secrets.** Every process
+   the software pack starts on a worktree (the shell environment, the
+   coverage and flaky-test verifiers, the CLI startup verifier, and any
+   verifier added later) gets an environment built from an allow-list, not
+   `os.Environ()`: `PATH`, `HOME`, `TMPDIR`, the Go variables a build needs
+   (`GOPATH`, `GOCACHE`, `GOMODCACHE`, `GOFLAGS`, `GOTOOLCHAIN`, `CGO_ENABLED`)
+   and what a plan's action names explicitly in its params. One helper builds
+   it, and every `exec.Command` in `domains/software` goes through it. The
+   coding agent's own process (`internal/platform/tools/cliagent`) keeps the
+   credential it needs to call its provider and nothing else of the server's;
+   the per-run MCP configuration already carries its token in a file, which
+   stays as it is.
+   *Acceptance:* a test sets a sentinel variable in the server's environment
+   and runs a child process through each launcher (shell action, coverage,
+   CLI startup, coding agent); none of them sees the sentinel, and the shell
+   action still runs `go test` on a fixture module. A search test fails when
+   an `exec.Command` in `domains/software` does not use the helper.
+5. **Every build says which version it is.** A package-level version
    variable (default `dev`), set with `-ldflags -X` by `make build`, the
    `Dockerfile` and the release workflow from `git describe --tags`.
    `krk version` prints the CLI's version and, with a session, the server's,
    read from the details route of step 1.
    *Acceptance:* a test builds with `-ldflags -X` and reads the value back;
    `krk version` is covered by a CLI test against a test server.
-5. **A tag publishes the release.** `.github/workflows/release.yml` runs on a
+6. **A tag publishes the release.** `.github/workflows/release.yml` runs on a
    `v*.*.*` tag:
    - The server and `krk` for linux and darwin on amd64 and arm64, with
      `CGO_ENABLED=0`, as the `Dockerfile` already builds, and a `SHA256SUMS`
@@ -6490,7 +6519,7 @@ without a login), then steps 4 to 6 (the release).
    throwaway tag in a fork or by `workflow_dispatch` without publishing, and
    its log is linked in the pull request. A real tag is never pushed by
    delivery.
-6. **What the alpha is, written down.** `docs/release.md`: what
+7. **What the alpha is, written down.** `docs/release.md`: what
    `v0.1.0-alpha.1` contains (the phases above), how to install it from the
    release (binary, image, chart), what it does not promise (no migration
    guarantee between alpha versions), and its known issues. The known issues
@@ -6501,7 +6530,7 @@ without a login), then steps 4 to 6 (the release).
    workflow's dry-run output, and the pull request says what was and was not
    run.
 
-**Acceptance of the phase.** Steps 1 to 6 are on main. The anonymous sweep
+**Acceptance of the phase.** Steps 1 to 7 are on main. The anonymous sweep
 passes. A dry run of the release workflow produced all four artifact kinds.
 The owner can push `v0.1.0-alpha.1` once the gate above holds, and nothing in
 this phase needs to change for that.
@@ -6512,6 +6541,118 @@ change any API, with the OpenAPI spec kept accurate as always. Not signing or
 provenance attestation of the artifacts (SLSA): worth proposing after the
 alpha, not required for it. Not a change to who may log in or what a role may
 do.
+
+---
+
+## Phase 48 — Independent Groups Run in Parallel (Planned)
+
+**Goal:** one delivery pass can build several independent groups at once,
+each on its own branch in its own worktree, with a ceiling the operator
+declares. A pass that holds only one group, or a deployment that keeps the
+ceiling at 1, behaves exactly as today.
+
+**The owner's decision (2026-11-07).** Recorded here, not reopened. Asked
+"Why can't we have karakuri to implement multiple steps or phases in
+parallel?", the owner chose: "Add independent groups run in parallel phase at
+the end." So this phase comes last in delivery's order, after Phase 46, and
+changes the priority of nothing before it. Whether delivery may then work on
+two items of the order at once, which FINISH BEFORE MOVING ON forbids today,
+is the owner's call when this phase lands, not this phase's (see "What this
+is not").
+
+**Why.** Read 2026-11-07.
+- One pass per objective: `dispatch` in `internal/feature/reconcile/service.go`
+  (line 275) refuses a second pass while `s.running[id]` is set. Passes of
+  different objectives already run side by side, up to `max_concurrent: 4`
+  (`config/default.yaml` line 272). That is how discovery, tech, UX and
+  delivery overlap.
+- Within a pass, the act step runs the plan's actions one after another (`for
+  i, action := range p.Actions` in `internal/feature/loop/act.go` line 77). The
+  loop design in this document says "For each action in committed plan
+  (sequential or parallel per plan annotation)" (Reasoning Loop Design). No
+  plan carries such an annotation, and `act.go` never reads one.
+- Each write action already gets its own fresh worktree from
+  `git.WorktreeManager` (ADR 003), so two actions on different branches share
+  no files on disk. What they share is the provider quota, the machine's
+  memory and the files on main that both branches edit.
+- Those shared files are real. #205 (step 11) and #211 (step 13) of Phase 41
+  were independent groups, and both edit the capability list in
+  `internal/app/no_target_writer_test.go`, so whichever merges second
+  conflicts. Earlier groups of the same phase (#202, #208) also needed main
+  merged in by hand after an earlier group was squash-merged; which files
+  conflicted then was not recorded.
+- Limits on this deployment, as operator facts: 4 GB of RAM, where two coding
+  agents plus a `go test` build have had processes killed for memory and
+  stranded loops in learn; and one subscription whose 5-hour usage limit
+  stopped the coding agent 9 times on 2026-10-31 (EB-004's update). Running
+  more agents at once reaches that limit sooner. It does not raise it.
+
+**Steps.**
+1. **A plan says which actions depend on which.** An action may carry
+   `depends_on`, a list of the indices of earlier actions in the same plan.
+   An action without the field depends on the action before it, which is
+   today's order, so every existing plan and template means what it means
+   now. The planner may write `depends_on: []` only for an action that writes
+   a branch no other action in the plan writes. The decide step refuses a
+   plan whose dependencies point forward, at themselves, or at an index that
+   does not exist.
+   *Acceptance:* a plan with no `depends_on` anywhere orders exactly as today.
+   A forward, self or missing reference is refused with the action's index in
+   the error.
+2. **The act step runs what is ready, up to a ceiling.** `loop.max_parallel_actions`
+   (default 1) bounds how many of a plan's actions run at once. An action
+   starts when everything it depends on has finished. A failed action fails
+   only what depends on it; independent actions keep running. Outcomes,
+   audit rows and the iteration record stay in plan order, whatever order
+   the actions finished in. A stop (Phase 37) reaches every running action.
+   *Acceptance:* with a fake agent that sleeps, two independent actions and a
+   ceiling of 2 finish in about one sleep, and with a ceiling of 1 in two.
+   Dependent actions never overlap. Audit rows come out in plan order. The
+   tests pass under `-race`.
+3. **Two groups that touch the same file do not run at once.** A write action
+   may declare the paths it will change (the `paths_declared` shape from Phase
+   41). Two actions whose declared paths overlap are serialized even when
+   neither depends on the other, and an action that declares nothing is
+   treated as touching everything. The files every group edits, such as the
+   capability lists, `docs/roadmap.md` and `docs/openapi.yaml`, therefore make
+   two groups wait for each other instead of producing a conflict that the
+   repair step has to fix later.
+   *Acceptance:* two actions declaring `internal/app/no_target_writer_test.go`
+   never overlap; two declaring disjoint paths do; one with no declaration
+   overlaps nothing.
+4. **Quota and memory stop new starts, not running work.** When the provider
+   reports out of quota (Phase 40 step 8, if it has landed; the adapter's
+   error otherwise), no further action of the plan starts. Running actions
+   finish or fail on their own. When it has not landed, the step says so in
+   its pull request instead of inventing a quota state.
+   *Acceptance:* with a fake provider that goes out after the first start, a
+   ceiling of 3 starts one action, and the rest wait or end as the quota
+   state says, never as failures of their own.
+5. **Delivery plans groups in parallel when the owner allows it.** The
+   delivery template may plan the next independent groups of the order in one
+   pass, each on its own branch, with `depends_on: []` and declared paths. It
+   does this only when the objective's brief allows it and the ceiling is
+   above 1. The brief keeps the owner's order, and the groups it runs at once
+   are the first ones in that order that are independent of each other.
+   *Acceptance:* a fake-planner test where the brief allows two and the order
+   holds three independent groups: two start, and the third waits for a slot.
+   Where the brief does not allow it, one group starts, as today.
+
+**Acceptance of the phase.** Steps 1 to 5 are on main. With the ceiling at 1,
+every existing test passes unchanged. On a deployment with the memory for it,
+one delivery pass with a ceiling of 2 builds two independent groups, each
+ending in its own pull request, and neither conflicts with the other on
+merge. That last part has to be observed on a running deployment, and the
+pull request says whether it was.
+
+**What this is not.** It does not run two passes of one objective at once:
+`dispatch`'s one-pass rule stays, and parallelism lives inside a pass. It does
+not change FINISH BEFORE MOVING ON or the owner's order. Whether delivery may
+use a ceiling above 1 is for the owner to decide when this lands. It does not
+make the machine bigger: on this deployment's 4 GB the ceiling stays at 1
+until there is more memory or the coding agents run elsewhere. It is not
+distribution across nodes, which is Phase 11's goal for loops ("Loops survive
+server restarts and parallelize across nodes").
 
 ---
 
