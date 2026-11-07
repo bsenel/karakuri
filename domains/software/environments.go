@@ -200,6 +200,8 @@ func softwareEnvironmentFactories(reg *tools.Registry) []environment.Factory {
 				"software.verify.lint",
 				capCoverage,
 				capFlakyTests,
+				capWebBundle,
+				capCLIStartup,
 			},
 			Build: func(ctx environment.BuildContext) (environment.Environment, error) {
 				return newVerifyEnv("software.env.verify", newShellEnv("software.env.verify", "", 600*time.Second), boundVC(ctx)), nil
@@ -957,6 +959,10 @@ func (e *verifyEnv) Act(ctx context.Context, a environment.Action) (environment.
 		return e.coverage(ctx, a), nil
 	case capFlakyTests:
 		return e.flakyTests(ctx, a), nil
+	case capWebBundle:
+		return e.webBundleBytes(ctx, a), nil
+	case capCLIStartup:
+		return e.cliStartupMs(ctx, a), nil
 	default:
 		return failureResult(e.id, a.CapabilityID,
 			fmt.Sprintf("verifyEnv does not handle capability %q", a.CapabilityID), nil), nil
