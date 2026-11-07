@@ -118,6 +118,11 @@ func (c *Client) doAuthContext(ctx context.Context, method, path string, body an
 	if err != nil {
 		return nil, resp.StatusCode, err
 	}
+	// A 401 means the server no longer accepts the cached token, e.g. it was
+	// revoked. Printed as output it came out as the error body and exit 0.
+	if resp.StatusCode == http.StatusUnauthorized {
+		return data, resp.StatusCode, fmt.Errorf("%s\nThe server no longer accepts your session; run `krk auth login` to sign in again", apiMessage(data, resp.StatusCode))
+	}
 	// A 403 is a policy decision, not a transport failure — surface the
 	// server's reason rather than an empty body and a status code.
 	if resp.StatusCode == http.StatusForbidden {

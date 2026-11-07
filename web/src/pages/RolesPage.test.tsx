@@ -10,6 +10,7 @@ vi.mock('@/api/client', async () => {
 });
 vi.mock('@/auth/AuthProvider', () => ({ useAuth: () => ({ can: () => true }) }));
 
+import { APIError } from '@/api/client';
 import { RolesPage } from './RolesPage';
 
 describe('RolesPage', () => {
@@ -50,6 +51,37 @@ describe('RolesPage', () => {
 
     expect(screen.getByRole('img', { name: 'viewer can twin:read' })).toBeInTheDocument();
     expect(screen.getByRole('img', { name: 'viewer cannot quota:approve' })).toBeInTheDocument();
+  });
+
+  it('tells a screen reader that it is loading, and then what to do about a failure', async () => {
+    let fail: (e: unknown) => void = () => {};
+    get.mockImplementation((path: string) => {
+      if (path === '/auth/roles') return new Promise((_, reject) => { fail = reject; });
+      return Promise.resolve([]);
+    });
+
+    render(<RolesPage />);
+    expect(screen.getByRole('status')).toHaveTextContent('Loading…');
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+
+    fail(new APIError(500, '{"message":"role store is unavailable"}'));
+    await waitFor(() =>
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        'Could not load roles: role store is unavailable. Check that the server is running, then reload.',
+      ),
+    );
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+  });
+
+  it('says so when no roles are defined, rather than drawing an empty grid', async () => {
+    get.mockImplementation((path: string) => {
+      if (path === '/auth/roles') return Promise.resolve([]);
+      return Promise.resolve([{ action: 'quota:approve', description: 'approve a raise' }]);
+    });
+
+    render(<RolesPage />);
+    expect(await screen.findByText('No roles are defined on this server.')).toBeInTheDocument();
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
   });
 
   it('does not render a deny as a grant', async () => {

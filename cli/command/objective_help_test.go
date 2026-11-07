@@ -18,4 +18,12 @@ func TestObjectiveHelp(t *testing.T) {
 	if !strings.Contains(cmd.Long, "--template") || !strings.Contains(cmd.Example, "--template") {
 		t.Errorf("templates Long %q or Example %q does not show where a template ID is used", cmd.Long, cmd.Example)
 	}
+	// create's --domain and --template take IDs; each usage names the list
+	// command that prints them.
+	flags := objectiveCreateCmd().Flags()
+	for flag, want := range map[string]string{"domain": "krk domain list", "template": "krk objective templates"} {
+		if usage := flags.Lookup(flag).Usage; !strings.Contains(usage, want) {
+			t.Errorf("create --%s usage %q does not mention %q", flag, usage, want)
+		}
+	}
 }
