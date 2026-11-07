@@ -23,9 +23,12 @@ export function HealthPage() {
     return (
       <>
         <h1>Health</h1>
-        <p><span className="pill red">{err}</span></p>
+        {/* Live regions: text that appears on its own is silent to a screen
+            reader, so a failed read would go unnoticed. */}
+        <p><span className="pill red" role="alert">{err}</span></p>
         <p className="muted">
-          Could not read the server's health. Trying again every 5 seconds.
+          Could not read the server's health. Check that the server is running.
+          Trying again every 5 seconds.
         </p>
       </>
     );
@@ -34,7 +37,7 @@ export function HealthPage() {
     return (
       <>
         <h1>Health</h1>
-        <p className="muted">Loading…</p>
+        <p className="muted" role="status">Loading…</p>
       </>
     );
   }
@@ -66,7 +69,8 @@ export function HealthPage() {
       {Array.from(bySlot.entries()).map(([slot, list]) => (
         <div key={slot} className="card" style={{ marginBottom: 12 }}>
           <h3>{slot}</h3>
-          <table>
+          {/* One table per slot: the name tells a screen reader which one it is in. */}
+          <table aria-label={`${slot} adapters`}>
             <thead><tr><th>Instance</th><th>Type</th><th>Active</th><th>Default</th></tr></thead>
             <tbody>
               {list.map((a) => (
