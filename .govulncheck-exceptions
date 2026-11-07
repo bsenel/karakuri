@@ -1,0 +1,6 @@
+# Advisories govulncheck may report as reachable without failing CI.
+# Read by scripts/govulncheck_gate.py. One per line:
+#   <advisory> <YYYY-MM-DD the exception lapses> <reason and where it is mitigated>
+# A lapsed exception fails CI again; renew it only with a fresh look.
+
+GO-2026-6909 2026-12-07 crewjam/saml v0.5.1 has no fix; auth/saml guardResponse and parseResponse refuse the shapes it abuses (advisory_test.go)
