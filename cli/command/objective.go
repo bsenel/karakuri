@@ -79,9 +79,9 @@ func objectiveCreateCmd() *cobra.Command {
 	}
 	cmd.Flags().StringVar(&title, "title", "", "Objective title (required)")
 	cmd.Flags().StringVar(&description, "description", "", "What the objective should achieve, in more detail than the title")
-	cmd.Flags().StringVar(&domain, "domain", "software", "Domain")
+	cmd.Flags().StringVar(&domain, "domain", "software", "Domain pack the objective belongs to (see: krk domain list)")
 	cmd.Flags().StringVar(&twinID, "twin", "", "ID of the twin the objective belongs to (see: krk twin list)")
-	cmd.Flags().StringVar(&templateID, "template", "", "Template ID (e.g. software.objective.delivery)")
+	cmd.Flags().StringVar(&templateID, "template", "", "Template ID, e.g. software.objective.delivery (see: krk objective templates)")
 	cmd.Flags().IntVar(&priority, "priority", 0, "Priority (0=low, higher=more urgent)")
 	cmd.Flags().IntVar(&maxIter, "max-iter", 0, "Max loop iterations baked into the objective (0 = use the loop-start default)")
 	cmd.Flags().StringVar(&criteriaFile, "criteria-file", "", "YAML file of success criteria, in the shape of the API's success_criteria")

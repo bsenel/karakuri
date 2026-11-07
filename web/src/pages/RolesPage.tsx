@@ -76,8 +76,24 @@ function Roles() {
   const descriptions = new Map((catalog.data ?? []).map((c) => [c.action, c.description]));
   const roleList = roles.data ?? [];
 
-  if (roles.error) return <p className="error">{roles.error}</p>;
-  if (roles.loading) return <p className="muted">Loading…</p>;
+  // Live regions: text that appears on its own is silent to a screen reader.
+  if (roles.error) {
+    return (
+      <p className="error" role="alert">
+        Could not load roles: {roles.error}. Check that the server is running, then reload.
+      </p>
+    );
+  }
+  if (roles.loading) return <p className="muted" role="status">Loading…</p>;
+  // A table of action names with no role columns says nothing about who holds them.
+  if (roleList.length === 0) {
+    return (
+      <>
+        <h1>Roles</h1>
+        <p className="muted">No roles are defined on this server.</p>
+      </>
+    );
+  }
 
   return (
     <>

@@ -79,7 +79,8 @@ function AuditEvent() {
         <span className="mono">{e.id}</span> · {new Date(e.created_at).toLocaleString()}
       </p>
 
-      <div className="card">
+      {/* A named region, as TwinsPage names its table, so a screen reader can jump to the details. */}
+      <section className="card" aria-label="Audit event details">
         <dl>
           <Field label="Objective">
             <Link to={`/objectives/${e.objective_id}`}>{e.objective_id}</Link>
@@ -98,7 +99,7 @@ function AuditEvent() {
           {e.escalation_reason && <Field label="Escalated because">{e.escalation_reason}</Field>}
           {e.approver && <Field label="Approved by">{e.approver}</Field>}
         </dl>
-      </div>
+      </section>
 
       {payload != null && (
         <>
