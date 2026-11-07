@@ -116,7 +116,8 @@ export function AuditPage() {
       {/* A live region: text that appears on its own is silent to a screen reader. */}
       {loading && <p className="muted small" role="status" style={{ marginTop: 12 }}>Loading…</p>}
 
-      <div className="col" style={{ marginTop: 16 }}>
+      {/* A named region, as TwinsPage names its table, so a screen reader can jump to the events. */}
+      <section className="col" aria-label="Audit events" style={{ marginTop: 16 }}>
         {!loading && !err && events.length === 0 && (
           filtered ? (
             <p className="muted">No matching audit events. Clear the filters above to see every event.</p>
@@ -135,7 +136,7 @@ export function AuditPage() {
             onToggle={() => setExpanded(expanded === ev.id ? null : ev.id)}
           />
         ))}
-      </div>
+      </section>
     </>
   );
 }

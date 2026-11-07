@@ -99,4 +99,14 @@ describe('AuditPage', () => {
     expect(row).toHaveAttribute('aria-expanded', 'false');
     expect(screen.queryByText('no payload')).not.toBeInTheDocument();
   });
+
+  it('names the region that holds the events', async () => {
+    get.mockResolvedValue([
+      { id: 'ev-1', kind: 'approval', created_at: '2026-10-01T10:00:00Z', payload_json: '' },
+    ]);
+
+    renderPage();
+    const region = await screen.findByRole('region', { name: 'Audit events' });
+    expect(region).toContainElement(await screen.findByRole('button', { name: /ev-1/ }));
+  });
 });
