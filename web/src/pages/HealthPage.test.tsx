@@ -40,6 +40,22 @@ describe('HealthPage', () => {
     expect(screen.queryByText('Loading…')).not.toBeInTheDocument();
   });
 
+  it('tells a screen reader that it is loading, and then what went wrong', async () => {
+    let fail: (e: unknown) => void = () => {};
+    get.mockReturnValue(new Promise((_, reject) => { fail = reject; }));
+
+    render(<HealthPage />);
+    expect(screen.getByRole('status')).toHaveTextContent('Loading…');
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+
+    fail(new APIError(503, '{"message":"database is unreachable"}'));
+    await waitFor(() =>
+      expect(screen.getByRole('alert')).toHaveTextContent('database is unreachable'),
+    );
+    expect(screen.getByText(/Check that the server is running/)).toBeInTheDocument();
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+  });
+
   it('says so when no providers or adapters are configured', async () => {
     get.mockResolvedValue({ status: 'ok', adapters: [], providers: {} });
 
