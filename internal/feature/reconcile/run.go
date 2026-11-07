@@ -342,6 +342,11 @@ func (s *Service) reconcileNow(
 	return s.finish(ctx, st, obj, cadence, outcome, &fp)
 }
 
+// outcomeStopped is the reason a pass records when a pause cancelled it in
+// flight (Phase 37 step 1). Filed like provider_rate_limited, as a reason that
+// is not a failure. Declared ahead of the code that sets it, for its tests.
+const outcomeStopped = "stopped"
+
 // criterionPasses records each criterion state a loop settled with the time of
 // the pass, for sustain to read later.
 func criterionPasses(criteria []objective.Criterion, at time.Time) []objective.CriterionPass {
