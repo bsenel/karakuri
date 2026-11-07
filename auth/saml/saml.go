@@ -380,7 +380,10 @@ func guardResponse(r *http.Request) error {
 		return fmt.Errorf("saml: decode assertion: %w", err)
 	}
 
-	decoder := xml.NewDecoder(bytes.NewReader(raw))
+	// encoding/xml resolves no DTD or external entity, this only reads tokens
+	// and never fills a type, and ParseForm has already capped the body at
+	// 10 MB; crewjam parses the same bytes next regardless.
+	decoder := xml.NewDecoder(bytes.NewReader(raw)) // #nosec G709 -- token scan only, see above
 	for {
 		token, err := decoder.Token()
 		if errors.Is(err, io.EOF) {
