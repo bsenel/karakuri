@@ -64,8 +64,8 @@ export function StandingPanel({ objectiveID, budget }: { objectiveID: string; bu
   };
 
   if (!standing) return null;
-  if (err) return <p className="pill red">{err}</p>;
-  if (!view) return <p className="muted small">Loading control loop…</p>;
+  if (err) return <p className="pill red" role="alert">{err}</p>;
+  if (!view) return <p className="muted small" role="status">Loading control loop…</p>;
 
   const { state, history } = view;
 
@@ -112,7 +112,7 @@ export function StandingPanel({ objectiveID, budget }: { objectiveID: string; bu
 
       <h4>Recent passes</h4>
       {history.length === 0 && <p className="muted small">Nothing yet.</p>}
-      <table className="small">
+      <table className="small" aria-label="Recent passes">
         <thead>
           <tr>
             <th scope="col">When</th>

@@ -7,6 +7,23 @@ import (
 	"github.com/spf13/cobra"
 )
 
+func TestMigrateHelp(t *testing.T) {
+	cmd := migrateCmd()
+	requireExample(t, cmd)
+
+	// migrate refuses to run without --from and --to, so the examples must
+	// show both in the <driver>:<dsn> form the flags parse.
+	for _, want := range []string{"krk migrate", `--from "sqlite:`, `--to   "postgres:`, "--batch"} {
+		if !strings.Contains(cmd.Example, want) {
+			t.Errorf("migrate Example %q does not show %q", cmd.Example, want)
+		}
+	}
+	// A bare "Batch size" does not say what is batched.
+	if usage := cmd.Flags().Lookup("batch").Usage; !strings.Contains(usage, "Rows") {
+		t.Errorf("--batch usage %q does not say it counts rows", usage)
+	}
+}
+
 func TestReportHelp(t *testing.T) {
 	for _, cmd := range []*cobra.Command{reportCreateCmd(), reportListCmd(), reportPreviewCmd(), reportSendCmd(), reportDeleteCmd()} {
 		requireExample(t, cmd)

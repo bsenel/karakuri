@@ -3,10 +3,7 @@ package cliagent
 import (
 	"context"
 	"fmt"
-	"os/exec"
 	"strings"
-
-	"github.com/bsenel/karakuri/internal/platform/procenv"
 )
 
 // CopilotCLI is a CLIAgentAdapter for the GitHub Copilot CLI extension
@@ -55,24 +52,27 @@ func (c *CopilotCLI) Delegate(ctx context.Context, in DelegateInput) (DelegateOu
 		args = append(args, in.Prompt)
 	}
 
-	cmd := exec.CommandContext(ctx, c.bin, args...) // #nosec G204 -- bin comes from operator config; the prompt is one argv entry, no shell
-	cmd.Dir = in.WorktreePath
-	cmd.Env = procenv.Merge(in.Env)
-
-	combined, err := cmd.CombinedOutput()
-	exitCode := 0
-	if cmd.ProcessState != nil {
-		exitCode = cmd.ProcessState.ExitCode()
-	}
-	output := string(combined)
+	// Through runStreaming, so a stop ends gh and whatever it started within
+	// the stop bound. bin comes from operator config; the prompt is one argv
+	// entry, no shell. Stdout comes first and stderr after it, where
+	// CombinedOutput interleaved them.
+	var stdout strings.Builder
+	exitCode, stderr, err := runStreaming(ctx, in, c.bin, args, func(line string) {
+		stdout.WriteString(line)
+		stdout.WriteString("\n")
+	})
+	output := stdout.String() + stderr
 
 	out := DelegateOutput{
 		Summary:   output,
 		RawOutput: output,
 		ExitCode:  exitCode,
 	}
-	if err != nil && exitCode != 0 {
+	if err != nil {
 		return out, fmt.Errorf("copilot_cli: %w (output: %s)", err, truncate(output, 500))
+	}
+	if exitCode != 0 {
+		return out, fmt.Errorf("copilot_cli: exit %d (output: %s)", exitCode, truncate(output, 500))
 	}
 	return out, nil
 }

@@ -26,14 +26,20 @@ describe('OrgsPage', () => {
 
     render(<OrgsPage />);
     expect(screen.getByRole('status')).toHaveTextContent('Loading…');
-    expect(screen.queryByText('No organisations yet.')).not.toBeInTheDocument();
+    expect(screen.queryByText(/No organisations yet/)).not.toBeInTheDocument();
   });
 
   it('says so once the tree is known to be empty', async () => {
     get.mockResolvedValue([]);
 
     render(<OrgsPage />);
-    await waitFor(() => expect(screen.getByText('No organisations yet.')).toBeInTheDocument());
+    // The empty state names both ways to make the first one: the add button
+    // above it and the krk command that does the same thing.
+    await waitFor(() =>
+      expect(screen.getByText(/No organisations yet/)).toHaveTextContent(
+        'No organisations yet. Add one above, or run krk org create --name acme.',
+      ),
+    );
     expect(screen.getByText('No projects.')).toBeInTheDocument();
     expect(screen.queryByRole('status')).not.toBeInTheDocument();
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
@@ -58,7 +64,7 @@ describe('OrgsPage', () => {
     await waitFor(() =>
       expect(screen.getByRole('alert')).toHaveTextContent('Could not load organisations: database is locked'),
     );
-    expect(screen.queryByText('No organisations yet.')).not.toBeInTheDocument();
+    expect(screen.queryByText(/No organisations yet/)).not.toBeInTheDocument();
 
     get.mockResolvedValue([{ id: 'o1', kind: 'org', name: 'Acme' }]);
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }));

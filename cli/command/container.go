@@ -1,6 +1,7 @@
 package command
 
 import (
+	"cmp"
 	"encoding/json"
 	"fmt"
 	"net/url"
@@ -73,7 +74,7 @@ func containerCreateCmd(kind, short string, needsOrg bool) *cobra.Command {
 			body := map[string]any{"kind": kind, "name": name}
 			if needsOrg {
 				if org == "" {
-					return fmt.Errorf("--org is required: two organisations may each have a %s of the same name", kind)
+					return fmt.Errorf("--org is required: two organisations may each have a %s of the same name; name the organisation, e.g. `krk %s create --name %s --org acme`\nRun 'krk org list' to see the organisations that exist", kind, kind, cmp.Or(name, "eng"))
 				}
 				parent, err := resolveContainer("org", org, "")
 				if err != nil {

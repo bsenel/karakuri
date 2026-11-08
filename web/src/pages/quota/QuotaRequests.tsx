@@ -83,7 +83,11 @@ export function QuotaRequests() {
 
   return (
     <>
-      {error && <p className="error">{error}</p>}
+      {error && (
+        <p className="error" role="alert">
+          {error}
+        </p>
+      )}
 
       {can(Actions.quotaRequest) && <AskForm onDone={requests.reload} onError={setError} />}
 
@@ -94,7 +98,12 @@ export function QuotaRequests() {
         error={requests.error}
         rows={requests.data ?? []}
         keyOf={(r) => r.id}
-        empty="No requests you can see. You see your own, and any you could approve."
+        empty={
+          <>
+            No requests you can see. You see your own, and any you could approve. Ask
+            with <strong>Ask for more</strong> above, or run <code>krk quota request</code>.
+          </>
+        }
         columns={[
           {
             header: 'Subject',

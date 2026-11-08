@@ -95,6 +95,27 @@ func TestContainerDeleteNamesWhatWasDeleted(t *testing.T) {
 	}
 }
 
+// A team created without --org is refused before any request, and the error
+// shows the command to type with the name given and where to find an org.
+func TestTeamCreateWithoutOrgShowsTheCommand(t *testing.T) {
+	srv := twoTenants(t)
+
+	_, stderr, err := runKrkSplit("--api-url", api.BaseURL, "team", "create", "--name", "platform")
+
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	seen := err.Error() + stderr
+	for _, want := range []string{"--org is required", "`krk team create --name platform --org acme`", "krk org list"} {
+		if !strings.Contains(seen, want) {
+			t.Errorf("error %q does not contain %q", seen, want)
+		}
+	}
+	if srv.lastQuery != nil {
+		t.Errorf("server was asked %v, want no request", srv.lastQuery)
+	}
+}
+
 func TestResolveContainerQualifiesATeamByItsOrg(t *testing.T) {
 	srv := twoTenants(t)
 

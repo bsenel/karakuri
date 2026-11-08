@@ -260,6 +260,31 @@ func TestCriteriaSyntaxErrorsNameTheInput(t *testing.T) {
 	}
 }
 
+// A malformed --criterion says how to write one, so a new user can fix it
+// without reading the source; a trailing ';' is the usual slip.
+func TestMalformedCriterionShowsAnExample(t *testing.T) {
+	for _, flag := range []string{"id=p95;kind measured", "id=p95;"} {
+		t.Run(flag, func(t *testing.T) {
+			srv, apiURL := startCreateServer(t, http.StatusCreated, `{"id":"obj_1"}`)
+
+			_, stderr, err := runKrkSplit(createArgs(apiURL, "--criterion", flag)...)
+
+			if err == nil {
+				t.Fatal("expected an error")
+			}
+			seen := err.Error() + stderr
+			for _, want := range []string{"separate the pairs with ';'", "--criterion 'id=p95;kind=measured;", "krk objective create --help"} {
+				if !strings.Contains(seen, want) {
+					t.Errorf("error %q does not contain %q", seen, want)
+				}
+			}
+			if srv.calls != 0 {
+				t.Errorf("server got %d requests, want none", srv.calls)
+			}
+		})
+	}
+}
+
 // With neither flag the key is absent, so the template's criteria apply; an
 // empty or null list would be a request for none.
 func TestNoCriteriaFlagsSendsNoCriteriaKey(t *testing.T) {
