@@ -119,6 +119,44 @@ Inferred: only rewind/undo moves across the gate this pass, and it is a gap in t
 ## Competitive teardown
 
 <!-- p3:start -->
+Part 3 extends the p3 sections of discovery-2026-11-01.md and -2026-10-25.md; read those first. This pass is mostly a record of what could not be read: every github.com releases page and every api.github.com request timed out or returned 503/504 on 2026-11-08, and `gh api` was not available to this headless run. Only one page came through. It was fetched with a tool that returns a model-written extract, so the items below are [E] and nothing is quoted. Vendor notes are claims, not measurements.
+
+### 1. OpenAI Codex and the OpenAI Agents SDK
+
+New: no. Nothing was read. https://github.com/openai/codex/releases?page=8, `?page=15` and https://github.com/openai/openai-agents-python/releases timed out twice each. The most-reacted-issue search on api.github.com returned 504. All of these are [N]. Sections (i) to (v) carry nothing new: see 2026-11-01.
+
+### 2. Claude Code and the Claude Agent SDK
+
+New: no. Nothing was read. https://github.com/anthropics/claude-code/releases?page=10, `?page=25` and https://github.com/anthropics/claude-agent-sdk-python/releases timed out twice each. https://api.github.com/repos/anthropics/claude-code/issues/27661 returned 503, and its `/comments` returned 504. All of these are [N]. Sections (i) to (v) carry nothing new.
+
+### 3. LangGraph and LangSmith
+
+New: yes. It fills part of the 2026-11-01 thin spot "LangSmith from April to August" from the other end: September to early November is now covered, and April to August is still not.
+
+**(i) Shipped, part of the window read.** Observed [E] (https://docs.langchain.com/langsmith/changelog, reached by redirect from docs.smith.langchain.com/changelog; about 307,000 characters; the first ~40,000 were extracted and the next part was summarised by the tool; read 2026-11-08). The tool presented the first block as verbatim, but it came through a model extract, so it is graded [E]. All of these are vendor claims.
+- Permissions: 2026-10-26 to 11-02, granular workspace administration permissions, delegated by action instead of `workspaces:manage`. 2026-10-05 to 10-12, finer organisation permissions. 2026-10-12 to 10-19, tracing-only API keys. 2026-09-28 to 10-05, a change to public share link permissions.
+- Durable state and scheduling: 2026-10-26 to 11-02, a priority callback sets each thread's priority from -5 to 5 at its first run.
+- MCP: 2026-10-26 to 11-02, human-in-the-loop prompts over MCP, so a client on MCP revision 2026-07-28 is asked for input when a graph pauses. 2026-09-28 to 10-05, an MCP `query_runs` tool.
+- Telemetry: 2026-09-21 to 09-28, trajectory view for all users, guided tracing setup for coding tools, and Gemini cost reporting. 2026-09-28 to 10-05, cost coverage for more OpenAI and Vertex models. 2026-10-05 to 10-12, AI search over runs, traces and threads.
+- Evaluation: 2026-10-19 to 10-26, `reference_outputs` on examples.
+- Other: 2026-10-12 to 10-19, ScaleDown in the LLM Gateway and API-based GCP BYOC data planes. 2026-10-19 to 10-26, org-wide limits on creating bulk exports.
+- LangGraph OSS: https://github.com/langchain-ai/langgraph/releases?page=6 and `?page=10` timed out twice each [N]. 2026-04-08 to 2026-06-29 is still unread, now for the fourth cycle.
+
+**(ii) What it does that Karakuri does not.** Inferred from (i): when a run pauses for a person, the question reaches any MCP client, not only the vendor's UI. Thread priority is set per run. API keys can be scoped to tracing only.
+
+**(iii) What Karakuri does that it does not.** Not checked against code this pass. No path:line was opened, so no claim is made.
+
+**(iv) Complaints.** Not read. The api.github.com search returned 503 [N].
+
+**(v) Inferred:** asking for human input over MCP is the vendor's answer to "where does a checkpoint reach a person". Karakuri's checkpoints (Phase 13.5, Phase 35) reach people through its own API and UI. That makes MCP elicitation a candidate surface for whoever proposes phases (part 8). This rests on one vendor claim; nothing was measured.
+
+### Still thin (part 3)
+
+1. Codex: 2026-05-01 to 2026-10-28 is still unread. Start from https://github.com/openai/codex/releases?page=8. If github.com HTML times out again, use `gh release list -R openai/codex` from a run that has `gh api` allowed.
+2. OpenAI Agents SDK: April to October 2026 and its most-reacted open issue are unread. Start from https://github.com/openai/openai-agents-python/releases.
+3. Claude Code: 2026-05-01 to 2026-10-19 is undated. The Agent SDK release notes are unread. Issue #27661 is unread (503). Start from https://github.com/anthropics/claude-code/releases?page=10 and https://github.com/anthropics/claude-agent-sdk-python/releases.
+4. LangGraph: 2026-04-08 to 2026-06-29 is unread. Start from https://github.com/langchain-ai/langgraph/releases?page=6. LangSmith: April to mid-September 2026 is unread, about the last 167,000 characters of the changelog; continue from character offset ~140,000. The LangGraph most-reacted issue is unread.
+5. Not done: the (iii) checks against Karakuri's code (path:line) for all three products.
 <!-- p3:end -->
 
 <!-- p4a:start -->
@@ -224,6 +262,16 @@ All read 2026-11-08 through a fetch tool that returns a model-written extract; [
 ### Sources, part 3
 
 <!-- s3:start -->
+All read or attempted on 2026-11-08.
+- https://docs.langchain.com/langsmith/changelog: primary, [E] (model extract of ~40k characters plus a tool summary; ~167k characters not read).
+- https://github.com/openai/codex/releases?page=8, ?page=15: primary, [N] (timeout).
+- https://github.com/openai/openai-agents-python/releases: primary, [N] (timeout).
+- https://api.github.com/search/issues?q=repo:openai/openai-agents-python+is:issue+is:open&sort=reactions&order=desc&per_page=1: primary, [N] (504).
+- https://github.com/anthropics/claude-code/releases?page=10, ?page=25: primary, [N] (timeout).
+- https://github.com/anthropics/claude-agent-sdk-python/releases: primary, [N] (timeout).
+- https://api.github.com/repos/anthropics/claude-code/issues/27661 and /comments: primary, [N] (503, 504).
+- https://github.com/langchain-ai/langgraph/releases?page=6, ?page=10: primary, [N] (timeout).
+- https://api.github.com/search/issues?q=repo:langchain-ai/langgraph+is:issue+is:open&sort=reactions&order=desc&per_page=1: primary, [N] (503).
 <!-- s3:end -->
 
 ### Sources, part 4
