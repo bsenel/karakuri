@@ -329,6 +329,45 @@ New: no. Not reached in the time box [N].
 ## Feasibility
 
 <!-- p6b:start -->
+No web. Files opened on this branch on 2026-11-08; line numbers are from that checkout. The open questions of 2026-11-01 come first.
+
+### (i) How bounds reach a run, and whether `CanDelegate` is enforced
+
+New: yes. It answers open code question (i) of 2026-11-01.
+
+Observed: `CanDelegate` is a field of `AuthorityBounds` (`internal/core/agent/agent.go:43`). The decide step reads `sc.agentDef.Authority` (`internal/feature/loop/decide.go:81`) and calls `authority.Decide(p.Confidence, threshold, planned, sc.evidence)` (`decide.go:116`), which caps the action count and escalates. The only non-test Go lines under `internal/` that name `CanDelegate` are the two writes in `internal/feature/reconcile/authority.go:32` and `:59`, which set it false at the sense level and for an unknown level. Inferred: nothing reads `CanDelegate`, so the loop does not refuse a delegation when it is false. A delegation goes through only because it is an action under the count cap or a capability in `RequiresApprovalFor`. This rests on a search that found no reader, plus the files opened; `AuthorityBounds.Decide` itself was not opened.
+- Missing: a read of `CanDelegate` where a delegating capability is planned.
+- First slice: `internal/core/agent/agent.go` (`Decide` escalates any planned delegating capability when `CanDelegate` is false), its test, and the capability IDs that delegate (`internal/platform/tools/cliagent/`).
+- Not verified: which capability IDs count as delegation.
+
+### (ii) Reconcile and `software.verify.review` sub-agents inherit bounds
+
+New: no. Partly observed: reconcile renders the autonomy level into bounds from `def.Authority` (`internal/feature/reconcile/authority.go:21-22`), and the loop enforces those (`decide.go:81`). Not verified: whether the review sub-agents of `software.verify.review` run under the parent's bounds; the workflow and its runner were not opened.
+
+### (iii) A pass that read `TrustThirdParty` text before a checkpoint
+
+New: yes. It answers open code question (iii) of 2026-11-01, in part.
+
+Observed: `sc.evidence` goes into `Decide` (`decide.go:116`), and when it escalates, the audit row records `"third_party_sources": sc.evidence.ThirdParty` (`decide.go:143`) with `BoundsViolation: true` (`decide.go:155`). Inferred: the loop does not end the pass; it hands the third-party evidence to the bounds check, which can escalate, and names the sources in the audit row. Whether `Decide` always escalates on third-party evidence was not verified (`Decide` not opened). Phase 46 is the phase that covers "one action per approval".
+
+### (iv) `DelegateInput.Env` and an operator token
+
+New: yes. It answers open code question (iv) of 2026-11-01.
+
+Observed: `Env map[string]string` is "merged onto os.Environ()" (`internal/platform/tools/cliagent/adapter.go:24-25`). The subprocess sets `cmd.Env = procenv.ScrubNestedSession(procenv.Merge(in.Env))` (`internal/platform/tools/cliagent/subprocess.go:31`); the Copilot adapter sets `cmd.Env = procenv.Merge(in.Env)` with no scrub (`internal/platform/tools/cliagent/copilot.go:60`). An MCP bearer token travels in `MCPAttachment.Token`, "never ... on the command line" (`adapter.go:39`). Inferred: yes, `Env` can carry a token, and more: the delegated CLI inherits the server's whole environment, so any secret in the server's process environment (such as `ANTHROPIC_API_KEY`) reaches it unless `procenv` removes it. `procenv.Merge` and `ScrubNestedSession` were not opened, so what they remove is unknown. Phase 48 (added by #217, "keep agent-written code from server secrets") is the phase this belongs to; its Steps were not read.
+- First slice: `internal/platform/procenv/` (an allowlist instead of a merge onto `os.Environ()`), `cliagent/subprocess.go:31`, `cliagent/copilot.go:60`, and a test that a server secret is absent from the child's environment.
+
+### (v) Planned phases and today's candidates
+
+New: no. Not reached in the time box. Candidates not assessed: rewind/undo (part 2), MCP elicitation for checkpoints (part 3), read-access audit (part 4), provider cost reconciliation, tool-set pinning, and blob provenance (part 5 Bets 1 to 3).
+
+### Still thin (part 6)
+
+1. EU AI Act Art. 113 not read (the tool stopped at Art. 112); try http://data.europa.eu/eli/reg/2024/1689/oj.
+2. OWASP Agentic Top 10: the list is in https://genai.owasp.org/download/52117/, not fetched.
+3. NIST AI 600-1, ISO/IEC 42001 summary, and a procurement questionnaire: not reached.
+4. Code not opened: `AuthorityBounds.Decide`, `internal/platform/procenv/`, the `software.verify.review` runner, the Steps of Phases 37, 38 and 42 to 48, and the default retention in `config/default.yaml`.
+5. Feasibility for the six candidates of parts 2 to 5: not done.
 <!-- p6b:end -->
 
 ## Fit and bets
@@ -453,6 +492,11 @@ All read 2026-11-08 through a fetch tool that returns a model-written report. P 
 ### Sources, part 6
 
 <!-- s6:start -->
+- [Q]/[E] https://eur-lex.europa.eu/legal-content/EN/TXT/HTML/?uri=OJ:L_202401689 (Arts. 12, 14, 26; Art. 113 not reached), read 2026-11-08
+- [Q] https://digital-strategy.ec.europa.eu/en/policies/regulatory-framework-ai, read 2026-11-08
+- [E] https://genai.owasp.org/resource/owasp-top-10-for-agentic-applications-for-2026/, read 2026-11-08
+- [N] https://genai.owasp.org/download/52117/; http://data.europa.eu/eli/reg/2024/1689/oj
+- Files opened: `internal/core/agent/agent.go`, `internal/feature/reconcile/authority.go`, `internal/feature/loop/decide.go`, `internal/feature/audit/export.go`, `internal/platform/tools/cliagent/adapter.go`; lines searched in `internal/platform/tools/cliagent/subprocess.go` and `copilot.go`.
 <!-- s6:end -->
 
 ### Sources, part 7
