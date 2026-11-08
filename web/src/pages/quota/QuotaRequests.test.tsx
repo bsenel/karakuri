@@ -62,4 +62,15 @@ describe('QuotaRequests', () => {
       screen.getByText('No raises in force — every subject is on the configured tier.'),
     ).toBeInTheDocument();
   });
+
+  it('says how to make the first request when there are none', async () => {
+    get.mockResolvedValue([]);
+
+    render(<QuotaRequests />);
+    await waitFor(() =>
+      expect(screen.getByText(/No requests you can see/)).toHaveTextContent(
+        'No requests you can see. You see your own, and any you could approve. Ask with Ask for more above, or run krk quota request.',
+      ),
+    );
+  });
 });
