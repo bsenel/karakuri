@@ -203,6 +203,28 @@ New: yes. It fills the 2026-11-01 thin spot "Temporal's server history before 20
 ## Capability matrix
 
 <!-- p4b:start -->
+New: yes. It replaces the 2026-11-01 Karakuri column, which rested on roadmap headings (thin spot 5), with code lines opened on this branch, and adds DBOS. Key: **O** observed on a page read, **C** claimed by the vendor, **U** unknown; then yes, partial or no. "(11-01)" marks a cell carried over from the 2026-11-01 matrix. For Karakuri, "code:" names the file and line opened; "not checked" means no code line was found in this pass's search, which is not proof of absence. incident.io's column holds only carried-over cells, since its pages had not come back when this was written.
+
+| Capability | Karakuri | Claude Code | Codex / Agents SDK | LangGraph / LangSmith | Langfuse | Temporal | DBOS | incident.io |
+|---|---|---|---|---|---|---|---|---|
+| Standing objectives on a cadence | O yes, code: `internal/core/objective/standing.go:43` | O yes, scheduled routines (11-01) | U | C partial, crons (11-01) | no, observes only (inferred) | U | U | U |
+| Human checkpoints with earned autonomy | O yes, code: resume on decision `internal/feature/loop/service.go:219`; promotion in digest `internal/core/digest/digest.go:195` | C partial, permission modes, no earned rung (11-01) | O partial, approvals, no earned rung (11-01) | O partial, `interrupt`; C pauses reach MCP clients (part 3) | no | no (11-01) | U | U |
+| Stop a run mid-pass and keep its state | no (Phase 37 Planned, `docs/roadmap.md:4030`); executor cancel exists, code: `internal/platform/executor/restate.go:139` | U | U | U | no | O no, pause #3006 open (this part) | U | U |
+| Authority bounds inherited by delegated runs | partial: bounds type, code: `internal/core/agent/agent.go:37`; inheritance by delegated runs not checked | U | U | U | no | no | no | U |
+| Repository checks before an agent pushes | not checked | U | U | U | no | no | no | no |
+| Digests | O yes, code: `internal/core/digest/digest.go:65` | U | U | U | no (inferred) | no | no | U |
+| Audit log and evidence export | O yes, code: `internal/feature/audit/export.go:149` | U | U | O partial, bulk-export limits (part 3) | C yes, read-access audit, enterprise plan only (this part) | C partial (11-01) | U | U |
+| MCP client | not checked | C yes (11-01) | C yes (11-01) | U | U | U | U | U |
+| MCP server | not checked | U | U | C yes (11-01); C MCP `query_runs` (part 3) | C yes, eval and skill tools (this part) | U | O no mention (this part) | C yes, beta (11-01) |
+| MCP OAuth | not checked | U | U | U | U | U | U | U |
+| OTel GenAI telemetry | O yes, code: `internal/core/telemetry/genai.go:7` | C yes (11-01) | O partial (11-01) | U | C yes, gen_ai usage fix (this part) | no seen (11-01) | U | U |
+| Durable execution | O yes, code: `internal/feature/loop/service.go:394` (`ResumeStoredLoops`) | O partial (11-01) | O partial (11-01) | O yes, checkpointers (11-01) | no | C yes | C yes (product category) | U |
+| Incident and paging | O partial, reads PagerDuty alerts only, code: `internal/platform/tools/observability/pagerduty.go:60` | no (11-01) | no (11-01) | no (11-01) | no | no | no | C yes (11-01) |
+| Eval sets | not checked (an `internal/feature/eval` package exists; no line opened) | U | U | O yes, `reference_outputs` (part 3) | C yes, batch evaluation (this part) | no | no | U |
+| Self-hosting and licence | O yes, Apache 2.0 LICENSE (11-01) | no (inferred, 11-01) | C partial, SDK open (11-01) | U | O MIT with `ee/` directories under a separate licence (this part) | O yes, MIT (11-01) | U | no, SaaS (inferred, 11-01) |
+| A2A | O no: no Go file matches "a2a" (search this part) | O none seen (11-01) | O none seen (11-01) | C yes, LangSmith only (11-01) | no (11-01) | no (11-01) | U | U |
+
+Inferred: on code, Karakuri's clear "yes" rows are cadence, digests, evidence export, OTel GenAI and durable resume. The row where Karakuri says no is stopping mid-pass, and Temporal, open since 2022, has not shipped it either. Langfuse is the only column with dated audit work this cycle, and it put that work behind a paid plan.
 <!-- p4b:end -->
 
 ## Technical frontier
