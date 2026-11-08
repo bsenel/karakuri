@@ -452,6 +452,55 @@ Observed from `git grep '^## Phase' origin/main -- docs/roadmap.md` and `gh pr l
 <!-- p1w:end -->
 
 <!-- p7b:start -->
+Written by part 7 on 2026-11-08. No web; each item keeps the grade its part gave.
+
+### Confirmed
+
+- Rewind or undo is asked for by a third organisation, Google's gemini-cli, which shipped `/rewind` (p2 (1); https://api.github.com/repos/google-gemini/gemini-cli/issues/10223) [Q]. Inferred: the 2026-11-01 one-tracker item now passes the demand gate.
+- Temporal's workflow pause is still open (p4a §5; https://github.com/temporalio/temporal/issues/3006) [E]; supports Phase 37.
+- Teams run standing and on-demand agents side by side and judge them by accepted proposals: 9 of 13 CI Doctor PRs merged, the team's own count (p1 (e); https://github.github.com/gh-aw/blog/2026-01-13-meet-the-workflows-quality-hygiene/) [Q].
+- Text from one agent needs a provenance label before another trusts it (p2 (2); https://api.github.com/repos/crewAIInc/crewAI/issues/6043/comments?per_page=100) [Q]; a user-community voice for rule 9 and Phase 46.
+
+### Contradicted
+
+- The AI Act high-risk dates many earlier reports used (2 August 2026): the Commission's page now gives 2 December 2027 and 2 August 2028 after the AI Omnibus (p6a (1); https://digital-strategy.ec.europa.eu/en/policies/regulatory-framework-ai) [Q]. Art. 113 itself was not read.
+- Part 6 placed "keep agent-written code from server secrets" in Phase 48; Observed by this part in `docs/roadmap.md:6539`, it is Phase 47 step 4, and Phase 48 is "Independent Groups Run in Parallel" (`docs/roadmap.md:6611`).
+- Part 5 placed per-objective spend in Phase 38; Observed, it is Phase 23 (`docs/roadmap.md:6768`).
+- Part 6 left the default retention unchecked; Observed in `docs/roadmap.md:7220`, the floor is 183 days and `audit.retention.days` defaults to 0 (never prune), which exceeds Art. 26(6)'s six months. That is the roadmap's status table, not a code read.
+
+### New
+
+- First first-hand regulated record: HMRC Ask Security, "a processor not an initiator", automation planned (p1 (f); https://www.gov.uk/algorithmic-transparency-records/hmrc-ask-security) [Q].
+- Nothing reads `CanDelegate` (p6b (i), Inferred from code search); a delegated CLI inherits the server environment and the Copilot adapter skips the scrub (p6b (iv), `copilot.go:60`).
+- Providers host agent schedules and change tools mid-session (p5 C2; https://developers.openai.com/api/docs/changelog) [Q], a cost analytics API in beta (p5 C1; https://platform.claude.com/docs/en/release-notes/api) [Q], Computer Use GA and `store=true` by default (p5 C3; https://aistudio.google.com/docs/changelog) [Q].
+- Langfuse moved audit logs to its enterprise plan and audits reads (p4a §4; https://github.com/langfuse/langfuse/releases) [E], vendor claims.
+- LangSmith asks for human input over MCP (p3 §3; https://docs.langchain.com/langsmith/changelog) [E], vendor claim; MCP draft restores `_meta` on elicitation (p5 A1; https://modelcontextprotocol.io/specification/draft/changelog) [Q].
+- The capability matrix's Karakuri column now rests on code lines (p4b).
+
+### Thin spots of the last cycle
+
+2026-11-01's 'Where this cycle is still thin':
+1. Bounds reaching an environment and `CanDelegate`: FILLED IN PART by p6b (i) (no reader found); `AuthorityBounds.Decide` not opened.
+2. Whether the loop ends a pass that read `TrustThirdParty` text: FILLED IN PART by p6b (iii) (`decide.go:116`, `:143`); `Decide` not opened.
+3. `DelegateInput.Env` and an operator token: FILLED by p6b (iv) (`adapter.go:24-25`, `subprocess.go:31`, `copilot.go:60`); `procenv` not opened.
+4. MCP OAuth, OTel `plan` span, post-run bounds check, Claude Code write boundary: STILL THIN (MCP cells "not checked", p4b).
+5. AI Act legal text: FILLED IN PART by p6a (1), Arts. 12, 14, 26 [Q]; Art. 113 not read.
+6. Regulated organisation, second self-hoster, GitHub Next status page and a Meet the Workflows post: regulated FILLED IN PART (p1 (f), HMRC, a chatbot); GitHub Next FILLED (p1 (e)); self-hoster STILL THIN.
+7. Release history gaps: Langfuse FILLED IN PART (p4a §4, 10-16 to 11-05), Temporal FILLED IN PART (p4a §5, 04-10 to 07-08), LangSmith FILLED IN PART (p3 §3, September to November); Codex, Claude Code, LangGraph OSS STILL THIN (p3, timeouts).
+8. Second sources for one-tracker items: rewind FILLED (p2, gemini-cli #10223); timeout FILLED IN PART (litellm #25931 shows the class only); durable state and one digest STILL THIN.
+
+2026-11-01's per-part 'Still thin' lists: p1 (a) postmortem STILL THIN (p1 (a)); p2 tails of #5672 STILL THIN, Temporal forum STILL THIN, autogen and crewAI FILLED IN PART (p2 (2)), "$4,200" and "78% / under 15%" STILL THIN; p3 Agents SDK and Claude Code dates STILL THIN; p4 incident.io dates FILLED (p4a §6, 2025, nothing in the window), DBOS FILLED IN PART (p4a §5), governance product STILL THIN, Karakuri column FILLED (p4b); p5 A2A, SEPs, OTel spans STILL THIN, provider changelogs FILLED (p5 C); p6 Omnibus FILLED (p6a (1)), OWASP list, NIST, ISO 42001 STILL THIN.
+
+### Where this cycle is still thin
+
+1. `AuthorityBounds.Decide` and the delegating capability IDs, to size Recommended 1 and test its kill criterion: start from `internal/core/agent/agent.go` and `internal/platform/tools/cliagent/`.
+2. Feasibility of rewind or undo: what a worktree already lets a person reverse before push, and after: start from `docs/adr/003-git-worktrees.md` and Phase 37's text at `docs/roadmap.md:4259`.
+3. `internal/platform/procenv/` (`Merge`, `ScrubNestedSession`): what a delegated CLI actually receives; feeds the Phase 47 step 4 amendment.
+4. A regulated organisation's agent, not a chatbot: https://www.gov.uk/algorithmic-transparency-records/ (DWP Conversational Platform, OPG Investigations Assistant).
+5. An agent-in-incident postmortem, and a second self-hoster: start from Rootly's changelog or Datadog Bits AI SRE; replit.com/blog page 2 onward.
+6. Karakuri's MCP client, server and OAuth cells, and read auditing: start from `internal/platform/mcp` and `internal/feature/audit/`.
+7. Release history: Codex from https://github.com/openai/codex/releases?page=8, Claude Code from https://github.com/anthropics/claude-code/releases?page=10, LangGraph from https://github.com/langchain-ai/langgraph/releases?page=6; use `gh release list` where `gh api` is allowed.
+8. Research: no paper read this cycle; OWASP Agentic Top 10 list at https://genai.owasp.org/download/52117/; AI Act Art. 113 at http://data.europa.eu/eli/reg/2024/1689/oj.
 <!-- p7b:end -->
 
 ## Sources
@@ -548,6 +597,8 @@ All read 2026-11-08 through a fetch tool that returns a model-written report. P 
 ### Sources, part 7
 
 <!-- s7:start -->
+- No web page fetched by part 7. URLs in p7a and p7b are cited from parts 1 to 6 and keep their grades there.
+- Local, read 2026-11-08: this report; `docs/research/discovery-2026-11-01.md` (p7a, p7b); `docs/roadmap.md` (phase headings and Goal lines; lines 4259, 6539, 6611, 6768, 7220); `grep -F` of today's primary URLs across `docs/research/discovery-2026-1*.md`.
 <!-- s7:end -->
 
 ### Sources, part 8
