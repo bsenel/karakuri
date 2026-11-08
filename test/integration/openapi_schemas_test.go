@@ -30,6 +30,7 @@ import (
 	"github.com/bsenel/karakuri/internal/feature/artifact"
 	"github.com/bsenel/karakuri/internal/feature/audit"
 	"github.com/bsenel/karakuri/internal/feature/eval"
+	featureloop "github.com/bsenel/karakuri/internal/feature/loop"
 	featurereconcile "github.com/bsenel/karakuri/internal/feature/reconcile"
 	"github.com/bsenel/karakuri/internal/feature/research"
 	"github.com/bsenel/karakuri/internal/platform/storage"
@@ -69,8 +70,10 @@ var specTypes = map[string]any{
 	"MemoryEntry":             memory.Entry{},
 	"MemoryQuery":             memory.Query{},
 	"MemoryRetentionPolicy":   memory.RetentionPolicy{},
+	"NotReachedRun":           featurereconcile.NotReachedRun{},
 	"Objective":               objective.Objective{},
 	"ObjectiveTemplate":       objective.Template{},
+	"PausedObjective":         featurereconcile.PausedObjective{},
 	"Principal":               karakuriauth.Principal{},
 	"QuotaOverride":           karakuriquota.Override{},
 	"QuotaRequest":            karakuriquota.Request{},
@@ -81,6 +84,8 @@ var specTypes = map[string]any{
 	"ResearchResult":          research.Result{},
 	"Role":                    karakuriauth.Role{},
 	"RoleBinding":             karakuriauth.RoleBinding{},
+	"StopAllResult":           featurereconcile.StopAllResult{},
+	"StoppedLoop":             featureloop.StopResult{},
 	"TokenPair":               karakuriauth.TokenPair{},
 	"Twin":                    twin.DigitalTwin{},
 }
