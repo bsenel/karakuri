@@ -61,6 +61,59 @@ New: no. Not filled.
 ## What they ask for and complain about
 
 <!-- p2:start -->
+Written by part 2 on 2026-11-08. The rankings of 2026-10-25 and 2026-11-01 stand and are not restated. Direct `gh api` calls were refused in this session, so every GitHub API page came through a fetch tool that returns a model-written extract; quotation marks hold only words the extract marked as verbatim [Q], and counts are copied from the API objects as the extract reported them. Long comment pages were read verbatim only for their first ~40k characters. Session limit 600 seconds.
+
+### (1) Second sources for the one-tracker candidates
+
+New: yes (gemini-cli #10223 and litellm #25931 appear in no earlier report).
+
+- **Rewind or undo of an agent's changes.** Observed: google-gemini/gemini-cli #10223, "Feature Request: Add Checkpointing/Rewind Capability" (lingzhong, NONE, 2025-09-30); 11 reactions (+1 10, -1 1), 3 comments; closed as completed 2026-01-22 by Adib234 (CONTRIBUTOR, not MEMBER or COLLABORATOR). Body [Q]: "Add an automatic checkpointing system with rewind functionality", whose stated goal is to "safely undo AI-generated code changes". Decision [Q]: "we have `/rewind` feature now on main branch". A later user (Morriz, 2026-01-28) [E] says the documented feature was not yet available. Inferred: with claude-code #52209 and opencode #31338 (2026-11-01), this is a third organisation (Google) asking for the same thing, and one that shipped it. The candidate passes the two-organisation gate.
+- **A configured timeout honoured for every provider.** Observed: the reaction-sorted search of BerriAI/litellm for "timeout ignored" and of crewAIInc/crewAI for "timeout" returned no issue whose title is about a timeout. The nearest shape is litellm #25931 (7 reactions, all heart; 7 comments; closed 2026-06-29), a configured setting silently skipped for one provider path [Q]: "This code path never consults `drop_params` or `additional_drop_params`." Fixed in #26148 by a CONTRIBUTOR. Inferred: a second organisation shows the *class* (a setting honoured on one provider path, ignored on another), not the timeout itself. Timeout stays one tracker.
+- **Durable agent state that survives the database; one digest across standing objectives; "nobody can read all these outputs".** Observed: the github/gh-aw search for "summary digest" returned only unrelated provider and MCP bugs (top: #54052, 2 reactions). No second tracker was found for either candidate this pass. Not searched: a complaint phrased as output overload.
+
+### (2) Trackers never read: crewAI, AutoGen, Temporal forum
+
+New: yes (crewAI #6043 and autogen #1700 appear in no earlier report).
+
+- **crewAIInc/crewAI**: the most-reacted open issue is #6043, "[FEATURE] Memory write guards for multi-agent crews — prevent cross-agent memory poisoning" (2026-06-04), 2 reactions (+1), 31 comments per the issue object. Body [Q]: "Multi-agent crews amplify the risk because one poisoned memory entry propagates to ALL agents." Replies [Q]: "Memory provenance tracking is the right approach." (vgudur-dev); "the write-side guard is necessary but in a multi-agent crew you also need read-side quarantine." (norika1207-lab). Observed: 12 comments read verbatim, all author_association NONE; no maintainer decision seen. The rest of the page was not read verbatim.
+- **microsoft/autogen**: the three most-reacted open issues are not agent behaviour: #1700 "Golang/Rust implementation" (32 reactions), #4079 an import error (6), #4006 the Studio roadmap (5). Their comments were not read. Observed: autogen's loudest open demand is low (32 reactions at the top) and is not behavioural.
+- **Temporal community forum**: not read this pass [N].
+- Inferred: crewAI's top open issue is a provenance and trust complaint (text from one agent must not be trusted by another without a label). That is the same ask as AGENTS.md rule 9 and ADR 021, from a user community, not a vendor. Its demand by votes is weak (2 reactions), its discussion is long (31 comments).
+
+### (3) Tails of known threads
+
+New: no (all four threads were cited before; this adds counts dated 2026-11-08).
+
+- anthropics/claude-code #16157, "[BUG] Instantly hitting usage limits with Max subscription": open, 1,499 comments, 728 reactions (+1 697, rocket 17, eyes 8, confused 3, -1 2, hooray 1). Pinned reply by ThariqS (CONTRIBUTOR) [Q]: "we have not at all changed our rate limits since Opus 4.5 launched".
+- langchain-ai/langgraph #5672, "Run Cancellation Causes Loss of Streamed State Not Yet Persisted as a Checkpoint": open, 52 comments, 9 reactions (+1). Comments 32 to the end were **not read** (the page was cut at ~40k of 191k characters). The one MEMBER reply seen, christian-bromann, 2026-04-15 [Q]: "we are actively looking into this as we are rethinking some of our streaming primitives." No decision.
+- langgraph #3716 (checkpoint-postgres SSL "bad length"): open, 53 comments, 12 reactions (+1). Tail read only as an extract [E]: one user reports zero occurrences in six weeks after two fixes (2026-06-08); later comments are offers of help and services; no maintainer decision.
+- n8n-io/n8n #21716 (MCP `toolCallId` breaks old workflows): closed as completed 2026-01-14, 77 comments, 0 reactions on the issue. dlavrenuek (CONTRIBUTOR, 2026-01-13) [Q]: "Even tho the validation is not correct in this case we still want to make the mcp tool calls work," Observed: no MEMBER or COLLABORATOR reply in the readable part.
+
+### (4) Postmortems and unverified figures
+
+New: no. Not reached in the time limit: a team's own postmortem of an agent that did damage, the "$4,200 in 63 Hours" author post, and the primary report behind "78% / under 15%", which stays **unverified**.
+
+### Ranking (part 2)
+
+| Pain point | Independent sources (old and new) | Reactions / duplicates seen | Strength | Phase that covers it |
+|---|---|---|---|---|
+| Usage limits hit without explanation (claude-code #16157) | 1 tracker (Anthropic) | 728 reactions, 1,499 comments | Strong in one tracker; vendor quota, not an agent behaviour | Partly Phase 31/36 cost caps and rate-limit handling; Karakuri cannot fix a vendor's quota. Fails the gate |
+| Rewind or undo an agent's changes | 3 organisations: claude-code #52209, opencode #31338 (2026-11-01), gemini-cli #10223 (new) | #10223: 11 reactions, shipped as `/rewind` | Moderate; **passes** | gap: no Planned phase (37, 38, 39, 40, 42 to 48) names undo; Phase 37 stops a run, it does not reverse it |
+| Text from one agent or tool trusted by another without provenance | crewAI #6043 (new); Karakuri's own ADR 021 is not a user source | 2 reactions, 31 comments | Weak by votes, one tracker | Phase 46 (an approval after third-party text buys one action) and rule 9; fails the gate |
+| A configured setting honoured on every provider path (timeout is one case) | n8n #25360 (2026-11-01), litellm #25931 (new, not a timeout) | 8 and 7 reactions | Moderate for the class; timeout itself still one tracker | Phase 43 (a provider's tool-call shape pinned by a test) is the nearest; timeouts: gap |
+| State lost on cancel or database fault (langgraph #5672, #3716) | 1 organisation | 9 + 12 reactions, 52 + 53 comments | Moderate, one tracker | Phase 37 (stop at any time) for cancellation; durable state: gap among Planned phases |
+| MCP client sends only declared arguments (n8n #21716) | 1 | 0 on #21716, 77 comments; closed | Strong in one tracker, now fixed upstream | Phase 42 |
+| One digest across standing objectives | 1 (2026-11-01) | none | Weak | Phase 40 (streams without a coordinator) only partly; digest itself was an earlier phase; fails the gate |
+
+Inferred: only rewind/undo moves across the gate this pass, and it is a gap in the Planned phases.
+
+### Still thin (part 2)
+
+1. Temporal community forum not read; autogen comments not read; crewAI #6043 read only for 12 of 31 comments.
+2. langgraph #5672 comments 32 to the end still not read; read the comments page with `page=2` or a smaller `per_page` so it fits.
+3. Timeout honoured for every provider, durable state, one digest, and "nobody can read all these outputs": still one tracker or none.
+4. No agent postmortem; "$4,200 in 63 Hours" author post not found; "78% / under 15%" still unverified.
+5. All GitHub reads this pass were extracts; a part with `gh api` allowed should re-read counts verbatim.
 <!-- p2:end -->
 
 ## Competitive teardown
@@ -150,6 +203,22 @@ All read 2026-11-08 through a fetch tool that returns a model-written extract.
 ### Sources, part 2
 
 <!-- s2:start -->
+All read 2026-11-08 through a fetch tool that returns a model-written extract; [Q] only where the extract marked words verbatim.
+
+- https://api.github.com/search/issues?q=repo:crewAIInc/crewAI+is:issue+is:open&sort=reactions&order=desc&per_page=3, primary, extract
+- https://api.github.com/repos/crewAIInc/crewAI/issues/6043/comments?per_page=100, primary, first ~40k characters verbatim, rest extract [Q]/[E]
+- https://api.github.com/search/issues?q=repo:microsoft/autogen+is:issue+is:open&sort=reactions&order=desc&per_page=3, primary, extract (autogen #1700, #4079, #4006 not opened)
+- https://api.github.com/search/issues?q=repo:google-gemini/gemini-cli+is:issue+undo+changes&sort=reactions&order=desc&per_page=3, primary, extract
+- https://api.github.com/repos/google-gemini/gemini-cli/issues/10223 and /comments?per_page=100, primary, full text [Q]
+- https://api.github.com/search/issues?q=repo:BerriAI/litellm+is:issue+timeout+ignored&sort=reactions&order=desc&per_page=3, primary, extract
+- https://api.github.com/repos/BerriAI/litellm/issues/25931 and /comments?per_page=100, primary, full text [Q]
+- https://api.github.com/search/issues?q=repo:crewAIInc/crewAI+is:issue+timeout&sort=reactions&order=desc&per_page=3, primary, extract
+- https://api.github.com/search/issues?q=repo:github/gh-aw+is:issue+summary+digest&sort=reactions&order=desc&per_page=3, primary, extract
+- https://api.github.com/repos/anthropics/claude-code/issues/16157, primary, full issue object [Q]
+- https://api.github.com/repos/langchain-ai/langgraph/issues/5672 and /comments?per_page=100, primary, first ~40k of 191k characters verbatim; comments 32 onward not read
+- https://api.github.com/repos/langchain-ai/langgraph/issues/3716 and /comments?per_page=100, primary, first ~40k characters verbatim, tail extract [E]
+- https://api.github.com/repos/n8n-io/n8n/issues/21716 and /comments?per_page=100, primary, first ~40k characters verbatim, last ~19k not read
+- https://community.temporal.io, not read [N]
 <!-- s2:end -->
 
 ### Sources, part 3
