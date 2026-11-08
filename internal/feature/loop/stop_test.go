@@ -423,9 +423,9 @@ func TestStoppingAnEndedLoopChangesNothingAndSaysSo(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	before := waitStoredCompleted(t, svc.store, run.LoopID)
+	waitStoredCompleted(t, svc.store, run.LoopID)
 	time.Sleep(stopSettle)
-	before = storedLoop(t, svc.store, run.LoopID)
+	before := storedLoop(t, svc.store, run.LoopID)
 
 	got, err := svc.Stop(ctx, run.LoopID, stopPrincipal, stopReason)
 	if err != nil {
