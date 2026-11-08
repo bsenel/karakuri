@@ -83,7 +83,11 @@ export function QuotaRequests() {
 
   return (
     <>
-      {error && <p className="error">{error}</p>}
+      {error && (
+        <p className="error" role="alert">
+          {error}
+        </p>
+      )}
 
       {can(Actions.quotaRequest) && <AskForm onDone={requests.reload} onError={setError} />}
 
