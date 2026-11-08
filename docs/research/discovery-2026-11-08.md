@@ -198,6 +198,23 @@ New: yes. It fills the 2026-11-01 thin spot "Temporal's server history before 20
 
 **(v) Inferred:** "pause and keep state" is still not a shipped primitive in Temporal after more than four years open, as far as the pages read show. Karakuri's Phase 37 (Planned, `docs/roadmap.md:4030`) aims at the same gap; nobody among the engines read here has closed it. DBOS shows no move toward agents in its notes. Nothing was measured.
 
+### 6. incident.io, dates settled
+
+New: yes. It fills the 2026-11-01 thin spot "incident.io is still undated", though the answer moves nothing into the window.
+
+**(i) Shipped.** Observed [E] (read 2026-11-08 from links on https://incident.io/blog; the slugs named in the brief returned 404). "Introducing Agentic CTO" (https://incident.io/blog/introducing-agentic-cto-executive-oversight-in-every-incident) is dated 2025-04-01 and the page itself says it is an April Fools' post, so it describes no product. "Avoiding the ironies of automation" (https://incident.io/building-with-ai/avoiding-the-ironies-of-automation) is dated 2025-03-26 and is an essay of intent ("we believe we'll ship in the next few months", per the extract). Neither falls in 2026-05-08 to 2026-11-08, and nothing shipped in the window was read.
+
+**(ii) to (iv).** (ii) Nothing new. (iii) Karakuri reads PagerDuty alerts (`internal/platform/tools/observability/pagerduty.go:60`) and returns errors for logs and metrics it cannot see (`pagerduty.go:141`, `:146`). (iv) No complaint thread read [N].
+
+**(v) Inferred:** the essay's stance, as the extract gives it, is that the agent proposes and people decide, and that a tired responder will rubber-stamp a "confirm" prompt. That is the same risk earned autonomy has to answer. It is a 2025 position paper, not evidence of shipped behaviour.
+
+### Still thin (part 4)
+
+1. Langfuse 2026-04-25 to 2026-10-15 (releases pages 3 onward), `ee/LICENSE`, and a complaint thread are unread.
+2. Temporal 07-11 to 09-11 (releases page 1 below the fold) and the full v1.31.0 notes are unread; whether activity pause shipped is still unknown. DBOS 05-08 to 07-20 is unread; Restate and Inngest were not reached.
+3. An AI SRE tool inside the window: incident.io's two posts date from 2025. Next cycle: Rootly's changelog, PagerDuty's release notes or Datadog Bits AI SRE.
+4. Governance-only product (Credo AI): not reached.
+5. Karakuri matrix cells marked "not checked": MCP client, MCP server, MCP OAuth, repository checks before push, eval sets, and inheritance of `AuthorityBounds` by delegated runs. Open `internal/feature/delegation/` and `internal/feature/eval/` first.
 <!-- p4a:end -->
 
 ## Capability matrix
@@ -337,6 +354,17 @@ All read or attempted on 2026-11-08.
 ### Sources, part 4
 
 <!-- s4:start -->
+All read or attempted on 2026-11-08, through a fetch tool that returns a model-written report, so every one read is [E].
+- https://github.com/langfuse/langfuse/blob/main/LICENSE: primary, [E] (full page).
+- https://github.com/langfuse/langfuse/releases and ?page=2: primary, [E] (pages 1 and 2 of 74).
+- https://github.com/temporalio/temporal/releases?page=2: primary, [E] (v1.31.0 notes cut off).
+- https://github.com/temporalio/temporal/releases/tag/v1.31.0: primary, [N] (not fetched).
+- https://github.com/temporalio/temporal/issues/3006: primary, [E] (full page, no counts given).
+- https://github.com/dbos-inc/dbos-transact-py/releases: primary, [E] (page 1 only).
+- https://incident.io/blog/introducing-agentic-cto and https://incident.io/blog/avoiding-the-ironies-of-automation: primary, [N] (404).
+- https://incident.io/blog: primary, [E] (index, used for links).
+- https://incident.io/blog/introducing-agentic-cto-executive-oversight-in-every-incident: primary, [E] (full page; satire).
+- https://incident.io/building-with-ai/avoiding-the-ironies-of-automation: primary, [E] (full page).
 <!-- s4:end -->
 
 ### Sources, part 5
