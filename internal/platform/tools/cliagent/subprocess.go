@@ -122,6 +122,21 @@ func runStreaming(ctx context.Context, in DelegateInput, name string, args []str
 		}
 	}()
 
+	cut := func(exited bool) (int, string, error) {
+		deadline := time.Now().Add(stopBound)
+		groupExited := stopGroup(cmd.Process, waitCh, exited, deadline)
+		// Output already written is still read until the bound; then the
+		// read ends close, whoever still holds the write ends.
+		select {
+		case <-stdoutDone:
+		case <-time.After(time.Until(deadline)):
+		}
+		_ = stdoutR.Close()
+		_ = stderrR.Close()
+		<-stdoutDone
+		return -1, <-stderrCh, &cutError{groupExited: groupExited, cause: ctx.Err()}
+	}
+
 	var waitErr error
 	exited, outDone := false, false
 	outCh := (<-chan struct{})(stdoutDone)
@@ -133,21 +148,22 @@ func runStreaming(ctx context.Context, in DelegateInput, name string, args []str
 			outDone = true
 			outCh = nil
 		case <-ctx.Done():
-			deadline := time.Now().Add(stopBound)
-			groupExited := stopGroup(cmd.Process, waitCh, exited, deadline)
-			// Output already written is still read until the bound; then the
-			// read ends close, whoever still holds the write ends.
-			select {
-			case <-stdoutDone:
-			case <-time.After(time.Until(deadline)):
-			}
-			_ = stdoutR.Close()
-			_ = stderrR.Close()
-			<-stdoutDone
-			return -1, <-stderrCh, &cutError{groupExited: groupExited, cause: ctx.Err()}
+			return cut(exited)
 		}
 	}
-	stderr = <-stderrCh
+	// A process the child left behind may still hold stderr after the child
+	// has exited and stdout is done; a stop still cuts the run, and otherwise
+	// the read end closes at the bound with whatever was read.
+	grace := time.NewTimer(stopBound)
+	defer grace.Stop()
+	select {
+	case stderr = <-stderrCh:
+	case <-ctx.Done():
+		return cut(true)
+	case <-grace.C:
+		_ = stderrR.Close()
+		stderr = <-stderrCh
+	}
 
 	if cmd.ProcessState != nil {
 		exitCode = cmd.ProcessState.ExitCode()
