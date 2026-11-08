@@ -111,7 +111,11 @@ describe('when()', () => {
 });
 
 describe('StandingPanel', () => {
-  beforeEach(() => get.mockReset());
+  // A block body: an arrow that returns the mock would hand vitest a
+  // function, which it runs as teardown, calling get() after each test.
+  beforeEach(() => {
+    get.mockReset();
+  });
 
   it('shows the phase, the autonomy it has earned, and why it is stopped', async () => {
     get.mockResolvedValue({

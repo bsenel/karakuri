@@ -13,7 +13,11 @@ import { QuotaUsage } from './QuotaUsage';
 const twins = [{ id: 'twin-1', name: 'Ann' }];
 
 describe('QuotaUsage', () => {
-  beforeEach(() => get.mockReset());
+  // A block body: an arrow that returns the mock would hand vitest a
+  // function, which it runs as teardown, calling get() after each test.
+  beforeEach(() => {
+    get.mockReset();
+  });
 
   it('asks for a twin before it shows anything', async () => {
     get.mockResolvedValue(twins);
