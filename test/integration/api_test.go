@@ -499,6 +499,36 @@ func TestLoopStartStatus(t *testing.T) {
 			t.Fatal("loop status never returned 200")
 		}
 		assertField(t, statusM, "loop_id")
+
+		// Phase 37 step 3: the loop is stopped, or had already ended, and the
+		// answer says which. A second stop changes nothing and says so.
+		stopResp := doJSON(t, adminToken, http.MethodPost, baseURL+"/api/v1/loops/"+loopID+"/stop", map[string]any{
+			"reason": "integration test",
+		})
+		assertStatus(t, stopResp, http.StatusOK)
+		stopM := decodeJSON(t, stopResp)
+		if stopM["loop_id"] != loopID {
+			t.Errorf("stop answered for loop %v, want %s", stopM["loop_id"], loopID)
+		}
+		if f := stopM["found"]; f != "running" && f != "ended" {
+			t.Errorf("stop found = %v, want running or ended", f)
+		}
+
+		againResp := doJSON(t, adminToken, http.MethodPost, baseURL+"/api/v1/loops/"+loopID+"/stop", map[string]any{
+			"reason": "integration test, again",
+		})
+		assertStatus(t, againResp, http.StatusOK)
+		if againM := decodeJSON(t, againResp); againM["found"] != "ended" {
+			t.Errorf("second stop found = %v, want ended", againM["found"])
+		}
+	})
+
+	t.Run("stop_unknown_loop", func(t *testing.T) {
+		resp := doJSON(t, adminToken, http.MethodPost, baseURL+"/api/v1/loops/loop-nobody-knows/stop", map[string]any{
+			"reason": "integration test",
+		})
+		assertStatus(t, resp, http.StatusNotFound)
+		resp.Body.Close()
 	})
 }
 

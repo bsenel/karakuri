@@ -136,6 +136,8 @@ func TestRBACRouteMatrix(t *testing.T) {
 			"objective:declare": true, "objective:reconcile": true, "objective:pause": true,
 			"report:read": true, "report:write": true,
 			"loop:read": true, "loop:start": true, "loop:resume": true,
+			// Whoever may start a loop may stop it (Phase 37 step 3).
+			"loop:stop":       true,
 			"checkpoint:read": true, "checkpoint:resolve": true,
 			"artifact:read": true, "artifact:write": true,
 			"memory:read": true, "memory:write": true, "memory:forget": true,

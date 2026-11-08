@@ -93,7 +93,7 @@ func builtinAuthorizer(t *testing.T) (*extauth.StoreAuthorizer, []string) {
 	return extauth.NewAuthorizer(store), roles
 }
 
-func allowed(t *testing.T, authz *extauth.StoreAuthorizer,role string, action extauth.Action, ref extauth.ResourceRef) bool {
+func allowed(t *testing.T, authz *extauth.StoreAuthorizer, role string, action extauth.Action, ref extauth.ResourceRef) bool {
 	t.Helper()
 	d, err := authz.Authorize(context.Background(), extauth.Principal{ID: "p-" + role}, action, ref)
 	if err != nil {

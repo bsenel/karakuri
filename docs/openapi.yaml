@@ -2823,6 +2823,75 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/RateLimitError'
+  /loops/{id}/stop:
+    post:
+      operationId: stopLoop
+      tags:
+      - loops
+      summary: Stop a one-shot loop
+      description: 'Ends a running loop, including one waiting at a checkpoint: no further action of it starts, its stored state reads stopped with the principal and the reason, and a later decision on that checkpoint authorises nothing. A stop is not a failure and not a rollback. Stopping a loop that has already ended changes nothing and answers found: ended. A missing reason is filled in as "stopped by <principal>".'
+      x-karakuri-permission: loop:stop
+      parameters:
+      - name: id
+        in: path
+        required: true
+        description: Resource ID.
+        schema:
+          type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                reason:
+                  type: string
+                  description: Why the loop is stopped, kept on its record.
+      responses:
+        '200':
+          description: 'What the stop found: running when it ended the loop, ended when the loop had already ended and nothing changed.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoopStopResult'
+        '401':
+          description: Missing or invalid credential.
+          content:
+            text/plain:
+              schema:
+                type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: The principal lacks the permission.
+          content:
+            text/plain:
+              schema:
+                type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: No such loop.
+          content:
+            text/plain:
+              schema:
+                type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Over the caller's rate or quota limit.
+          content:
+            text/plain:
+              schema:
+                type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RateLimitError'
   /mcp:
     post:
       operationId: mcp
@@ -6710,6 +6779,14 @@ components:
         paused:
           type: boolean
         step:
+          type: string
+      type: object
+    LoopStopResult:
+      additionalProperties: false
+      properties:
+        found:
+          type: string
+        loop_id:
           type: string
       type: object
     MCPInstanceHealth:
