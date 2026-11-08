@@ -424,6 +424,19 @@ Only one. Rewind (3) clears the demand gate but has no sized slice, and Phase 37
 ## Roadmap phases proposed
 
 <!-- p8:start -->
+Written by part 8 on 2026-11-08. No web.
+
+**Phase 49 — A Bound That Says No Delegation Is Kept (Planned). DEMAND.** One phase, from p7a '### Recommended' item 1 (ranking candidate 1), resting on p6b (i).
+- Demand sources, as earlier reports graded them: ZeroClaw #10968 (https://github.com/zeroclaw-labs/zeroclaw/issues/10968, read 2026-10-25, [Q]) and copilot-cli #3013 (https://api.github.com/repos/github/copilot-cli/issues/3013, read 2026-11-01, [Q]); two organisations, neither fetched again today. Demand by count is weak (0 reactions on #3013).
+- p7a's kill criterion, tested by part 8 (Observed, code read on this branch 2026-11-08): `AuthorityBounds.Decide` (`internal/core/agent/decide.go:96-165`) checks provenance, confidence, `RequiresApprovalFor` and MCP tools, and the action cap, and never reads `CanDelegate`. The criterion did not fire; the gap p6b inferred from a search is now Observed in the function.
+- New in part 8's read (Observed): the software pack's `authority` helper (`domains/software/agents.go:26-36`) never sets `CanDelegate`, so the Implementer and SRE, which plan `software.act.write_code`, carry false; `cliPrompt` (`domains/software/environments.go:1088-1093`) routes `delegate_to_cli`, `write_code` and `write_test` to a CLI. Inferred: enforcing the field without declaring it first would escalate every Implementer plan, so the phase declares before it enforces (its steps 2 and 3). Not verified: which agent the delivery objective resolves to.
+- Placement: p7a said it could fold into Phase 39; written as its own phase because Phase 39's text does not name the field (p7a ranking row 1). The human may fold it.
+- Not proposed (p7a): rewind or undo (no sized slice), and the amendments to Phase 47 step 4 (`cliagent/copilot.go:60`) and Phase 46 (tool-set hash at approval), which part 8 did not write into those phases.
+
+Numbering evidence:
+- `git grep -n '^## Phase' origin/main -- docs/roadmap.md` on 2026-11-08: highest is `## Phase 48 — Independent Groups Run in Parallel (Planned)` at line 6611.
+- `gh pr list --state open --limit 50`: #223 (this branch), #222, #221, #219, #218. Of these, #219 and #218 touch `docs/roadmap.md`; `git diff origin/main...<head> -- docs/roadmap.md` shows both add notes inside Phase 37 and no `## Phase` heading. So the next number is 49.
+- Check after the commit: `## Phase` headings in `docs/roadmap.md` run 1 to 49 ascending; the only repeated number is `13` at lines 670 and 717, which are Phase 13 and Phase 13.5, both already on main. No duplicate.
 <!-- p8:end -->
 
 ## What changed since the last report
@@ -604,4 +617,6 @@ All read 2026-11-08 through a fetch tool that returns a model-written report. P 
 ### Sources, part 8
 
 <!-- s8:start -->
+- No web page fetched by part 8. The two demand URLs are cited from docs/research/discovery-2026-10-25.md and docs/research/discovery-2026-11-01.md with the dates and grades given there.
+- Local, read 2026-11-08: `internal/core/agent/agent.go`, `internal/core/agent/decide.go`, `internal/core/capability/capability.go` (lines 1-45), `domains/software/agents.go`, `domains/software/selfimprove.go` (lines 515-559), `domains/software/environments.go` (lines 1068-1097), `docs/research/discovery-2026-11-01.md` (lines 54-60), `docs/roadmap.md` (Phases 46 and 48, the Engineering Backlog, the status table); `git diff` of PR #218 and #219 against main for `docs/roadmap.md`.
 <!-- s8:end -->
