@@ -45,6 +45,7 @@ import (
 // supervisor starts loops and does not otherwise reach into them.
 type LoopRunner interface {
 	Run(ctx context.Context, req coreloop.Request) (coreloop.Result, error)
+	Stop(ctx context.Context, loopID, principal, reason string) (featureloop.StopResult, error)
 }
 
 // CheckpointSweeper is the slice of the checkpoint service the tick needs to

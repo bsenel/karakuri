@@ -29,6 +29,8 @@ import (
 // supervisor never holds a channel into a loop, it reads the row that survives
 // the process.
 type fakeLoop struct {
+	stopRecorder
+
 	mu    sync.Mutex
 	store storage.StorageAdapter
 	runs  int
