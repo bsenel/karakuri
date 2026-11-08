@@ -1,8 +1,6 @@
 package command
 
 import (
-	"errors"
-
 	"github.com/bsenel/karakuri/cli/client"
 	"github.com/spf13/cobra"
 )
@@ -12,7 +10,7 @@ func loopCmd() *cobra.Command {
 		Use:   "loop",
 		Short: "Control the autonomous reasoning loop",
 	}
-	cmd.AddCommand(loopStartCmd(), loopStatusCmd(), loopResumeCmd())
+	cmd.AddCommand(loopStartCmd(), loopStatusCmd(), loopResumeCmd(), loopStopCmd())
 	return cmd
 }
 
@@ -70,16 +68,30 @@ func loopStatusCmd() *cobra.Command {
 	}
 }
 
-// loopStopCmd is a stub for Phase 37 step 3; the tests in loop_stop_test.go
-// describe what it has to do.
 func loopStopCmd() *cobra.Command {
-	return &cobra.Command{
+	var reason string
+	cmd := &cobra.Command{
 		Use:   "stop <loop-id>",
-		Short: "Stop a loop",
-		RunE: func(_ *cobra.Command, _ []string) error {
-			return errors.New("not implemented")
+		Short: "Stop a one-shot loop for good",
+		Long: `Stop a one-shot loop for good. <loop-id> is the loop_id that krk loop start
+prints. A stopped loop stays stopped: a server restart does not resume it, and a
+later decision on its checkpoint authorises nothing.`,
+		Example: `  krk loop stop loop_123
+
+  # Record why it was stopped
+  krk loop stop loop_123 --reason "started against a merged branch"`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(_ *cobra.Command, args []string) error {
+			data, _, err := api.Post("/loops/"+args[0]+"/stop", map[string]any{"reason": reason})
+			if err != nil {
+				return err
+			}
+			client.PrintOutput(data, output)
+			return nil
 		},
 	}
+	cmd.Flags().StringVar(&reason, "reason", "", "Why the loop is stopped, stored on the audit row (default: stopped by <you>)")
+	return cmd
 }
 
 func loopResumeCmd() *cobra.Command {
