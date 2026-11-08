@@ -65,7 +65,7 @@ should be allowed to arrive at once. The others are daily caps: give them --cap.
 					return fmt.Errorf("--tier %s is a daily cap; give it --cap, e.g. `krk quota set --tier %s --cap 2000 --reason %q`", tier, tier, reason)
 				}
 				if perMinute > 0 || burst > 0 {
-					return fmt.Errorf("--per-minute and --burst apply to --tier request only")
+					return fmt.Errorf("--per-minute and --burst apply to --tier request only; --tier %s is a daily cap, so drop them, e.g. `krk quota set --tier %s --cap %d --reason %q`", tier, tier, cap, reason)
 				}
 				body["cap"] = cap
 			default:
