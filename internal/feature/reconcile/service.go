@@ -443,15 +443,21 @@ func (s *Service) Forget(ctx context.Context, id objective.ObjectiveID) error {
 // stored, so a crash between the two still leaves the objective paused. The
 // pass ends with outcomeStopped, which is not a failure (Phase 37 step 1).
 func (s *Service) Pause(ctx context.Context, id objective.ObjectiveID, reason string) error {
+	_, err := s.pause(ctx, id, reason)
+	return err
+}
+
+// pause is Pause, and reports whether it cancelled a pass in flight.
+func (s *Service) pause(ctx context.Context, id objective.ObjectiveID, reason string) (bool, error) {
 	st, err := s.store.GetReconcileState(ctx, id)
 	if err != nil {
-		return err
+		return false, err
 	}
 	st.Paused = true
 	st.PausedReason = reason
 	st.Phase = reconcile.PhasePaused
 	if err := s.store.SaveReconcileState(ctx, st); err != nil {
-		return err
+		return false, err
 	}
 	s.mu.Lock()
 	cancel := s.cancels[id]
@@ -459,7 +465,7 @@ func (s *Service) Pause(ctx context.Context, id objective.ObjectiveID, reason st
 	if cancel != nil {
 		cancel(&pausedInFlight{reason: reason})
 	}
-	return nil
+	return cancel != nil, nil
 }
 
 // pausedInFlight is the cause a pause cancels a running pass with. It carries
