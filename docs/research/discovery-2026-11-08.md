@@ -160,6 +160,28 @@ New: yes. It fills part of the 2026-11-01 thin spot "LangSmith from April to Aug
 <!-- p3:end -->
 
 <!-- p4a:start -->
+Part 4 extends the p4a sections of discovery-2026-11-01.md and -2026-10-25.md and does not restate them. Every page below came through a fetch tool that returns a model-written report, so all items are [E], including lines the tool called verbatim. Release pages show no year; 2026 is inferred from page order. Vendor notes are claims, not measurements. Karakuri cells come from Go files opened on this branch (path:line).
+
+### 4. Langfuse
+
+New: yes. It fills the 2026-11-01 thin spot "Langfuse: not reached" (licence and releases), in part.
+
+**(i) Shipped, 2026-10-16 to 2026-11-05 only.** Observed [E] (https://github.com/langfuse/langfuse/blob/main/LICENSE; https://github.com/langfuse/langfuse/releases and `?page=2`; read 2026-11-08). Vendor claims:
+- Licence: MIT (Expat) for the repository, except `ee/`, `web/src/ee/`, `worker/src/ee/` and `packages/shared/src/server/ee/`, which fall under `ee/LICENSE` (not read). v4.69.0 (10-23) moved `packages/shared/src/server/ee` under the enterprise licence.
+- Audit: v4.62.0 (10-16) staged change events beside the Postgres audit log; v4.67.0 (10-21) dropped dataset item payloads from audit logs; v4.68.0 (10-22) restricted audit logs to enterprise plans; v4.73.0 and v4.74.0 (11-03) added a read-access gate and always-logged support-access reads; v4.76.0 (11-05) added read-access audit events for trace, session and score reads, and recorded exports as access events.
+- MCP server: v4.68.0 `listLlmConnections` tool and MCP SDK 1.32.0; v4.69.0 skill versions created over MCP; v4.70.0 (10-24) `runBatchEvaluation` tool; v4.73.0 bundled skills exposed over MCP.
+- OTel: v4.71.0 (10-27) model attribution fix; v4.72.0 (10-29) gen_ai usage double counting fixed, trace-level eval filters.
+- Self-hosting: v4.71.0 a "self-hosted government plan"; v4.76.0 the AI gateway in self-hosted docker compose.
+- 2026-04-25 to 2026-10-15 is still unread (pages 3 onward of 74).
+
+**(ii) What it does that Karakuri does not.** Inferred from (i): it audits *reads* (who looked at a trace) and treats an export as an access event; it serves its evaluations as MCP tools to a coding agent.
+
+**(iii) What Karakuri does that it does not.** Observed (code): Karakuri runs work on a cadence (`internal/core/objective/standing.go:43`, `type Cadence struct`), digests what ran unsupervised (`internal/core/digest/digest.go:195`, autonomy changes in the digest) and exports evidence over a time window (`internal/feature/audit/export.go:149`). Nothing read shows Langfuse acting rather than observing.
+
+**(iv) Complaints.** Not read. No thread was opened this pass [N].
+
+**(v) Inferred:** two signals, both from vendor notes. Audit logs moved behind the enterprise plan on 10-22, so buyers who need them pay; and read-access auditing became a feature in its own right. Karakuri's export (`export.go:149`) is Apache 2.0 with no plan gate; whether it records reads was not checked. Nothing was measured.
+
 <!-- p4a:end -->
 
 ## Capability matrix
