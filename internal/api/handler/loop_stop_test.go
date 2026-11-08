@@ -6,14 +6,23 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/bsenel/karakuri/auth"
 	"github.com/bsenel/karakuri/internal/api/handler"
 	corecheckpoint "github.com/bsenel/karakuri/internal/core/checkpoint"
+	"github.com/bsenel/karakuri/internal/core/environment"
+	"github.com/bsenel/karakuri/internal/core/event"
 	"github.com/bsenel/karakuri/internal/core/loop"
+	"github.com/bsenel/karakuri/internal/core/objective"
+	featurecp "github.com/bsenel/karakuri/internal/feature/checkpoint"
 	featureloop "github.com/bsenel/karakuri/internal/feature/loop"
+	featurereconcile "github.com/bsenel/karakuri/internal/feature/reconcile"
+	platformdb "github.com/bsenel/karakuri/internal/platform/db"
+	"github.com/bsenel/karakuri/internal/platform/storage"
+	karakuriquota "github.com/bsenel/karakuri/internal/quota"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -218,5 +227,96 @@ func TestLoopStopFailureIs500(t *testing.T) {
 	}
 	if !strings.Contains(rec.Body.String(), "was not stored") {
 		t.Errorf("500 body %q does not carry Stop's error", rec.Body.String())
+	}
+}
+
+// The owner's decision on #222: a stop must stop a watch-mode run too. A loop
+// of a standing objective (what POST /loops with watch_mode declares) is
+// stopped through the reconcile service, which also pauses its objective, and
+// the answer names the objective and says it was paused, so the caller knows
+// no later tick starts a new pass.
+func TestLoopStopOfAStandingObjectiveNamesItPaused(t *testing.T) {
+	db, err := platformdb.Open("sqlite", filepath.Join(t.TempDir(), "loop_stop.db"))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	if err := platformdb.RunMigrations(db, ""); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	store := storage.NewGORMStorage(db)
+	hub := event.NewHub()
+	loops := newStoppingLoops()
+	loops.found["loop-watch"] = featureloop.StopFoundRunning
+	rec := featurereconcile.NewService(store, loops, environment.NewRegistry(), nil,
+		featurecp.NewService(store, hub), hub, karakuriquota.Deps{}, featurereconcile.Config{})
+
+	ctx := context.Background()
+	obj := objective.Objective{
+		ID:       "obj-watch",
+		Mode:     objective.ModeStanding,
+		Domain:   "software",
+		Cadence:  &objective.Cadence{Sense: "30s"},
+		Autonomy: &objective.Autonomy{Level: objective.AutonomySense, Ceiling: objective.AutonomySense},
+	}
+	if err := store.SaveObjective(ctx, obj); err != nil {
+		t.Fatalf("save objective: %v", err)
+	}
+	if err := rec.Declare(ctx, obj); err != nil {
+		t.Fatalf("declare: %v", err)
+	}
+	if err := store.SaveLoopState(ctx, loop.State{
+		LoopID:      "loop-watch",
+		ObjectiveID: obj.ID,
+		Completed:   true,
+		Status:      objective.StatusCompleted,
+	}); err != nil {
+		t.Fatalf("save loop state: %v", err)
+	}
+
+	h := &handler.LoopHandler{Loop: loops, Store: store, Reconcile: rec}
+	r := chi.NewRouter()
+	r.Post("/api/v1/loops/{id}/stop", h.Stop)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/loops/loop-watch/stop",
+		strings.NewReader(`{"reason":"watching the wrong repository"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req = req.WithContext(auth.WithPrincipal(req.Context(), auth.Principal{ID: "alice"}))
+	resp := httptest.NewRecorder()
+	r.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body %s", resp.Code, resp.Body.String())
+	}
+	want := stopCall{loopID: "loop-watch", principal: "alice", reason: "watching the wrong repository"}
+	if got := onlyCall(t, loops); got != want {
+		t.Fatalf("Stop called with %+v, want %+v", got, want)
+	}
+
+	var got struct {
+		LoopID          string `json:"loop_id"`
+		Found           string `json:"found"`
+		ObjectiveID     string `json:"objective_id"`
+		ObjectivePaused *bool  `json:"objective_paused"`
+	}
+	if err := json.Unmarshal(resp.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode %s: %v", resp.Body.String(), err)
+	}
+	if got.LoopID != "loop-watch" || got.Found != string(featureloop.StopFoundRunning) {
+		t.Errorf("answer = %s, want loop-watch found running", resp.Body.String())
+	}
+	if got.ObjectiveID != string(obj.ID) {
+		t.Errorf("objective_id = %q, want the loop's standing objective %q; body %s",
+			got.ObjectiveID, obj.ID, resp.Body.String())
+	}
+	if got.ObjectivePaused == nil || !*got.ObjectivePaused {
+		t.Errorf("objective_paused missing or false, want true; body %s", resp.Body.String())
+	}
+
+	st, err := store.GetReconcileState(ctx, obj.ID)
+	if err != nil {
+		t.Fatalf("get reconcile state: %v", err)
+	}
+	if !st.Paused || st.PausedReason != "watching the wrong repository" {
+		t.Errorf("objective after the stop: paused %v, reason %q; want paused with the stop's reason",
+			st.Paused, st.PausedReason)
 	}
 }
