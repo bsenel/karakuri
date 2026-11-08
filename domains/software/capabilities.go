@@ -81,7 +81,7 @@ func softwareCapabilities() []capability.Capability {
 		},
 	}}
 	flakyTests.MeasurePaths = []string{"**/*_test.go"}
-	return []capability.Capability{
+	return append([]capability.Capability{
 		// Inputs declared for the reason write_design_doc's are below. Neither
 		// read requires an input; both fail rather than return an empty list
 		// when the twin has no version control instance bound.
@@ -269,7 +269,7 @@ func softwareCapabilities() []capability.Capability {
 
 		act("software.learn.extract_patterns", "Extract Patterns", "Extract reusable patterns from completed objective", false),
 		act("software.learn.update_tech_radar", "Update Tech Radar", "Update the team's technology assessment", false),
-	}
+	}, telemetryMetricCapabilities()...)
 }
 
 // observabilityVerifier declares a verifier that measures one lower-is-better

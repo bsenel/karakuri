@@ -2,6 +2,7 @@ package telemetry
 
 import (
 	"context"
+	"encoding/json"
 	"path/filepath"
 	"testing"
 	"time"
@@ -102,5 +103,109 @@ func TestTwinWithNoObjectivesSeesNothing(t *testing.T) {
 	}
 	if snap.Escalation.Escalations != 0 {
 		t.Errorf("escalations = %d for a twin with no objectives, want 0", snap.Escalation.Escalations)
+	}
+}
+
+// seedDecision saves the audit rows the two production writers save for one
+// checkpoint decision: the row the checkpoint service writes when a person
+// decides (internal/feature/checkpoint/service.go, Record), and, when the
+// decision ends the loop, the terminal row the loop writes after it
+// (internal/feature/loop/runner.go, recordCheckpointTerminal). Each row is
+// built field by field the way its writer builds it.
+func seedDecision(t *testing.T, store storage.StorageAdapter, objID, checkpointID, choice, terminalReason string) {
+	t.Helper()
+	ctx := context.Background()
+	kind, success := storage.ToolEventApproval, true
+	switch choice {
+	case "reject":
+		kind, success = storage.ToolEventRejection, false
+	case "modify":
+		kind, success = storage.ToolEventModification, true
+	}
+	decision, _ := json.Marshal(map[string]any{
+		"checkpoint_id": checkpointID, "choice": choice, "note": "", "linked_audit_event": "",
+	})
+	if err := store.SaveToolEvent(ctx, storage.ToolEvent{
+		ID:          checkpointID + "-decision",
+		ObjectiveID: objID,
+		Kind:        kind,
+		Approver:    "operator@example.test",
+		PayloadJSON: string(decision),
+		Success:     success,
+	}); err != nil {
+		t.Fatalf("seed checkpoint decision: %v", err)
+	}
+	if terminalReason == "" {
+		return
+	}
+	terminal, _ := json.Marshal(map[string]any{
+		"reason": terminalReason, "choice": choice, "note": "", "approver": "operator@example.test",
+	})
+	if err := store.SaveToolEvent(ctx, storage.ToolEvent{
+		ID:               checkpointID + "-terminal",
+		ObjectiveID:      objID,
+		Kind:             storage.ToolEventRejection,
+		EscalationReason: terminalReason,
+		Approver:         "operator@example.test",
+		PayloadJSON:      string(terminal),
+		Success:          false,
+	}); err != nil {
+		t.Fatalf("seed loop terminal row: %v", err)
+	}
+}
+
+// One human rejection is one rejection in the approval rate.
+//
+// A rejected checkpoint leaves two rows of kind rejection: the checkpoint
+// service's record of the decision, and the loop's record that the decision
+// ended it. Counting both made one approval and one rejection read as 1/3, so
+// a criterion such as "approval rate >= 0.7" failed on a deployment that met
+// it. A modify that ran past the loop's modify limit leaves a terminal row of
+// kind rejection too, and nobody rejected anything there.
+func TestEscalationApprovalRateCountsEachDecisionOnce(t *testing.T) {
+	cases := []struct {
+		name           string
+		seed           func(t *testing.T, store storage.StorageAdapter)
+		wantApprovals  int
+		wantRejections int
+		wantRate       float64
+	}{
+		{
+			name: "one approval and one rejection",
+			seed: func(t *testing.T, store storage.StorageAdapter) {
+				seedDecision(t, store, "obj-a", "cp-approve", "approve", "")
+				seedDecision(t, store, "obj-a", "cp-reject", "reject", "rejected_at_checkpoint")
+			},
+			wantApprovals: 1, wantRejections: 1, wantRate: 0.5,
+		},
+		{
+			name: "a modify that exceeded the modify loop is not a rejection",
+			seed: func(t *testing.T, store storage.StorageAdapter) {
+				seedDecision(t, store, "obj-a", "cp-approve", "approve", "")
+				seedDecision(t, store, "obj-a", "cp-modify", "modify", "modify_loop_exceeded")
+			},
+			wantApprovals: 1, wantRejections: 0, wantRate: 1,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			r, store := newReader(t)
+			seedTenant(t, store, "twin-a", "obj-a", 0)
+			tc.seed(t, store)
+
+			snap, err := r.Snapshot(context.Background(), coretelemetry.Query{})
+			if err != nil {
+				t.Fatalf("snapshot: %v", err)
+			}
+			if snap.Escalation.Approvals != tc.wantApprovals {
+				t.Errorf("approvals = %d, want %d", snap.Escalation.Approvals, tc.wantApprovals)
+			}
+			if snap.Escalation.Rejections != tc.wantRejections {
+				t.Errorf("rejections = %d, want %d", snap.Escalation.Rejections, tc.wantRejections)
+			}
+			if got := snap.Escalation.ApprovalRate(); got != tc.wantRate {
+				t.Errorf("ApprovalRate() = %v, want %v", got, tc.wantRate)
+			}
+		})
 	}
 }
