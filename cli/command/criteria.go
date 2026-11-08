@@ -44,7 +44,7 @@ func parseCriterion(flag string) (map[string]any, error) {
 	for _, token := range strings.Split(flag, ";") {
 		key, value, ok := strings.Cut(token, "=")
 		if !ok || key == "" {
-			return nil, fmt.Errorf("--criterion %q: token %q is not key=value", flag, token)
+			return nil, fmt.Errorf("--criterion %q: token %q is not key=value; separate the pairs with ';' and give each a key, e.g. --criterion 'id=p95;kind=measured;metric=p95_latency;op=<=;target=250;unit=ms'\nRun 'krk objective create --help' for a full example", flag, token)
 		}
 		c[key] = criterionValue(key, value)
 	}

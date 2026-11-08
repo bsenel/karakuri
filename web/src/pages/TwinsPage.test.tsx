@@ -40,7 +40,11 @@ describe('TwinsPage', () => {
     get.mockResolvedValue([]);
 
     renderPage();
-    await waitFor(() => expect(screen.getByText(/No twins yet/)).toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.getByText(/No twins yet/)).toHaveTextContent(
+        'No twins yet. Create one above, or run krk twin create --name "Platform team".',
+      ),
+    );
     expect(screen.queryByText('Loading…')).not.toBeInTheDocument();
     expect(screen.queryByText('Retry')).not.toBeInTheDocument();
   });

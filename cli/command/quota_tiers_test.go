@@ -21,6 +21,10 @@ func TestQuotaSetErrorsShowExample(t *testing.T) {
 			[]string{"--tier llm-tokens is a daily cap", `krk quota set --tier llm-tokens --cap 2000 --reason "team grew"`},
 		},
 		{
+			[]string{"--tier", "capability", "--cap", "2000", "--per-minute", "5", "--reason", "nightly sweep"},
+			[]string{"apply to --tier request only", "--tier capability is a daily cap, so drop them", `krk quota set --tier capability --cap 2000 --reason "nightly sweep"`},
+		},
+		{
 			[]string{"--tier", "tokens", "--reason", "team grew"},
 			[]string{`unknown tier "tokens"`, "adapter, capability, llm-tokens, request", "krk quota config"},
 		},
