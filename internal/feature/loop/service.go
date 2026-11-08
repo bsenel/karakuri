@@ -44,6 +44,10 @@ type Service interface {
 	// previous server process. Bootstrap calls this once at startup so loops
 	// continue across server restarts (Phase 11).
 	ResumeStoredLoops(ctx context.Context) error
+	// Stop ends a loop on behalf of principal, for reason, and reports what
+	// it found (Phase 37 step 3). An unknown loop is not an error: it is
+	// reported as StopFoundUnknown.
+	Stop(ctx context.Context, loopID, principal, reason string) (StopResult, error)
 }
 
 type loopState struct {

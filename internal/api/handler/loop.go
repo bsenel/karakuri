@@ -3,6 +3,7 @@ package handler
 import (
 	"encoding/json"
 	"net/http"
+	"strconv"
 
 	"github.com/bsenel/karakuri/auth"
 	corecheckpoint "github.com/bsenel/karakuri/internal/core/checkpoint"
@@ -101,9 +102,37 @@ func (h *LoopHandler) Status(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, status)
 }
 
-// Stop ends a one-shot loop (Phase 37 step 3). Scaffolding: not implemented.
+// Stop ends a one-shot loop (Phase 37 step 3). The reason is optional, as
+// when pausing an objective: a body that does not decode is read as no
+// reason, and a missing one is filled in from the principal. The principal is
+// the authenticated one, never a body field, because who stopped a run is on
+// the record (SECURITY_AUDIT.md F-10).
 func (h *LoopHandler) Stop(w http.ResponseWriter, r *http.Request) {
-	http.Error(w, "not implemented", http.StatusNotImplemented)
+	id := chi.URLParam(r, "id")
+	var req struct {
+		Reason string `json:"reason"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&req)
+
+	principal := ""
+	if p, ok := auth.PrincipalFromContext(r.Context()); ok {
+		principal = p.ID
+	}
+	reason := req.Reason
+	if reason == "" && principal != "" {
+		reason = "stopped by " + principal
+	}
+
+	res, err := h.Loop.Stop(r.Context(), id, principal, reason)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if res.Found == featureloop.StopFoundUnknown {
+		http.Error(w, "loop "+strconv.Quote(id)+" not found", http.StatusNotFound)
+		return
+	}
+	writeJSON(w, res)
 }
 
 func (h *LoopHandler) Resume(w http.ResponseWriter, r *http.Request) {

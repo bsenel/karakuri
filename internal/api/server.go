@@ -404,6 +404,7 @@ func NewApp(
 				r.With(require(karakuriauth.ActionLoopStart, nil)).Post("/", loopH.Start)
 				r.With(require(karakuriauth.ActionLoopRead, karakuriauth.LoopResource)).Get("/{id}/status", loopH.Status)
 				r.With(require(karakuriauth.ActionLoopResume, karakuriauth.LoopResource)).Post("/{id}/resume", loopH.Resume)
+				r.With(require(karakuriauth.ActionLoopStop, karakuriauth.LoopResource)).Post("/{id}/stop", loopH.Stop)
 			})
 
 			r.Route("/checkpoints", func(r chi.Router) {
