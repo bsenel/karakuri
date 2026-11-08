@@ -206,6 +206,8 @@ type LoopStateModel struct {
 	Outcome      string    `gorm:"column:outcome;not null;default:''"`
 	CriteriaJSON string    `gorm:"column:criteria_json;not null;default:'[]'"`
 	Error        string    `gorm:"column:error;not null;default:''"`
+	StoppedBy    string    `gorm:"column:stopped_by;not null;default:''"`
+	StopReason   string    `gorm:"column:stop_reason;not null;default:''"`
 	RequestJSON  string    `gorm:"column:request_json;not null;default:'{}'"`
 	CreatedAt    time.Time `gorm:"column:created_at;autoCreateTime"`
 	UpdatedAt    time.Time `gorm:"column:updated_at;autoUpdateTime"`

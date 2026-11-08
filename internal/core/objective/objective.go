@@ -26,12 +26,16 @@ const (
 	// deliberately not StatusCompleted, which says the work is over and the
 	// row can be forgotten.
 	StatusConverged ObjectiveStatus = "converged"
+
+	// StatusStopped is a one-shot run somebody stopped (Phase 37 step 3). It
+	// has ended, and it is not a failure.
+	StatusStopped ObjectiveStatus = "stopped"
 )
 
 // Terminal reports whether a status means no further work will happen without
 // somebody asking for it. Standing objectives never reach one.
 func (s ObjectiveStatus) Terminal() bool {
-	return s == StatusCompleted || s == StatusFailed
+	return s == StatusCompleted || s == StatusFailed || s == StatusStopped
 }
 
 type Objective struct {

@@ -180,6 +180,14 @@ func (s *serviceImpl) runLoop(ctx context.Context, loopID string, req loop.Reque
 	for iter := 0; iter < maxIter; iter++ {
 		sc.iteration = iter
 
+		// A cancelled context is a stop from outside (Phase 37 step 3): no
+		// new iteration starts on it. How the loop decides to end is
+		// unchanged; finalizeLoop leaves a stopped loop as Stop stored it.
+		if ctx.Err() != nil {
+			s.finalizeLoop(ctx, state, obj, iterations, false, context.Cause(ctx))
+			return
+		}
+
 		// Update state step
 		// A spent budget pauses on a checkpoint rather than failing: it is a
 		// business limit, not a fault, and the right answer is to ask a human
@@ -335,6 +343,14 @@ func (s *serviceImpl) runLoop(ctx context.Context, loopID string, req loop.Reque
 			// approve: fall through to act with the (possibly revised) plan.
 		}
 
+		// A stop that arrived while the plan was being made or decided on
+		// starts none of its actions.
+		if ctx.Err() != nil {
+			span.End()
+			s.finalizeLoop(ctx, state, obj, iterations, false, context.Cause(ctx))
+			return
+		}
+
 		// act
 		state.mu.Lock()
 		state.status.Step = loop.StepAct
@@ -475,6 +491,17 @@ func (s *serviceImpl) recordCheckpointTerminal(ctx context.Context, state *loopS
 }
 
 func (s *serviceImpl) finalizeLoop(ctx context.Context, state *loopState, obj objective.Objective, iterations []loop.Iteration, criteriaMet bool, runErr error) {
+	// A stop took this loop's ending and stored it before cancelling: the
+	// cancel the runner is unwinding from is not a failure, and nothing here
+	// may write over it, publish objective.failed, or touch the objective.
+	state.mu.Lock()
+	if state.stoppedBy != "" {
+		state.mu.Unlock()
+		return
+	}
+	state.ended = true
+	state.mu.Unlock()
+
 	finalStatus := objective.StatusCompleted
 	evtType := event.TypeObjectiveCompleted
 

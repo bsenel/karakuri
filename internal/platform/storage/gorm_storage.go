@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"math"
 	"slices"
@@ -753,6 +754,8 @@ func (s *GORMStorage) SaveLoopState(ctx context.Context, st coreloop.State) erro
 		Outcome:      string(st.Outcome),
 		CriteriaJSON: "[]",
 		Error:        st.Error,
+		StoppedBy:    st.StoppedBy,
+		StopReason:   st.StopReason,
 		RequestJSON:  st.RequestJSON,
 	}
 	if m.RequestJSON == "" {
@@ -771,6 +774,11 @@ func (s *GORMStorage) SaveLoopState(ctx context.Context, st coreloop.State) erro
 func (s *GORMStorage) GetLoopState(ctx context.Context, loopID string) (coreloop.State, error) {
 	var m schema.LoopStateModel
 	if err := s.db.WithContext(ctx).First(&m, "loop_id = ?", loopID).Error; err != nil {
+		// Translated as GetReconcileState does, so a caller can tell a loop
+		// nobody knows from a database it could not reach (Phase 37 step 3).
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return coreloop.State{}, coreerrors.ErrNotFound
+		}
 		return coreloop.State{}, err
 	}
 	return loopStateFromModel(m), nil
@@ -813,6 +821,8 @@ func loopStateFromModel(m schema.LoopStateModel) coreloop.State {
 		CriteriaMet:  m.CriteriaMet,
 		CheckpointID: m.CheckpointID,
 		Error:        m.Error,
+		StoppedBy:    m.StoppedBy,
+		StopReason:   m.StopReason,
 		RequestJSON:  m.RequestJSON,
 		CreatedAt:    m.CreatedAt,
 		UpdatedAt:    m.UpdatedAt,

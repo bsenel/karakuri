@@ -39,6 +39,10 @@ type State struct {
 	// by a process that did not run the loop (Phase 36: reconcile reads it to
 	// tell a provider's rate limit from a failure).
 	Error string `json:"error,omitempty"`
+	// StoppedBy and StopReason are who stopped the run and why, set only when
+	// it ended on a stop (Phase 37 step 3).
+	StoppedBy  string `json:"stopped_by,omitempty"`
+	StopReason string `json:"stop_reason,omitempty"`
 
 	// RequestJSON is the full marshalled Request as supplied to Run(); enough
 	// to reconstruct the loop's parameters on a cold start.
@@ -56,4 +60,7 @@ const (
 	RunConverged   RunOutcome = "converged"
 	RunBudgetSpent RunOutcome = "budget_spent"
 	RunErrored     RunOutcome = "errored"
+	// RunStopped is a run somebody stopped from outside. It is not an error:
+	// nothing in the run failed.
+	RunStopped RunOutcome = "stopped"
 )

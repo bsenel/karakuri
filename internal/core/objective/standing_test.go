@@ -121,7 +121,7 @@ func TestZeroModeIsOneshot(t *testing.T) {
 }
 
 func TestTerminalStatuses(t *testing.T) {
-	terminal := []ObjectiveStatus{StatusCompleted, StatusFailed}
+	terminal := []ObjectiveStatus{StatusCompleted, StatusFailed, StatusStopped}
 	resting := []ObjectiveStatus{StatusPending, StatusActive, StatusBlocked, StatusConverged}
 
 	for _, s := range terminal {
