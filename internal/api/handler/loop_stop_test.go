@@ -94,7 +94,8 @@ func newStoppingLoops() *stoppingLoops {
 // path the server mounts. An empty principal sends the request without one.
 func postStop(t *testing.T, loops *stoppingLoops, principal, loopID, body string) *httptest.ResponseRecorder {
 	t.Helper()
-	h := &handler.LoopHandler{Loop: loops}
+	store, reconcileSvc := newStopReconcile(t, loops)
+	h := &handler.LoopHandler{Loop: loops, Store: store, Reconcile: reconcileSvc}
 	r := chi.NewRouter()
 	r.Post("/api/v1/loops/{id}/stop", h.Stop)
 
@@ -106,6 +107,24 @@ func postStop(t *testing.T, loops *stoppingLoops, principal, loopID, body string
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 	return rec
+}
+
+// newStopReconcile is the reconcile service the stop route calls, over a
+// fresh database and the given loop service.
+func newStopReconcile(t *testing.T, loops *stoppingLoops) (storage.StorageAdapter, *featurereconcile.Service) {
+	t.Helper()
+	db, err := platformdb.Open("sqlite", filepath.Join(t.TempDir(), "loop_stop.db"))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	if err := platformdb.RunMigrations(db, ""); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	store := storage.NewGORMStorage(db)
+	hub := event.NewHub()
+	rec := featurereconcile.NewService(store, loops, environment.NewRegistry(), nil,
+		featurecp.NewService(store, hub), hub, karakuriquota.Deps{}, featurereconcile.Config{})
+	return store, rec
 }
 
 func decodeStopResult(t *testing.T, rec *httptest.ResponseRecorder) featureloop.StopResult {
@@ -236,19 +255,9 @@ func TestLoopStopFailureIs500(t *testing.T) {
 // the answer names the objective and says it was paused, so the caller knows
 // no later tick starts a new pass.
 func TestLoopStopOfAStandingObjectiveNamesItPaused(t *testing.T) {
-	db, err := platformdb.Open("sqlite", filepath.Join(t.TempDir(), "loop_stop.db"))
-	if err != nil {
-		t.Fatalf("open db: %v", err)
-	}
-	if err := platformdb.RunMigrations(db, ""); err != nil {
-		t.Fatalf("migrate: %v", err)
-	}
-	store := storage.NewGORMStorage(db)
-	hub := event.NewHub()
 	loops := newStoppingLoops()
 	loops.found["loop-watch"] = featureloop.StopFoundRunning
-	rec := featurereconcile.NewService(store, loops, environment.NewRegistry(), nil,
-		featurecp.NewService(store, hub), hub, karakuriquota.Deps{}, featurereconcile.Config{})
+	store, rec := newStopReconcile(t, loops)
 
 	ctx := context.Background()
 	obj := objective.Objective{

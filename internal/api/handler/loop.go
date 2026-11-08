@@ -102,7 +102,8 @@ func (h *LoopHandler) Status(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, status)
 }
 
-// Stop ends a one-shot loop (Phase 37 step 3). The reason is optional, as
+// Stop ends a loop, and pauses its standing objective when it has one (Phase
+// 37 step 3). The reason is optional, as
 // when pausing an objective: a body that does not decode is read as no
 // reason, and a missing one is filled in from the principal. The principal is
 // the authenticated one, never a body field, because who stopped a run is on
@@ -123,7 +124,9 @@ func (h *LoopHandler) Stop(w http.ResponseWriter, r *http.Request) {
 		reason = "stopped by " + principal
 	}
 
-	res, err := h.Loop.Stop(r.Context(), id, principal, reason)
+	// Through reconcile, which also pauses the loop's standing objective so
+	// a watch-mode run stays stopped (Phase 37 step 3).
+	res, err := h.Reconcile.StopLoop(r.Context(), id, principal, reason)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
