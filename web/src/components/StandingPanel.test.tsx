@@ -158,4 +158,35 @@ describe('StandingPanel', () => {
     await waitFor(() => expect(screen.getByText('nothing moved, nothing spent', { exact: false })).toBeInTheDocument());
     expect(screen.getByText('reconciled — converged')).toBeInTheDocument();
   });
+
+  // A panel that is still asking and a panel that failed are both announced,
+  // so a screen reader hears more than silence while the request is out.
+  it('announces that it is loading', () => {
+    get.mockReturnValue(new Promise(() => {}));
+
+    render(<StandingPanel objectiveID="obj-1" />);
+    expect(screen.getByRole('status')).toHaveTextContent('Loading control loop');
+  });
+
+  it('announces a failure to load', async () => {
+    get.mockRejectedValue(new APIError(500, 'database is down'));
+
+    render(<StandingPanel objectiveID="obj-1" />);
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('database is down'));
+  });
+
+  it('labels the table of passes', async () => {
+    get.mockResolvedValue({
+      state: {
+        objective_id: 'obj-1', phase: 'idle', paused: false,
+        criteria_met: 1, score_streak: 0, consecutive_failures: 0, clean_runs: 0,
+      },
+      history: [outcome({ id: 'a', trigger: 'schedule' })],
+    });
+
+    render(<StandingPanel objectiveID="obj-1" />);
+    await waitFor(() =>
+      expect(screen.getByRole('table', { name: 'Recent passes' })).toBeInTheDocument(),
+    );
+  });
 });
