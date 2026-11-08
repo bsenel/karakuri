@@ -101,6 +101,11 @@ func (h *LoopHandler) Status(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, status)
 }
 
+// Stop ends a one-shot loop (Phase 37 step 3). Scaffolding: not implemented.
+func (h *LoopHandler) Stop(w http.ResponseWriter, r *http.Request) {
+	http.Error(w, "not implemented", http.StatusNotImplemented)
+}
+
 func (h *LoopHandler) Resume(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	var req struct {

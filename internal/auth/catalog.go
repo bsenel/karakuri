@@ -51,6 +51,9 @@ const (
 	ActionLoopStart  auth.Action = "loop:start"
 	ActionLoopRead   auth.Action = "loop:read"
 	ActionLoopResume auth.Action = "loop:resume"
+	// ActionLoopStop ends a one-shot loop (Phase 37 step 3). Scaffolding:
+	// not yet registered, granted or routed.
+	ActionLoopStop auth.Action = "loop:stop"
 
 	ActionCheckpointRead    auth.Action = "checkpoint:read"
 	ActionCheckpointResolve auth.Action = "checkpoint:resolve"
