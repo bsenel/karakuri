@@ -60,6 +60,7 @@ export function QuotaUsage() {
 
       {twinID && (
         <DataTable
+          label="Usage by tier"
           loading={usage.loading}
           error={usage.error}
           rows={rows}
