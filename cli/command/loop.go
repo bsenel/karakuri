@@ -1,6 +1,8 @@
 package command
 
 import (
+	"errors"
+
 	"github.com/bsenel/karakuri/cli/client"
 	"github.com/spf13/cobra"
 )
@@ -64,6 +66,18 @@ func loopStatusCmd() *cobra.Command {
 			}
 			client.PrintOutput(data, output)
 			return nil
+		},
+	}
+}
+
+// loopStopCmd is a stub for Phase 37 step 3; the tests in loop_stop_test.go
+// describe what it has to do.
+func loopStopCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "stop <loop-id>",
+		Short: "Stop a loop",
+		RunE: func(_ *cobra.Command, _ []string) error {
+			return errors.New("not implemented")
 		},
 	}
 }
