@@ -6,6 +6,7 @@ import (
 	"strconv"
 
 	"github.com/bsenel/karakuri/auth"
+	karakuriauth "github.com/bsenel/karakuri/internal/auth"
 	corecheckpoint "github.com/bsenel/karakuri/internal/core/checkpoint"
 	"github.com/bsenel/karakuri/internal/core/loop"
 	"github.com/bsenel/karakuri/internal/core/objective"
@@ -20,6 +21,19 @@ type LoopHandler struct {
 	Loop      featureloop.Service
 	Store     storage.StorageAdapter
 	Reconcile *featurereconcile.Service
+
+	// Authorizer answers stop-all's per-run checks: loop:stop on each loop and
+	// objective:pause on each objective (Phase 37 step 4).
+	Authorizer auth.Authorizer
+	// Containers attaches the containers a run belongs to, so stop-all asks
+	// about the same resource refs the per-run routes do.
+	Containers karakuriauth.ScopeLookup
+}
+
+// StopAll stops every running loop and pauses every standing objective the
+// caller may stop (Phase 37 step 4). Not implemented yet.
+func (h *LoopHandler) StopAll(w http.ResponseWriter, _ *http.Request) {
+	http.Error(w, "stop-all is not implemented yet", http.StatusNotImplemented)
 }
 
 func (h *LoopHandler) Start(w http.ResponseWriter, r *http.Request) {

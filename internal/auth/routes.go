@@ -159,6 +159,10 @@ func DomainResource(r *http.Request) auth.ResourceRef {
 	return auth.Resource("domain", chi.URLParam(r, "id"))
 }
 
+// StopAllPath is the route that stops every running loop and pauses every
+// standing objective the caller may stop (Phase 37 step 4).
+const StopAllPath = "/stop-all"
+
 // Route records one API route and the permission it demands. The table below is
 // the readable form of what internal/api/server.go wires up, and the integration
 // suite walks it to assert the expected 200/403 for every role — so a route that
