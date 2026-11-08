@@ -59,6 +59,7 @@ Phases 27–32 were proposed from two kinds of evidence: what this repository de
 | 46    | An Approval After Third-Party Text Buys One Action, Never a Rung | **Planned** |
 | 47    | First Alpha Release (`v0.1.0-alpha.1`, tagged once 37 to 41 and 47 are Completed) | **Planned** |
 | 48    | Independent Groups Run in Parallel         | **Planned**   |
+| 49    | A Bound That Says No Delegation Is Kept     | **Planned**   |
 
 
 ---
@@ -6717,6 +6718,110 @@ make the machine bigger: on this deployment's 4 GB the ceiling stays at 1
 until there is more memory or the coding agents run elsewhere. It is not
 distribution across nodes, which is Phase 11's goal for loops ("Loops survive
 server restarts and parallelize across nodes").
+
+---
+
+## Phase 49 — A Bound That Says No Delegation Is Kept (Planned)
+
+**Kind: DEMAND.** From docs/research/discovery-2026-11-08.md, '## Fit and
+bets', '### Recommended' item 1 (ranking candidate 1), resting on
+'## Feasibility' (i). Two organisations' trackers report a runtime whose
+unattended or delegated path skipped the bound its operator set, and both
+maintainers treated it as a real bug: ZeroClaw #10968, scheduled turns skip
+approval, labelled `priority:p1` and `risk:high`
+(https://github.com/zeroclaw-labs/zeroclaw/issues/10968, read 2026-10-25,
+[Q] in docs/research/discovery-2026-10-25.md); and GitHub's copilot-cli
+#3013, "Any `preToolUse` hook that enforces policy ... is bypassed entirely
+by sub-agents", closed as fixed on 2026-08-05
+(https://api.github.com/repos/github/copilot-cli/issues/3013, read
+2026-11-01, [Q] in docs/research/discovery-2026-11-01.md). Demand by count is
+weak: #3013 had 0 reactions. Today's report carries both forward as
+candidate 1's sources; it fetched neither again.
+
+**Goal:** an agent whose `AuthorityBounds.CanDelegate` is false never hands a
+task to a coding-agent CLI without a human approving that plan, and the
+packs declare `CanDelegate` true for the agents that are meant to delegate.
+
+**Why.** Observed by the report's Feasibility (i) and re-read for this phase
+on 2026-11-08: `CanDelegate` is declared at `internal/core/agent/agent.go:43`,
+and `AuthorityBounds.Decide` (`internal/core/agent/decide.go:96-165`), which
+its own comment calls "the whole policy", checks provenance, confidence,
+`RequiresApprovalFor` and MCP tools, and the action cap, and never reads
+`CanDelegate`. Outside tests and pack declarations the field is only written,
+at `internal/feature/reconcile/authority.go:32` and `:59`, to false. The
+pack test at `domains/software/selfimprove_test.go:71` asserts the field
+*is* false, the pattern `decide.go`'s comment warns about: "every test
+asserted the field *was* zero, none asserted what zero *did*". So a bound an
+operator sees in the evidence pack (`docs/openapi.yaml` lists `CanDelegate`)
+promises something no code keeps. Observed in the same read: three
+capabilities reach a CLI, `software.act.delegate_to_cli`,
+`software.act.write_code` and `software.act.write_test` (`cliPrompt`,
+`domains/software/environments.go:1088-1093`); and the software pack's
+`authority` helper (`domains/software/agents.go:26-36`) never sets
+`CanDelegate`, so the Implementer and SRE, which plan `write_code`, carry
+false today. Inferred: enforcing the field without first declaring it would
+escalate every Implementer plan, delivery included. Not verified: which
+agent the delivery stream's objective resolves to, and whether any pack
+outside `domains/` registers a delegating capability.
+
+**Steps.**
+1. *Find out (one pull request, time-boxed to the test and the list).* Add a
+   case to a test in `internal/core/agent/` that runs `Decide` with
+   `CanDelegate: false` and a planned `software.act.delegate_to_cli`, and
+   list in the pull request every agent definition under `domains/` whose
+   capabilities include one of the three delegating capabilities, with its
+   declared `CanDelegate`. **Kill criterion:** if the case escalates before
+   any code change (a path this phase's read missed already keeps the bound),
+   ship the test and the list, write the finding here and mark the phase
+   Completed with no further steps.
+2. **The capability declares that it delegates.** Add a `Delegates bool`
+   beside `NeedsWorkspace` on `capability.Capability`
+   (`internal/core/capability/capability.go`), declared rather than inferred
+   from the name for the reason `NeedsWorkspace` gives; set it on the three
+   capabilities `cliPrompt` routes to a CLI; add the field to the capability
+   schema in `docs/openapi.yaml`.
+3. **The packs say who may delegate, before anything is enforced.** Every
+   agent in step 1's list that is meant to delegate declares
+   `CanDelegate: true` in `domains/software/agents.go` (and the other packs
+   the list names); one that is not keeps false and the pull request says
+   so. `internal/feature/reconcile/authority.go` keeps writing false at the
+   sense level and for an unknown level, so a standing objective below `act`
+   still never delegates.
+4. **`Decide` keeps the bound.** `stepDecide`
+   (`internal/feature/loop/decide.go`) passes which planned capabilities
+   declare `Delegates`; `Decide` escalates with the reason "agent is bounded
+   to no delegation" and the capability's ID when one is planned and
+   `CanDelegate` is false. It goes after the `RequiresApprovalFor` check and
+   before the zero-cap rule, so a more specific reason still wins, as the
+   function's comment orders them. An escalation, not a refusal: as with
+   `RequiresApprovalFor`, a human may approve the one plan.
+5. **The conformance suite runs the bound.** `internal/conformance/suite.go`
+   gains a check, beside the `RequiresApprovalFor` one, that an agent with
+   `CanDelegate: false` that plans a delegating capability escalates; the
+   field-value assertion in `domains/software/selfimprove_test.go:71` stays,
+   now backed by behaviour.
+
+**Acceptance.**
+- `go test ./internal/core/agent/...` holds a case where `CanDelegate: false`
+  and a planned capability with `Delegates: true` escalate with the reason
+  naming the capability, and one where `CanDelegate: true` does not.
+- `grep -rn 'CanDelegate' internal/core/agent/decide.go` finds a read.
+- The conformance suite fails a pack whose agent has `CanDelegate: false`,
+  plans `software.act.delegate_to_cli` and does not escalate.
+- An Implementer plan of one `software.act.write_code` at its current
+  autonomy escalates exactly as often as before this phase (step 3 declared
+  it), shown by an existing or new test in `domains/software`.
+- `go test ./...` passes, including `test/integration/openapi_schemas_test.go`.
+
+**What this is not.** It does not pass the run's bounds into the delegated
+CLI or narrow the child's tools by rung; that is the child's side, which
+Phase 39 (Planned, one MCP gateway for every tool call) and Phase 34's
+delegation credential address. It does not keep server secrets from the
+delegated process; that is Phase 47 step 4 (Planned). It does not change
+what an approval after third-party text buys (Phase 46, Planned) or whether
+the repository's checks run before a delegated push (Phase 45, Planned). It
+does not touch `CanModifyObjective`; whether anything reads that field was
+not checked for this phase.
 
 ---
 
