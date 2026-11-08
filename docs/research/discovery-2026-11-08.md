@@ -182,6 +182,22 @@ New: yes. It fills the 2026-11-01 thin spot "Langfuse: not reached" (licence and
 
 **(v) Inferred:** two signals, both from vendor notes. Audit logs moved behind the enterprise plan on 10-22, so buyers who need them pay; and read-access auditing became a feature in its own right. Karakuri's export (`export.go:149`) is Apache 2.0 with no plan gate; whether it records reads was not checked. Nothing was measured.
 
+### 5. Temporal, with DBOS
+
+New: yes. It fills the 2026-11-01 thin spot "Temporal's server history before 2026-09-11", for 04-10 to 06-10 and 07-08, and the stretch item DBOS.
+
+**(i) Shipped.** Observed [E] (https://github.com/temporalio/temporal/releases?page=2, read 2026-11-08; page 1 was not fetched, so 07-11 to 09-11 is unread). Vendor claims: v1.31.1 (06-10) CLI 1.7.0, a search-attribute race fix and stale gRPC connection closing; v1.29.7 (06-12) and v1.30.5 (06-15) security and PostgreSQL visibility fixes; v1.30.6 (07-08) fixes CVE-2026-5724, with a possibly breaking change for authorization plus replication (`system.disableStreamingAuthorizer`). The v1.31.0 notes were cut off in the extract; https://github.com/temporalio/temporal/releases/tag/v1.31.0 was not read [N].
+- Pause: https://github.com/temporalio/temporal/issues/3006, "Workflow Pause / Unpause", is **open** on 2026-11-08 [E]. Opened 2022-06-17, closed and reopened 2023-03-03. A Temporal contributor's 2025-02-20 comment called activity pause "soon" and workflow pause undesigned; the newest comment is a +1 of 2026-07-08. The issue names no version where either shipped. Observed: no release note read names pause. Whether activity pause shipped is still unknown.
+- DBOS Transact (Python), https://github.com/dbos-inc/dbos-transact-py/releases, read 2026-11-08 [E]: 2.28.0 (07-21) to 3.4.0 (10-28), ten releases, 3.0.0 on 09-16. No note read mentions agents, LLMs or MCP; the nearest are streaming items (2.28.0, 2.31.0, 3.3.0 "read stream values in pages"). 05-08 to 07-20 is on page 2, unread.
+
+**(ii) What they do that Karakuri does not.** Inferred: both are general durable-execution engines with years of server releases; Karakuri delegates to one rather than being one (see iii).
+
+**(iii) What Karakuri does that they do not.** Observed (code): Karakuri already has a Restate executor with cancel (`internal/platform/executor/restate.go:139`), and resumes stored loops after a restart (`internal/feature/loop/service.go:394`, `ResumeStoredLoops`) and after a checkpoint decision (`internal/feature/loop/service.go:219`). Neither engine has checkpoints for people, cadences declared on an objective (`internal/core/objective/standing.go:43`) or authority bounds (`internal/core/agent/agent.go:37`) in anything read.
+
+**(iv) Complaints.** #3006 was read as a whole page through the extract tool [E]; it is a long-open request, not a complaint thread, and the tool gave no comment or reaction counts, so none are reported.
+
+**(v) Inferred:** "pause and keep state" is still not a shipped primitive in Temporal after more than four years open, as far as the pages read show. Karakuri's Phase 37 (Planned, `docs/roadmap.md:4030`) aims at the same gap; nobody among the engines read here has closed it. DBOS shows no move toward agents in its notes. Nothing was measured.
+
 <!-- p4a:end -->
 
 ## Capability matrix
