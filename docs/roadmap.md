@@ -4297,6 +4297,20 @@ decides to end (AGENTS.md rule 8).
      folds the caller's ID into it), so the stop names the fixed principal
      `reconcile`. A `Stop` error is logged and the pass is filed as stopped
      all the same, since the paused state was stored before the cancel.
+   - *A stop on a watch also pauses its objective* (the owner's decision on
+     #222). `POST /loops/{id}/stop` calls reconcile's `StopLoop`
+     (`internal/feature/reconcile/stoploop.go`) instead of the loop service's
+     `Stop`. When the loop belongs to a standing objective that is not
+     paused, `StopLoop` pauses it with the stop's reason through `Pause`
+     first, which cancels a pass in flight, and stops the loop second, so no
+     tick or trigger can start a pass between the two. A loop the pause
+     already ended answers `running`, not `ended` or an error. The answer
+     keeps `loop_id` and `found` and adds `objective_id` and
+     `objective_paused`, true only when this stop paused the objective (false
+     for a one-shot objective or one already paused); `docs/openapi.yaml`
+     says so. This settles the gap the next item describes. The route keeps
+     `loop:stop`; every system role that holds it also holds
+     `objective:pause`.
    - *Not verified.* The watch-mode test passes, but what it shows is
      narrower than the acceptance line. Its failure message in
      `internal/feature/loop/stop_test.go` says why: the loop service cannot
