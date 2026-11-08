@@ -4230,6 +4230,20 @@ decides to end (AGENTS.md rule 8).
    that the action returned within the bound with a result marked as cut. A
    second case covers a child that exits when asked: the action returns well
    inside the bound.
+   *As delivered:* the bound is **10 seconds** (`stopGrace` in
+   `internal/platform/tools/cliagent/subprocess.go`), counted from the moment
+   the run's context is cancelled: the group gets SIGTERM at once and SIGKILL
+   when the last tenth of the bound begins (at 9 seconds), and the action
+   returns when the group is seen gone or the bound is up, whichever is first;
+   then the read ends of the child's output close. `copilot.go` now runs
+   through `runStreaming`; `claude.go`, `cursor.go` and `gemini.go` already
+   did. The action's result carries `cut` and `group_exited` in its state
+   delta. **Where the bound does not hold:** on platforms without Unix process
+   groups (Windows; the build is `!unix`) a stop kills the direct child only,
+   the child's own children are not reached, the group is never reported as
+   exited, and an orphan holding the output pipe may keep the action open.
+   The bound also covers only processes that stay in the child's group: one
+   that starts a new session or group of its own escapes it on any platform.
 3. **A one-shot loop can be stopped.** `POST /loops/{id}/stop` with a reason,
    and `krk loop stop <loop-id> --reason "..."`, with `docs/openapi.yaml`
    updated. The loop service keeps a cancel function per running loop; the stop

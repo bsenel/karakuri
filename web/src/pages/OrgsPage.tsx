@@ -99,7 +99,11 @@ function Orgs() {
 
       {mayWrite && <CreateRow noun="organisation" onCreate={(name) => create('org', name, '')} />}
 
-      {orgs.length === 0 && <p className="muted">No organisations yet.</p>}
+      {orgs.length === 0 && (
+        <p className="muted">
+          No organisations yet. Add one above, or run <code>krk org create --name acme</code>.
+        </p>
+      )}
 
       {orgs.map((org) => (
         <div className="card" key={org.id} style={{ marginTop: 12 }}>

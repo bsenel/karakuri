@@ -113,7 +113,11 @@ export function TwinsPage() {
               </tr>
             ))}
             {twins.length === 0 && (
-              <tr><td colSpan={5} className="muted">No twins yet — create one above.</td></tr>
+              <tr>
+                <td colSpan={5} className="muted">
+                  No twins yet. Create one above, or run <code>krk twin create --name "Platform team"</code>.
+                </td>
+              </tr>
             )}
           </tbody>
         </table>
