@@ -247,6 +247,49 @@ Inferred: on code, Karakuri's clear "yes" rows are cadence, digests, evidence ex
 ## Technical frontier
 
 <!-- p5:start -->
+Written by part 5 on 2026-11-08 (date read: 2026-11-08). Read first: the 'Technical frontier' and 'Still thin (part 5)' of 2026-11-01, and the Goal lines of Phases 28, 29, 33, 42, 43 and 46; nothing below restates them. Pages came through a fetch tool that returns a model-written report. Each report quoted the page text and said which parts were verbatim. [Q] marks words the tool gave as verbatim, and [E] marks the tool's paraphrase. On all three provider pages the tool's own summary of the page tail contradicted the verbatim text (wrong newest dates). This part used only the verbatim entries.
+
+### C. Model and provider capabilities, 2026-10-21 to 2026-11-08
+
+New: yes. Two of the primary URLs below appear in no earlier report, and this subsection fills 2026-11-01's thin spot "Item 3 ... not reached".
+
+**C1. Anthropic: smaller requests for long agent loops; a cost analytics API.** Observed (https://platform.claude.com/docs/en/release-notes/api, newest entry November 5, 2026) [Q]: 2 November, "Long conversations and agent loops on the Messages API can now send smaller requests". 29 October, "We’ve launched the Usage and Cost Analytics API in beta with the analytics-usage-cost-2026-08-24 beta header" and "The Usage and Cost API is now a legacy API." 28 October, the maximum request size for Messages and Token Counting went "from 32 MB to 128 MB". 30 October, fast mode for Claude Opus 4.8 is deprecated, "with removal on November 30, 2026." 21 October, "We’ve released API version 2026-10-21." The mechanism behind "smaller requests" was not read: the linked page was not followed.
+- Maturity: shipped by one vendor. The analytics API is a beta.
+- What changes for an agent platform. Inferred: context management. If a loop can send a delta instead of the whole transcript each turn, an iteration's cost and latency stop growing with history. That matters for a reconcile pass that re-runs the loop many times. Cost controls: a provider-side usage and cost API is a second source for Phase 38's per-objective spend, so Karakuri's own token count could be reconciled against the bill. That is unbuilt, and the beta header is what an adapter would pin. Removal on a fixed date: a pinned model option that disappears on 30 November is the kind of drift Phase 43's shape test does not cover, because the option is a mode, not a tool-call shape.
+
+**C2. OpenAI: an Agents API that schedules and edits tools mid-session.** Observed (https://developers.openai.com/api/docs/changelog, newest entry Nov 5) [Q]: 23 October, "Added scheduled automations to the Agents API public beta." 30 October, "You can now update the tools in an existing session in the Agents API public beta." and "Added automatic review for eligible Agents API projects." 26 October, "GPT-6.1 Terra, a fast, efficient model for visual reasoning, precise computer use, and clear, natural writing." 22 October, "The Decisions API is now generally available with gpt-6-luna." 21 October, "You can now choose which service tiers projects can use in Platform settings." The linked pages for "scheduled automations", "automatic review" and the Decisions API were not followed, so what each does beyond its one line is unknown.
+- Maturity: public beta from one vendor, except the Decisions API (GA) and the tier setting.
+- What changes. Inferred: long-running and background tasks. A vendor now schedules agent runs on the vendor's side. That is the standing-objective shape ADR 015 puts in `internal/feature/reconcile`, now hosted by a model provider. Karakuri's difference becomes authority (bounds, checkpoints, earned autonomy) and provenance, not the schedule itself. Tool use: changing tools mid-session means a run's capability set is no longer fixed at start. If Karakuri delegated to such a session, Phase 46's "one action, never a rung" would need the tool list pinned at the approval. Cost controls: a per-project service-tier allowlist is an operator spending lever outside Karakuri, with no Karakuri equivalent read.
+
+**C3. Google: Computer Use GA; tools may return files; storage on by default.** Observed (https://aistudio.google.com/docs/changelog, reached by a 301 from https://ai.google.dev/gemini-api/docs/changelog; newest entry November 6, 2026) [Q]: 30 October, "Released the Computer Use tool to general availability (GA) across the Interactions and GenerateContent APIs." 5 November, "Tools can now return Office and OpenDocument files, audio, and video to the model." 26 October, Generate Content requests "now store requests by default (`store=true`)". 27 October, a Gemini API CLI in beta, "a stateless, zero-dependency command-line client for AI coding agents". 2 November, Gemini 2.5 Pro and 2.5 Flash are "no longer available to select in Google AI Studio". ADK release notes: not read (see Still thin).
+- Maturity: Computer Use is GA from one vendor. The CLI is a beta.
+- What changes. Inferred: computer use is now a GA vendor tool, and a computer-use observation is text and pixels from a third-party screen. Under AGENTS.md rule 9 it is `TrustThirdParty` by what it holds. Tool results that carry files mean an MCP or tool adapter's result is no longer only text, so the provenance flag has to travel with a blob too. That is relevant to ADR 002's content-addressed store. Memory and data handling: `store=true` by default means a request is retained by the provider unless the adapter says otherwise. A Gemini adapter (Phase 6's fallback chain) should set the flag explicitly. Whether Karakuri's Gemini adapter sends `store` was not checked in code.
+
+### A. Protocols and standards
+
+New: no. The draft changelog URL was read in earlier reports.
+
+**A1. MCP draft: one schema fix since 2026-07-28.** Observed (https://modelcontextprotocol.io/specification/draft/changelog) [Q]: "Changes since the most recent release will accumulate here." The only entry restores "the optional `_meta` field on `CreateMessageRequestParams`, `ElicitRequestFormParams`, `ElicitRequestURLParams`, `ElicitResult`, and `ListRootsResult`", which "was unintentionally dropped in 2026-07-28" (#3468). The releases feed timed out twice and was not read. Maturity: a draft fix to a stable spec. Inferred: elicitation results can carry `_meta` again, so a client can attach provenance or a trace id to an elicitation answer. That is small, but it is the only place an MCP human answer could carry "who approved" metadata. The open SEPs, ext-auth, A2A, OTel agent spans past character 39,343 and IETF drafts were not reached this cycle.
+
+### B. Research
+
+Not reached (see Still thin). No paper is cited this cycle.
+
+### Candidate frontier bets (part 5)
+
+**Bet 1. Provider-side cost data reconciles Karakuri's own spend counter.** Primary evidence: C1, Anthropic's Usage and Cost Analytics API (beta, 29 October). The bet: Phase 38's per-objective spend is checked weekly against the provider's own usage figure, and a gap above a threshold raises a finding, because a cap that counts tokens wrong caps nothing. Proved wrong if the analytics API cannot be filtered finely enough (per key, per request tag) to attribute usage to one objective. First slice, one day: read the API's reference page and list its group-by dimensions. Kill it if none maps to a Karakuri objective or API key.
+
+**Bet 2. An approval pins the tool list it approved.** Primary evidence: C2, mid-session tool updates in OpenAI's Agents API (30 October). The bet: a checkpoint resolution records the hash of the run's tool set, and an action after a tool-set change needs a fresh approval. That extends Phase 46 from third-party text to capability drift. Proved wrong if no runtime Karakuri delegates to can change tools after start, or if Phase 46's single-action rule already makes the approval void before any tool change can matter. First slice, half a day: list which delegated runtimes (Phase 6 CLIs, MCP servers via `tools/list_changed`) can change tools mid-run. Kill it if none can.
+
+**Bet 3 (weak). File-bearing tool results keep their provenance in the blob store.** Primary evidence: C3, Gemini tools returning files (5 November). The bet: a stored artifact derived from a third-party tool result carries `TrustThirdParty` in its metadata, so a later run that reads the artifact inherits the flag. Proved wrong if `storage.StorageAdapter` already records trust per blob. First slice, two hours: grep the artifact store for a trust field. Kill it if present.
+
+### Still thin (part 5)
+
+- (B) Research: not reached. No paper was read, so this cycle cites no new paper. The three-paper requirement is unmet.
+- (A) beyond the draft changelog: the MCP releases feed (two timeouts), the open SEPs, ext-auth, A2A past character 200,000 and an implementer's page, OTel agent spans past character 39,343, and IETF agent-identity drafts were all not read.
+- Google ADK release notes: not read.
+- Linked detail pages not followed: Anthropic's "smaller requests" mechanism and its Usage and Cost Analytics reference; OpenAI's scheduled automations, automatic review and Decisions API pages.
+- Not checked in code: whether the Gemini adapter sets `store`, and whether the artifact store records trust (Bet 3).
 <!-- p5:end -->
 
 ## Governance and buying criteria
@@ -370,6 +413,12 @@ All read or attempted on 2026-11-08, through a fetch tool that returns a model-w
 ### Sources, part 5
 
 <!-- s5:start -->
+All read 2026-11-08 through a fetch tool that returns a model-written report. P = primary.
+- https://platform.claude.com/docs/en/release-notes/api (reached by a 301 from https://docs.claude.com/en/release-notes/api): P, the entries from 21 October to 5 November verbatim [Q]; the tool's summary of the tail was used for nothing
+- https://developers.openai.com/api/docs/changelog (reached by a 301 from https://platform.openai.com/docs/changelog): P, the entries from 21 October to 5 November verbatim [Q]; the tail summary was used for nothing
+- https://aistudio.google.com/docs/changelog (reached by a 301 from https://ai.google.dev/gemini-api/docs/changelog): P, the entries from 26 October to 6 November verbatim [Q]; the tail summary was used for nothing
+- https://modelcontextprotocol.io/specification/draft/changelog: P, full text [Q]
+- https://github.com/modelcontextprotocol/modelcontextprotocol/releases.atom: not read (timed out twice) [N]
 <!-- s5:end -->
 
 ### Sources, part 6
