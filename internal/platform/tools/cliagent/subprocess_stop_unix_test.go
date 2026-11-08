@@ -215,6 +215,101 @@ func TestRunStreaming_StopKillsTheWholeGroupThatIgnoresTerm(t *testing.T) {
 	}
 }
 
+// orphanScript is a delegated coding agent that leaves a background process
+// behind holding its standard error, writes its own PID and the orphan's to
+// the pid file ($1), prints one line and exits 0 at once.
+func orphanScript(t *testing.T) string {
+	t.Helper()
+	script := "#!/bin/sh\n" +
+		"sleep 30 >/dev/null &\n" +
+		"echo \"$$ $!\" > \"$1.tmp\"\nmv \"$1.tmp\" \"$1\"\n" +
+		"echo done\n"
+	bin := filepath.Join(t.TempDir(), "orphan-agent")
+	if err := os.WriteFile(bin, []byte(script), 0o600); err != nil {
+		t.Fatalf("write script: %v", err)
+	}
+	if err := os.Chmod(bin, 0o700); err != nil { // #nosec G302 -- the script must be executable
+		t.Fatalf("chmod script: %v", err)
+	}
+	return bin
+}
+
+// startOrphanRun runs orphanScript through runStreaming and waits until the
+// script itself has exited. The orphan is killed when the test ends, so a red
+// test leaks nothing.
+func startOrphanRun(t *testing.T, ctx context.Context) <-chan streamResult {
+	t.Helper()
+	dir := t.TempDir()
+	pidFile := filepath.Join(dir, "pids")
+	bin := orphanScript(t)
+
+	done := make(chan streamResult, 1)
+	go func() {
+		code, _, err := runStreaming(ctx, DelegateInput{WorktreePath: dir}, bin, []string{pidFile}, func(string) {})
+		done <- streamResult{exitCode: code, err: err}
+	}()
+
+	pids := waitForPIDs(t, pidFile)
+	t.Cleanup(func() { _ = syscall.Kill(pids[1], syscall.SIGKILL) })
+	deadline := time.Now().Add(5 * time.Second)
+	for !processGone(pids[0]) {
+		if time.Now().After(deadline) {
+			t.Fatal("the script had not exited 5s after writing its PIDs")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	return done
+}
+
+// A child that exits normally ends the run within the bound even when a
+// process it left behind still holds standard error, and the run is not cut.
+func TestRunStreaming_OrphanHoldingStderrDoesNotBlockANormalExit(t *testing.T) {
+	const bound = 2 * time.Second
+	const margin = 2 * time.Second
+	saved := stopBound
+	stopBound = bound
+	t.Cleanup(func() { stopBound = saved })
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	exitedAt := time.Now()
+	done := startOrphanRun(t, ctx)
+
+	r, returned := waitForResult(done, time.Until(exitedAt.Add(bound+margin)))
+	if !returned {
+		t.Fatalf("runStreaming had not returned %s after the child's normal exit (bound %s); an orphan holding stderr blocks it", time.Since(exitedAt).Round(time.Millisecond), bound)
+	}
+	if cut, _ := RunCut(r.err); cut {
+		t.Errorf("runStreaming marked a normal exit as cut: %v", r.err)
+	}
+	if r.err != nil || r.exitCode != 0 {
+		t.Errorf("runStreaming = (exit %d, err %v), want (0, nil)", r.exitCode, r.err)
+	}
+}
+
+// A stop that arrives while runStreaming waits on an orphan's standard error,
+// after the child has exited, still cuts the run within the bound.
+func TestRunStreaming_StopWhileAnOrphanHoldsStderrCutsTheRun(t *testing.T) {
+	const bound = 2 * time.Second
+	const margin = 2 * time.Second
+	saved := stopBound
+	stopBound = 10 * time.Second // longer than the test waits, so only the stop can end the run
+	t.Cleanup(func() { stopBound = saved })
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := startOrphanRun(t, ctx)
+
+	cancel()
+	cancelledAt := time.Now()
+
+	r, returned := waitForResult(done, bound+margin)
+	if !returned {
+		t.Fatalf("runStreaming had not returned %s after the cancel; an orphan holding stderr blocks the stop", time.Since(cancelledAt).Round(time.Millisecond))
+	}
+	assertCut(t, r, true)
+}
+
 // A child that exits when asked ends the run well inside the bound.
 func TestRunStreaming_StopOfAGroupThatHonoursTermReturnsQuickly(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
