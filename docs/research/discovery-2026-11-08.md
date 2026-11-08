@@ -373,6 +373,15 @@ New: no. Not reached in the time box. Candidates not assessed: rewind/undo (part
 ## Fit and bets
 
 <!-- p7a:start -->
+Written by part 7 on 2026-11-08. No web: everything below comes from parts 1 to 6 of today and keeps their grades. Session limit 600 seconds.
+
+### Verdict: new evidence this cycle
+
+New evidence: yes (13 subsections, 11 new primary sources)
+
+- Observed, subsections marked 'New: yes': p1 (e), (f); p2 (1), (2); p3 §3; p4a §4, §5, §6; p4b matrix; p5 §C; p6b (i), (iii), (iv). That is 13. Marked 'New: no': p1 (a); p2 (3), (4); p3 §1, §2; p5 §A; p6a (1), (2), (3)/(4); p6b (ii), (v); p1w.
+- Observed, [Q] or [E] primary URLs found by `grep -F` in no earlier `docs/research/discovery-2026-1*.md`: the gh-aw Fault Investigation post, the HMRC Ask Security record, the Replit databases post, crewAI #6043, gemini-cli #10223, litellm #25931, the DBOS Transact releases, both incident.io pages, Anthropic's release notes at platform.claude.com and Google's changelog at aistudio.google.com. That is 11. Not counted: the Agent Factory status page (its address is in 2026-11-01), search-result URLs used for navigation, and every [N].
+- Inferred: of the 11, only the seven with [Q] text bear weight (gh-aw, HMRC, crewAI, gemini-cli, litellm, the two provider changelogs). The incident.io pages are from 2025 and one is satire, and DBOS says nothing about agents.
 <!-- p7a:end -->
 
 ## Roadmap phases proposed
