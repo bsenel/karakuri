@@ -23,14 +23,23 @@ func migrateCmd() *cobra.Command {
 		Use:   "migrate",
 		Short: "Migrate Karakuri data between database backends (SQLite ↔ PostgreSQL)",
 		Long: `Copies every table from a source DSN to a target DSN. Both DSNs are
-specified as "<driver>:<dsn>" pairs, e.g.
+specified as "<driver>:<dsn>" pairs, where <driver> is sqlite or postgres.
 
+It runs locally, not through the server: stop the server first so the
+source is not written to while it is copied. The destination schema is
+created fresh (CREATE TABLE IF NOT EXISTS) before rows are inserted;
+existing rows on the destination are not preserved. A JSON report of the
+rows copied per table is printed when it finishes.`,
+		Example: `  # Move a local SQLite database to PostgreSQL
   krk migrate \
     --from "sqlite:./karakuri.db" \
     --to   "postgres:postgres://karakuri:secret@localhost:5432/karakuri?sslmode=disable"
 
-The destination schema is created fresh (CREATE TABLE IF NOT EXISTS) before
-rows are inserted; existing rows on the destination are not preserved.`,
+  # Move back to SQLite, copying 1000 rows at a time
+  krk migrate \
+    --from "postgres:postgres://karakuri:secret@localhost:5432/karakuri?sslmode=disable" \
+    --to   "sqlite:./karakuri.db" \
+    --batch 1000`,
 		RunE: func(_ *cobra.Command, _ []string) error {
 			fromDriver, fromDSN, err := parseDSN(from)
 			if err != nil {
@@ -56,7 +65,7 @@ rows are inserted; existing rows on the destination are not preserved.`,
 	}
 	cmd.Flags().StringVar(&from, "from", "", "Source DSN as <driver>:<dsn>, e.g. sqlite:./karakuri.db (required)")
 	cmd.Flags().StringVar(&to, "to", "", "Target DSN as <driver>:<dsn>, e.g. postgres:postgres://… (required)")
-	cmd.Flags().IntVar(&batch, "batch", 200, "Batch size for inserts")
+	cmd.Flags().IntVar(&batch, "batch", 200, "Rows read from the source and inserted into the target per batch")
 	_ = cmd.MarkFlagRequired("from")
 	_ = cmd.MarkFlagRequired("to")
 	return cmd
