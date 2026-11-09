@@ -4338,6 +4338,45 @@ decides to end (AGENTS.md rule 8).
    paused and the pass cancelled, within the bound; a second call changes
    nothing and says so; a caller scoped to one of the objectives pauses that
    one only and the answer names the rest as not reached.
+   *As delivered:*
+   - *The use case.* `Service.StopAll`
+     (`internal/feature/reconcile/stopall.go`) asks a per-run predicate
+     before touching each run. It pauses every standing objective the caller
+     may pause through `Pause` first, so a pass in flight is cancelled as
+     step 1 does and no tick starts a new pass while the loops are stopped,
+     then stops every other running loop through the loop service's `Stop`,
+     as step 3 does. The loop of a standing objective it paused is reported
+     once, as that objective, not again as a stopped loop. The answer
+     (`StopAllResult`) lists `loops_stopped`, `objectives_paused` (each with
+     `pass_cancelled`) and `not_reached` (kind, ID and reason: `not
+     permitted`, or the text of the store or `Stop` error that held it back).
+     An objective already paused or a loop already ended is not listed, so a
+     second call reports that nothing changed. Nothing resumes anything:
+     resuming stays per objective, by a person.
+   - *The route.* `POST /stop-all` with an optional `{"reason": ...}`
+     (`LoopHandler.StopAll` in `internal/api/handler/loop.go`, mounted in
+     `internal/api/server.go`), documented in `docs/openapi.yaml`. It takes
+     the principal from the request and, without a reason, fills one in from
+     the principal as the per-run routes do. The route is registered in
+     `internal/auth/routes.go` as authenticated with no route-level action,
+     like `/auth/me`; the checks are per run instead, answered from the
+     caller's own permissions: `loop:stop` on each loop, as
+     `POST /loops/{id}/stop` checks it, and `objective:pause` on each
+     objective with its containers, as `POST /objectives/{id}/pause` checks
+     it. A caller with neither permission changes nothing and is told what
+     was not reached. The per-run routes keep their own permissions. No kill
+     switch outside the API was added.
+   - *The CLI.* `krk stop-all [--reason "..."]` (`cli/command/stopall.go`),
+     a top-level command because one call reaches both kinds of run. It
+     prints what the API returned, and a 4xx or 5xx is an error carrying the
+     server's body. Its help says how to resume: `krk objective resume`.
+   - *Not verified.* The acceptance cases (two one-shot loops and two
+     standing objectives with one mid-pass, the second call that changes
+     nothing, the caller scoped to one objective) are covered by unit tests
+     of the use case over a fake loop service and by handler tests over the
+     real RBAC check; none of them was exercised against a live server with
+     real running loops or a real delegated subprocess. The full
+     `test/integration` package was not run in this step.
 5. **The record and the export.** Every stop, pause and resume leaves one audit
    event carrying the principal and the reason (a new tool event kind with its
    storage constant, unless step 1 found Pause audited already, in which case
