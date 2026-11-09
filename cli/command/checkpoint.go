@@ -30,7 +30,7 @@ func checkpointListCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			printList(c, data, "pending checkpoints", "")
+			printList(c, data, "pending checkpoints", "A running loop opens one when it needs approval; see: krk loop status <loop-id>")
 			return nil
 		},
 	}

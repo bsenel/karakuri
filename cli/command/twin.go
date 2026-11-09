@@ -126,7 +126,7 @@ func twinListCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			printList(c, data, "twins", "krk twin create")
+			printList(c, data, "twins", createWith("krk twin create"))
 			return nil
 		},
 	}
