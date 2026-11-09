@@ -94,7 +94,7 @@ func (s *Service) StopAll(ctx context.Context, principal, reason string, mayStop
 		case !mayStop(StopAllKindObjective, string(id)):
 			notReached(StopAllKindObjective, string(id), StopAllNotPermitted)
 		default:
-			cancelled, err := s.pause(ctx, id, reason)
+			cancelled, err := s.pause(ctx, id, principal, reason)
 			if err != nil {
 				notReached(StopAllKindObjective, string(id), err.Error())
 				continue

@@ -182,14 +182,16 @@ func (h *ReconcileHandler) Pause(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewDecoder(r.Body).Decode(&req)
 
 	reason := req.Reason
+	var principal string
 	if p, ok := auth.PrincipalFromContext(r.Context()); ok {
+		principal = p.ID
 		if reason == "" {
 			reason = "paused by " + p.ID
 		} else {
 			reason = reason + " (paused by " + p.ID + ")"
 		}
 	}
-	if err := h.Reconcile.Pause(r.Context(), id, reason); err != nil {
+	if err := h.Reconcile.Pause(r.Context(), id, principal, reason); err != nil {
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return
 	}
@@ -201,7 +203,11 @@ func (h *ReconcileHandler) Pause(w http.ResponseWriter, r *http.Request) {
 // clearing them is the point rather than a convenience.
 func (h *ReconcileHandler) Resume(w http.ResponseWriter, r *http.Request) {
 	id := objective.ObjectiveID(chi.URLParam(r, "id"))
-	if err := h.Reconcile.Resume(r.Context(), id); err != nil {
+	var principal string
+	if p, ok := auth.PrincipalFromContext(r.Context()); ok {
+		principal = p.ID
+	}
+	if err := h.Reconcile.Resume(r.Context(), id, principal); err != nil {
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return
 	}

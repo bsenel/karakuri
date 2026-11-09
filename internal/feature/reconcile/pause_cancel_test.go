@@ -203,7 +203,7 @@ func startBlockedPass(t *testing.T) *stoppable {
 
 func (s *stoppable) pause(t *testing.T) {
 	t.Helper()
-	if err := s.svc.Pause(context.Background(), s.obj.ID, "operator stopped it"); err != nil {
+	if err := s.svc.Pause(context.Background(), s.obj.ID, "operator", "operator stopped it"); err != nil {
 		t.Fatalf("pause: %v", err)
 	}
 }
@@ -368,7 +368,7 @@ func TestPauseWithNoPassRunningBehavesAsBefore(t *testing.T) {
 	})
 	before := f.state(t, obj.ID)
 
-	if err := f.svc.Pause(context.Background(), obj.ID, "operator stopped it"); err != nil {
+	if err := f.svc.Pause(context.Background(), obj.ID, "operator", "operator stopped it"); err != nil {
 		t.Fatalf("pause: %v", err)
 	}
 
@@ -393,7 +393,7 @@ func TestPauseWithNoPassRunningBehavesAsBefore(t *testing.T) {
 	if f.loops.count() != 0 {
 		t.Error("a paused objective was reconciled")
 	}
-	if err := f.svc.Pause(context.Background(), "no-such-objective", "x"); err == nil {
+	if err := f.svc.Pause(context.Background(), "no-such-objective", "operator", "x"); err == nil {
 		t.Error("pausing an unknown objective succeeded")
 	}
 }

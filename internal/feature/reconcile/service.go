@@ -442,13 +442,17 @@ func (s *Service) Forget(ctx context.Context, id objective.ObjectiveID) error {
 // A pass this replica is running is cancelled, after the paused state is
 // stored, so a crash between the two still leaves the objective paused. The
 // pass ends with outcomeStopped, which is not a failure (Phase 37 step 1).
-func (s *Service) Pause(ctx context.Context, id objective.ObjectiveID, reason string) error {
-	_, err := s.pause(ctx, id, reason)
+//
+// principal is who paused it, taken from the caller's authentication and
+// passed apart from the reason, so the audit record never has to parse it back
+// out of free text (Phase 37 step 5).
+func (s *Service) Pause(ctx context.Context, id objective.ObjectiveID, principal, reason string) error {
+	_, err := s.pause(ctx, id, principal, reason)
 	return err
 }
 
 // pause is Pause, and reports whether it cancelled a pass in flight.
-func (s *Service) pause(ctx context.Context, id objective.ObjectiveID, reason string) (bool, error) {
+func (s *Service) pause(ctx context.Context, id objective.ObjectiveID, principal, reason string) (bool, error) {
 	st, err := s.store.GetReconcileState(ctx, id)
 	if err != nil {
 		return false, err
@@ -492,7 +496,9 @@ func stoppedBy(ctx context.Context) (string, bool) {
 // have looked at why it broke; leaving the failure count at its ceiling would
 // trip the breaker again on the next stumble, and leaving the score streak
 // would escalate again before the objective had a chance to make progress.
-func (s *Service) Resume(ctx context.Context, id objective.ObjectiveID) error {
+//
+// principal is who resumed it, for the audit record (Phase 37 step 5).
+func (s *Service) Resume(ctx context.Context, id objective.ObjectiveID, principal string) error {
 	st, err := s.store.GetReconcileState(ctx, id)
 	if err != nil {
 		return err
