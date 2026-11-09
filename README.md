@@ -303,6 +303,7 @@ krk loop start <objective-id> --twin <id> [--max-iter N] [--watch]
 krk loop status <loop-id>
 krk loop resume <loop-id> --decision <approve|reject|modify> \
                           [--note <text>] [--approver <id>]
+krk loop stop <loop-id> [--reason <text>]   # for good: a restart does not resume it
 
 # Checkpoints — --note + --approver populate the Phase 13 audit row
 krk checkpoint list [--twin <id>]

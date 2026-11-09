@@ -356,10 +356,22 @@ func (s *Service) reconcileNow(
 // is not a failure.
 const outcomeStopped = "stopped"
 
+// stopPrincipal is who the loop service records as having stopped a pass's
+// loop. Pause is told only a reason (the objective pause handler folds the
+// caller's ID into it), so the stop names the supervisor that carried it out
+// rather than a person it cannot see.
+const stopPrincipal = "reconcile"
+
 // finishStopped files a pass a pause cancelled. The pass's context is done, so
 // the record is written on one that is not; the pause is re-applied from the
 // cancel's cause, because st was read before the pause and saving it as it is
 // would undo the pause.
+//
+// The pass's loop is stopped too (Phase 37 step 3): the loop service runs each
+// loop on a context only its own Stop cancels, so the pass's cancel alone
+// leaves it running. Pause stored the paused state before it cancelled, so a
+// Stop that fails only leaves the loop to end on its own; it is logged and the
+// pass is filed all the same.
 func (s *Service) finishStopped(
 	ctx context.Context,
 	st *reconcile.State,
@@ -369,6 +381,12 @@ func (s *Service) finishStopped(
 	reason string,
 ) error {
 	ctx = context.WithoutCancel(ctx)
+	if outcome.LoopID != "" {
+		if _, err := s.loops.Stop(ctx, outcome.LoopID, stopPrincipal, reason); err != nil {
+			slog.Warn("could not stop the loop of a paused reconcile",
+				"objective", obj.ID, "loop", outcome.LoopID, "error", err)
+		}
+	}
 	outcome.Deferred = outcomeStopped
 	outcome.EndedAt = s.now()
 	st.Paused = true

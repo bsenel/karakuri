@@ -3,6 +3,7 @@ package handler
 import (
 	"encoding/json"
 	"net/http"
+	"strconv"
 
 	"github.com/bsenel/karakuri/auth"
 	corecheckpoint "github.com/bsenel/karakuri/internal/core/checkpoint"
@@ -99,6 +100,42 @@ func (h *LoopHandler) Status(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, status)
+}
+
+// Stop ends a loop, and pauses its standing objective when it has one (Phase
+// 37 step 3). The reason is optional, as
+// when pausing an objective: a body that does not decode is read as no
+// reason, and a missing one is filled in from the principal. The principal is
+// the authenticated one, never a body field, because who stopped a run is on
+// the record (SECURITY_AUDIT.md F-10).
+func (h *LoopHandler) Stop(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	var req struct {
+		Reason string `json:"reason"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&req)
+
+	principal := ""
+	if p, ok := auth.PrincipalFromContext(r.Context()); ok {
+		principal = p.ID
+	}
+	reason := req.Reason
+	if reason == "" && principal != "" {
+		reason = "stopped by " + principal
+	}
+
+	// Through reconcile, which also pauses the loop's standing objective so
+	// a watch-mode run stays stopped (Phase 37 step 3).
+	res, err := h.Reconcile.StopLoop(r.Context(), id, principal, reason)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if res.Found == featureloop.StopFoundUnknown {
+		http.Error(w, "loop "+strconv.Quote(id)+" not found", http.StatusNotFound)
+		return
+	}
+	writeJSON(w, res)
 }
 
 func (h *LoopHandler) Resume(w http.ResponseWriter, r *http.Request) {

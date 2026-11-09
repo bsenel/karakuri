@@ -236,6 +236,7 @@ func Routes() []Route {
 		{http.MethodPost, "/loops", ActionLoopStart, false},
 		{http.MethodGet, "/loops/{id}/status", ActionLoopRead, false},
 		{http.MethodPost, "/loops/{id}/resume", ActionLoopResume, false},
+		{http.MethodPost, "/loops/{id}/stop", ActionLoopStop, false},
 
 		{http.MethodGet, "/checkpoints", ActionCheckpointRead, false},
 		{http.MethodGet, "/checkpoints/{id}", ActionCheckpointRead, false},

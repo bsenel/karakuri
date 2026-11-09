@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"sync"
@@ -43,6 +44,10 @@ type Service interface {
 	// previous server process. Bootstrap calls this once at startup so loops
 	// continue across server restarts (Phase 11).
 	ResumeStoredLoops(ctx context.Context) error
+	// Stop ends a loop on behalf of principal, for reason, and reports what
+	// it found (Phase 37 step 3). An unknown loop is not an error: it is
+	// reported as StopFoundUnknown.
+	Stop(ctx context.Context, loopID, principal, reason string) (StopResult, error)
 }
 
 type loopState struct {
@@ -62,7 +67,45 @@ type loopState struct {
 	// the one the runner reads the decision for.
 	answered bool
 	runErr   string // the text of the error the run ended with, persisted for reconcile
-	mu       sync.RWMutex
+	// ended is set when finalizeLoop takes the run's own ending, and stoppedBy
+	// and stopReason when Stop takes it instead (Phase 37 step 3). Whichever
+	// is set first under mu is the ending; the other then changes nothing.
+	ended      bool
+	stoppedBy  string
+	stopReason string
+	mu         sync.RWMutex
+	// persistMu holds a snapshot and its write together, so a runner's write
+	// read before a stop cannot land after the stop's and reopen the row.
+	persistMu sync.Mutex
+}
+
+// stopped reports whether a stop has taken this loop's ending.
+func (ls *loopState) stopped() bool {
+	ls.mu.RLock()
+	defer ls.mu.RUnlock()
+	return ls.stoppedBy != ""
+}
+
+// markStopped takes the loop's ending for a stop, unless the loop has already
+// ended (or evenIfEnded is set, for a watch whose pass ended while the watch
+// goes on). It returns the checkpoint the loop was waiting at, if any, and
+// whether the stop took the ending.
+func (ls *loopState) markStopped(principal, reason string, evenIfEnded bool) (string, bool) {
+	ls.mu.Lock()
+	defer ls.mu.Unlock()
+	if ls.stoppedBy != "" || (ls.ended && !evenIfEnded) {
+		return "", false
+	}
+	cpID := ""
+	if ls.status.Paused && ls.result.CheckpointID != nil {
+		cpID = *ls.result.CheckpointID
+	}
+	ls.stoppedBy, ls.stopReason = principal, reason
+	ls.outcome = loop.RunStopped
+	ls.runErr = ""
+	ls.result.Status = objective.StatusStopped
+	ls.status.Paused = false
+	return cpID, true
 }
 
 // takeAnswered reports whether the replay is still owed the decision on the
@@ -113,6 +156,42 @@ type serviceImpl struct {
 
 	mu     sync.RWMutex
 	states map[string]*loopState // loopID → state
+	// cancels holds the cancel function of each loop running in this process,
+	// under mu, released when the loop ends; Stop is its only other reader.
+	cancels map[string]context.CancelCauseFunc
+}
+
+// errLoopStopped is the cause a stopped loop's context is cancelled with.
+var errLoopStopped = errors.New("loop stopped")
+
+// track derives the context a loop runs on and keeps its cancel function, so
+// a stop from outside can end the loop (Phase 37 step 3).
+func (s *serviceImpl) track(parent context.Context, loopID string) context.Context {
+	ctx, cancel := context.WithCancelCause(parent)
+	s.mu.Lock()
+	if s.cancels == nil {
+		s.cancels = make(map[string]context.CancelCauseFunc)
+	}
+	s.cancels[loopID] = cancel
+	s.mu.Unlock()
+	return ctx
+}
+
+// release forgets a loop's cancel function once the loop has ended.
+func (s *serviceImpl) release(loopID string) {
+	s.mu.Lock()
+	cancel := s.cancels[loopID]
+	delete(s.cancels, loopID)
+	s.mu.Unlock()
+	if cancel != nil {
+		cancel(nil)
+	}
+}
+
+// runTracked runs a loop on its tracked context and releases it at the end.
+func (s *serviceImpl) runTracked(ctx context.Context, loopID string, req loop.Request) {
+	defer s.release(loopID)
+	s.runLoop(ctx, loopID, req)
 }
 
 func NewService(
@@ -151,6 +230,7 @@ func NewService(
 		costs:   quotaDeps.Costs,
 		tracer:  tracer,
 		states:  make(map[string]*loopState),
+		cancels: make(map[string]context.CancelCauseFunc),
 
 		checkpointTTL: checkpointTTL,
 	}
@@ -206,8 +286,8 @@ func (s *serviceImpl) Run(ctx context.Context, req loop.Request) (loop.Result, e
 	// Persist initial state so a server restart can identify + resume the loop.
 	s.persistState(ctx, state, false)
 
-	// Run the loop in background goroutine
-	go s.runLoop(context.Background(), id, req) // #nosec G118 -- the loop outlives the request that starts it; it must inherit neither its cancellation nor its caller's values
+	// Run the loop in background goroutine, on a context only Stop cancels.
+	go s.runTracked(s.track(context.Background(), id), id, req) // #nosec G118 -- the loop outlives the request that starts it; it must inherit neither its cancellation nor its caller's values
 
 	return loop.Result{
 		LoopID:      id,
@@ -222,6 +302,9 @@ func (s *serviceImpl) Resume(ctx context.Context, loopID string, decision corech
 	s.mu.RUnlock()
 	if !ok {
 		return loop.Result{}, fmt.Errorf("loop %q not found", loopID)
+	}
+	if state.stopped() {
+		return loop.Result{}, fmt.Errorf("loop %q was stopped; a decision authorises nothing", loopID)
 	}
 
 	if err := s.deliver(state, decision); err != nil {
@@ -319,10 +402,15 @@ func newLoopID() (string, error) {
 // iteration of progress. Storage errors are swallowed — in-memory state is
 // always the source of truth for the running process; persistence is a
 // best-effort durability layer.
-func (s *serviceImpl) persistState(ctx context.Context, state *loopState, completed bool) {
+//
+// A stopped loop is always written completed, whichever caller writes it, so
+// a runner unwinding from the stop cannot put it back in the restart set.
+func (s *serviceImpl) persistState(ctx context.Context, state *loopState, completed bool) error {
 	if state == nil {
-		return
+		return nil
 	}
+	state.persistMu.Lock()
+	defer state.persistMu.Unlock()
 	state.mu.RLock()
 	status := state.status
 	req := state.request
@@ -330,7 +418,11 @@ func (s *serviceImpl) persistState(ctx context.Context, state *loopState, comple
 	outcome := state.outcome
 	criteria := state.criteria
 	runErr := state.runErr
+	stoppedBy, stopReason := state.stoppedBy, state.stopReason
 	state.mu.RUnlock()
+	if stoppedBy != "" {
+		completed = true
+	}
 
 	reqJSON, _ := json.Marshal(req)
 	cpID := ""
@@ -352,9 +444,11 @@ func (s *serviceImpl) persistState(ctx context.Context, state *loopState, comple
 		Outcome:      outcome,
 		Criteria:     criteria,
 		Error:        runErr,
+		StoppedBy:    stoppedBy,
+		StopReason:   stopReason,
 		RequestJSON:  string(reqJSON),
 	}
-	_ = s.store.SaveLoopState(ctx, persisted)
+	return s.store.SaveLoopState(ctx, persisted)
 }
 
 // maxResumeConcurrency bounds how many stored loops may be replayed at once on
@@ -438,13 +532,22 @@ func (s *serviceImpl) ResumeStoredLoops(ctx context.Context) error {
 		s.mu.Unlock()
 
 		loopID, request := st.LoopID, req
+		loopCtx := s.track(runCtx, loopID)
 		if st.Paused {
 			slog.Info("stored loop is paused; waiting for a decision rather than replaying it",
 				"loop", loopID, "objective", st.ObjectiveID)
 			go func(ls *loopState) {
-				decision, ok := <-ls.decisionCh
-				if !ok {
+				defer s.release(loopID)
+				var decision corecheckpoint.Decision
+				select {
+				case <-loopCtx.Done():
+					// Stopped while it waited: there is nothing to replay.
 					return
+				case d, ok := <-ls.decisionCh:
+					if !ok {
+						return
+					}
+					decision = d
 				}
 				// Hand it back so the replayed runner consumes it at its
 				// first escalation instead of asking a second time.
@@ -454,15 +557,16 @@ func (s *serviceImpl) ResumeStoredLoops(ctx context.Context) error {
 				ls.decisionCh <- decision
 				sem <- struct{}{}
 				defer func() { <-sem }()
-				s.runLoop(runCtx, loopID, request)
+				s.runLoop(loopCtx, loopID, request)
 			}(ls)
 			continue
 		}
 
 		go func() {
+			defer s.release(loopID)
 			sem <- struct{}{}
 			defer func() { <-sem }()
-			s.runLoop(runCtx, loopID, request)
+			s.runLoop(loopCtx, loopID, request)
 		}()
 	}
 	return nil

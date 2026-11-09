@@ -26,6 +26,8 @@ const stopWait = 5 * time.Second
 // context's error. That row reads like a failure on purpose; the supervisor has
 // to file the pass as stopped all the same.
 type blockingLoop struct {
+	stopRecorder
+
 	store storage.StorageAdapter
 
 	mu      sync.Mutex
@@ -147,6 +149,10 @@ type stoppable struct {
 	loop   *blockingLoop
 	obj    objective.Objective
 	before reconcile.State
+
+	// shutdown cancels the context dispatch was given, as the server does
+	// when it stops; it is not a pause.
+	shutdown context.CancelFunc
 }
 
 // startBlockedPass declares an objective one failure short of the breaker, at
@@ -192,7 +198,7 @@ func startBlockedPass(t *testing.T) *stoppable {
 	case <-time.After(stopWait):
 		t.Fatal("the pass never started its first action")
 	}
-	return &stoppable{fixture: f, loop: bl, obj: obj, before: before}
+	return &stoppable{fixture: f, loop: bl, obj: obj, before: before, shutdown: cancel}
 }
 
 func (s *stoppable) pause(t *testing.T) {

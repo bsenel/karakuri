@@ -30,6 +30,7 @@ import (
 	"github.com/bsenel/karakuri/internal/feature/artifact"
 	"github.com/bsenel/karakuri/internal/feature/audit"
 	"github.com/bsenel/karakuri/internal/feature/eval"
+	featurereconcile "github.com/bsenel/karakuri/internal/feature/reconcile"
 	"github.com/bsenel/karakuri/internal/feature/research"
 	"github.com/bsenel/karakuri/internal/platform/storage"
 	"github.com/bsenel/karakuri/internal/platform/tools"
@@ -63,6 +64,7 @@ var specTypes = map[string]any{
 	"Grant":                   karakuriauth.Grant{},
 	"LoopResult":              loop.Result{},
 	"LoopStatus":              loop.Status{},
+	"LoopStopResult":          featurereconcile.LoopStopResult{},
 	"MCPInstanceHealth":       mcp.InstanceHealth{},
 	"MemoryEntry":             memory.Entry{},
 	"MemoryQuery":             memory.Query{},

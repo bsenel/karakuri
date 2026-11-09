@@ -96,6 +96,7 @@ func BuiltinRoles() []auth.Role {
 			auth.Allow("operator-report-write", ActionReportWrite, "*"),
 			auth.Allow("operator-loop-start", ActionLoopStart, "*"),
 			auth.Allow("operator-loop-resume", ActionLoopResume, "*"),
+			auth.Allow("operator-loop-stop", ActionLoopStop, "*"),
 			auth.Allow("operator-checkpoint-resolve", ActionCheckpointResolve, "*"),
 			auth.Allow("operator-artifact-write", ActionArtifactWrite, "*"),
 			auth.Allow("operator-memory-write", ActionMemoryWrite, "*"),
@@ -135,6 +136,9 @@ func BuiltinRoles() []auth.Role {
 			auth.Allow("contributor-twin-bind", ActionTwinBind, "twin:*").When(owned),
 			auth.Allow("contributor-objective-create", ActionObjectiveCreate, "*"),
 			auth.Allow("contributor-loop-start", ActionLoopStart, "*"),
+			// Whoever may start a loop may stop it (Phase 37 step 3), even
+			// without loop:resume, for the reason given just below.
+			auth.Allow("contributor-loop-stop", ActionLoopStop, "*"),
 			// A contributor may stop a standing objective but not declare one.
 			// Halting should be the easier permission to hold: at 3am the
 			// person who can see something is wrong is not always the person

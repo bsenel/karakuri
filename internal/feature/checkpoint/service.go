@@ -160,6 +160,13 @@ func (s *Service) Resolve(ctx context.Context, id string, d corecheckpoint.Decis
 // it directly when a decision arrives through POST /loops/{id}/resume, where
 // the delivery has already happened and calling Resolve would recurse.
 func (s *Service) Record(ctx context.Context, id string, d corecheckpoint.Decision) error {
+	// A decided checkpoint is not decided again. A stopped loop's checkpoint
+	// is closed as rejected by whoever stopped it, and an approval arriving
+	// afterwards must be refused rather than recorded over that (Phase 37
+	// step 3).
+	if prior, err := s.store.GetCheckpoint(ctx, id); err == nil && prior.Status == corecheckpoint.StatusResolved {
+		return fmt.Errorf("checkpoint %q is already resolved", id)
+	}
 	if err := s.store.ResolveCheckpoint(ctx, id, d); err != nil {
 		return err
 	}

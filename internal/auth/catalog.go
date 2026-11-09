@@ -51,6 +51,11 @@ const (
 	ActionLoopStart  auth.Action = "loop:start"
 	ActionLoopRead   auth.Action = "loop:read"
 	ActionLoopResume auth.Action = "loop:resume"
+	// ActionLoopStop ends a loop and pauses its standing objective, if it has
+	// one (Phase 37 step 3). Held by every role that may start one: halting
+	// should be the easier permission to hold, the same reasoning as
+	// objective:pause.
+	ActionLoopStop auth.Action = "loop:stop"
 
 	ActionCheckpointRead    auth.Action = "checkpoint:read"
 	ActionCheckpointResolve auth.Action = "checkpoint:resolve"
@@ -128,6 +133,7 @@ func NewCatalog() *auth.Catalog {
 		ActionLoopStart:  "start a reasoning loop",
 		ActionLoopRead:   "read loop status",
 		ActionLoopResume: "resume a paused loop",
+		ActionLoopStop:   "stop a loop, including one waiting at a checkpoint, and pause its standing objective",
 
 		ActionCheckpointRead:    "read pending checkpoints",
 		ActionCheckpointResolve: "approve, modify or reject a checkpoint",

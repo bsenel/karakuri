@@ -4269,6 +4269,61 @@ decides to end (AGENTS.md rule 8).
    shows a later approval refused; a fourth stops a watch-mode loop that is
    waiting for an event. A request without the permission is refused
    and changes nothing. The CLI command prints what the API returned.
+   *As delivered:*
+   - *The loop service.* `Service.Stop` (`internal/feature/loop/stop.go`)
+     stores the loop's row as stopped first (completed, status `stopped`,
+     outcome `stopped`, with `StoppedBy` and `StopReason`), and only then
+     cancels the context the service now keeps for each running loop, so
+     `ListActiveLoopStates` leaves it out and a restart between the two
+     replays nothing. A checkpoint the loop was waiting at is recorded as
+     rejected by the principal who stopped it, and a one-shot objective is
+     marked stopped. It answers `running`, `ended` (nothing changed) or
+     `unknown`; a loop only the store knows is stopped from its row.
+   - *The route.* `POST /loops/{id}/stop` with `{"reason": ...}`
+     (`internal/api/handler/loop.go`, mounted in `internal/api/server.go`)
+     takes the principal from the request, not the body, and answers 404 for
+     an unknown loop; documented in `docs/openapi.yaml`.
+   - *The permission.* A new action `loop:stop` (`internal/auth/catalog.go`),
+     required by the route (`internal/auth/routes.go`). In
+     `internal/auth/roles.go` it is held by `operator` and `contributor`, the
+     two roles that hold `loop:start`, and by `admin` through its wildcard;
+     `viewer` and `auditor` do not hold it. No new role.
+   - *The CLI.* `krk loop stop <loop-id> [--reason "..."]`
+     (`cli/command/loop.go`) prints what the API returned.
+   - *Reconcile.* When a pause cancels a pass, `finishStopped`
+     (`internal/feature/reconcile/run.go`) also calls the loop service's
+     `Stop` for the pass's loop, when the pass has one, on a context the
+     cancel did not end and with the pause's reason. A shutdown cancel stops
+     no loop. `Pause` is told only a reason (the objective pause handler
+     folds the caller's ID into it), so the stop names the fixed principal
+     `reconcile`. A `Stop` error is logged and the pass is filed as stopped
+     all the same, since the paused state was stored before the cancel.
+   - *A stop on a watch also pauses its objective* (the owner's decision on
+     #222). `POST /loops/{id}/stop` calls reconcile's `StopLoop`
+     (`internal/feature/reconcile/stoploop.go`) instead of the loop service's
+     `Stop`. When the loop belongs to a standing objective that is not
+     paused, `StopLoop` pauses it with the stop's reason through `Pause`
+     first, which cancels a pass in flight, and stops the loop second, so no
+     tick or trigger can start a pass between the two. A loop the pause
+     already ended answers `running`, not `ended` or an error. The answer
+     keeps `loop_id` and `found` and adds `objective_id` and
+     `objective_paused`, true only when this stop paused the objective (false
+     for a one-shot objective or one already paused); `docs/openapi.yaml`
+     says so. This settles the gap the next item describes. The route keeps
+     `loop:stop`; every system role that holds it also holds
+     `objective:pause`.
+   - *Not verified.* The watch-mode test passes, but what it shows is
+     narrower than the acceptance line. Its failure message in
+     `internal/feature/loop/stop_test.go` says why: the loop service cannot
+     reach the wait between events, because `POST /loops` with `watch_mode`
+     declares the objective standing at sense autonomy and `Run`'s one-shot
+     loop ends, so that wait is reconcile's tick, not a loop the service
+     holds. `Stop` on such a loop stores its row stopped and answers
+     `running`, but it does not pause the objective, so reconcile's next tick
+     can still start a pass; pausing it is left to the caller. No stop was
+     run against a live server. The full `test/integration` package hit a
+     9-minute timeout; only its OpenAPI, RBAC and loop start-and-stop tests
+     were run on their own.
 4. **Stop everything.** One route and one CLI command (working names
    `POST /stop-all` and `krk stop-all --reason "..."`; the step fits the name
    to `cli/command/root.go` after reading it) that stops every running loop as
