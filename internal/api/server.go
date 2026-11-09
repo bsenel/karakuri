@@ -237,7 +237,10 @@ func NewApp(
 	healthH := &handler.HealthHandler{Providers: providers, Tools: toolReg, Exporters: exporters, Worktrees: wt, RepoPath: cfg.Git.RepoPath}
 	twinH := &handler.TwinHandler{Twins: twinSvc, Scopes: authDeps.Authorizer}
 	objH := &handler.ObjectiveHandler{Objectives: objSvc, Scopes: authDeps.Authorizer}
-	loopH := &handler.LoopHandler{Loop: loopSvc, Store: store, Reconcile: reconcileSvc}
+	loopH := &handler.LoopHandler{
+		Loop: loopSvc, Store: store, Reconcile: reconcileSvc,
+		Authorizer: authDeps.Authorizer, Containers: containerSvc,
+	}
 	recH := &handler.ReconcileHandler{Reconcile: reconcileSvc, Store: store}
 	repH := &handler.ReportHandler{Reports: reportSvc}
 	cpH := &handler.CheckpointHandler{Checkpoints: cpSvc}
@@ -406,6 +409,11 @@ func NewApp(
 				r.With(require(karakuriauth.ActionLoopResume, karakuriauth.LoopResource)).Post("/{id}/resume", loopH.Resume)
 				r.With(require(karakuriauth.ActionLoopStop, karakuriauth.LoopResource)).Post("/{id}/stop", loopH.Stop)
 			})
+			// No route-level permission: stop-all checks each run on its own,
+			// loop:stop on each loop and objective:pause on each objective, so
+			// a caller scoped to one objective pauses that one only (Phase 37
+			// step 4).
+			r.Post(karakuriauth.StopAllPath, loopH.StopAll)
 
 			r.Route("/checkpoints", func(r chi.Router) {
 				r.With(require(karakuriauth.ActionCheckpointRead, nil)).Get("/", cpH.ListPending)

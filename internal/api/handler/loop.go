@@ -31,9 +31,55 @@ type LoopHandler struct {
 }
 
 // StopAll stops every running loop and pauses every standing objective the
-// caller may stop (Phase 37 step 4). Not implemented yet.
-func (h *LoopHandler) StopAll(w http.ResponseWriter, _ *http.Request) {
-	http.Error(w, "stop-all is not implemented yet", http.StatusNotImplemented)
+// caller may stop (Phase 37 step 4). The route carries no route-level
+// permission; each run is checked here on its own, loop:stop on each loop and
+// objective:pause on each objective, against the refs POST /loops/{id}/stop
+// and POST /objectives/{id}/pause check, so stop-all never reaches a run the
+// caller could not stop one by one. The reason and principal are read as Stop
+// reads them.
+func (h *LoopHandler) StopAll(w http.ResponseWriter, r *http.Request) {
+	p, ok := auth.PrincipalFromContext(r.Context())
+	if !ok {
+		http.Error(w, auth.ErrNoPrincipal.Error(), http.StatusUnauthorized)
+		return
+	}
+	var req struct {
+		Reason string `json:"reason"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&req)
+	reason := req.Reason
+	if reason == "" {
+		reason = "stopped by " + p.ID
+	}
+
+	ctx := r.Context()
+	mayStop := func(kind, id string) bool {
+		var action auth.Action
+		var ref auth.ResourceRef
+		switch kind {
+		case featurereconcile.StopAllKindLoop:
+			// The per-run loop route checks the bare loop ref, with no
+			// containers; asking with containers here could reach a loop
+			// that route would refuse.
+			action, ref = karakuriauth.ActionLoopStop, auth.Resource("loop", id)
+		case featurereconcile.StopAllKindObjective:
+			action = karakuriauth.ActionObjectivePause
+			ref = karakuriauth.ScopedResource(ctx, h.Containers, auth.Resource("objective", id))
+		default:
+			return false
+		}
+		// An error evaluating the policy is a denial: the run is reported as
+		// not reached rather than stopped on an unanswered question.
+		d, err := h.Authorizer.Authorize(ctx, p, action, ref)
+		return err == nil && d.Allowed
+	}
+
+	res, err := h.Reconcile.StopAll(ctx, p.ID, reason, mayStop)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, res)
 }
 
 func (h *LoopHandler) Start(w http.ResponseWriter, r *http.Request) {

@@ -241,6 +241,9 @@ func Routes() []Route {
 		{http.MethodGet, "/loops/{id}/status", ActionLoopRead, false},
 		{http.MethodPost, "/loops/{id}/resume", ActionLoopResume, false},
 		{http.MethodPost, "/loops/{id}/stop", ActionLoopStop, false},
+		// No route-level action: each run is checked in the handler, loop:stop
+		// on each loop and objective:pause on each objective (Phase 37 step 4).
+		{http.MethodPost, StopAllPath, "", false},
 
 		{http.MethodGet, "/checkpoints", ActionCheckpointRead, false},
 		{http.MethodGet, "/checkpoints/{id}", ActionCheckpointRead, false},
