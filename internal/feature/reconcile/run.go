@@ -290,6 +290,10 @@ func (s *Service) reconcileNow(
 		// name the rung without the loop working it back out of the bounds.
 		AutonomyRung: level,
 	})
+	if reason, stopped := stoppedBy(ctx); stopped {
+		outcome.LoopID = res.LoopID
+		return s.finishStopped(ctx, st, obj, cadence, outcome, reason)
+	}
 	if err != nil {
 		outcome.Error = err.Error()
 		outcome.EndedAt = s.now()
@@ -298,6 +302,11 @@ func (s *Service) reconcileNow(
 	outcome.LoopID = res.LoopID
 
 	final, escalated := s.awaitLoop(ctx, res.LoopID, obj.ID)
+	if reason, stopped := stoppedBy(ctx); stopped {
+		// Checked before the loop's row: a loop that honoured the cancel
+		// ends failed with the context's error, and that is not a failure.
+		return s.finishStopped(ctx, st, obj, cadence, outcome, reason)
+	}
 	outcome.EndedAt = s.now()
 	outcome.CriteriaMet = final.CriteriaMet
 	outcome.CheckpointID = final.CheckpointID
@@ -340,6 +349,36 @@ func (s *Service) reconcileNow(
 		outcome.Criteria = criterionPasses(final.Criteria, outcome.EndedAt)
 	}
 	return s.finish(ctx, st, obj, cadence, outcome, &fp)
+}
+
+// outcomeStopped is the reason a pass records when a pause cancelled it in
+// flight (Phase 37 step 1). Filed like provider_rate_limited, as a reason that
+// is not a failure.
+const outcomeStopped = "stopped"
+
+// finishStopped files a pass a pause cancelled. The pass's context is done, so
+// the record is written on one that is not; the pause is re-applied from the
+// cancel's cause, because st was read before the pause and saving it as it is
+// would undo the pause.
+func (s *Service) finishStopped(
+	ctx context.Context,
+	st *reconcile.State,
+	obj objective.Objective,
+	cadence objective.Cadence,
+	outcome reconcile.Outcome,
+	reason string,
+) error {
+	ctx = context.WithoutCancel(ctx)
+	outcome.Deferred = outcomeStopped
+	outcome.EndedAt = s.now()
+	st.Paused = true
+	st.PausedReason = reason
+	st.Phase = reconcile.PhasePaused
+	s.publish(ctx, event.TypeReconcileDeferred, obj, map[string]any{
+		"reason":  outcomeStopped,
+		"loop_id": outcome.LoopID,
+	})
+	return s.finish(ctx, st, obj, cadence, outcome, nil)
 }
 
 // criterionPasses records each criterion state a loop settled with the time of
@@ -581,6 +620,12 @@ func (s *Service) finish(
 			"consecutive_failures": st.ConsecutiveFailures,
 		})
 
+	case outcome.Deferred == outcomeStopped:
+		// Stopped by a pause: not a failure for the breaker or for
+		// autonomy, and no counter moves. The phase stays paused, as
+		// finishStopped set it; the attempt still dates the cadence.
+		st.LastReconciledAt = &now
+
 	case outcome.LoopID == "":
 		// A sense-only pass changes no counters. It is a look, not an
 		// attempt, and counting looks as attempts would trip the stall
@@ -650,7 +695,9 @@ func (s *Service) finish(
 		s.evaluateSustain(ctx, st, obj, outcome.EndedAt)
 	}
 
-	if s.trip(ctx, st, obj) {
+	// A stopped pass is already paused by a person; the breaker must not
+	// replace their reason with its own.
+	if outcome.Deferred != outcomeStopped && s.trip(ctx, st, obj) {
 		return s.store.SaveReconcileState(ctx, *st)
 	}
 

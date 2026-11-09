@@ -145,6 +145,9 @@ type Service struct {
 	// next tick before its lease was even close to expiring.
 	mu      sync.Mutex
 	running map[objective.ObjectiveID]bool
+	// cancels holds the cancel function of each running pass, under the same
+	// lock as running, so a pause can stop the pass in flight (Phase 37).
+	cancels map[objective.ObjectiveID]context.CancelCauseFunc
 
 	// sweeper expires unanswered checkpoints on the tick. Nil means expiry is
 	// off, which is what a deployment that configured no duration gets.
@@ -177,6 +180,7 @@ func NewService(
 		holder:   newHolderID(),
 		inflight: make(chan struct{}, cfg.MaxConcurrent),
 		running:  map[objective.ObjectiveID]bool{},
+		cancels:  map[objective.ObjectiveID]context.CancelCauseFunc{},
 		now:      func() time.Time { return time.Now().UTC() },
 	}
 }
@@ -288,14 +292,23 @@ func (s *Service) dispatch(ctx context.Context, id objective.ObjectiveID, forced
 		return
 	}
 
+	// Derived from the context dispatch holds, so shutdown still stops the
+	// pass; the cause tells a pause apart from a shutdown.
+	passCtx, cancel := context.WithCancelCause(ctx)
+	s.mu.Lock()
+	s.cancels[id] = cancel
+	s.mu.Unlock()
+
 	go func() {
 		defer func() {
+			cancel(nil)
 			<-s.inflight
 			s.mu.Lock()
 			delete(s.running, id)
+			delete(s.cancels, id)
 			s.mu.Unlock()
 		}()
-		if err := s.pass(ctx, id, forced); err != nil {
+		if err := s.pass(passCtx, id, forced); err != nil {
 			slog.Warn("reconcile pass failed", "objective", string(id), "err", err)
 		}
 	}()
@@ -424,6 +437,10 @@ func (s *Service) Forget(ctx context.Context, id objective.ObjectiveID) error {
 
 // Pause takes an objective out of rotation. Used by an operator, and by the
 // circuit breaker and the stall detector.
+//
+// A pass this replica is running is cancelled, after the paused state is
+// stored, so a crash between the two still leaves the objective paused. The
+// pass ends with outcomeStopped, which is not a failure (Phase 37 step 1).
 func (s *Service) Pause(ctx context.Context, id objective.ObjectiveID, reason string) error {
 	st, err := s.store.GetReconcileState(ctx, id)
 	if err != nil {
@@ -432,7 +449,33 @@ func (s *Service) Pause(ctx context.Context, id objective.ObjectiveID, reason st
 	st.Paused = true
 	st.PausedReason = reason
 	st.Phase = reconcile.PhasePaused
-	return s.store.SaveReconcileState(ctx, st)
+	if err := s.store.SaveReconcileState(ctx, st); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	cancel := s.cancels[id]
+	s.mu.Unlock()
+	if cancel != nil {
+		cancel(&pausedInFlight{reason: reason})
+	}
+	return nil
+}
+
+// pausedInFlight is the cause a pause cancels a running pass with. It carries
+// the operator's reason so the ending pass re-applies the pause even when its
+// own copy of the state predates it.
+type pausedInFlight struct{ reason string }
+
+func (p *pausedInFlight) Error() string { return "paused: " + p.reason }
+
+// stoppedBy reports whether a pause cancelled ctx, and with which reason. A
+// cancellation for any other cause (shutdown) is not a stop.
+func stoppedBy(ctx context.Context) (string, bool) {
+	var p *pausedInFlight
+	if errors.As(context.Cause(ctx), &p) {
+		return p.reason, true
+	}
+	return "", false
 }
 
 // Resume puts a paused objective back into rotation and clears the counters

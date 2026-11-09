@@ -4164,6 +4164,56 @@ decides to end (AGENTS.md rule 8).
    and the autonomy level are what they were before the pass; no action of the
    pass starts after `Pause` returns. Pausing an objective with no pass running
    behaves as today. The diff does not touch how the loop decides to stop.
+   *What step 1 read, 2026-11-07* (line numbers as read that day; the tests
+   ran, a real loop and a real subprocess did not):
+   - *The pass's context.* `dispatch` (`internal/feature/reconcile/service.go`
+     from line 277) now derives the pass's context from the one it holds
+     with `context.WithCancelCause` and keeps the cancel function in
+     `s.cancels`, beside `s.running` and under the same lock; it is released
+     when the pass ends. That context reaches `pass`, `reconcileNow` and
+     `awaitLoop` in `run.go`, and `loops.Run` receives it. `Trigger` hands
+     `dispatch` a context detached from the HTTP request, so a pause is the
+     only thing that cancels a manual pass; `Tick`'s context is the
+     supervisor's, so shutdown cancels a scheduled one, with a different cause.
+   - *The loop does not receive it.* `Service.Run` in
+     `internal/feature/loop/service.go` (line 210) starts `runLoop` on
+     `context.Background()`, and `ResumeStoredLoops` (line 406) on
+     `context.WithoutCancel`. So cancelling the pass stops the supervisor's
+     watch of the loop and files the pass as stopped, but the loop itself, its
+     model calls, its adapter calls and its delegated coding action carry on to
+     their own end. No action of the loop receives the pass's context; whether
+     each honours the context it does receive was not read, beyond the next
+     point. Threading a stop into the loop is step 2's first task, and step
+     3's for one-shot loops.
+   - *The child process.* `runStreaming`
+     (`internal/platform/tools/cliagent/subprocess.go` line 29) is as read
+     before: `exec.CommandContext` with no process group, no `Cancel` and no
+     `WaitDelay`, and its context descends from the loop's, which is
+     `context.Background()`. A pause today therefore does not reach it at all.
+   - *Pause is not audited.* `Handler.Pause` (`internal/api/handler/reconcile.go`
+     from line 177) folds the principal into the reason and calls
+     `Service.Pause`; neither writes an audit row, and the route
+     (`internal/api/server.go` line 399) carries only the permission check.
+     The principal survives only inside `PausedReason`. Step 5 owns the record.
+   - *Where failures are counted.* `finish` in `run.go` is the one place: an
+     outcome with an `Error` increments `ConsecutiveFailures`, sets `LastError`
+     and, when the declaration says `DemoteOnFailure`, calls `applyDemotion`
+     (which writes the demotion audit row); `trip` then pauses the objective
+     when the count reaches `BreakerFailures`. `settleActiveLoop` demotes on a
+     rejected checkpoint. `provider_rate_limited` and `budget_exhausted` are
+     filed as `Deferred` reasons that move no counter.
+   - *What the step changed.* `Pause` stores the paused state, then cancels
+     the running pass with a cause carrying the reason. `reconcileNow` checks
+     that cause after `loops.Run` returns and after `awaitLoop`, before it
+     reads the loop's row (a loop that honoured the cancel ends failed with
+     the context's error), and `finishStopped` records the outcome with
+     `Deferred: stopped` on a context that is not cancelled, re-applies the
+     pause from the cause (its own copy of the state predates the pause), and
+     publishes `reconcile.deferred`. In `finish`, `stopped` moves no counter
+     and keeps the phase paused, and the breaker is not consulted. A pause
+     that lands during the cheap tier, before `reconcileNow`, cancels the
+     store calls of that pass and so ends it without an outcome; that case
+     has no test.
 2. **The stop reaches the subprocess.** In `runStreaming`, and in any adapter
    that starts its own process (`copilot.go` does), start the child in its own
    process group; on cancellation ask the group to end, kill the group when the
