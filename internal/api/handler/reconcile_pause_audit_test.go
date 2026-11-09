@@ -38,6 +38,7 @@ func newPauseAuditWorld(t *testing.T) *pauseAuditWorld {
 	store, svc := newStopReconcile(t, newStoppingLoops())
 	if err := svc.Declare(context.Background(), objective.Objective{
 		ID:      pauseAuditObjective,
+		Mode:    objective.ModeStanding,
 		Cadence: &objective.Cadence{Every: "1h"},
 	}); err != nil {
 		t.Fatalf("declare: %v", err)

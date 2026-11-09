@@ -181,17 +181,13 @@ func (h *ReconcileHandler) Pause(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = json.NewDecoder(r.Body).Decode(&req)
 
-	reason := req.Reason
+	// Who paused is passed apart from why and recorded on the pause's audit
+	// row, so the stored reason is the caller's own words (Phase 37 step 5).
 	var principal string
 	if p, ok := auth.PrincipalFromContext(r.Context()); ok {
 		principal = p.ID
-		if reason == "" {
-			reason = "paused by " + p.ID
-		} else {
-			reason = reason + " (paused by " + p.ID + ")"
-		}
 	}
-	if err := h.Reconcile.Pause(r.Context(), id, principal, reason); err != nil {
+	if err := h.Reconcile.Pause(r.Context(), id, principal, req.Reason); err != nil {
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return
 	}

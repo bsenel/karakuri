@@ -17,6 +17,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -312,6 +313,15 @@ func (s *Service) dispatch(ctx context.Context, id objective.ObjectiveID, forced
 		if err := s.pass(passCtx, id, forced); err != nil {
 			slog.Warn("reconcile pass failed", "objective", string(id), "err", err)
 		}
+		// A pause that cancelled this pass is recorded here, after the pass
+		// has filed the paused state, with the loop it stopped.
+		if p, stopped := stoppedBy(passCtx); stopped {
+			s.recordStop(context.WithoutCancel(passCtx), id, p.loopID, p.principal, map[string]any{
+				"control":        "pause",
+				"reason":         p.reason,
+				"pass_cancelled": true,
+			})
+		}
 	}()
 }
 
@@ -466,27 +476,69 @@ func (s *Service) pause(ctx context.Context, id objective.ObjectiveID, principal
 	s.mu.Lock()
 	cancel := s.cancels[id]
 	s.mu.Unlock()
-	if cancel != nil {
-		cancel(&pausedInFlight{reason: reason})
+	if cancel == nil {
+		s.recordStop(ctx, id, "", principal, map[string]any{
+			"control":        "pause",
+			"reason":         reason,
+			"pass_cancelled": false,
+		})
+		return false, nil
 	}
-	return cancel != nil, nil
+	// The pass's goroutine records this pause once the pass has ended, because
+	// only then is the loop it cancelled known (see dispatch).
+	cancel(&pausedInFlight{principal: principal, reason: reason})
+	return true, nil
 }
 
 // pausedInFlight is the cause a pause cancels a running pass with. It carries
 // the operator's reason so the ending pass re-applies the pause even when its
-// own copy of the state predates it.
-type pausedInFlight struct{ reason string }
+// own copy of the state predates it, and the principal so the pass can record
+// the pause with the loop it cancelled. loopID is set by finishStopped and
+// read by the same goroutine once the pass returns.
+type pausedInFlight struct {
+	principal string
+	reason    string
+	loopID    string
+}
 
 func (p *pausedInFlight) Error() string { return "paused: " + p.reason }
 
-// stoppedBy reports whether a pause cancelled ctx, and with which reason. A
+// stoppedBy reports whether a pause cancelled ctx, and the pause that did. A
 // cancellation for any other cause (shutdown) is not a stop.
-func stoppedBy(ctx context.Context) (string, bool) {
+func stoppedBy(ctx context.Context) (*pausedInFlight, bool) {
 	var p *pausedInFlight
 	if errors.As(context.Cause(ctx), &p) {
-		return p.reason, true
+		return p, true
 	}
-	return "", false
+	return nil, false
+}
+
+// recordStop writes one storage.ToolEventStop audit row (Phase 37 step 5):
+// who stopped or resumed work, why, and which objective and/or loop it
+// touched. It is called after the state it records is stored; a write that
+// fails is logged and undoes nothing, because the pause already holds.
+func (s *Service) recordStop(ctx context.Context, id objective.ObjectiveID, loopID, principal string, payload map[string]any) {
+	payload["principal"] = principal
+	if id != "" {
+		payload["objective_id"] = string(id)
+	}
+	if loopID != "" {
+		payload["loop_id"] = loopID
+	}
+	reason, _ := payload["reason"].(string)
+	pj, _ := json.Marshal(payload)
+	if err := s.store.SaveToolEvent(ctx, storage.ToolEvent{
+		ID:               "audit-" + newOutcomeID(),
+		ObjectiveID:      string(id),
+		Kind:             storage.ToolEventStop,
+		EscalationReason: reason,
+		Approver:         principal,
+		PayloadJSON:      string(pj),
+		Success:          true,
+	}); err != nil {
+		slog.Warn("could not record a stop in the audit log",
+			"objective", string(id), "loop", loopID, "control", payload["control"], "error", err)
+	}
 }
 
 // Resume puts a paused objective back into rotation and clears the counters
@@ -511,7 +563,11 @@ func (s *Service) Resume(ctx context.Context, id objective.ObjectiveID, principa
 	st.ScoreStreak = 0
 	st.LastError = ""
 	st.NextDueAt = &now
-	return s.store.SaveReconcileState(ctx, st)
+	if err := s.store.SaveReconcileState(ctx, st); err != nil {
+		return err
+	}
+	s.recordStop(ctx, id, "", principal, map[string]any{"control": "resume"})
+	return nil
 }
 
 // Trigger reconciles an objective now, outside its cadence.
