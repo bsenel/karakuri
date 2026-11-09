@@ -71,4 +71,21 @@ describe('OrgsPage', () => {
     await waitFor(() => expect(screen.getByText('Acme')).toBeInTheDocument());
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
+
+  it('names what each delete button deletes', async () => {
+    get.mockResolvedValue([
+      { id: 'o1', kind: 'org', name: 'Acme' },
+      { id: 't1', kind: 'team', name: 'Core', parent_id: 'o1' },
+      { id: 'p1', kind: 'project', name: 'Apollo' },
+    ]);
+
+    render(<OrgsPage />);
+    await waitFor(() => expect(screen.getByText('Acme')).toBeInTheDocument());
+    // Every one of these buttons reads "delete"; a screen reader lists them by
+    // name, so each has to say which row it removes.
+    expect(screen.getByRole('button', { name: 'Delete organisation Acme' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Delete team Core' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Delete project Apollo' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'delete' })).not.toBeInTheDocument();
+  });
 });

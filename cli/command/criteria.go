@@ -9,6 +9,10 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// exampleCriteriaPath is the example criteria file shipped in the repo; the
+// --criteria-file errors point at it as a file that parses.
+const exampleCriteriaPath = "docs/examples/criteria.yaml"
+
 // successCriteria builds the success_criteria of POST /objectives: the
 // file's criteria first, then one per --criterion. It reads syntax only; what
 // the criteria say is the server's to check, so a nil result means "send no
@@ -18,11 +22,11 @@ func successCriteria(file string, flags []string) ([]any, error) {
 	if file != "" {
 		raw, err := os.ReadFile(file) // #nosec G304 -- file is the path the user passed to --criteria-file
 		if err != nil {
-			return nil, fmt.Errorf("--criteria-file: %w", err)
+			return nil, fmt.Errorf("--criteria-file: %w\nCheck the path; it is read from the directory you run krk in, e.g. --criteria-file %s", err, exampleCriteriaPath)
 		}
 		// A file holding "[]" stays an empty list, a request for no criteria.
 		if err := yaml.Unmarshal(raw, &out); err != nil {
-			return nil, fmt.Errorf("--criteria-file %s: %w", file, err)
+			return nil, fmt.Errorf("--criteria-file %s: %w\nThe file must be a YAML list of criteria, each item starting with '- id: ...'; see %s for one that works", file, err, exampleCriteriaPath)
 		}
 	}
 	for _, flag := range flags {

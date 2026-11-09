@@ -112,7 +112,12 @@ function Orgs() {
             <span className="mono muted small">{org.id}</span>
             <div className="grow" />
             {mayWrite && (
-              <button className="linklike small" disabled={busy === org.id} onClick={() => void remove(org)}>
+              <button
+                className="linklike small"
+                disabled={busy === org.id}
+                onClick={() => void remove(org)}
+                aria-label={`Delete organisation ${org.name}`}
+              >
                 delete
               </button>
             )}
@@ -129,6 +134,7 @@ function Orgs() {
                     className="linklike small"
                     disabled={busy === team.id}
                     onClick={() => void remove(team)}
+                    aria-label={`Delete team ${team.name}`}
                   >
                     delete
                   </button>
@@ -163,7 +169,12 @@ function Orgs() {
             <span className="mono muted small">{p.id}</span>
             <div className="grow" />
             {mayWrite && (
-              <button className="linklike small" disabled={busy === p.id} onClick={() => void remove(p)}>
+              <button
+                className="linklike small"
+                disabled={busy === p.id}
+                onClick={() => void remove(p)}
+                aria-label={`Delete project ${p.name}`}
+              >
                 delete
               </button>
             )}
