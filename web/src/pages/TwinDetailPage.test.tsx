@@ -1,6 +1,5 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import { APIError } from '@/api/client';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // vi.mock is hoisted above the imports, so the stub has to be created inside
@@ -11,6 +10,7 @@ vi.mock('@/api/client', async () => {
   return { ...actual, api: { get, post: vi.fn(), put, del: vi.fn() } };
 });
 
+import { APIError } from '@/api/client';
 import { TwinDetailPage } from './TwinDetailPage';
 
 // The page links back to the list, so it needs a router.

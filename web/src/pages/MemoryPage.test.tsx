@@ -1,6 +1,5 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { APIError } from '@/api/client';
 
 // vi.mock is hoisted above the imports, so the stub has to be created inside
 // the factory and reached through vi.hoisted rather than closed over.
@@ -10,6 +9,7 @@ vi.mock('@/api/client', async () => {
   return { ...actual, api: { get: vi.fn(), post, put: vi.fn(), del: vi.fn() } };
 });
 
+import { APIError } from '@/api/client';
 import { MemoryPage } from './MemoryPage';
 
 const recall = () => fireEvent.click(screen.getByRole('button', { name: 'Recall' }));
