@@ -123,6 +123,14 @@ var rateLimitMarkers = []string{"rate limit", "rate_limit", "quota exceeded", "u
 // failure was then filed as a deferral the breaker never counts.
 var rateLimitStatus = regexp.MustCompile(`\b429\b`)
 
+// planLimit matches the Claude CLI's plan-limit refusal by its shape, "you've
+// hit your <window> limit · resets <time>", so a new window name needs no new
+// marker: "session" and "weekly" were listed one at a time, and "5-hour"
+// reached a person as a placeholder plan for weeks before anyone added it
+// (EB-008). The reset is what makes it a usage limit; a limit that does not
+// reset (a file size, a context window) is a real failure.
+var planLimit = regexp.MustCompile(`hit your [^.]{0,40}\blimit\b.*\bresets\b`)
+
 // classifyRateLimit names a rate limit from provider as the domain's
 // ErrProviderRateLimited (Phase 36) and returns any other error unchanged, the
 // same value. langchaingo v0.1.14 reports a non-200 as text holding the status
@@ -134,7 +142,7 @@ func classifyRateLimit(provider string, err error) error {
 		return &coreerrors.ProviderRateLimitError{Provider: provider, Cause: err}
 	}
 	text := strings.ToLower(err.Error())
-	if rateLimitStatus.MatchString(text) {
+	if rateLimitStatus.MatchString(text) || planLimit.MatchString(text) {
 		return &coreerrors.ProviderRateLimitError{Provider: provider, Cause: err}
 	}
 	for _, m := range rateLimitMarkers {
