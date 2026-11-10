@@ -9,6 +9,7 @@ import (
 	coreloop "github.com/bsenel/karakuri/internal/core/loop"
 	"github.com/bsenel/karakuri/internal/core/objective"
 	"github.com/bsenel/karakuri/internal/core/reconcile"
+	featureloop "github.com/bsenel/karakuri/internal/feature/loop"
 	"github.com/bsenel/karakuri/internal/platform/storage"
 )
 
@@ -36,7 +37,11 @@ type blockingLoop struct {
 	loopID  string
 	release chan struct{}
 
-	started   chan struct{} // closed when the first action starts
+	// completed and cut are what Stop answers the loop had run.
+	completed []featureloop.StopAction
+	cut       *featureloop.StopAction
+
+	started  chan struct{} // closed when the first action starts
 	cancelled chan struct{} // closed when the Run context is seen cancelled
 	done      chan struct{} // closed when the action goroutine has exited
 }
@@ -135,6 +140,24 @@ func (b *blockingLoop) runCount() int {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	return b.runs
+}
+
+// Stop records the call and answers with the actions setStopActions gave,
+// as the loop service answers with what the stopped loop had run.
+func (b *blockingLoop) Stop(ctx context.Context, loopID, principal, reason string) (featureloop.StopResult, error) {
+	res, err := b.stopRecorder.Stop(ctx, loopID, principal, reason)
+	b.mu.Lock()
+	res.Completed = append([]featureloop.StopAction(nil), b.completed...)
+	res.Cut = b.cut
+	b.mu.Unlock()
+	return res, err
+}
+
+// setStopActions sets the completed and cut actions every later Stop answers.
+func (b *blockingLoop) setStopActions(completed []featureloop.StopAction, cut *featureloop.StopAction) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.completed, b.cut = completed, cut
 }
 
 func (b *blockingLoop) id() string {
