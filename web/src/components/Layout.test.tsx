@@ -24,6 +24,15 @@ describe('Layout', () => {
     expect(screen.getByRole('button', { name: 'Sign out' })).toBeInTheDocument();
   });
 
+  // Phase 37 step 6: one stop-all control, on every page, for the moment
+  // something is going wrong everywhere. Its behaviour is specified in
+  // StopAllControl.test.tsx.
+  it('offers the stop-all control from every page', () => {
+    render(<MemoryRouter><Layout /></MemoryRouter>);
+
+    expect(screen.getByRole('button', { name: 'Stop all' })).toBeInTheDocument();
+  });
+
   it('hides the decorative brand glyph from screen readers', () => {
     render(<MemoryRouter><Layout /></MemoryRouter>);
 
