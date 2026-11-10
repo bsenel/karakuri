@@ -76,6 +76,9 @@ type ExportOversight struct {
 	CheckpointsRaised   int         `json:"checkpoints_raised"`
 	CheckpointsResolved int         `json:"checkpoints_resolved"`
 	Interventions       []ExportRow `json:"interventions"`
+	// Stops are the storage.ToolEventStop rows of the window: every pause,
+	// resume, loop stop and stop-all (Phase 37 step 5).
+	Stops []ExportRow `json:"stops"`
 }
 
 // ExportBounds is the authority a decision was taken under, lifted from the
