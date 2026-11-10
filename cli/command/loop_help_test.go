@@ -42,6 +42,16 @@ func TestResumeHelpShowsModify(t *testing.T) {
 	}
 }
 
+func TestLoopParentHelp(t *testing.T) {
+	cmd := loopCmd()
+	requireExample(t, cmd)
+	for _, sub := range []string{"krk loop status", "krk loop resume", "krk loop stop"} {
+		if !strings.Contains(cmd.Long, sub) {
+			t.Errorf("loop Long %q does not say when to use %s", cmd.Long, sub)
+		}
+	}
+}
+
 func TestTwinGetHelp(t *testing.T) {
 	if long := twinGetCmd().Long; !strings.Contains(long, "krk twin list") {
 		t.Errorf("twin get Long %q does not say where <id> comes from", long)

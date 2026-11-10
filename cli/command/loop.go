@@ -9,6 +9,12 @@ func loopCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "loop",
 		Short: "Control the autonomous reasoning loop",
+		Long: `Control the autonomous reasoning loop. A loop works on one objective until
+it converges, then stops. krk loop start prints a loop_id; pass it to
+krk loop status to follow the run, to krk loop resume when it pauses at a
+checkpoint, and to krk loop stop to end it early.`,
+		Example: `  krk loop start obj_123 --twin t_7f2a
+  krk loop status loop_123`,
 	}
 	cmd.AddCommand(loopStartCmd(), loopStatusCmd(), loopResumeCmd(), loopStopCmd())
 	return cmd
