@@ -107,7 +107,10 @@ that krk loop start prints; krk checkpoint list shows what the loop is waiting o
   krk loop resume loop_123 --decision approve --note "plan looks right"
 
   # Stop it
-  krk loop resume loop_123 --decision reject --note "out of scope"`,
+  krk loop resume loop_123 --decision reject --note "out of scope"
+
+  # Send it back for revision with an added constraint
+  krk loop resume loop_123 --decision modify --constraint "open a draft PR only"`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(c *cobra.Command, args []string) error {
 			body := buildResolveBody(c, decision, note, approver, removeActions, constraints, revisedConfidence)
@@ -124,7 +127,7 @@ that krk loop start prints; krk checkpoint list shows what the loop is waiting o
 	cmd.Flags().StringVar(&approver, "approver", "", "Identifier of the operator approving/rejecting (audit attribution)")
 	cmd.Flags().StringSliceVar(&removeActions, "remove-action", nil, "Capability ID to drop from the draft (repeatable; only valid with --decision modify)")
 	cmd.Flags().StringArrayVar(&constraints, "constraint", nil, "Constraint to feed into the revise pass (repeatable; only valid with --decision modify)")
-	cmd.Flags().Float64Var(&revisedConfidence, "revised-confidence", -1, "Floor for the revised plan's confidence (only valid with --decision modify)")
+	cmd.Flags().Float64Var(&revisedConfidence, "revised-confidence", -1, "Floor for the revised plan's confidence (only valid with --decision modify; the default -1 sends no floor)")
 	_ = cmd.MarkFlagRequired("decision")
 	return cmd
 }
