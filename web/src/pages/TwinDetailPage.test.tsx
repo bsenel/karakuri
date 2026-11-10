@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
+import { APIError } from '@/api/client';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // vi.mock is hoisted above the imports, so the stub has to be created inside
@@ -48,7 +49,7 @@ describe('TwinDetailPage', () => {
 
     renderPage();
     await waitFor(() =>
-      expect(screen.getByRole('alert')).toHaveTextContent('Could not load this twin: Error: API 404: twin not found'),
+      expect(screen.getByRole('alert')).toHaveTextContent('Could not load this twin: API 404: twin not found'),
     );
     expect(screen.getByRole('link', { name: '← Twins' })).toBeInTheDocument();
 
@@ -56,6 +57,16 @@ describe('TwinDetailPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
     await waitFor(() => expect(screen.getByRole('heading', { name: 'Platform team' })).toBeInTheDocument());
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it("shows the server's message rather than the raw response", async () => {
+    get.mockRejectedValue(new APIError(404, '{"error":"twin t1 not found"}'));
+
+    renderPage();
+    await waitFor(() =>
+      expect(screen.getByRole('alert')).toHaveTextContent('Could not load this twin: twin t1 not found.'),
+    );
+    expect(screen.getByRole('alert')).not.toHaveTextContent('API 404');
   });
 
   it('says there is nothing to bind when the server has no adapters', async () => {
