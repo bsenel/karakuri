@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 import { ModifyCheckpointDialog } from './ModifyCheckpointDialog';
+import { APIError } from '@/api/client';
 import type { Checkpoint } from '@/api/types';
 
 function checkpoint(over: Partial<Checkpoint> = {}): Checkpoint {
@@ -55,5 +56,15 @@ describe('ModifyCheckpointDialog', () => {
 
     await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('checkpoint already resolved'));
     expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it("shows the server's message rather than the raw response", async () => {
+    const onSubmit = vi.fn().mockRejectedValue(new APIError(409, '{"error":"checkpoint already resolved"}'));
+    render(<ModifyCheckpointDialog checkpoint={checkpoint()} onClose={vi.fn()} onSubmit={onSubmit} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Submit modification' }));
+
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('checkpoint already resolved'));
+    expect(screen.getByRole('alert')).not.toHaveTextContent('API 409');
   });
 });
