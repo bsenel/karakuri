@@ -177,7 +177,7 @@ func (e *Exporter) Export(ctx context.Context, from, to, now time.Time) ([]byte,
 		Retention:          e.retentionSection(from, to),
 		Templates:          make([]ExportTemplate, 0, len(e.templates)),
 		Decisions:          ExportDecisions{Rows: []ExportRow{}},
-		Oversight:          ExportOversight{Interventions: []ExportRow{}},
+		Oversight:          ExportOversight{Interventions: []ExportRow{}, Stops: []ExportRow{}},
 		AutonomyChanges:    []ExportRow{},
 		CountsByKind:       []ExportKindCount{},
 		PendingCheckpoints: []ExportPendingCheckpoint{},
@@ -201,6 +201,10 @@ func (e *Exporter) Export(ctx context.Context, from, to, now time.Time) ([]byte,
 			}
 		case storage.ToolEventApproval, storage.ToolEventRejection, storage.ToolEventModification:
 			doc.Oversight.Interventions = append(doc.Oversight.Interventions, row)
+		case storage.ToolEventStop:
+			// A stop is somebody acting on a run, not a checkpoint's answer, so
+			// it has a list of its own and never counts as an intervention.
+			doc.Oversight.Stops = append(doc.Oversight.Stops, row)
 		case storage.ToolEventPromotion, storage.ToolEventDemotion:
 			doc.AutonomyChanges = append(doc.AutonomyChanges, row)
 		}
@@ -273,6 +277,13 @@ func (e *Exporter) checkpoints(ctx context.Context, from, to time.Time, doc *Exp
 		o.Statement = fmt.Sprintf("A decision was asked for and not given in this window: %d checkpoints were raised and none was resolved in the window.", o.CheckpointsRaised)
 	default:
 		o.Statement = "No person was consulted in this window: no checkpoint was raised and none was resolved."
+	}
+	// Says what the record holds and no more: a stop whose audit write failed
+	// leaves no row, so an empty list does not show the system ran unstopped.
+	if len(o.Stops) == 0 {
+		o.Statement += " No stop, pause or resume was recorded in this window."
+	} else {
+		o.Statement += fmt.Sprintf(" %d stops, pauses or resumes were recorded in this window, each under the principal named on it.", len(o.Stops))
 	}
 	return nil
 }
