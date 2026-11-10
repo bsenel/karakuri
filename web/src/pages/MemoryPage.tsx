@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { api } from '@/api/client';
+import { describe } from '@/api/useApi';
 import type { MemoryEntry, MemoryQuery } from '@/api/types';
 
 const TIERS = ['working', 'episodic', 'semantic', 'procedural'] as const;
@@ -33,7 +34,7 @@ export function MemoryPage() {
       setRan('ok');
     } catch (e) {
       setResults([]);
-      setErr(String(e));
+      setErr(describe(e));
       setRan('failed');
     }
     finally { setLoading(false); }

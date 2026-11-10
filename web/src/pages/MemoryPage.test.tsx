@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { APIError } from '@/api/client';
 
 // vi.mock is hoisted above the imports, so the stub has to be created inside
 // the factory and reached through vi.hoisted rather than closed over.
@@ -43,6 +44,15 @@ describe('MemoryPage', () => {
     await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('API 500: boom'));
     expect(screen.getByText(/The recall failed/)).toBeInTheDocument();
     expect(screen.queryByText(/run a recall query/)).not.toBeInTheDocument();
+  });
+
+  it("shows the server's message rather than the raw response", async () => {
+    post.mockRejectedValue(new APIError(400, '{"error":"top_k must be positive"}'));
+
+    render(<MemoryPage />);
+    recall();
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('top_k must be positive'));
+    expect(screen.getByRole('alert')).not.toHaveTextContent('API 400');
   });
 
   it('names each filter by its label and sends what was typed there', async () => {
