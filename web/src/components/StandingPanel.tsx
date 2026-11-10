@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { api, APIError } from '@/api/client';
 import { useAuth } from '@/auth/AuthProvider';
 import type { AutonomyLevel, Budget, ReconcileOutcome, ReconcileView } from '@/api/types';
+import { ReasonDialog } from './ReasonDialog';
 
 /**
  * The control loop over one standing objective: what it is doing, when it is
@@ -24,6 +25,7 @@ export function StandingPanel({ objectiveID, budget }: { objectiveID: string; bu
   const [standing, setStanding] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [pausing, setPausing] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -79,8 +81,16 @@ export function StandingPanel({ objectiveID, budget }: { objectiveID: string; bu
         {state.autonomy && <AutonomyPill level={state.autonomy} />}
       </div>
 
-      {state.paused && state.paused_reason && (
-        <p className="small" role="status">{state.paused_reason}</p>
+      {/* Who paused it, when and why, shown to anybody who can read the
+          objective, whether or not they may resume it (Phase 37 step 6). */}
+      {state.paused && (state.paused_reason || state.paused_by) && (
+        <p className="small" role="status">
+          {state.paused_by ? `paused by ${state.paused_by}` : 'paused'}
+          {state.paused_at && (
+            <> at <time dateTime={state.paused_at}>{new Date(state.paused_at).toLocaleString()}</time></>
+          )}
+          {state.paused_reason && <>: {state.paused_reason}</>}
+        </p>
       )}
 
       <dl className="row small muted" style={{ gap: 24, flexWrap: 'wrap' }}>
@@ -106,9 +116,17 @@ export function StandingPanel({ objectiveID, budget }: { objectiveID: string; bu
         {can('objective:pause') && (
           state.paused
             ? <button className="primary" onClick={() => void act('resume')} disabled={busy}>Resume</button>
-            : <button onClick={() => void act('pause', { reason: 'paused from the console' })} disabled={busy}>Pause</button>
+            : <button onClick={() => setPausing(true)} disabled={busy}>Pause</button>
         )}
       </div>
+      {pausing && (
+        <ReasonDialog
+          title="Pause this objective"
+          confirmLabel="Pause the objective"
+          onClose={() => setPausing(false)}
+          onConfirm={(reason) => act('pause', { reason })}
+        />
+      )}
 
       <h4>Recent passes</h4>
       {history.length === 0 && <p className="muted small">Nothing yet.</p>}

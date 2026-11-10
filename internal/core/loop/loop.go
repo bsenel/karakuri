@@ -82,4 +82,11 @@ type Status struct {
 	Iteration   int                   `json:"iteration"`
 	CriteriaMet float64               `json:"criteria_met"`
 	Paused      bool                  `json:"paused"`
+	// Stopped, StoppedBy, StopReason and StoppedAt say that somebody stopped
+	// the run, who, why and when, so a console shows a stopped loop as
+	// stopped rather than as completed (Phase 37 step 6).
+	Stopped    bool       `json:"stopped,omitempty"`
+	StoppedBy  string     `json:"stopped_by,omitempty"`
+	StopReason string     `json:"stop_reason,omitempty"`
+	StoppedAt  *time.Time `json:"stopped_at,omitempty"`
 }

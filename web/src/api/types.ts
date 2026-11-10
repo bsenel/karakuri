@@ -177,6 +177,9 @@ export interface ReconcileState {
   phase: ReconcilePhase;
   paused: boolean;
   paused_reason?: string;
+  /** Empty when the breaker or the stall detector paused it (Phase 37 step 6). */
+  paused_by?: string;
+  paused_at?: string | null;
   /** Null means never due on its own — it reconciles only when asked. */
   next_due_at?: string | null;
   next_sense_at?: string | null;
@@ -218,6 +221,19 @@ export interface LoopStatus {
   checkpoint_id?: string;
   weighted_score?: number;
   last_step?: LoopStep;
+  /** Set when somebody stopped the run: who, why and when (Phase 37 step 6). */
+  stopped?: boolean;
+  stopped_by?: string;
+  stop_reason?: string;
+  stopped_at?: string | null;
+}
+
+// StopAllResult mirrors the answer of POST /stop-all (Phase 37 step 4).
+// Each list is null when empty, as the server encodes it.
+export interface StopAllResult {
+  loops_stopped: { loop_id: string; found: string }[] | null;
+  objectives_paused: { objective_id: string; pass_cancelled: boolean }[] | null;
+  not_reached: { kind: string; id: string; reason: string }[] | null;
 }
 
 // CheckpointAction mirrors internal/core/checkpoint.Action — the planner
