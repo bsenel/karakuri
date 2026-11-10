@@ -41,7 +41,7 @@ type blockingLoop struct {
 	completed []featureloop.StopAction
 	cut       *featureloop.StopAction
 
-	started  chan struct{} // closed when the first action starts
+	started   chan struct{} // closed when the first action starts
 	cancelled chan struct{} // closed when the Run context is seen cancelled
 	done      chan struct{} // closed when the action goroutine has exited
 }

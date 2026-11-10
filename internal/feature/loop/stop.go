@@ -102,6 +102,8 @@ func (s *serviceImpl) Stop(ctx context.Context, loopID, principal, reason string
 		return res, nil
 	}
 	res.Found = StopFoundRunning
+	// Read before the cancel, so an action in flight is the one it cuts.
+	res.Completed, res.Cut = state.actions()
 
 	// Stored before the cancel. When the write fails the loop is cancelled
 	// all the same, since it was asked to stop, and the error says the stop

@@ -384,9 +384,14 @@ func (s *Service) finishStopped(
 	reason := p.reason
 	p.loopID = outcome.LoopID
 	if outcome.LoopID != "" {
-		if _, err := s.loops.Stop(ctx, outcome.LoopID, stopPrincipal, reason); err != nil {
+		stopped, err := s.loops.Stop(ctx, outcome.LoopID, stopPrincipal, reason)
+		switch {
+		case err != nil:
 			slog.Warn("could not stop the loop of a paused reconcile",
 				"objective", obj.ID, "loop", outcome.LoopID, "error", err)
+		case stopped.Found == featureloop.StopFoundRunning:
+			// What the loop had done, for the pause's row (Phase 37 step 5).
+			p.stopped = &stopped
 		}
 	}
 	outcome.Deferred = outcomeStopped

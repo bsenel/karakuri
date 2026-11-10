@@ -316,11 +316,15 @@ func (s *Service) dispatch(ctx context.Context, id objective.ObjectiveID, forced
 		// A pause that cancelled this pass is recorded here, after the pass
 		// has filed the paused state, with the loop it stopped.
 		if p, stopped := stoppedBy(passCtx); stopped {
-			s.recordStop(context.WithoutCancel(passCtx), id, p.loopID, p.principal, map[string]any{
+			payload := map[string]any{
 				"control":        "pause",
 				"reason":         p.reason,
 				"pass_cancelled": true,
-			})
+			}
+			if p.stopped != nil {
+				addStopActions(payload, *p.stopped)
+			}
+			s.recordStop(context.WithoutCancel(passCtx), id, p.loopID, p.principal, payload)
 		}
 	}()
 }
@@ -493,12 +497,14 @@ func (s *Service) pause(ctx context.Context, id objective.ObjectiveID, principal
 // pausedInFlight is the cause a pause cancels a running pass with. It carries
 // the operator's reason so the ending pass re-applies the pause even when its
 // own copy of the state predates it, and the principal so the pass can record
-// the pause with the loop it cancelled. loopID is set by finishStopped and
-// read by the same goroutine once the pass returns.
+// the pause with the loop it cancelled. loopID, and stopped when the loop's
+// stop took its ending, are set by finishStopped and read by the same
+// goroutine once the pass returns.
 type pausedInFlight struct {
 	principal string
 	reason    string
 	loopID    string
+	stopped   *featureloop.StopResult
 }
 
 func (p *pausedInFlight) Error() string { return "paused: " + p.reason }
@@ -538,6 +544,25 @@ func (s *Service) recordStop(ctx context.Context, id objective.ObjectiveID, loop
 	}); err != nil {
 		slog.Warn("could not record a stop in the audit log",
 			"objective", string(id), "loop", loopID, "control", payload["control"], "error", err)
+	}
+}
+
+// addStopActions names, in a stop row's payload, the actions the stopped loop
+// had completed and the one the stop cut (Phase 37 step 5). A cut action is
+// recorded as ended only when the loop service saw it end, and as unknown
+// otherwise: a stop does not wait for the action it cancels.
+func addStopActions(payload map[string]any, stopped featureloop.StopResult) {
+	completed := stopped.Completed
+	if completed == nil {
+		completed = []featureloop.StopAction{}
+	}
+	payload["completed_actions"] = completed
+	if stopped.Cut != nil {
+		cut := *stopped.Cut
+		if cut.Ended != featureloop.StopActionEndedYes {
+			cut.Ended = featureloop.StopActionEndedUnknown
+		}
+		payload["cut_action"] = cut
 	}
 }
 

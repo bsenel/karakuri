@@ -169,11 +169,22 @@ func stepAct(ctx context.Context, sc *stepContext, p plan) []actionOutcome {
 				telemetry.Attribute{Key: telemetry.GenAIToolName, Value: action.CapabilityID},
 				telemetry.Attribute{Key: telemetry.AttrKarakuriEnvironmentID, Value: string(targetEnv.ID())},
 			)
+			// Named for a stop's audit record, with the worktree a cut
+			// delegation may have left half done (Phase 37 step 5).
+			workdir, _ := params["worktree_path"].(string)
+			branch, _ := params["branch"].(string)
+			sc.state.startAction(StopAction{
+				CapabilityID: action.CapabilityID,
+				EnvID:        string(targetEnv.ID()),
+				Workdir:      workdir,
+				Branch:       branch,
+			})
 			var err error
 			result, err = targetEnv.Act(actCtx, environment.Action{
 				CapabilityID: capability.CapabilityID(action.CapabilityID),
 				Params:       params,
 			})
+			sc.state.endAction()
 			if err != nil {
 				result = environment.ActionResult{
 					Success: false,

@@ -58,6 +58,14 @@ func (s *Service) StopLoop(ctx context.Context, loopID, principal, reason string
 	if res.ObjectivePaused && res.Found == featureloop.StopFoundEnded {
 		res.Found = featureloop.StopFoundRunning
 	}
+	// Written after the loop service stored the stopped state, and only for
+	// a stop that ended something (Phase 37 step 5). A watch's pause has its
+	// own row; this one is the loop's.
+	if res.Found == featureloop.StopFoundRunning {
+		payload := map[string]any{"control": "loop_stop", "reason": reason}
+		addStopActions(payload, res.StopResult)
+		s.recordStop(ctx, res.ObjectiveID, loopID, principal, payload)
+	}
 	if pauseErr != nil {
 		return res, fmt.Errorf("loop %q stopped, but its objective %q was not paused: %w",
 			loopID, res.ObjectiveID, pauseErr)

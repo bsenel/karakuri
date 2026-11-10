@@ -73,7 +73,13 @@ type loopState struct {
 	ended      bool
 	stoppedBy  string
 	stopReason string
-	mu         sync.RWMutex
+	// done are the actions an environment has run to an answer, and acting
+	// the one it is running now, nil between actions, so a stop can say what
+	// the run had done and what it cut (Phase 37 step 5). In memory only: a
+	// loop stopped from its stored row alone reports none.
+	done   []StopAction
+	acting *StopAction
+	mu     sync.RWMutex
 	// persistMu holds a snapshot and its write together, so a runner's write
 	// read before a stop cannot land after the stop's and reopen the row.
 	persistMu sync.Mutex
@@ -106,6 +112,45 @@ func (ls *loopState) markStopped(principal, reason string, evenIfEnded bool) (st
 	ls.result.Status = objective.StatusStopped
 	ls.status.Paused = false
 	return cpID, true
+}
+
+// startAction records that an environment has started running a. A nil
+// state, a step run outside a loop, records nothing.
+func (ls *loopState) startAction(a StopAction) {
+	if ls == nil {
+		return
+	}
+	ls.mu.Lock()
+	defer ls.mu.Unlock()
+	ls.acting = &a
+}
+
+// endAction records that the action in flight has returned.
+func (ls *loopState) endAction() {
+	if ls == nil {
+		return
+	}
+	ls.mu.Lock()
+	defer ls.mu.Unlock()
+	if ls.acting != nil {
+		ls.done = append(ls.done, *ls.acting)
+		ls.acting = nil
+	}
+}
+
+// actions returns the actions that have returned and a copy of the one in
+// flight, if any. The one in flight is not known to have ended: a stop
+// cancels it and does not wait for it.
+func (ls *loopState) actions() ([]StopAction, *StopAction) {
+	ls.mu.RLock()
+	defer ls.mu.RUnlock()
+	done := append([]StopAction{}, ls.done...)
+	if ls.acting == nil {
+		return done, nil
+	}
+	cut := *ls.acting
+	cut.Ended = StopActionEndedUnknown
+	return done, &cut
 }
 
 // takeAnswered reports whether the replay is still owed the decision on the
