@@ -321,6 +321,9 @@ func (s *Service) dispatch(ctx context.Context, id objective.ObjectiveID, forced
 				"reason":         p.reason,
 				"pass_cancelled": true,
 			}
+			if p.stopAllID != "" {
+				payload["stop_all_id"] = p.stopAllID
+			}
 			if p.stopped != nil {
 				addStopActions(payload, *p.stopped)
 			}
@@ -461,12 +464,14 @@ func (s *Service) Forget(ctx context.Context, id objective.ObjectiveID) error {
 // passed apart from the reason, so the audit record never has to parse it back
 // out of free text (Phase 37 step 5).
 func (s *Service) Pause(ctx context.Context, id objective.ObjectiveID, principal, reason string) error {
-	_, err := s.pause(ctx, id, principal, reason)
+	_, err := s.pause(ctx, id, principal, reason, "")
 	return err
 }
 
 // pause is Pause, and reports whether it cancelled a pass in flight.
-func (s *Service) pause(ctx context.Context, id objective.ObjectiveID, principal, reason string) (bool, error) {
+// stopAllID, when not empty, is the ID of the stop_all row of the StopAll call
+// this pause is part of, and the pause's own row points to it.
+func (s *Service) pause(ctx context.Context, id objective.ObjectiveID, principal, reason, stopAllID string) (bool, error) {
 	st, err := s.store.GetReconcileState(ctx, id)
 	if err != nil {
 		return false, err
@@ -481,28 +486,34 @@ func (s *Service) pause(ctx context.Context, id objective.ObjectiveID, principal
 	cancel := s.cancels[id]
 	s.mu.Unlock()
 	if cancel == nil {
-		s.recordStop(ctx, id, "", principal, map[string]any{
+		payload := map[string]any{
 			"control":        "pause",
 			"reason":         reason,
 			"pass_cancelled": false,
-		})
+		}
+		if stopAllID != "" {
+			payload["stop_all_id"] = stopAllID
+		}
+		s.recordStop(ctx, id, "", principal, payload)
 		return false, nil
 	}
 	// The pass's goroutine records this pause once the pass has ended, because
 	// only then is the loop it cancelled known (see dispatch).
-	cancel(&pausedInFlight{principal: principal, reason: reason})
+	cancel(&pausedInFlight{principal: principal, reason: reason, stopAllID: stopAllID})
 	return true, nil
 }
 
 // pausedInFlight is the cause a pause cancels a running pass with. It carries
 // the operator's reason so the ending pass re-applies the pause even when its
 // own copy of the state predates it, and the principal so the pass can record
-// the pause with the loop it cancelled. loopID, and stopped when the loop's
+// the pause with the loop it cancelled, and stopAllID the StopAll call's row
+// that row points to, if any. loopID, and stopped when the loop's
 // stop took its ending, are set by finishStopped and read by the same
 // goroutine once the pass returns.
 type pausedInFlight struct {
 	principal string
 	reason    string
+	stopAllID string
 	loopID    string
 	stopped   *featureloop.StopResult
 }
@@ -524,6 +535,16 @@ func stoppedBy(ctx context.Context) (*pausedInFlight, bool) {
 // touched. It is called after the state it records is stored; a write that
 // fails is logged and undoes nothing, because the pause already holds.
 func (s *Service) recordStop(ctx context.Context, id objective.ObjectiveID, loopID, principal string, payload map[string]any) {
+	s.recordStopAs(ctx, newStopRowID(), id, loopID, principal, payload)
+}
+
+// newStopRowID is the ID of a new stop audit row.
+func newStopRowID() string { return "audit-" + newOutcomeID() }
+
+// recordStopAs is recordStop with the row's ID chosen by the caller, so a
+// StopAll can name its call's row in the rows of the runs it touched before
+// the call's row, written last, exists.
+func (s *Service) recordStopAs(ctx context.Context, rowID string, id objective.ObjectiveID, loopID, principal string, payload map[string]any) {
 	payload["principal"] = principal
 	if id != "" {
 		payload["objective_id"] = string(id)
@@ -534,7 +555,7 @@ func (s *Service) recordStop(ctx context.Context, id objective.ObjectiveID, loop
 	reason, _ := payload["reason"].(string)
 	pj, _ := json.Marshal(payload)
 	if err := s.store.SaveToolEvent(ctx, storage.ToolEvent{
-		ID:               "audit-" + newOutcomeID(),
+		ID:               rowID,
 		ObjectiveID:      string(id),
 		Kind:             storage.ToolEventStop,
 		EscalationReason: reason,

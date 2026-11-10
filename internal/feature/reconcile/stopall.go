@@ -61,6 +61,10 @@ type StopAllResult struct {
 // listed, so a second call reports that nothing changed. A run a store or Stop
 // error held back is listed as not reached with that error's text. A listing
 // that fails returns its error along with what was done before it.
+//
+// The call leaves one "stop_all" audit row with what it returns, and every
+// objective it paused or loop it stopped leaves its own "pause" or
+// "loop_stop" row with stop_all_id set to that row's ID (Phase 37 step 5).
 func (s *Service) StopAll(ctx context.Context, principal, reason string, mayStop func(kind, id string) bool) (StopAllResult, error) {
 	res := StopAllResult{
 		LoopsStopped:     []featureloop.StopResult{},
@@ -70,6 +74,19 @@ func (s *Service) StopAll(ctx context.Context, principal, reason string, mayStop
 	notReached := func(kind, id, why string) {
 		res.NotReached = append(res.NotReached, NotReachedRun{Kind: kind, ID: id, Reason: why})
 	}
+	// The call's row is written last, once everything it lists is stored, but
+	// its ID is chosen now so each run's row can point to it (Phase 37 step 5).
+	// It is written on a listing error too, with what was done before it.
+	callID := newStopRowID()
+	defer func() {
+		s.recordStopAs(ctx, callID, "", "", principal, map[string]any{
+			"control":           "stop_all",
+			"reason":            reason,
+			"loops_stopped":     res.LoopsStopped,
+			"objectives_paused": res.ObjectivesPaused,
+			"not_reached":       res.NotReached,
+		})
+	}()
 
 	ids, err := s.store.ListReconcileStateIDs(ctx)
 	if err != nil {
@@ -94,7 +111,7 @@ func (s *Service) StopAll(ctx context.Context, principal, reason string, mayStop
 		case !mayStop(StopAllKindObjective, string(id)):
 			notReached(StopAllKindObjective, string(id), StopAllNotPermitted)
 		default:
-			cancelled, err := s.pause(ctx, id, principal, reason)
+			cancelled, err := s.pause(ctx, id, principal, reason, callID)
 			if err != nil {
 				notReached(StopAllKindObjective, string(id), err.Error())
 				continue
@@ -123,6 +140,11 @@ func (s *Service) StopAll(ctx context.Context, principal, reason string, mayStop
 		// A loop that ended between the listing and the stop changed nothing.
 		if stopped.Found == featureloop.StopFoundRunning {
 			res.LoopsStopped = append(res.LoopsStopped, stopped)
+			// Written after the loop service stored the stopped state, as
+			// StopLoop writes its own.
+			payload := map[string]any{"control": "loop_stop", "reason": reason, "stop_all_id": callID}
+			addStopActions(payload, stopped)
+			s.recordStop(ctx, l.ObjectiveID, l.LoopID, principal, payload)
 		}
 	}
 	return res, nil
