@@ -119,6 +119,9 @@ that krk loop start prints; krk checkpoint list shows what the loop is waiting o
   krk loop resume loop_123 --decision modify --constraint "open a draft PR only"`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(c *cobra.Command, args []string) error {
+			if err := checkDecision(c, decision, args[0]); err != nil {
+				return err
+			}
 			body := buildResolveBody(c, decision, note, approver, removeActions, constraints, revisedConfidence)
 			data, _, err := api.Post("/loops/"+args[0]+"/resume", body)
 			if err != nil {

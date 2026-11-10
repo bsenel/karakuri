@@ -1,6 +1,8 @@
 package command
 
 import (
+	"fmt"
+
 	"github.com/bsenel/karakuri/cli/client"
 	"github.com/spf13/cobra"
 )
@@ -75,6 +77,9 @@ func checkpointResolveCmd() *cobra.Command {
   krk checkpoint resolve cp_123 --decision modify --constraint "open a draft PR only"`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(c *cobra.Command, args []string) error {
+			if err := checkDecision(c, decision, args[0]); err != nil {
+				return err
+			}
 			body := buildResolveBody(c, decision, note, approver, removeActions, constraints, revisedConfidence)
 			data, _, err := api.Post("/checkpoints/"+args[0]+"/resolve", body)
 			if err != nil {
@@ -92,6 +97,17 @@ func checkpointResolveCmd() *cobra.Command {
 	cmd.Flags().Float64Var(&revisedConfidence, "revised-confidence", -1, "Floor for the revised plan's confidence (only valid with --decision modify; the default -1 sends no floor)")
 	_ = cmd.MarkFlagRequired("decision")
 	return cmd
+}
+
+// checkDecision refuses a --decision outside approve|reject|modify before
+// anything is sent; a typo such as "deny" would otherwise reach the server,
+// which treats any choice it does not recognise as an approval.
+func checkDecision(c *cobra.Command, decision, id string) error {
+	switch decision {
+	case "approve", "reject", "modify":
+		return nil
+	}
+	return fmt.Errorf("invalid --decision %q: use approve, reject or modify, e.g. `%s %s --decision approve --note \"plan looks right\"`", decision, c.CommandPath(), id)
 }
 
 // buildResolveBody composes the resolve/resume request body. Modifications
