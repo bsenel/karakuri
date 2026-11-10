@@ -124,9 +124,12 @@ func (s *serviceImpl) stopStored(ctx context.Context, loopID, principal, reason 
 // closeStopped closes what a stopped loop leaves open: the checkpoint it was
 // waiting at, rejected by the principal who stopped it, and a one-shot
 // objective's status. A standing objective's row is reconcile's.
+//
+// The rejection is recorded as closed by a stop rather than as a person's
+// judgement of the plan, so it does not lower the escalation approval rate.
 func (s *serviceImpl) closeStopped(ctx context.Context, objID objective.ObjectiveID, cpID, principal, reason string) {
 	if cpID != "" && s.cpSvc != nil {
-		_ = s.cpSvc.Record(ctx, cpID, corecheckpoint.Decision{
+		_ = s.cpSvc.RecordClosedByStop(ctx, cpID, corecheckpoint.Decision{
 			Choice:   "reject",
 			Approver: principal,
 			Note:     "The loop was stopped: " + reason,
