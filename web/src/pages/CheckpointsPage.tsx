@@ -21,7 +21,9 @@ export function CheckpointsPage() {
       setItems(list ?? []);
       setErr(null);
       setLoaded(true);
-    } catch (e) { setErr(describe(e)); }
+      // Say which request failed: a bare server message does not tell an
+      // operator whether the queue or their decision is what broke.
+    } catch (e) { setErr(`Could not load checkpoints: ${describe(e)}`); }
     finally { setLoading(false); }
   };
   useEffect(() => { void load(); }, []);
@@ -37,7 +39,7 @@ export function CheckpointsPage() {
     try {
       await api.post(`/checkpoints/${id}/resolve`, { decision });
       await load();
-    } catch (e) { setErr(describe(e)); }
+    } catch (e) { setErr(`Could not ${decision} checkpoint ${id}: ${describe(e)}`); }
     finally { setBusy(null); }
   };
 

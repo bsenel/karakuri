@@ -4,10 +4,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // vi.mock is hoisted above the imports, so the stub has to be created inside
 // the factory and reached through vi.hoisted rather than closed over.
-const { get } = vi.hoisted(() => ({ get: vi.fn() }));
+const { get, post } = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn() }));
 vi.mock('@/api/client', async () => {
   const actual = await vi.importActual<typeof import('@/api/client')>('@/api/client');
-  return { ...actual, api: { get, post: vi.fn(), put: vi.fn(), del: vi.fn() } };
+  return { ...actual, api: { get, post, put: vi.fn(), del: vi.fn() } };
 });
 
 import { APIError } from '@/api/client';
@@ -18,6 +18,7 @@ describe('CheckpointsPage', () => {
   // returned from beforeEach as that test's cleanup — it would call get().
   beforeEach(() => {
     get.mockReset();
+    post.mockReset();
   });
 
   it('says it is loading rather than that nothing is pending', () => {
@@ -43,7 +44,9 @@ describe('CheckpointsPage', () => {
 
     render(<CheckpointsPage />);
     await waitFor(() =>
-      expect(screen.getByText('checkpoint:read is not granted')).toBeInTheDocument(),
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        'Could not load checkpoints: checkpoint:read is not granted',
+      ),
     );
     expect(screen.queryByText(/No pending checkpoints/)).not.toBeInTheDocument();
     expect(screen.queryByText('Loading…')).not.toBeInTheDocument();
@@ -108,5 +111,32 @@ describe('CheckpointsPage', () => {
       expect(screen.getByRole('group', { name: 'Checkpoint: Deploy to production' })).toBeInTheDocument(),
     );
     expect(screen.getByRole('button', { name: 'Approve' })).toBeInTheDocument();
+  });
+
+  it('says which decision failed, rather than only the server message', async () => {
+    get.mockResolvedValue([
+      {
+        id: 'cp-1',
+        objective_id: 'obj-1',
+        reason: 'Deploy to production',
+        status: 'pending',
+        created_at: '2026-11-01T10:00:00Z',
+      },
+    ]);
+    post.mockRejectedValue(new APIError(409, '{"message":"checkpoint already resolved"}'));
+
+    render(
+      <MemoryRouter>
+        <CheckpointsPage />
+      </MemoryRouter>,
+    );
+    fireEvent.click(await screen.findByRole('button', { name: 'Reject' }));
+    await waitFor(() =>
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        'Could not reject checkpoint cp-1: checkpoint already resolved',
+      ),
+    );
+    // The queue was read, so a failed decision does not offer to reload it.
+    expect(screen.queryByRole('button', { name: 'Retry' })).not.toBeInTheDocument();
   });
 });
