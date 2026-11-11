@@ -164,8 +164,13 @@ func (s *Service) Record(ctx context.Context, id string, d corecheckpoint.Decisi
 	// is closed as rejected by whoever stopped it, and an approval arriving
 	// afterwards must be refused rather than recorded over that (Phase 37
 	// step 3).
-	if prior, err := s.store.GetCheckpoint(ctx, id); err == nil && prior.Status == corecheckpoint.StatusResolved {
-		return fmt.Errorf("checkpoint %q is already resolved", id)
+	if prior, err := s.store.GetCheckpoint(ctx, id); err == nil {
+		if prior.Status == corecheckpoint.StatusResolved {
+			return fmt.Errorf("checkpoint %q is already resolved", id)
+		}
+		if err := corecheckpoint.ValidateChoice(d.Choice, prior.Options); err != nil {
+			return err
+		}
 	}
 	if err := s.store.ResolveCheckpoint(ctx, id, d); err != nil {
 		return err
