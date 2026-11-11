@@ -39,9 +39,9 @@ func TestEmptyListsSaySo(t *testing.T) {
 	}{
 		{[]string{"objective", "list"}, "No objectives. Create one with: krk objective create\n"},
 		{[]string{"twin", "list"}, "No twins. Create one with: krk twin create\n"},
-		{[]string{"checkpoint", "list"}, "No pending checkpoints.\n"},
-		{[]string{"artifact", "list"}, "No artifacts.\n"},
-		{[]string{"objective", "templates"}, "No objective templates.\n"},
+		// No command makes these directly, so the note names what does.
+		{[]string{"checkpoint", "list"}, "No pending checkpoints. A running loop opens one when it needs approval; see: krk loop status <loop-id>\n"},
+		{[]string{"artifact", "list"}, "No artifacts. A running loop writes them; start one with: krk loop start <objective-id>\n"},		{[]string{"objective", "templates"}, "No objective templates.\n"},
 		{[]string{"quota", "tiers"}, "No stored tier limits. Create one with: krk quota set\n"},
 		{[]string{"domain", "capabilities", "--domain", "nosuch"}, "No capabilities.\n"},
 	} {

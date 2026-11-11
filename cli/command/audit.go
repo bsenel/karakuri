@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"net/http"
 	"net/url"
 	"os"
 	"strings"
@@ -116,6 +117,11 @@ window can be compared. The global --output format does not apply.`,
 			data, status, err := api.Get("/audit/export?" + q.Encode())
 			if err != nil {
 				return err
+			}
+			// A 400 is a refused window: a bound that is not RFC3339, or a
+			// window that has not ended yet.
+			if status == http.StatusBadRequest {
+				return fmt.Errorf("audit export: status %d: %s\nGive --from and --to as RFC3339 timestamps with --to in the past, e.g. --from 2026-09-01T00:00:00Z --to 2026-10-01T00:00:00Z", status, strings.TrimSpace(string(data)))
 			}
 			if status < 200 || status > 299 {
 				return fmt.Errorf("audit export: status %d: %s", status, strings.TrimSpace(string(data)))

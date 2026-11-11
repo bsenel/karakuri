@@ -54,8 +54,10 @@ type StopAllResult struct {
 // step 1 does and no tick starts a new pass while the loops are being stopped.
 // A loop of a standing objective that was not paused when StopAll read it is
 // reported once, as that objective (paused, or not reached), and is neither
-// stopped nor listed again: the pause ends its pass. Every other running loop
-// is stopped through the loop service, as step 3 does.
+// stopped nor listed again: the pause ends its pass. The exception is the loop
+// a paused objective left waiting at a checkpoint (its ActiveLoopID): no pass
+// watches it, so it is stopped and listed like any other loop. Every other
+// running loop is stopped through the loop service, as step 3 does.
 //
 // An objective already paused, or a loop that has already ended, is not
 // listed, so a second call reports that nothing changed. A run a store or Stop
@@ -95,6 +97,10 @@ func (s *Service) StopAll(ctx context.Context, principal, reason string, mayStop
 	// covered holds the objectives this call answers for, so their loops are
 	// not reported a second time as loops.
 	covered := make(map[objective.ObjectiveID]bool, len(ids))
+	// waiting holds, for each objective this call paused, the loop it left
+	// waiting at a checkpoint (its ActiveLoopID). No pass watches that loop,
+	// so the pause cancels nothing and it has to be stopped here.
+	waiting := make(map[objective.ObjectiveID]string, len(ids))
 	for _, id := range ids {
 		st, err := s.store.GetReconcileState(ctx, id)
 		if errors.Is(err, coreerrors.ErrNotFound) {
@@ -117,6 +123,9 @@ func (s *Service) StopAll(ctx context.Context, principal, reason string, mayStop
 				continue
 			}
 			res.ObjectivesPaused = append(res.ObjectivesPaused, PausedObjective{ObjectiveID: id, PassCancelled: cancelled})
+			if st.ActiveLoopID != "" {
+				waiting[id] = st.ActiveLoopID
+			}
 		}
 	}
 
@@ -125,7 +134,7 @@ func (s *Service) StopAll(ctx context.Context, principal, reason string, mayStop
 		return res, fmt.Errorf("list running loops: %w", err)
 	}
 	for _, l := range loops {
-		if l.ObjectiveID != "" && covered[l.ObjectiveID] {
+		if l.ObjectiveID != "" && covered[l.ObjectiveID] && waiting[l.ObjectiveID] != l.LoopID {
 			continue
 		}
 		if !mayStop(StopAllKindLoop, l.LoopID) {
