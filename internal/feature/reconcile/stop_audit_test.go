@@ -126,6 +126,44 @@ func TestPauseOfAnIdleObjectiveLeavesOneStopEvent(t *testing.T) {
 	}
 }
 
+// A second pause of an objective already paused changes nothing, so it
+// records nothing and keeps the first pause's reason: the export counts only
+// presses that stopped something.
+func TestPauseOfAPausedObjectiveLeavesNoSecondStopEvent(t *testing.T) {
+	f, obj := declareIdle(t)
+	if err := f.svc.Pause(context.Background(), obj.ID, "alice", "wrong branch"); err != nil {
+		t.Fatalf("first pause: %v", err)
+	}
+
+	if err := f.svc.Pause(context.Background(), obj.ID, "bob", "second press"); err != nil {
+		t.Fatalf("second pause: %v", err)
+	}
+
+	ev := onlyStopEvent(t, eventsWithControl(stopEvents(t, f.store), "pause"), "two pauses of one objective")
+	assertStopEvent(t, ev, "pause", "alice", "wrong branch", obj.ID)
+	st := f.state(t, obj.ID)
+	if !st.Paused {
+		t.Error("the objective is not paused after two pauses")
+	}
+	if st.PausedReason != "wrong branch" {
+		t.Errorf("paused reason = %q, want the first pause's %q", st.PausedReason, "wrong branch")
+	}
+}
+
+// A resume of an objective that is not paused changes nothing, so it records
+// nothing.
+func TestResumeOfAnObjectiveNotPausedLeavesNoStopEvent(t *testing.T) {
+	f, obj := declareIdle(t)
+
+	if err := f.svc.Resume(context.Background(), obj.ID, "bob"); err != nil {
+		t.Fatalf("resume: %v", err)
+	}
+
+	if evs := stopEvents(t, f.store); len(evs) != 0 {
+		t.Errorf("a resume of an objective not paused left %d stop events, want 0: %+v", len(evs), evs)
+	}
+}
+
 // A pause that fails changes nothing, so it records nothing.
 func TestPauseOfAnUnknownObjectiveLeavesNoStopEvent(t *testing.T) {
 	f, _ := declareIdle(t)
@@ -199,10 +237,6 @@ func TestResumeLeavesOneStopEvent(t *testing.T) {
 }
 
 // A resume that fails changes nothing, so it records nothing.
-//
-// Resume does not refuse an objective that is not paused today; it resumes it
-// all the same. That case is left to the implementation and not specified
-// here; only a resume that fails is.
 func TestResumeOfAnUnknownObjectiveLeavesNoStopEvent(t *testing.T) {
 	f, _ := declareIdle(t)
 
