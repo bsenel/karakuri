@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from '@/api/client';
+import { describe } from '@/api/useApi';
 import type { Artifact } from '@/api/types';
 
 export function ArtifactsPage() {
@@ -23,7 +24,7 @@ export function ArtifactsPage() {
       setLoaded('ok');
     } catch (e) {
       setItems([]);
-      setErr(String(e));
+      setErr(describe(e));
       setLoaded('failed');
     }
   };
@@ -41,7 +42,7 @@ export function ArtifactsPage() {
     try {
       const text = await api.get<string>(`/artifacts/${sha1}/diff/${sha2}`);
       setDiff(typeof text === 'string' ? text : JSON.stringify(text, null, 2));
-    } catch (e) { setErr(String(e)); }
+    } catch (e) { setErr(describe(e)); }
   };
 
   return (

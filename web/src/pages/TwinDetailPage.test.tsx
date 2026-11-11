@@ -10,6 +10,7 @@ vi.mock('@/api/client', async () => {
   return { ...actual, api: { get, post: vi.fn(), put, del: vi.fn() } };
 });
 
+import { APIError } from '@/api/client';
 import { TwinDetailPage } from './TwinDetailPage';
 
 // The page links back to the list, so it needs a router.
@@ -48,7 +49,7 @@ describe('TwinDetailPage', () => {
 
     renderPage();
     await waitFor(() =>
-      expect(screen.getByRole('alert')).toHaveTextContent('Could not load this twin: Error: API 404: twin not found'),
+      expect(screen.getByRole('alert')).toHaveTextContent('Could not load this twin: API 404: twin not found'),
     );
     expect(screen.getByRole('link', { name: '← Twins' })).toBeInTheDocument();
 
@@ -56,6 +57,16 @@ describe('TwinDetailPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
     await waitFor(() => expect(screen.getByRole('heading', { name: 'Platform team' })).toBeInTheDocument());
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it("shows the server's message rather than the raw response", async () => {
+    get.mockRejectedValue(new APIError(404, '{"error":"twin t1 not found"}'));
+
+    renderPage();
+    await waitFor(() =>
+      expect(screen.getByRole('alert')).toHaveTextContent('Could not load this twin: twin t1 not found.'),
+    );
+    expect(screen.getByRole('alert')).not.toHaveTextContent('API 404');
   });
 
   it('says there is nothing to bind when the server has no adapters', async () => {
