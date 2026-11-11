@@ -82,4 +82,57 @@ describe('ArtifactsPage', () => {
     expect(screen.getByLabelText('SHA A')).toHaveValue(sha);
     expect(screen.getByLabelText('SHA B')).toHaveValue(sha);
   });
+
+  const fillShas = () => {
+    fireEvent.change(screen.getByLabelText('SHA A'), { target: { value: 'aaa' } });
+    fireEvent.change(screen.getByLabelText('SHA B'), { target: { value: 'bbb' } });
+  };
+
+  it('says it is diffing while the diff request is pending', async () => {
+    get.mockImplementation((path: string) =>
+      path === '/artifacts' ? Promise.resolve([]) : new Promise(() => {}),
+    );
+
+    render(<ArtifactsPage />);
+    await waitFor(() => expect(screen.getByText(/No artifacts yet/)).toBeInTheDocument());
+    fillShas();
+    fireEvent.click(screen.getByRole('button', { name: 'Diff' }));
+
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Diffing…'));
+    expect(get).toHaveBeenLastCalledWith('/artifacts/aaa/diff/bbb');
+    expect(screen.getByRole('button', { name: 'Diff' })).toBeDisabled();
+  });
+
+  it('says the diff failed, beside the diff, and lets it be run again', async () => {
+    get.mockImplementation((path: string) =>
+      path === '/artifacts' ? Promise.resolve([]) : Promise.reject(new Error('API 404: artifact not found')),
+    );
+
+    render(<ArtifactsPage />);
+    await waitFor(() => expect(screen.getByText(/No artifacts yet/)).toBeInTheDocument());
+    fillShas();
+    fireEvent.click(screen.getByRole('button', { name: 'Diff' }));
+
+    await waitFor(() =>
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        'Could not diff these artifacts: Error: API 404: artifact not found',
+      ),
+    );
+    // The list did load; its own failure line must not appear.
+    expect(screen.queryByText('Could not load artifacts.')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Diff' })).not.toBeDisabled();
+  });
+
+  it('says two artifacts do not differ instead of showing nothing', async () => {
+    get.mockImplementation((path: string) => Promise.resolve(path === '/artifacts' ? [] : ''));
+
+    render(<ArtifactsPage />);
+    await waitFor(() => expect(screen.getByText(/No artifacts yet/)).toBeInTheDocument());
+    fillShas();
+    fireEvent.click(screen.getByRole('button', { name: 'Diff' }));
+
+    await waitFor(() =>
+      expect(screen.getByText('No differences between these two artifacts.')).toBeInTheDocument(),
+    );
+  });
 });
