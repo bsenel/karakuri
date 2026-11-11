@@ -56,3 +56,34 @@ func TestNotFoundSaysCheckTheID(t *testing.T) {
 		}
 	}
 }
+
+// The hint names the list command of the noun that was asked for: a missing
+// artifact SHA used to be told to run `krk objective list`.
+func TestNotFoundNamesTheListCommandOfTheNoun(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "not found", http.StatusNotFound)
+	}))
+	defer srv.Close()
+
+	c := New(srv.URL)
+	c.session = &Session{AccessToken: "t", ExpiresAt: time.Now().Add(time.Hour)}
+	for path, want := range map[string]string{
+		"/artifacts/abc123":            "`krk artifact list` shows the ones that exist",
+		"/artifacts/a/diff/b":          "`krk artifact list` shows the ones that exist",
+		"/twins/t_bogus":               "`krk twin list` shows the ones that exist",
+		"/reports/r_bogus/send":        "`krk report list` shows the ones that exist",
+		"/domains/d_bogus/conformance": "`krk domain list` shows the ones that exist",
+		"/loops/l_bogus/status":        "e.g. `krk objective list`",
+	} {
+		_, _, err := c.Get(path)
+		if err == nil {
+			t.Fatalf("GET %s: no error from a 404", path)
+		}
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("GET %s: %q does not contain %q", path, err, want)
+		}
+		if path == "/artifacts/abc123" {
+			t.Logf("after: %s", err)
+		}
+	}
+}

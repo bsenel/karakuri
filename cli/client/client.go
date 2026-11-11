@@ -131,9 +131,33 @@ func (c *Client) doAuthContext(ctx context.Context, method, path string, body an
 	// A 404 is almost always a mistyped or stale ID. Its plain-text body is
 	// not JSON, so printed as output it came out as "null" and exit 0.
 	if resp.StatusCode == http.StatusNotFound {
-		return data, resp.StatusCode, fmt.Errorf("%s\nCheck the ID: the list command of the same noun shows the ones that exist, e.g. `krk objective list`", notFoundMessage(data))
+		return data, resp.StatusCode, fmt.Errorf("%s\n%s", notFoundMessage(data), notFoundHint(path))
 	}
 	return data, resp.StatusCode, nil
+}
+
+// listCommands maps the first segment of an API path to the command that
+// lists its IDs, so a 404 on `krk artifact get` points at `krk artifact list`
+// rather than at objectives.
+var listCommands = map[string]string{
+	"artifacts":   "krk artifact list",
+	"checkpoints": "krk checkpoint list",
+	"domains":     "krk domain list",
+	"objectives":  "krk objective list",
+	"reports":     "krk report list",
+	"twins":       "krk twin list",
+	"verifiers":   "krk verifier list",
+}
+
+// notFoundHint says which list command shows the IDs that exist for path;
+// a path with no list command keeps the generic hint.
+func notFoundHint(path string) string {
+	segment, _, _ := strings.Cut(strings.TrimPrefix(path, "/"), "/")
+	segment, _, _ = strings.Cut(segment, "?")
+	if list, ok := listCommands[segment]; ok {
+		return "Check the ID: `" + list + "` shows the ones that exist"
+	}
+	return "Check the ID: the list command of the same noun shows the ones that exist, e.g. `krk objective list`"
 }
 
 // notFoundMessage is the server's reason for a 404, which the handlers write
