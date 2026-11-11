@@ -5074,6 +5074,49 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/RateLimitError'
+  /stop-all:
+    post:
+      operationId: stopAll
+      tags:
+      - loops
+      summary: Stop every running loop and pause every standing objective the caller may stop
+      description: 'Pauses each standing objective as POST /objectives/{id}/pause does, which cancels a pass in flight, and stops each running loop as POST /loops/{id}/stop does. The route needs authentication but no single permission: each run is checked on its own, objective:pause on each objective and loop:stop on each loop, against the same resources those routes check. A run the caller may not stop is listed in not_reached with its reason, so a caller whose scope is narrower than the deployment is never told everything was stopped when it was not. The loop of a standing objective is reported once, as its objective. An objective already paused, or a loop that has already ended, is not listed, so a second call answers with empty lists. Objectives stay paused and loops stay stopped; resume an objective through POST /objectives/{id}/resume. A missing reason is filled in as "stopped by <principal>".'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                reason:
+                  type: string
+                  description: Why everything is stopped, kept on the record of each run.
+      responses:
+        '200':
+          description: What the call stopped, what it paused, and every run it did not reach and why.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StopAllResult'
+        '401':
+          description: Missing or invalid credential.
+          content:
+            text/plain:
+              schema:
+                type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Over the caller's rate or quota limit.
+          content:
+            text/plain:
+              schema:
+                type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RateLimitError'
   /twins:
     post:
       operationId: createTwin
@@ -6926,6 +6969,16 @@ components:
         twin_id:
           type: string
       type: object
+    NotReachedRun:
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+        kind:
+          type: string
+        reason:
+          type: string
+      type: object
     Objective:
       additionalProperties: false
       properties:
@@ -7077,6 +7130,14 @@ components:
           type: array
         title:
           type: string
+      type: object
+    PausedObjective:
+      additionalProperties: false
+      properties:
+        objective_id:
+          type: string
+        pass_cancelled:
+          type: boolean
       type: object
     Principal:
       additionalProperties: false
@@ -7660,6 +7721,33 @@ components:
       properties:
         status:
           type: string
+    StopAllResult:
+      additionalProperties: false
+      properties:
+        loops_stopped:
+          items:
+            $ref: '#/components/schemas/StoppedLoop'
+          nullable: true
+          type: array
+        not_reached:
+          items:
+            $ref: '#/components/schemas/NotReachedRun'
+          nullable: true
+          type: array
+        objectives_paused:
+          items:
+            $ref: '#/components/schemas/PausedObjective'
+          nullable: true
+          type: array
+      type: object
+    StoppedLoop:
+      additionalProperties: false
+      properties:
+        found:
+          type: string
+        loop_id:
+          type: string
+      type: object
     TokenPair:
       additionalProperties: false
       properties:
