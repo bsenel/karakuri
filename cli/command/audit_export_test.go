@@ -200,6 +200,23 @@ func TestAuditExportRefusalIsAnErrorAndWritesNoFile(t *testing.T) {
 	}
 }
 
+// A refused window keeps the server's reason and says how to give a window
+// the server accepts.
+func TestAuditExportRefusalSaysHowToFixTheWindow(t *testing.T) {
+	_, apiURL := startExportServer(t, http.StatusBadRequest)
+
+	_, stderr, err := runKrkSplit("--api-url", apiURL, "audit", "export", "--from", exportFrom, "--to", exportTo)
+	if err == nil {
+		t.Fatal("krk audit export succeeded on a 400, want an error")
+	}
+	seen := err.Error() + stderr
+	for _, want := range []string{"invalid window", "RFC3339", "--to in the past", "--from 2026-09-01T00:00:00Z"} {
+		if !strings.Contains(seen, want) {
+			t.Errorf("the user saw %q, which lacks %q", seen, want)
+		}
+	}
+}
+
 // The subcommand takes nothing from the listing it hangs off.
 func TestAuditListingIsUnchangedByTheExportSubcommand(t *testing.T) {
 	srv, apiURL := startAuditServer(t)

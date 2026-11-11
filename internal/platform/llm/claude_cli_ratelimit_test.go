@@ -27,6 +27,15 @@ exit 1
 exit 1
 `,
 		"weekly limit reply": `printf '{"type":"result","subtype":"success","is_error":true,"result":"You have hit your weekly limit \302\267 resets Oct 14, 1pm (Europe/Paris)"}\n'`,
+		// EB-008: the wording observed on this deployment from 2026-10-31,
+		// which none of the fixed markers matched, so each one reached a
+		// person as a 0.3-confidence placeholder plan.
+		"5-hour limit on stdout": `printf '{"type":"result","subtype":"success","is_error":true,"result":"You\047ve hit your 5-hour limit \302\267 resets 11:30pm (Europe/Paris)"}\n'
+exit 1
+`,
+		"5-hour limit on stderr": `echo "You've hit your 5-hour limit · resets 4:50pm (Europe/Paris)" 1>&2
+exit 1
+`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			_, dir := writeStubBinary(t, "claude", body)
@@ -64,6 +73,11 @@ exit 1
 		"is_error result on stdout": {body: `printf '{"type":"result","is_error":true,"result":"Prompt is too long"}\n'
 exit 1
 `, want: "Prompt is too long"},
+		// "hit your ... limit" alone is not a usage limit: only a refusal that
+		// also says when it resets is one.
+		"a limit that does not reset": {body: `printf '{"type":"result","is_error":true,"result":"You have hit your file size limit for attachments"}\n'
+exit 1
+`, want: "file size limit"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			_, dir := writeStubBinary(t, "claude", tc.body)

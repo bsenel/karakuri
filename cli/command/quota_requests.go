@@ -116,7 +116,7 @@ func quotaRequestsListCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			printList(c, data, "quota requests", "krk quota request")
+			printList(c, data, "quota requests", createWith("krk quota request"))
 			return nil
 		},
 	}
@@ -130,16 +130,28 @@ func quotaRequestsListCmd() *cobra.Command {
 // by nothing else worth duplicating.
 func quotaDecideCmd(verb string) *cobra.Command {
 	var note string
-	cmd := &cobra.Command{
-		Use:   verb + " <request-id>",
-		Short: strings.ToUpper(verb[:1]) + verb[1:] + " a quota request",
-		Long: `Approving writes the override, which takes effect within the resolver's
+	long := `Approving writes the override, which takes effect within the resolver's
 cache window — under a minute — and immediately in the process that approved it.
 
 You can only approve a raise for a subject you already hold. Without that rule
 the permission to approve would be the permission to raise anybody's limit,
-including your own in a tenant you have no claim on.`,
-		Args: cobra.ExactArgs(1),
+including your own in a tenant you have no claim on.`
+	hint := "Free text recorded with the decision, e.g. \"launch week only\" (default: none)"
+	example := `  krk quota requests approve qr_9c1e4b2a7d3f6e08 --note "launch week only"`
+	if verb == "reject" {
+		long = `Rejecting records the decision and writes no override, so the current
+limit stays as it is.`
+		hint = `Why not, recorded with the decision; "no" without a reason is the least useful answer (default: none)`
+		example = `  krk quota requests reject qr_9c1e4b2a7d3f6e08 --note "use the batch tier instead"`
+	}
+	cmd := &cobra.Command{
+		Use:   verb + " <request-id>",
+		Short: strings.ToUpper(verb[:1]) + verb[1:] + " a quota request",
+		Long: long + `
+
+<request-id> is a qr_... ID from "krk quota requests list --status pending".`,
+		Example: example,
+		Args:    cobra.ExactArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
 			data, _, err := api.Post("/quota/requests/"+args[0]+"/decide", map[string]any{
 				"approve": verb == "approve",
@@ -151,10 +163,6 @@ including your own in a tenant you have no claim on.`,
 			client.PrintOutput(data, output)
 			return nil
 		},
-	}
-	hint := "why"
-	if verb == "reject" {
-		hint = `why not — "no" without a reason is the least useful answer`
 	}
 	cmd.Flags().StringVar(&note, "note", "", hint)
 	return cmd
