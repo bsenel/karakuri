@@ -10,6 +10,7 @@ import (
 	coreerrors "github.com/bsenel/karakuri/internal/core/errors"
 	coreloop "github.com/bsenel/karakuri/internal/core/loop"
 	"github.com/bsenel/karakuri/internal/core/objective"
+	"github.com/bsenel/karakuri/internal/core/reconcile"
 	featureloop "github.com/bsenel/karakuri/internal/feature/loop"
 )
 
@@ -301,6 +302,55 @@ func TestStopAllWithANarrowScopeNamesTheRestNotReached(t *testing.T) {
 	}
 	if len(res.NotReached) == 0 {
 		t.Error("a narrow caller's answer names nothing as not reached, which claims everything was stopped")
+	}
+}
+
+// A standing objective whose loop waits at a checkpoint has no pass in flight:
+// the pass let go once the plan escalated, and the objective records the loop
+// as its ActiveLoopID. Pausing it cancels nothing, so StopAll has to stop that
+// loop itself, as step 3 does, or a later approval lets it act on an objective
+// that reads paused. It is listed as a stopped loop, and the objective as
+// paused with no pass cancelled.
+func TestStopAllStopsALoopWaitingAtACheckpoint(t *testing.T) {
+	w := startStopAllWorld(t)
+	ctx := context.Background()
+
+	waiting := w.declare(t, objective.Objective{ID: "obj-waiting", Cadence: &objective.Cadence{Every: "1h"}})
+	const waitingLoop = "loop-at-checkpoint"
+	if err := w.store.SaveLoopState(ctx, coreloop.State{
+		LoopID:       waitingLoop,
+		ObjectiveID:  waiting.ID,
+		Status:       objective.StatusActive,
+		Paused:       true,
+		CheckpointID: "cp-waiting",
+	}); err != nil {
+		t.Fatalf("save waiting loop: %v", err)
+	}
+	st := w.state(t, waiting.ID)
+	st.ActiveLoopID = waitingLoop
+	st.Phase = reconcile.PhaseWaiting
+	if err := w.store.SaveReconcileState(ctx, st); err != nil {
+		t.Fatalf("save waiting state: %v", err)
+	}
+
+	res := w.stopAll(t, allowAll)
+	w.awaitPassEnded(t)
+
+	want := append([]string{waitingLoop}, w.oneShot...)
+	sort.Strings(want)
+	if got := stoppedLoopIDs(res); !equalStrings(got, want) {
+		t.Errorf("loops stopped = %v, want %v: the loop waiting at a checkpoint must be stopped", got, want)
+	}
+	if p, ok := pausedByID(res)[waiting.ID]; !ok || p.PassCancelled {
+		t.Errorf("objective %q: paused %v, pass cancelled %v; want paused with no pass to cancel", waiting.ID, ok, p.PassCancelled)
+	}
+	ls, err := w.store.GetLoopState(ctx, waitingLoop)
+	if err != nil {
+		t.Fatalf("read waiting loop: %v", err)
+	}
+	if !ls.Completed || ls.Status != objective.StatusStopped || ls.StoppedBy != "alice" || ls.StopReason != stopLoopReason {
+		t.Errorf("waiting loop after StopAll: completed %v, status %q, stopped by %q, reason %q; want stopped by alice with %q",
+			ls.Completed, ls.Status, ls.StoppedBy, ls.StopReason, stopLoopReason)
 	}
 }
 
