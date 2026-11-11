@@ -43,7 +43,11 @@ func TestEmptyListsSaySo(t *testing.T) {
 		{[]string{"checkpoint", "list"}, "No pending checkpoints. A running loop opens one when it needs approval; see: krk loop status <loop-id>\n"},
 		{[]string{"artifact", "list"}, "No artifacts. A running loop writes them; start one with: krk loop start <objective-id>\n"}, {[]string{"objective", "templates"}, "No objective templates.\n"},
 		{[]string{"quota", "tiers"}, "No stored tier limits. Create one with: krk quota set\n"},
-		{[]string{"domain", "capabilities", "--domain", "nosuch"}, "No capabilities.\n"},
+		{[]string{"domain", "capabilities"}, "No capabilities.\n"},
+		// A --domain that matches nothing is usually a typo.
+		{[]string{"domain", "capabilities", "--domain", "nosuch"}, "No capabilities in domain \"nosuch\". Check the domain ID: krk domain list shows the ones that exist\n"},
+		{[]string{"verifier", "list"}, "No verifiers.\n"},
+		{[]string{"verifier", "list", "--domain", "nosuch"}, "No verifiers in domain \"nosuch\". Check the domain ID: krk domain list shows the ones that exist\n"},
 	} {
 		for _, body := range []string{"null", "[]\n"} {
 			apiURL := startListServer(t, body)

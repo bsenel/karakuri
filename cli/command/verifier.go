@@ -52,6 +52,10 @@ func verifierListCmd() *cobra.Command {
 				client.PrintOutput(out, output)
 				return nil
 			}
+			if len(verifiers) == 0 && domain != "" {
+				fmt.Fprintf(c.ErrOrStderr(), "No verifiers in domain %q. %s\n", domain, unknownDomainHint)
+				return nil
+			}
 			if len(verifiers) == 0 {
 				fmt.Fprintln(c.ErrOrStderr(), "No verifiers.")
 				return nil
