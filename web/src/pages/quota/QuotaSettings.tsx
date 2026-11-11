@@ -81,8 +81,16 @@ export function QuotaSettings() {
     }
   };
 
-  if (config.error) return <p className="error">{config.error}</p>;
-  if (config.loading || !config.data) return <p className="muted">Loading…</p>;
+  // Live regions: text that appears on its own is silent to a screen reader.
+  if (config.error) {
+    return (
+      <>
+        <p className="error" role="alert">Could not load the quota limits: {config.error}</p>
+        <button onClick={reload}>Retry</button>
+      </>
+    );
+  }
+  if (config.loading || !config.data) return <p className="muted" role="status">Loading…</p>;
   const c = config.data;
 
   return (
