@@ -476,6 +476,12 @@ func (s *Service) pause(ctx context.Context, id objective.ObjectiveID, principal
 	if err != nil {
 		return false, err
 	}
+	// A pause of an objective already paused changes nothing, so it keeps the
+	// first pause's reason and writes no row: the export counts only presses
+	// that stopped something.
+	if st.Paused {
+		return false, nil
+	}
 	pausedAt := s.now()
 	st.Paused = true
 	st.PausedReason = reason
@@ -602,6 +608,11 @@ func (s *Service) Resume(ctx context.Context, id objective.ObjectiveID, principa
 	st, err := s.store.GetReconcileState(ctx, id)
 	if err != nil {
 		return err
+	}
+	// A resume of an objective that is not paused changes nothing and writes
+	// no row, for the same reason as a second pause.
+	if !st.Paused {
+		return nil
 	}
 	now := s.now()
 	st.Paused = false
