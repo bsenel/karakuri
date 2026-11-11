@@ -71,7 +71,7 @@ func objectiveCreateCmd() *cobra.Command {
 			// The server's 400 names the field it refused (success_criteria[1].evidence),
 			// so its body is the error, word for word.
 			if status >= http.StatusBadRequest {
-				return fmt.Errorf("create objective: HTTP %d: %s", status, strings.TrimSpace(string(data)))
+				return fmt.Errorf("create objective: %s\nRun 'krk objective create --help' for the flags and a criteria example", refusal(data, status))
 			}
 			client.PrintOutput(data, output)
 			return nil
@@ -88,6 +88,24 @@ func objectiveCreateCmd() *cobra.Command {
 	cmd.Flags().StringArrayVar(&criteria, "criterion", nil, "One success criterion, id=..;kind=measured;metric=..;op=..;target=..;unit=.. (repeatable; added after --criteria-file)")
 	_ = cmd.MarkFlagRequired("title")
 	return cmd
+}
+
+// refusal is the server's reason for a 4xx or 5xx as a sentence: the "error"
+// of a JSON body word for word, led by the "field" it names when there is one,
+// with the status after it. A body in any other shape is kept whole, so
+// nothing the server said is lost.
+func refusal(data []byte, status int) string {
+	var body struct {
+		Error string `json:"error"`
+		Field string `json:"field"`
+	}
+	if err := json.Unmarshal(data, &body); err == nil && body.Error != "" {
+		if body.Field != "" {
+			return fmt.Sprintf("%s: %s (HTTP %d)", body.Field, body.Error, status)
+		}
+		return fmt.Sprintf("%s (HTTP %d)", body.Error, status)
+	}
+	return fmt.Sprintf("HTTP %d: %s", status, strings.TrimSpace(string(data)))
 }
 
 func objectiveGetCmd() *cobra.Command {
