@@ -2,10 +2,12 @@ package handler
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 
 	"github.com/bsenel/karakuri/auth"
 	corecheckpoint "github.com/bsenel/karakuri/internal/core/checkpoint"
+	coreerrors "github.com/bsenel/karakuri/internal/core/errors"
 	featurecp "github.com/bsenel/karakuri/internal/feature/checkpoint"
 	"github.com/go-chi/chi/v5"
 )
@@ -70,8 +72,18 @@ func (h *CheckpointHandler) Resolve(w http.ResponseWriter, r *http.Request) {
 		Approver:      approver,
 		Modifications: req.Modifications,
 	}); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(w, err.Error(), decisionErrorStatus(err))
 		return
 	}
 	writeJSON(w, map[string]string{"status": "resolved"})
+}
+
+// decisionErrorStatus is 400 for a decision the service refused as invalid (a
+// choice that is not approve, reject or modify) and 500 for anything else, as
+// before.
+func decisionErrorStatus(err error) int {
+	if errors.Is(err, coreerrors.ErrInvalidInput) {
+		return http.StatusBadRequest
+	}
+	return http.StatusInternalServerError
 }
