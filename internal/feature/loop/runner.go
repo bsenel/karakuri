@@ -341,6 +341,13 @@ func (s *serviceImpl) runLoop(ctx context.Context, loopID string, req loop.Reque
 				}
 			}
 			// approve: fall through to act with the (possibly revised) plan.
+
+			// Stored before the actions run, which can take as long as a
+			// delegated coding action is allowed: a restart in between must
+			// find the decision taken, or ResumeStoredLoops waits for one that
+			// was already given and nothing is pending for anyone to answer
+			// (EB-009).
+			s.persistState(ictx, state, false)
 		}
 
 		// A stop that arrived while the plan was being made or decided on

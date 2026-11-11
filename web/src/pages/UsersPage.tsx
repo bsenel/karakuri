@@ -95,7 +95,7 @@ function Users() {
         scope is what confines an operator to one organisation rather than all of them.
       </p>
 
-      {error && <p className="error">{error}</p>}
+      {error && <p className="error" role="alert">{error}</p>}
 
       {mayWrite && (
         <NewUserForm
@@ -106,12 +106,22 @@ function Users() {
         />
       )}
 
+      {/* Without the bindings every row would read "none", which claims
+          nobody holds a role rather than that the roles did not load. */}
       <DataTable
-        loading={users.loading}
-        error={users.error}
+        loading={users.loading || bindings.loading}
+        error={
+          users.error
+            ? `Could not load users: ${users.error}`
+            : bindings.error && `Could not load role bindings: ${bindings.error}`
+        }
         rows={users.data ?? []}
         keyOf={(p) => p.id}
-        empty="No principals yet."
+        empty={
+          mayWrite
+            ? 'No principals yet. Add a user above to give someone access.'
+            : 'No principals yet. An administrator adds them with krk auth users add.'
+        }
         columns={[
           {
             header: 'Principal',
@@ -179,6 +189,7 @@ function Users() {
             : []),
         ]}
       />
+      {(users.error || bindings.error) && <button onClick={reload}>Retry</button>}
     </>
   );
 }
