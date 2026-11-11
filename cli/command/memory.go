@@ -53,6 +53,6 @@ func memoryRecallCmd() *cobra.Command {
 	cmd.Flags().StringVar(&agentID, "agent", "", "ID of the agent whose memory is searched")
 	cmd.Flags().StringVar(&query, "query", "", "Text to search memory for")
 	cmd.Flags().StringVar(&tier, "tier", "", "Memory tier: working|episodic|semantic|procedural (default \"episodic\")")
-	cmd.Flags().IntVar(&topK, "top-k", 5, "Maximum results")
+	cmd.Flags().IntVar(&topK, "top-k", 5, "Maximum number of memory entries returned")
 	return cmd
 }
