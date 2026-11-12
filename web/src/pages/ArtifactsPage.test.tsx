@@ -9,6 +9,7 @@ vi.mock('@/api/client', async () => {
   return { ...actual, api: { get, post: vi.fn(), put: vi.fn(), del: vi.fn() } };
 });
 
+import { APIError } from '@/api/client';
 import { ArtifactsPage } from './ArtifactsPage';
 
 describe('ArtifactsPage', () => {
@@ -34,6 +35,14 @@ describe('ArtifactsPage', () => {
     await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('API 500: boom'));
     expect(screen.getByText('Could not load artifacts.')).toBeInTheDocument();
     expect(screen.queryByText(/No artifacts/)).not.toBeInTheDocument();
+  });
+
+  it("shows the server's message rather than the raw response", async () => {
+    get.mockRejectedValue(new APIError(503, '{"error":"artifact store unavailable"}'));
+
+    render(<ArtifactsPage />);
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('artifact store unavailable'));
+    expect(screen.getByRole('alert')).not.toHaveTextContent('API 503');
   });
 
   it('offers a retry when the list could not be read, and loads it again', async () => {
@@ -115,7 +124,7 @@ describe('ArtifactsPage', () => {
 
     await waitFor(() =>
       expect(screen.getByRole('alert')).toHaveTextContent(
-        'Could not diff these artifacts: Error: API 404: artifact not found',
+        'Could not diff these artifacts: API 404: artifact not found',
       ),
     );
     // The list did load; its own failure line must not appear.

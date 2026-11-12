@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { api } from '@/api/client';
+import { describe } from '@/api/useApi';
 import type { HealthAdapter, HealthResponse, Twin } from '@/api/types';
 
 // Drill-down for one twin. Shows core fields, child twins, and an inline
@@ -24,7 +25,7 @@ export function TwinDetailPage() {
       setDraftBindings(t.adapter_bindings ?? {});
       setErr(null);
     } catch (e) {
-      setErr(String(e));
+      setErr(describe(e));
     }
   };
 
@@ -38,7 +39,7 @@ export function TwinDetailPage() {
       await api.put<Twin>(`/twins/${id}/bindings`, { adapter_bindings: draftBindings });
       await load();
     } catch (e) {
-      setErr(String(e));
+      setErr(describe(e));
     } finally {
       setSavingBindings(false);
     }

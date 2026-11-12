@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { describe } from '@/api/useApi';
 import type { Checkpoint, CheckpointAction, CheckpointModifications } from '@/api/types';
 
 // ModifyCheckpointDialog collects the structured edits an operator
@@ -54,7 +55,7 @@ export function ModifyCheckpointDialog({ checkpoint, onClose, onSubmit }: Modify
       await onSubmit(note, mods);
       onClose();
     } catch (e) {
-      setErr(String(e));
+      setErr(describe(e));
     } finally {
       setBusy(false);
     }

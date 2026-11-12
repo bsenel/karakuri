@@ -481,7 +481,7 @@ func TestCircuitBreakerPausesAndAsks(t *testing.T) {
 
 	// A resume clears what stopped it, or the next stumble trips it again
 	// immediately.
-	if err := f.svc.Resume(context.Background(), obj.ID); err != nil {
+	if err := f.svc.Resume(context.Background(), obj.ID, "operator"); err != nil {
 		t.Fatalf("resume: %v", err)
 	}
 	st = f.state(t, obj.ID)
@@ -707,7 +707,7 @@ func TestPausedObjectivesAreNotWorkedOn(t *testing.T) {
 		Cadence:  &objective.Cadence{Every: "1h"},
 		Autonomy: &objective.Autonomy{Level: objective.AutonomyAct, Ceiling: objective.AutonomyAct},
 	})
-	if err := f.svc.Pause(context.Background(), obj.ID, "operator stopped it"); err != nil {
+	if err := f.svc.Pause(context.Background(), obj.ID, "operator", "operator stopped it"); err != nil {
 		t.Fatalf("pause: %v", err)
 	}
 

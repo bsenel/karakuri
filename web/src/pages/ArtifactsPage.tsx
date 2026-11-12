@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from '@/api/client';
+import { describe } from '@/api/useApi';
 import type { Artifact } from '@/api/types';
 
 export function ArtifactsPage() {
@@ -27,7 +28,7 @@ export function ArtifactsPage() {
       setLoaded('ok');
     } catch (e) {
       setItems([]);
-      setErr(String(e));
+      setErr(describe(e));
       setLoaded('failed');
     }
   };
@@ -49,7 +50,7 @@ export function ArtifactsPage() {
       setDiff(typeof text === 'string' ? text : JSON.stringify(text, null, 2));
     } catch (e) {
       setDiff(null);
-      setDiffErr(String(e));
+      setDiffErr(describe(e));
     } finally {
       setDiffing(false);
     }

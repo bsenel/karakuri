@@ -5,7 +5,6 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/bsenel/karakuri/cli/client"
 	"github.com/spf13/cobra"
 )
 
@@ -45,7 +44,7 @@ func costReportCmd() *cobra.Command {
 		Example: `  krk cost report --since 24h --group-by provider
   krk cost report --twin t_7f2a --since 720h --group-by day
   krk cost report --org acme --team eng --since 720h --group-by model`,
-		RunE: func(_ *cobra.Command, _ []string) error {
+		RunE: func(c *cobra.Command, _ []string) error {
 			q := url.Values{}
 			if since > 0 {
 				q.Set("since", time.Now().UTC().Add(-since).Format(time.RFC3339))
@@ -83,7 +82,7 @@ func costReportCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			client.PrintOutput(data, output)
+			printList(c, data, "spend in this window", "Widen --since or drop a filter; a running loop records what it spends")
 			return nil
 		},
 	}

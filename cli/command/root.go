@@ -49,6 +49,7 @@ func NewRoot() *cobra.Command {
 		objectiveCmd(),
 		reportCmd(),
 		loopCmd(),
+		stopAllCmd(),
 		checkpointCmd(),
 		memoryCmd(),
 		artifactCmd(),

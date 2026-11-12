@@ -9,6 +9,7 @@ import (
 	coreloop "github.com/bsenel/karakuri/internal/core/loop"
 	"github.com/bsenel/karakuri/internal/core/objective"
 	"github.com/bsenel/karakuri/internal/core/reconcile"
+	featureloop "github.com/bsenel/karakuri/internal/feature/loop"
 	"github.com/bsenel/karakuri/internal/platform/storage"
 )
 
@@ -35,6 +36,10 @@ type blockingLoop struct {
 	starts  int
 	loopID  string
 	release chan struct{}
+
+	// completed and cut are what Stop answers the loop had run.
+	completed []featureloop.StopAction
+	cut       *featureloop.StopAction
 
 	started   chan struct{} // closed when the first action starts
 	cancelled chan struct{} // closed when the Run context is seen cancelled
@@ -137,6 +142,24 @@ func (b *blockingLoop) runCount() int {
 	return b.runs
 }
 
+// Stop records the call and answers with the actions setStopActions gave,
+// as the loop service answers with what the stopped loop had run.
+func (b *blockingLoop) Stop(ctx context.Context, loopID, principal, reason string) (featureloop.StopResult, error) {
+	res, err := b.stopRecorder.Stop(ctx, loopID, principal, reason)
+	b.mu.Lock()
+	res.Completed = append([]featureloop.StopAction(nil), b.completed...)
+	res.Cut = b.cut
+	b.mu.Unlock()
+	return res, err
+}
+
+// setStopActions sets the completed and cut actions every later Stop answers.
+func (b *blockingLoop) setStopActions(completed []featureloop.StopAction, cut *featureloop.StopAction) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.completed, b.cut = completed, cut
+}
+
 func (b *blockingLoop) id() string {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -203,7 +226,7 @@ func startBlockedPass(t *testing.T) *stoppable {
 
 func (s *stoppable) pause(t *testing.T) {
 	t.Helper()
-	if err := s.svc.Pause(context.Background(), s.obj.ID, "operator stopped it"); err != nil {
+	if err := s.svc.Pause(context.Background(), s.obj.ID, "operator", "operator stopped it"); err != nil {
 		t.Fatalf("pause: %v", err)
 	}
 }
@@ -368,7 +391,7 @@ func TestPauseWithNoPassRunningBehavesAsBefore(t *testing.T) {
 	})
 	before := f.state(t, obj.ID)
 
-	if err := f.svc.Pause(context.Background(), obj.ID, "operator stopped it"); err != nil {
+	if err := f.svc.Pause(context.Background(), obj.ID, "operator", "operator stopped it"); err != nil {
 		t.Fatalf("pause: %v", err)
 	}
 
@@ -393,7 +416,7 @@ func TestPauseWithNoPassRunningBehavesAsBefore(t *testing.T) {
 	if f.loops.count() != 0 {
 		t.Error("a paused objective was reconciled")
 	}
-	if err := f.svc.Pause(context.Background(), "no-such-objective", "x"); err == nil {
+	if err := f.svc.Pause(context.Background(), "no-such-objective", "operator", "x"); err == nil {
 		t.Error("pausing an unknown objective succeeded")
 	}
 }

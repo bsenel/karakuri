@@ -29,7 +29,38 @@ const (
 type StopResult struct {
 	LoopID string    `json:"loop_id"`
 	Found  StopFound `json:"found"`
+
+	// Completed are the actions the loop had finished when the stop arrived,
+	// and Cut the one in flight that the stop cut, nil when none was (Phase
+	// 37 step 5). They are for the stop's audit record, not the wire.
+	Completed []StopAction `json:"-"`
+	Cut       *StopAction  `json:"-"`
 }
+
+// StopAction is one action a stopped loop ran, as the stop's audit record
+// names it (Phase 37 step 5).
+type StopAction struct {
+	CapabilityID string `json:"capability"`
+	EnvID        string `json:"env_id,omitempty"`
+	// Ended says, for the cut action, whether it is known to have ended. A
+	// stop cancels the action and returns without waiting for it, so it is
+	// StopActionEndedUnknown unless the loop saw it end.
+	Ended StopActionEnded `json:"ended,omitempty"`
+	// Workdir and Branch are what a delegated action may have left half
+	// done: the worktree it ran in and the branch it wrote to.
+	Workdir string `json:"workdir,omitempty"`
+	Branch  string `json:"branch,omitempty"`
+}
+
+// StopActionEnded is whether a cut action is known to have ended.
+type StopActionEnded string
+
+const (
+	// StopActionEndedYes is a cut action the loop saw end.
+	StopActionEndedYes StopActionEnded = "ended"
+	// StopActionEndedUnknown is a cut action not known to have ended.
+	StopActionEndedUnknown StopActionEnded = "unknown"
+)
 
 // Stop ends a loop on behalf of principal, for reason (Phase 37 step 3).
 //
@@ -71,6 +102,8 @@ func (s *serviceImpl) Stop(ctx context.Context, loopID, principal, reason string
 		return res, nil
 	}
 	res.Found = StopFoundRunning
+	// Read before the cancel, so an action in flight is the one it cuts.
+	res.Completed, res.Cut = state.actions()
 
 	// Stored before the cancel. When the write fails the loop is cancelled
 	// all the same, since it was asked to stop, and the error says the stop
@@ -124,9 +157,12 @@ func (s *serviceImpl) stopStored(ctx context.Context, loopID, principal, reason 
 // closeStopped closes what a stopped loop leaves open: the checkpoint it was
 // waiting at, rejected by the principal who stopped it, and a one-shot
 // objective's status. A standing objective's row is reconcile's.
+//
+// The rejection is recorded as closed by a stop rather than as a person's
+// judgement of the plan, so it does not lower the escalation approval rate.
 func (s *serviceImpl) closeStopped(ctx context.Context, objID objective.ObjectiveID, cpID, principal, reason string) {
 	if cpID != "" && s.cpSvc != nil {
-		_ = s.cpSvc.Record(ctx, cpID, corecheckpoint.Decision{
+		_ = s.cpSvc.RecordClosedByStop(ctx, cpID, corecheckpoint.Decision{
 			Choice:   "reject",
 			Approver: principal,
 			Note:     "The loop was stopped: " + reason,

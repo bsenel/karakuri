@@ -210,7 +210,7 @@ func pauseDuringRun(t *testing.T, withID bool) (*fixture, *gatedLoop, objective.
 	case <-time.After(stopWait):
 		t.Fatal("the pass never called Run")
 	}
-	if err := f.svc.Pause(context.Background(), obj.ID, "operator stopped it"); err != nil {
+	if err := f.svc.Pause(context.Background(), obj.ID, "operator", "operator stopped it"); err != nil {
 		t.Fatalf("pause: %v", err)
 	}
 	if !waitFor(stopWait, func() bool { return !f.svc.isRunning(obj.ID) }) {

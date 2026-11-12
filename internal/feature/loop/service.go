@@ -73,7 +73,13 @@ type loopState struct {
 	ended      bool
 	stoppedBy  string
 	stopReason string
-	mu         sync.RWMutex
+	// done are the actions an environment has run to an answer, and acting
+	// the one it is running now, nil between actions, so a stop can say what
+	// the run had done and what it cut (Phase 37 step 5). In memory only: a
+	// loop stopped from its stored row alone reports none.
+	done   []StopAction
+	acting *StopAction
+	mu     sync.RWMutex
 	// persistMu holds a snapshot and its write together, so a runner's write
 	// read before a stop cannot land after the stop's and reopen the row.
 	persistMu sync.Mutex
@@ -106,6 +112,45 @@ func (ls *loopState) markStopped(principal, reason string, evenIfEnded bool) (st
 	ls.result.Status = objective.StatusStopped
 	ls.status.Paused = false
 	return cpID, true
+}
+
+// startAction records that an environment has started running a. A nil
+// state, a step run outside a loop, records nothing.
+func (ls *loopState) startAction(a StopAction) {
+	if ls == nil {
+		return
+	}
+	ls.mu.Lock()
+	defer ls.mu.Unlock()
+	ls.acting = &a
+}
+
+// endAction records that the action in flight has returned.
+func (ls *loopState) endAction() {
+	if ls == nil {
+		return
+	}
+	ls.mu.Lock()
+	defer ls.mu.Unlock()
+	if ls.acting != nil {
+		ls.done = append(ls.done, *ls.acting)
+		ls.acting = nil
+	}
+}
+
+// actions returns the actions that have returned and a copy of the one in
+// flight, if any. The one in flight is not known to have ended: a stop
+// cancels it and does not wait for it.
+func (ls *loopState) actions() ([]StopAction, *StopAction) {
+	ls.mu.RLock()
+	defer ls.mu.RUnlock()
+	done := append([]StopAction{}, ls.done...)
+	if ls.acting == nil {
+		return done, nil
+	}
+	cut := *ls.acting
+	cut.Ended = StopActionEndedUnknown
+	return done, &cut
 }
 
 // takeAnswered reports whether the replay is still owed the decision on the
@@ -307,6 +352,9 @@ func (s *serviceImpl) Resume(ctx context.Context, loopID string, decision corech
 		return loop.Result{}, fmt.Errorf("loop %q was stopped; a decision authorises nothing", loopID)
 	}
 
+	if err := s.validateChoice(ctx, state, decision.Choice); err != nil {
+		return loop.Result{}, err
+	}
 	if err := s.deliver(state, decision); err != nil {
 		return loop.Result{}, err
 	}
@@ -365,6 +413,23 @@ func (s *serviceImpl) ResumeCheckpoint(_ context.Context, checkpointID string, d
 // deliver hands a decision to a waiting runner. The channel is buffered to one
 // and the send is non-blocking, so a decision arriving for a loop that is not
 // at a checkpoint is refused rather than queued for the next escalation.
+// validateChoice refuses a choice the loop's checkpoint did not offer, before
+// it is delivered: the runner reads anything other than reject or modify as
+// an approval, so delivery is the point of no return. Recording the decision
+// afterwards checks the same options again.
+func (s *serviceImpl) validateChoice(ctx context.Context, state *loopState, choice string) error {
+	state.mu.RLock()
+	cpID := state.result.CheckpointID
+	state.mu.RUnlock()
+	var options []string
+	if cpID != nil && *cpID != "" {
+		if cp, err := s.store.GetCheckpoint(ctx, *cpID); err == nil {
+			options = cp.Options
+		}
+	}
+	return corecheckpoint.ValidateChoice(choice, options)
+}
+
 func (s *serviceImpl) deliver(state *loopState, decision corecheckpoint.Decision) error {
 	select {
 	case state.decisionCh <- decision:

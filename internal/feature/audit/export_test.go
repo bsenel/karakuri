@@ -452,9 +452,11 @@ func TestExportSaysWhetherAPersonWasConsulted(t *testing.T) {
 		if o.PersonConsulted || o.CheckpointsRaised != 0 || o.CheckpointsResolved != 0 {
 			t.Errorf("oversight = %+v, want nobody consulted and no checkpoints", o)
 		}
+		// The statement also says whether a stop was recorded (Phase 37 step
+		// 5), so it starts with the consultation sentence rather than being it.
 		want := "No person was consulted in this window: no checkpoint was raised and none was resolved."
-		if o.Statement != want {
-			t.Errorf("statement = %q, want %q", o.Statement, want)
+		if !strings.HasPrefix(o.Statement, want) {
+			t.Errorf("statement = %q, want it to start with %q", o.Statement, want)
 		}
 		if !bytes.Contains(b, []byte(`"interventions":[]`)) {
 			t.Errorf("empty interventions is not []: %s", b)
@@ -525,7 +527,7 @@ func TestExportSaysWhetherAPersonWasConsulted(t *testing.T) {
 		if bytes.Contains(b, []byte("null")) {
 			t.Errorf("an empty window encodes a null: %s", b)
 		}
-		for _, list := range []string{`"rows":[]`, `"interventions":[]`, `"autonomy_changes":[]`, `"counts_by_kind":[]`, `"pending_checkpoints":[]`} {
+		for _, list := range []string{`"rows":[]`, `"interventions":[]`, `"stops":[]`, `"autonomy_changes":[]`, `"counts_by_kind":[]`, `"pending_checkpoints":[]`} {
 			if !bytes.Contains(b, []byte(list)) {
 				t.Errorf("an empty window does not encode %s: %s", list, b)
 			}
@@ -705,5 +707,207 @@ func TestExportRetentionSection(t *testing.T) {
 				t.Errorf("retention section depends on now\nfirst: %s\nlater: %s", first, later)
 			}
 		})
+	}
+}
+
+// stopRow is a storage.ToolEventStop row as reconcile's recordStopAs writes
+// it: the principal in Approver, the reason in EscalationReason, and the
+// control, principal and reason again in the payload.
+func stopRow(id, objectiveID, principal, reason, payload string, at time.Time) storage.ToolEvent {
+	return storage.ToolEvent{
+		ID: id, ObjectiveID: objectiveID, Kind: storage.ToolEventStop,
+		EscalationReason: reason, Approver: principal, PayloadJSON: payload,
+		Success: true, CreatedAt: at,
+	}
+}
+
+// everyStop is one row of each stop control inside the window, in the order
+// an operator would take them: pause, stop a loop, stop everything, resume.
+func everyStop() []storage.ToolEvent {
+	at := func(m int) time.Time { return exportFrom.Add(time.Duration(m) * time.Minute) }
+	return []storage.ToolEvent{
+		stopRow("ev-stop-pause", "obj-1", "alice", "deploy freeze",
+			`{"control":"pause","reason":"deploy freeze","pass_cancelled":false,"principal":"alice","objective_id":"obj-1"}`, at(30)),
+		stopRow("ev-stop-loop", "obj-2", "bob", "wrong branch",
+			`{"control":"loop_stop","reason":"wrong branch","principal":"bob","objective_id":"obj-2","loop_id":"loop-7",`+
+				`"completed_actions":[{"capability":"software.cap.review","env_id":"env-1"}],`+
+				`"cut_action":{"capability":"software.cap.delegate","env_id":"env-1","ended":"unknown","workdir":"/work/loop-7","branch":"karakuri/loop-7"}}`, at(31)),
+		stopRow("ev-stop-all", "", "carol", "incident 42",
+			`{"control":"stop_all","reason":"incident 42","principal":"carol",`+
+				`"loops_stopped":[{"loop_id":"loop-9","found":"running"}],"objectives_paused":[{"objective_id":"obj-3","pass_cancelled":true}],"not_reached":[]}`, at(32)),
+		stopRow("ev-stop-resume", "obj-1", "alice", "",
+			`{"control":"resume","principal":"alice","objective_id":"obj-1"}`, at(33)),
+	}
+}
+
+// stopPayload is what a stop entry must let a reader find out.
+type stopPayload struct {
+	Control          string            `json:"control"`
+	Principal        string            `json:"principal"`
+	Reason           string            `json:"reason"`
+	CompletedActions []json.RawMessage `json:"completed_actions"`
+	CutAction        *struct {
+		Capability string `json:"capability"`
+		Ended      string `json:"ended"`
+		Workdir    string `json:"workdir"`
+		Branch     string `json:"branch"`
+	} `json:"cut_action"`
+}
+
+func stopIDs(rows []ExportRow) []string {
+	ids := []string{}
+	for _, r := range rows {
+		ids = append(ids, r.ID)
+	}
+	return ids
+}
+
+const noStopRecorded = "no stop, pause or resume was recorded"
+
+// Phase 37 step 5: the export lists every pause, resume, loop stop and
+// stop-all under oversight, in a list of its own, never among the approvals
+// and rejections a checkpoint received.
+func TestExportListsStopsUnderOversight(t *testing.T) {
+	events := append(everyKind(), everyStop()...)
+	doc, b := exportDoc(t, &fakeExportStore{events: events}, exportRetention, exportFrom, exportTo)
+	o := doc.Oversight
+
+	want := []string{"ev-stop-pause", "ev-stop-loop", "ev-stop-all", "ev-stop-resume"}
+	if got := stopIDs(o.Stops); !slices.Equal(got, want) {
+		t.Fatalf("oversight.stops = %v, want %v, oldest first", got, want)
+	}
+
+	t.Run("not mixed into other lists", func(t *testing.T) {
+		for _, id := range want {
+			if _, ok := rowByID(o.Interventions, id); ok {
+				t.Errorf("%s is listed among the interventions; a stop is not an approval or a rejection", id)
+			}
+			if _, ok := rowByID(doc.Decisions.Rows, id); ok {
+				t.Errorf("%s is listed among the decisions", id)
+			}
+			if _, ok := rowByID(doc.AutonomyChanges, id); ok {
+				t.Errorf("%s is listed among the autonomy changes", id)
+			}
+		}
+		if len(o.Interventions) != 3 {
+			t.Errorf("interventions = %v, want the approval, rejection and modification only", stopIDs(o.Interventions))
+		}
+	})
+
+	t.Run("each entry carries control, principal, reason and timestamp", func(t *testing.T) {
+		cases := []struct {
+			id, control, principal, reason, createdAt string
+		}{
+			{"ev-stop-pause", "pause", "alice", "deploy freeze", "2026-03-01T00:30:00Z"},
+			{"ev-stop-loop", "loop_stop", "bob", "wrong branch", "2026-03-01T00:31:00Z"},
+			{"ev-stop-all", "stop_all", "carol", "incident 42", "2026-03-01T00:32:00Z"},
+			{"ev-stop-resume", "resume", "alice", "", "2026-03-01T00:33:00Z"},
+		}
+		for _, c := range cases {
+			r, ok := rowByID(o.Stops, c.id)
+			if !ok {
+				t.Errorf("stops has no %s", c.id)
+				continue
+			}
+			if r.Kind != storage.ToolEventStop {
+				t.Errorf("%s kind = %q, want %q", c.id, r.Kind, storage.ToolEventStop)
+			}
+			if r.CreatedAt != c.createdAt {
+				t.Errorf("%s created_at = %q, want %q", c.id, r.CreatedAt, c.createdAt)
+			}
+			if r.Approver != c.principal || r.EscalationReason != c.reason {
+				t.Errorf("%s approver, reason = %q, %q; want %q, %q", c.id, r.Approver, r.EscalationReason, c.principal, c.reason)
+			}
+			var p stopPayload
+			if err := json.Unmarshal(r.Payload, &p); err != nil {
+				t.Errorf("%s payload is not the stop's record: %v (%s)", c.id, err, r.Payload)
+				continue
+			}
+			if p.Control != c.control || p.Principal != c.principal || p.Reason != c.reason {
+				t.Errorf("%s payload control, principal, reason = %q, %q, %q; want %q, %q, %q",
+					c.id, p.Control, p.Principal, p.Reason, c.control, c.principal, c.reason)
+			}
+		}
+	})
+
+	t.Run("a loop stop carries its completed and cut actions", func(t *testing.T) {
+		r, ok := rowByID(o.Stops, "ev-stop-loop")
+		if !ok {
+			t.Fatal("stops has no loop stop")
+		}
+		var p stopPayload
+		if err := json.Unmarshal(r.Payload, &p); err != nil {
+			t.Fatalf("loop stop payload: %v (%s)", err, r.Payload)
+		}
+		if len(p.CompletedActions) != 1 {
+			t.Errorf("completed_actions = %d, want 1 (%s)", len(p.CompletedActions), r.Payload)
+		}
+		if p.CutAction == nil {
+			t.Fatalf("loop stop does not say which action it cut: %s", r.Payload)
+		}
+		if p.CutAction.Capability != "software.cap.delegate" || p.CutAction.Ended != "unknown" ||
+			p.CutAction.Workdir != "/work/loop-7" || p.CutAction.Branch != "karakuri/loop-7" {
+			t.Errorf("cut_action = %+v", *p.CutAction)
+		}
+	})
+
+	t.Run("the statement does not deny the stops", func(t *testing.T) {
+		if strings.Contains(strings.ToLower(o.Statement), noStopRecorded) {
+			t.Errorf("statement %q says no stop was recorded in a window that holds four", o.Statement)
+		}
+	})
+
+	t.Run("the same past window gives the same bytes", func(t *testing.T) {
+		reversed := slices.Clone(events)
+		slices.Reverse(reversed)
+		if got := exportBytes(t, &fakeExportStore{events: reversed}, exportRetention, exportFrom, exportTo, exportNow); !bytes.Equal(b, got) {
+			t.Errorf("stops depend on the order the store returned rows in\nfirst:    %s\nreversed: %s", b, got)
+		}
+	})
+}
+
+// A window with no stop row says so, as what the record holds: none was
+// recorded. It does not say the system was never stopped, because a stop
+// whose audit write failed, or that predates the record, leaves no row.
+func TestExportSaysNoStopWasRecorded(t *testing.T) {
+	doc, b := exportDoc(t, &fakeExportStore{events: everyKind()}, exportRetention, exportFrom, exportTo)
+	o := doc.Oversight
+
+	if !bytes.Contains(b, []byte(`"stops":[]`)) {
+		t.Errorf("a window with no stop does not encode \"stops\":[]: %s", b)
+	}
+	if len(o.Stops) != 0 {
+		t.Errorf("stops = %v, want none", stopIDs(o.Stops))
+	}
+	statement := strings.ToLower(o.Statement)
+	if !strings.Contains(statement, noStopRecorded) {
+		t.Errorf("statement %q does not say %q in this window", o.Statement, noStopRecorded)
+	}
+	for _, claim := range []string{"never stopped", "never paused", "never been stopped", "was not stopped", "were not stopped", "no stop occurred", "nothing was stopped"} {
+		if strings.Contains(statement, claim) {
+			t.Errorf("statement %q claims %q; the record can only say none was recorded", o.Statement, claim)
+		}
+	}
+	// The consultation sentence is still there: a window with no stops is
+	// not a window with nothing to say about who was asked.
+	if !strings.Contains(o.Statement, "checkpoint") {
+		t.Errorf("statement %q lost what it says about checkpoints", o.Statement)
+	}
+}
+
+// A stop row outside [from, to) is not listed, at either bound.
+func TestExportListsOnlyStopsInsideTheWindow(t *testing.T) {
+	inside := stopRow("ev-stop-inside", "obj-1", "alice", "freeze",
+		`{"control":"pause","reason":"freeze","pass_cancelled":false,"principal":"alice","objective_id":"obj-1"}`, exportFrom)
+	before := stopRow("ev-stop-before", "obj-1", "alice", "earlier",
+		`{"control":"pause","reason":"earlier","pass_cancelled":false,"principal":"alice","objective_id":"obj-1"}`, exportFrom.Add(-time.Nanosecond))
+	atTo := stopRow("ev-stop-at-to", "obj-1", "alice", "",
+		`{"control":"resume","principal":"alice","objective_id":"obj-1"}`, exportTo)
+	after := stopRow("ev-stop-after", "", "carol", "later",
+		`{"control":"stop_all","reason":"later","principal":"carol","loops_stopped":[],"objectives_paused":[],"not_reached":[]}`, exportTo.Add(time.Hour))
+
+	doc, _ := exportDoc(t, &fakeExportStore{events: []storage.ToolEvent{before, inside, atTo, after}}, exportRetention, exportFrom, exportTo)
+	if got := stopIDs(doc.Oversight.Stops); !slices.Equal(got, []string{"ev-stop-inside"}) {
+		t.Errorf("oversight.stops = %v, want only the row inside the window", got)
 	}
 }

@@ -159,6 +159,11 @@ const (
 	// allowed to, in the same log as the approvals and the refusals.
 	ToolEventPromotion = "promotion"
 	ToolEventDemotion  = "demotion"
+	// ToolEventStop (Phase 37 step 5) records a person or Karakuri stopping
+	// work: a pause, a resume, a loop stop or a stop-all. The payload names
+	// the control, the principal, the reason, and the objective and/or loop
+	// it touched; Approver carries the principal. One row per run touched.
+	ToolEventStop = "stop"
 	// ToolEventBaseline (Phase 41 step 7) records an at_start baseline being
 	// measured once and frozen, or that measurement being inconclusive. One row
 	// per criterion for the life of the objective, because a baseline that

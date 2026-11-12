@@ -160,12 +160,35 @@ func (s *Service) Resolve(ctx context.Context, id string, d corecheckpoint.Decis
 // it directly when a decision arrives through POST /loops/{id}/resume, where
 // the delivery has already happened and calling Resolve would recurse.
 func (s *Service) Record(ctx context.Context, id string, d corecheckpoint.Decision) error {
+	return s.record(ctx, id, d, "")
+}
+
+// ReasonClosedByStop is the EscalationReason on the rejection row a stop
+// leaves when it closes the checkpoint its loop was waiting at (Phase 37 step
+// 5). The row keeps the rejection's kind, so the audit log still shows the
+// checkpoint closed and by whom; the reason says nobody judged the plan. The
+// telemetry reader counts only rejection rows with no reason as a person's.
+const ReasonClosedByStop = "closed_by_stop"
+
+// RecordClosedByStop records d, the rejection a stop closes a checkpoint
+// with, as Record does, except that its audit row carries ReasonClosedByStop.
+// A decision arriving afterwards is refused the same way.
+func (s *Service) RecordClosedByStop(ctx context.Context, id string, d corecheckpoint.Decision) error {
+	return s.record(ctx, id, d, ReasonClosedByStop)
+}
+
+func (s *Service) record(ctx context.Context, id string, d corecheckpoint.Decision, reason string) error {
 	// A decided checkpoint is not decided again. A stopped loop's checkpoint
 	// is closed as rejected by whoever stopped it, and an approval arriving
 	// afterwards must be refused rather than recorded over that (Phase 37
 	// step 3).
-	if prior, err := s.store.GetCheckpoint(ctx, id); err == nil && prior.Status == corecheckpoint.StatusResolved {
-		return fmt.Errorf("checkpoint %q is already resolved", id)
+	if prior, err := s.store.GetCheckpoint(ctx, id); err == nil {
+		if prior.Status == corecheckpoint.StatusResolved {
+			return fmt.Errorf("checkpoint %q is already resolved", id)
+		}
+		if err := corecheckpoint.ValidateChoice(d.Choice, prior.Options); err != nil {
+			return err
+		}
 	}
 	if err := s.store.ResolveCheckpoint(ctx, id, d); err != nil {
 		return err
@@ -199,12 +222,13 @@ func (s *Service) Record(ctx context.Context, id string, d corecheckpoint.Decisi
 	}
 	pj, _ := json.Marshal(payload)
 	_ = s.store.SaveToolEvent(ctx, storage.ToolEvent{
-		ID:          fmt.Sprintf("audit-%d", time.Now().UnixNano()),
-		ObjectiveID: string(cp.ObjectiveID),
-		Kind:        kind,
-		Approver:    d.Approver,
-		PayloadJSON: string(pj),
-		Success:     success,
+		ID:               fmt.Sprintf("audit-%d", time.Now().UnixNano()),
+		ObjectiveID:      string(cp.ObjectiveID),
+		Kind:             kind,
+		EscalationReason: reason,
+		Approver:         d.Approver,
+		PayloadJSON:      string(pj),
+		Success:          success,
 	})
 	return nil
 }
