@@ -6662,10 +6662,12 @@ without a signing key or a bootstrap password (`config/default.yaml`,
   (`cli/client/session.go` lines 35 to 44) and talks to `localhost:8080` by
   default. Observed in commit dc0f62c (2026-11-10): to record a "before"
   output, a UX coding agent ran `krk loop resume abc --decision maybe`, and
-  its commit message says "exit 0; the request was sent". The request went to
-  the live server under the administrator's session. The loop ID did not
-  exist, so nothing changed. Inferred, not observed: the same command with a
-  real ID would have resolved a checkpoint as the administrator. Step 4 does
+  its commit message says "exit 0; the request was sent". The live server's
+  log has it: `POST /api/v1/loops/abc/resume` at 20:30:45 that day. Inferred,
+  not observed: the request carried the administrator's session (the log line
+  names no principal, but that route answers 401 without one and the command
+  exited 0); no loop `abc` existed, so nothing changed; and the same command
+  with a real ID would have resolved a checkpoint as the administrator. Step 4 does
   not cover this, since it keeps `HOME` and removes variables, not files. The
   owner's decision (2026-11-12), between a separate OS user for the server
   and a step here: "Option B sounds right", which is the step.
@@ -6771,8 +6773,12 @@ delivered right after step 4, on whose helper it builds.
    process started for a coding agent or on a worktree (the launchers of step
    4, and `internal/platform/tools/cliagent`) gets a `HOME` of its own, a
    directory created for the run and removed after it, built by step 4's
-   helper. What the run legitimately needs from the operator's home is passed
-   by name and nothing else is: `GH_CONFIG_DIR` so that `gh` keeps its login,
+   helper; it replaces the value of `HOME` that step 4's allow-list passes
+   through. What the run legitimately needs from the operator's home is passed
+   by name and nothing else is: what `gh` needs to keep its login
+   (`GH_CONFIG_DIR`, and, where `gh` keeps its token in the system keyring as
+   it does on the reference deployment, either the session bus variables the
+   keyring needs or a `GH_TOKEN` named for the run),
    `GIT_CONFIG_GLOBAL` so that `git push` keeps its credential helper, the
    coding agent CLI's own configuration directory (for Claude Code,
    `CLAUDE_CONFIG_DIR`), and the Go cache variables of step 4 with explicit
