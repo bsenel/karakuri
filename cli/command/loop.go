@@ -9,6 +9,12 @@ func loopCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "loop",
 		Short: "Control the autonomous reasoning loop",
+		Long: `Control the autonomous reasoning loop. A loop works on one objective until
+it converges, then stops. krk loop start prints a loop_id; pass it to
+krk loop status to follow the run, to krk loop resume when it pauses at a
+checkpoint, and to krk loop stop to end it early.`,
+		Example: `  krk loop start obj_123 --twin t_7f2a
+  krk loop status loop_123`,
 	}
 	cmd.AddCommand(loopStartCmd(), loopStatusCmd(), loopResumeCmd(), loopStopCmd())
 	return cmd
@@ -107,9 +113,15 @@ that krk loop start prints; krk checkpoint list shows what the loop is waiting o
   krk loop resume loop_123 --decision approve --note "plan looks right"
 
   # Stop it
-  krk loop resume loop_123 --decision reject --note "out of scope"`,
+  krk loop resume loop_123 --decision reject --note "out of scope"
+
+  # Send it back for revision with an added constraint
+  krk loop resume loop_123 --decision modify --constraint "open a draft PR only"`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(c *cobra.Command, args []string) error {
+			if err := checkDecision(c, decision, args[0]); err != nil {
+				return err
+			}
 			body := buildResolveBody(c, decision, note, approver, removeActions, constraints, revisedConfidence)
 			data, _, err := api.Post("/loops/"+args[0]+"/resume", body)
 			if err != nil {
@@ -124,7 +136,7 @@ that krk loop start prints; krk checkpoint list shows what the loop is waiting o
 	cmd.Flags().StringVar(&approver, "approver", "", "Identifier of the operator approving/rejecting (audit attribution)")
 	cmd.Flags().StringSliceVar(&removeActions, "remove-action", nil, "Capability ID to drop from the draft (repeatable; only valid with --decision modify)")
 	cmd.Flags().StringArrayVar(&constraints, "constraint", nil, "Constraint to feed into the revise pass (repeatable; only valid with --decision modify)")
-	cmd.Flags().Float64Var(&revisedConfidence, "revised-confidence", -1, "Floor for the revised plan's confidence (only valid with --decision modify)")
+	cmd.Flags().Float64Var(&revisedConfidence, "revised-confidence", -1, "Floor for the revised plan's confidence (only valid with --decision modify; the default -1 sends no floor)")
 	_ = cmd.MarkFlagRequired("decision")
 	return cmd
 }

@@ -3,6 +3,8 @@ package command
 import (
 	"strings"
 	"testing"
+
+	"github.com/spf13/cobra"
 )
 
 func TestLoopStartHelp(t *testing.T) {
@@ -20,6 +22,33 @@ func TestLoopStartHelp(t *testing.T) {
 	}
 	if !strings.Contains(cmd.Example, "--watch") {
 		t.Errorf("start Example %q does not show --watch", cmd.Example)
+	}
+}
+
+// loop resume and checkpoint resolve take the same decisions: both show the
+// one that needs extra flags, and both say what the -1 default means.
+func TestResumeHelpShowsModify(t *testing.T) {
+	for name, cmd := range map[string]func() *cobra.Command{
+		"loop resume":        loopResumeCmd,
+		"checkpoint resolve": checkpointResolveCmd,
+	} {
+		c := cmd()
+		if !strings.Contains(c.Example, "--decision modify --constraint") {
+			t.Errorf("%s Example %q does not show --decision modify", name, c.Example)
+		}
+		if usage := c.Flags().Lookup("revised-confidence").Usage; !strings.Contains(usage, "-1 sends no floor") {
+			t.Errorf("%s --revised-confidence usage %q does not say what -1 means", name, usage)
+		}
+	}
+}
+
+func TestLoopParentHelp(t *testing.T) {
+	cmd := loopCmd()
+	requireExample(t, cmd)
+	for _, sub := range []string{"krk loop status", "krk loop resume", "krk loop stop"} {
+		if !strings.Contains(cmd.Long, sub) {
+			t.Errorf("loop Long %q does not say when to use %s", cmd.Long, sub)
+		}
 	}
 }
 

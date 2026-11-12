@@ -17,6 +17,7 @@ vi.mock('@/api/sse', () => ({ streamObjective: () => ({ close: () => {} }) }));
 // The standing panel makes its own requests; it has its own test.
 vi.mock('@/components/StandingPanel', () => ({ StandingPanel: () => null }));
 
+import { APIError } from '@/api/client';
 import { ObjectiveDetailPage } from './ObjectiveDetailPage';
 import type { Criterion } from '@/api/types';
 
@@ -47,7 +48,7 @@ describe('ObjectiveDetailPage', () => {
     renderPage();
     await waitFor(() =>
       expect(screen.getByRole('alert')).toHaveTextContent(
-        'Could not load this objective: Error: API 404: objective not found',
+        'Could not load this objective: API 404: objective not found',
       ),
     );
     expect(screen.getByRole('link', { name: '← Objectives' })).toBeInTheDocument();
@@ -56,6 +57,16 @@ describe('ObjectiveDetailPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
     await waitFor(() => expect(screen.getByRole('heading', { name: 'Ship the docs' })).toBeInTheDocument());
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it("shows the server's message rather than the raw response", async () => {
+    get.mockRejectedValue(new APIError(404, '{"error":"objective o1 not found"}'));
+
+    renderPage();
+    await waitFor(() =>
+      expect(screen.getByRole('alert')).toHaveTextContent('Could not load this objective: objective o1 not found'),
+    );
+    expect(screen.getByRole('alert')).not.toHaveTextContent('API 404');
   });
 
   it('keeps the objective on screen when the loop fails to start', async () => {
