@@ -65,6 +65,14 @@ export function StandingPanel({ objectiveID, budget }: { objectiveID: string; bu
     }
   };
 
+  // Pauses with the operator's reason. Unlike act, it does not catch: an error
+  // reaches the reason dialog, which shows it and stays open with the reason
+  // still typed, as the loop stop and the stop-all do (Phase 37 step 6).
+  const pause = async (reason: string) => {
+    await api.post(`/objectives/${objectiveID}/pause`, { reason });
+    await load();
+  };
+
   if (!standing) return null;
   if (err) return <p className="pill red" role="alert">{err}</p>;
   if (!view) return <p className="muted small" role="status">Loading control loop…</p>;
@@ -124,7 +132,7 @@ export function StandingPanel({ objectiveID, budget }: { objectiveID: string; bu
           title="Pause this objective"
           confirmLabel="Pause the objective"
           onClose={() => setPausing(false)}
-          onConfirm={(reason) => act('pause', { reason })}
+          onConfirm={pause}
         />
       )}
 

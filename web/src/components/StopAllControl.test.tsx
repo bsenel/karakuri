@@ -98,6 +98,21 @@ describe('StopAllControl', () => {
     expect(screen.queryByRole('list', { name: 'Not reached' })).not.toBeInTheDocument();
   });
 
+  it('keeps the dialog open with the reason and shows the error when the stop-all fails', async () => {
+    post.mockRejectedValue(new Error('stop-all refused'));
+
+    render(<StopAllControl />);
+    stopAll('something is wrong everywhere');
+
+    const dialog = screen.getByRole('dialog', { name: 'Stop every run' });
+    await waitFor(() => expect(within(dialog).getByRole('alert')).toHaveTextContent('stop-all refused'));
+    expect(screen.getByRole('dialog', { name: 'Stop every run' })).toBeInTheDocument();
+    // The typed reason is not lost, so the operator can try again.
+    expect(within(dialog).getByRole('textbox', { name: 'Reason' })).toHaveValue('something is wrong everywhere');
+    // Nothing is reported as stopped or paused when the call failed.
+    expect(screen.queryByText(/nothing was stopped or paused/i)).not.toBeInTheDocument();
+  });
+
   it('is offered to a principal who may stop loops or pause objectives', () => {
     can.mockImplementation((action: string) => action === 'objective:pause');
     render(<StopAllControl />);

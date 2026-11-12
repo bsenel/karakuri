@@ -72,6 +72,26 @@ describe('StandingPanel pause control', () => {
     );
   });
 
+  it('keeps the dialog open with the reason and shows the error when the pause fails', async () => {
+    get.mockResolvedValue(running);
+    post.mockRejectedValue(new Error('pause refused'));
+
+    render(<StandingPanel objectiveID="obj-1" />);
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Pause' })).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: 'Pause' }));
+    const dialog = screen.getByRole('dialog', { name: 'Pause this objective' });
+    fireEvent.change(within(dialog).getByRole('textbox', { name: 'Reason' }), {
+      target: { value: 'started against a merged branch' },
+    });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Pause the objective' }));
+
+    // The error is shown inside the dialog, not behind one that has closed.
+    await waitFor(() => expect(within(dialog).getByRole('alert')).toHaveTextContent('pause refused'));
+    expect(screen.getByRole('dialog', { name: 'Pause this objective' })).toBeInTheDocument();
+    // The typed reason is not lost, so the operator can try again.
+    expect(within(dialog).getByRole('textbox', { name: 'Reason' })).toHaveValue('started against a merged branch');
+  });
+
   it('shows who paused the objective, when and why', async () => {
     get.mockResolvedValue(paused);
 

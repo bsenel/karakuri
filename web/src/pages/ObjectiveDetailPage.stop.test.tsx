@@ -91,6 +91,28 @@ describe('ObjectiveDetailPage loop stop', () => {
     await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('stopped by alice'));
   });
 
+  it('keeps the dialog open with the reason and shows the error when the stop fails', async () => {
+    post.mockImplementation((path: string) =>
+      path === '/loops/l1/stop' ? Promise.reject(new Error('stop refused')) : Promise.resolve({ loop_id: 'l1' }),
+    );
+    await startLoop(() => runningLoop);
+
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Stop loop' })).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: 'Stop loop' }));
+    const dialog = screen.getByRole('dialog', { name: 'Stop this loop' });
+    fireEvent.change(within(dialog).getByRole('textbox', { name: 'Reason' }), {
+      target: { value: 'started against a merged branch' },
+    });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Stop the loop' }));
+
+    await waitFor(() => expect(within(dialog).getByRole('alert')).toHaveTextContent('stop refused'));
+    expect(screen.getByRole('dialog', { name: 'Stop this loop' })).toBeInTheDocument();
+    // The typed reason is not lost, so the operator can try again.
+    expect(within(dialog).getByRole('textbox', { name: 'Reason' })).toHaveValue('started against a merged branch');
+    // The loop is still shown as running: a failed stop stopped nothing.
+    expect(screen.getByRole('status')).toHaveTextContent('running');
+  });
+
   it('shows who stopped the loop, when and why, and not that it completed', async () => {
     post.mockResolvedValue({ loop_id: 'l1' });
     await startLoop(() => stoppedLoop);
