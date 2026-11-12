@@ -224,7 +224,7 @@ func (h *LoopHandler) Resume(w http.ResponseWriter, r *http.Request) {
 		Modifications: req.Modifications,
 	})
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(w, err.Error(), decisionErrorStatus(err))
 		return
 	}
 	writeJSON(w, result)

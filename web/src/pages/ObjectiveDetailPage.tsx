@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { api } from '@/api/client';
 import { streamObjective } from '@/api/sse';
+import { describe } from '@/api/useApi';
 import { StandingPanel } from '@/components/StandingPanel';
 import type { Criterion, LoopStatus, Objective, SSEEvent } from '@/api/types';
 
@@ -24,7 +25,7 @@ export function ObjectiveDetailPage() {
       setObj(o);
       setErr(null);
     } catch (e) {
-      setErr(String(e));
+      setErr(describe(e));
     }
   };
 
@@ -67,7 +68,7 @@ export function ObjectiveDetailPage() {
       const resp = await api.post<{ loop_id: string }>('/loops/', { objective_id: id });
       setLoopID(resp.loop_id);
     } catch (e) {
-      setErr(String(e));
+      setErr(describe(e));
     }
   };
 

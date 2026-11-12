@@ -9,6 +9,7 @@ vi.mock('@/api/client', async () => {
   return { ...actual, api: { get: vi.fn(), post, put: vi.fn(), del: vi.fn() } };
 });
 
+import { APIError } from '@/api/client';
 import { MemoryPage } from './MemoryPage';
 
 const recall = () => fireEvent.click(screen.getByRole('button', { name: 'Recall' }));
@@ -43,6 +44,15 @@ describe('MemoryPage', () => {
     await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('API 500: boom'));
     expect(screen.getByText(/The recall failed/)).toBeInTheDocument();
     expect(screen.queryByText(/run a recall query/)).not.toBeInTheDocument();
+  });
+
+  it("shows the server's message rather than the raw response", async () => {
+    post.mockRejectedValue(new APIError(400, '{"error":"top_k must be positive"}'));
+
+    render(<MemoryPage />);
+    recall();
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('top_k must be positive'));
+    expect(screen.getByRole('alert')).not.toHaveTextContent('API 400');
   });
 
   it('names each filter by its label and sends what was typed there', async () => {

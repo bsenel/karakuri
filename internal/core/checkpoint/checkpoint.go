@@ -1,9 +1,13 @@
 package checkpoint
 
 import (
+	"fmt"
+	"slices"
+	"strings"
 	"time"
 
 	"github.com/bsenel/karakuri/internal/core/capability"
+	coreerrors "github.com/bsenel/karakuri/internal/core/errors"
 	"github.com/bsenel/karakuri/internal/core/loop"
 	"github.com/bsenel/karakuri/internal/core/objective"
 )
@@ -78,6 +82,38 @@ type Modifications struct {
 	// threshold returns on the next iteration. Recorded on the
 	// kind=modification audit row for attribution.
 	RevisedConfidence *float64 `json:"revised_confidence,omitempty"`
+}
+
+// The choices a person can make at a checkpoint.
+const (
+	ChoiceApprove = "approve"
+	ChoiceReject  = "reject"
+	ChoiceModify  = "modify"
+)
+
+// planChoices are what a loop's checkpoint offers when it recorded no options
+// of its own.
+var planChoices = []string{ChoiceApprove, ChoiceReject, ChoiceModify}
+
+// ValidateChoice refuses a choice the checkpoint did not offer. A checkpoint
+// names its own options (a plan's approve, reject, modify; a budget's
+// approve, reject; a stall's resume, pause, investigate); one that recorded
+// none is a plan's. Reject is accepted on every checkpoint: it closes one
+// without taking any of its options, which is what an expiry and a stop do
+// whatever was offered. The loop runner reads every choice other than reject or
+// modify as an approval, so an unrecognised one (a typo such as "deny", a
+// capitalised "Approve", an empty field) would approve the very plan it was
+// sent to refuse; it is refused here instead, before anything is recorded or
+// delivered.
+func ValidateChoice(choice string, options []string) error {
+	if len(options) == 0 {
+		options = planChoices
+	}
+	if choice == ChoiceReject || slices.Contains(options, choice) {
+		return nil
+	}
+	return fmt.Errorf("%w: decision %q is not one of this checkpoint's options (%s)",
+		coreerrors.ErrInvalidInput, choice, strings.Join(options, ", "))
 }
 
 type Decision struct {
