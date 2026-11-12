@@ -6656,15 +6656,32 @@ without a signing key or a bootstrap password (`config/default.yaml`,
   can mint an administrator's token, which gets around the login from inside.
   Found in the review of #205 on 2026-11-07. The owner's ruling: "It should
   be a step in phase 47."
+- A coding agent can act on the deployment with the operator's own login.
+  The agent's process runs as the server's OS user with the server's `HOME`,
+  and `krk` reads its session from `~/.config/karakuri/credentials.json`
+  (`cli/client/session.go` lines 35 to 44) and talks to `localhost:8080` by
+  default. Observed in commit dc0f62c (2026-11-10): to record a "before"
+  output, a UX coding agent ran `krk loop resume abc --decision maybe`, and
+  its commit message says "exit 0; the request was sent". The live server's
+  log has it: `POST /api/v1/loops/abc/resume` at 20:30:45 that day. Inferred,
+  not observed: the request carried the administrator's session (the log line
+  names no principal, but that route answers 401 without one and the command
+  exited 0); no loop `abc` existed, so nothing changed; and the same command
+  with a real ID would have resolved a checkpoint as the administrator. Step 4 does
+  not cover this, since it keeps `HOME` and removes variables, not files. The
+  owner's decision (2026-11-12), between a separate OS user for the server
+  and a step here: "Option B sounds right", which is the step.
 
 There are no release mechanics for the server or the CLI. The workflows
 release the `auth` and `quota` modules and the Helm chart, but no binary and
 no image. `deploy/values.yaml` points at `image.repository: karakuri` with
 `tag: latest`, which nothing publishes. No build stamps a version.
 
-**Steps.** Two groups, one pull request each: steps 1 to 4 (nothing answers
-without a login, and nothing an agent wrote holds a credential), then steps 5
-to 7 (the release).
+**Steps.** Two groups, one pull request each: steps 1 to 4 and step 8
+(nothing answers without a login, and nothing an agent wrote or ran holds a
+credential), then steps 5 to 7 (the release). Step 8 was added on 2026-11-12
+and keeps its number so that references to steps 5 to 7 stay valid; it is
+delivered right after step 4, on whose helper it builds.
 1. **Health without a login says only that the server is up.** Public
    `GET /api/v1/health` returns `{"status":"ok"}` and nothing else. Today's
    body moves to an authenticated `GET /api/v1/health/details`, behind a
@@ -6752,8 +6769,40 @@ to 7 (the release).
    *Acceptance:* the document's install commands are run once against the
    workflow's dry-run output, and the pull request says what was and was not
    run.
+8. **An agent's process cannot use the operator's `krk` session.** Every
+   process started for a coding agent or on a worktree (the launchers of step
+   4, and `internal/platform/tools/cliagent`) gets a `HOME` of its own, a
+   directory created for the run and removed after it, built by step 4's
+   helper; it replaces the value of `HOME` that step 4's allow-list passes
+   through. What the run legitimately needs from the operator's home is passed
+   by name and nothing else is: what `gh` needs to keep its login
+   (`GH_CONFIG_DIR`, and, where `gh` keeps its token in the system keyring as
+   it does on the reference deployment, either the session bus variables the
+   keyring needs or a `GH_TOKEN` named for the run),
+   `GIT_CONFIG_GLOBAL` so that `git push` keeps its credential helper, the
+   coding agent CLI's own configuration directory (for Claude Code,
+   `CLAUDE_CONFIG_DIR`), and the Go cache variables of step 4 with explicit
+   values. `KARAKURI_CREDENTIALS` is set to a path inside the run's `HOME`,
+   so a `krk` an agent runs finds no session whatever resolves the path. Read
+   which of these each tool honours before relying on it, and say in the pull
+   request what was read. A slice brief that wants an agent to exercise `krk`
+   against a server gives it a test server and a session of its own.
+   *Acceptance:* with a session file in the server user's home, a child
+   started through each launcher runs `krk checkpoint list` against a test
+   server and gets "not logged in", and the test server records no
+   authenticated request. Through the coding agent's launcher,
+   `gh auth status` still succeeds and `git push --dry-run` still reaches the
+   remote, each against a fixture, and the pull request says how the coding
+   agent CLI's own login was checked. The run's `HOME` is gone after the run.
+   *What it does not do, to be said in `docs/release.md` (step 7):* a process
+   of the same OS user can still open the operator's files by absolute path.
+   This step stops the session being picked up by default, which is what
+   happened in dc0f62c; it is not a boundary against an agent that looks for
+   the file. The boundary is running the server as an OS user that is not the
+   operator's, and `docs/release.md` recommends that for any deployment other
+   than a developer's own machine.
 
-**Acceptance of the phase.** Steps 1 to 7 are on main. The anonymous sweep
+**Acceptance of the phase.** Steps 1 to 8 are on main. The anonymous sweep
 passes. A dry run of the release workflow produced all four artifact kinds.
 The owner can push `v0.1.0-alpha.1` once the gate above holds, and nothing in
 this phase needs to change for that.
