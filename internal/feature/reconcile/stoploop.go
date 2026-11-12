@@ -44,7 +44,7 @@ func (s *Service) StopLoop(ctx context.Context, loopID, principal, reason string
 	case err == nil:
 		res.ObjectiveID = st.ObjectiveID
 		if st.ObjectiveID != "" {
-			res.ObjectivePaused, pauseErr = s.pauseForStop(ctx, st.ObjectiveID, reason)
+			res.ObjectivePaused, pauseErr = s.pauseForStop(ctx, st.ObjectiveID, principal, reason)
 		}
 	case !errors.Is(err, coreerrors.ErrNotFound):
 		return res, fmt.Errorf("read loop %q: %w", loopID, err)
@@ -58,6 +58,14 @@ func (s *Service) StopLoop(ctx context.Context, loopID, principal, reason string
 	if res.ObjectivePaused && res.Found == featureloop.StopFoundEnded {
 		res.Found = featureloop.StopFoundRunning
 	}
+	// Written after the loop service stored the stopped state, and only for
+	// a stop that ended something (Phase 37 step 5). A watch's pause has its
+	// own row; this one is the loop's.
+	if res.Found == featureloop.StopFoundRunning {
+		payload := map[string]any{"control": "loop_stop", "reason": reason}
+		addStopActions(payload, res.StopResult)
+		s.recordStop(ctx, res.ObjectiveID, loopID, principal, payload)
+	}
 	if pauseErr != nil {
 		return res, fmt.Errorf("loop %q stopped, but its objective %q was not paused: %w",
 			loopID, res.ObjectiveID, pauseErr)
@@ -69,7 +77,7 @@ func (s *Service) StopLoop(ctx context.Context, loopID, principal, reason string
 // whether it did. An objective with no control-loop state (a one-shot one)
 // has nothing to pause, and one already paused keeps the reason it was paused
 // with.
-func (s *Service) pauseForStop(ctx context.Context, id objective.ObjectiveID, reason string) (bool, error) {
+func (s *Service) pauseForStop(ctx context.Context, id objective.ObjectiveID, principal, reason string) (bool, error) {
 	st, err := s.store.GetReconcileState(ctx, id)
 	if errors.Is(err, coreerrors.ErrNotFound) {
 		return false, nil
@@ -80,7 +88,7 @@ func (s *Service) pauseForStop(ctx context.Context, id objective.ObjectiveID, re
 	if st.Paused {
 		return false, nil
 	}
-	if err := s.Pause(ctx, id, reason); err != nil {
+	if err := s.Pause(ctx, id, principal, reason); err != nil {
 		return false, err
 	}
 	return true, nil

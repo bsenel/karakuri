@@ -4394,6 +4394,47 @@ decides to end (AGENTS.md rule 8).
    flight names the completed actions and the cut one in the event; the export
    lists all of them for a window, and for an empty window says none were
    recorded.
+   *As delivered:*
+   - *The record.* One new tool event kind, `storage.ToolEventStop`
+     (`"stop"`, `internal/platform/storage/adapter.go`), written by
+     `Service.recordStop` and `Service.recordStopAs`
+     (`internal/feature/reconcile/service.go`): the principal in `Approver`,
+     the reason in `EscalationReason`, and `control`, principal and reason
+     again in the payload.
+   - *Pause and resume.* `Pause` and `Resume` in
+     `internal/feature/reconcile/service.go` each write one stop row,
+     `control` `pause` (with `pass_cancelled`) or `resume`; the handlers in
+     `internal/api/handler/reconcile.go` pass the principal through.
+   - *A checkpoint closed by a stop.* `closeStopped`
+     (`internal/feature/loop/stop.go`) records the rejection through
+     `checkpoint.Service.RecordClosedByStop`
+     (`internal/feature/checkpoint/service.go`), with `EscalationReason`
+     `closed_by_stop`, so `readAudit` (`internal/platform/telemetry/reader.go`)
+     does not count it as a person's rejection.
+   - *The loop stop.* `Service.StopLoop` (`internal/feature/reconcile/stoploop.go`)
+     writes a `loop_stop` row, and `addStopActions` adds `completed_actions`
+     and `cut_action` from the loop service's `StopResult`
+     (`internal/feature/loop/service.go`, `act.go`). A cut action is recorded
+     as ended only when the loop saw it end, and as `unknown` otherwise.
+   - *Stop-all.* `Service.StopAll` (`internal/feature/reconcile/stopall.go`)
+     writes one `stop_all` row for the call, listing `loops_stopped`,
+     `objectives_paused` and `not_reached`, and one row per run it touched,
+     each carrying the call's `stop_all_id`.
+   - *The export.* `Exporter.Export` (`internal/feature/audit/export.go`)
+     puts every stop row of `[from, to)` under oversight `stops`
+     (`ExportOversight.Stops`), oldest first, never among the interventions,
+     decisions or autonomy changes. An empty window encodes `"stops":[]` and
+     the statement says no stop, pause or resume was recorded in the window,
+     not that the system was never stopped. `docs/openapi.yaml` documents
+     `stops`.
+   - *Not verified.* No pause, resume, loop stop or stop-all was run against
+     a live server; every case is covered by unit tests over fakes. The full
+     `test/integration` package was not run, only its `OpenAPI` tests. The
+     expected schemas were not generated with `OPENAPI_WRITE_SCHEMAS` (the
+     command was not allowed in this session); the spec was edited by hand
+     and the `OpenAPI` tests pass. `internal/api/handler` timed out at the
+     10-minute default when run together with the reconcile and audit
+     packages, so its tests are not shown to pass here.
 6. **The web control.** Wherever the web interface shows a running loop or a
    standing objective, it shows a stop or a pause control that asks for a
    reason, and one stop-all control. A person without the permission does not

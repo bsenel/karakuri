@@ -290,9 +290,9 @@ func (s *Service) reconcileNow(
 		// name the rung without the loop working it back out of the bounds.
 		AutonomyRung: level,
 	})
-	if reason, stopped := stoppedBy(ctx); stopped {
+	if p, stopped := stoppedBy(ctx); stopped {
 		outcome.LoopID = res.LoopID
-		return s.finishStopped(ctx, st, obj, cadence, outcome, reason)
+		return s.finishStopped(ctx, st, obj, cadence, outcome, p)
 	}
 	if err != nil {
 		outcome.Error = err.Error()
@@ -302,10 +302,10 @@ func (s *Service) reconcileNow(
 	outcome.LoopID = res.LoopID
 
 	final, escalated := s.awaitLoop(ctx, res.LoopID, obj.ID)
-	if reason, stopped := stoppedBy(ctx); stopped {
+	if p, stopped := stoppedBy(ctx); stopped {
 		// Checked before the loop's row: a loop that honoured the cancel
 		// ends failed with the context's error, and that is not a failure.
-		return s.finishStopped(ctx, st, obj, cadence, outcome, reason)
+		return s.finishStopped(ctx, st, obj, cadence, outcome, p)
 	}
 	outcome.EndedAt = s.now()
 	outcome.CriteriaMet = final.CriteriaMet
@@ -357,9 +357,9 @@ func (s *Service) reconcileNow(
 const outcomeStopped = "stopped"
 
 // stopPrincipal is who the loop service records as having stopped a pass's
-// loop. Pause is told only a reason (the objective pause handler folds the
-// caller's ID into it), so the stop names the supervisor that carried it out
-// rather than a person it cannot see.
+// loop: the supervisor that carried the pause out. The person who paused is on
+// the pause's own audit row, which names this loop, so this stop adds no row
+// of its own (Phase 37 step 5).
 const stopPrincipal = "reconcile"
 
 // finishStopped files a pass a pause cancelled. The pass's context is done, so
@@ -378,13 +378,20 @@ func (s *Service) finishStopped(
 	obj objective.Objective,
 	cadence objective.Cadence,
 	outcome reconcile.Outcome,
-	reason string,
+	p *pausedInFlight,
 ) error {
 	ctx = context.WithoutCancel(ctx)
+	reason := p.reason
+	p.loopID = outcome.LoopID
 	if outcome.LoopID != "" {
-		if _, err := s.loops.Stop(ctx, outcome.LoopID, stopPrincipal, reason); err != nil {
+		stopped, err := s.loops.Stop(ctx, outcome.LoopID, stopPrincipal, reason)
+		switch {
+		case err != nil:
 			slog.Warn("could not stop the loop of a paused reconcile",
 				"objective", obj.ID, "loop", outcome.LoopID, "error", err)
+		case stopped.Found == featureloop.StopFoundRunning:
+			// What the loop had done, for the pause's row (Phase 37 step 5).
+			p.stopped = &stopped
 		}
 	}
 	outcome.Deferred = outcomeStopped

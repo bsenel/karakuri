@@ -160,7 +160,9 @@ func (r *Reader) Snapshot(ctx context.Context, q coretelemetry.Query) (coretelem
 // that ends the loop also leaves the loop's terminal row of the same kind,
 // with EscalationReason "rejected_at_checkpoint" or "modify_loop_exceeded";
 // counting it too made each rejection count twice, and made a modify that ran
-// past the modify limit count as a rejection nobody made.
+// past the modify limit count as a rejection nobody made. A checkpoint closed
+// by a stop carries "closed_by_stop" for the same reason: nobody judged its
+// plan (Phase 37 step 5).
 func (r *Reader) readAudit(ctx context.Context, snap *coretelemetry.Snapshot, scope []string, since, until time.Time) {
 	count := func(kind string, decisionsOnly bool) int {
 		events, err := r.store.ListToolEvents(ctx, storage.ToolEventFilter{
