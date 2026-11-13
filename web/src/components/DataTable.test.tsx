@@ -1,5 +1,5 @@
-import { render, screen } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { fireEvent, render, screen } from '@testing-library/react';
+import { describe, expect, it, vi } from 'vitest';
 
 import { DataTable, type Column } from './DataTable';
 
@@ -19,6 +19,21 @@ describe('DataTable', () => {
     // left on a page that silently has no table.
     expect(screen.getByRole('alert')).toHaveTextContent('forbidden');
     expect(screen.queryByRole('table')).not.toBeInTheDocument();
+  });
+
+  it('offers a retry beside a failed load when the page gives one', () => {
+    const onRetry = vi.fn();
+    render(<DataTable columns={columns} rows={[]} keyOf={keyOf} error="unavailable" onRetry={onRetry} />);
+
+    // An error with nothing to press leaves the reader to guess the next step.
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    expect(onRetry).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows no retry when the page gives none', () => {
+    render(<DataTable columns={columns} rows={[]} keyOf={keyOf} error="forbidden" />);
+
+    expect(screen.queryByRole('button', { name: 'Retry' })).not.toBeInTheDocument();
   });
 
   it('announces loading as a status', () => {

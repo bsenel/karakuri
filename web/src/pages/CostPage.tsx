@@ -207,6 +207,7 @@ function Cost() {
       <DataTable
         loading={byModel.loading}
         error={byModel.error}
+        onRetry={byModel.reload}
         rows={byModel.data ?? []}
         keyOf={(b) => b.key.join('|') || 'total'}
         empty="Nothing recorded in this range."
