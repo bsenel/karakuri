@@ -28,7 +28,12 @@ const config = (overrides: Record<string, unknown> = {}) => ({
 });
 
 describe('QuotaSettings', () => {
-  beforeEach(() => get.mockReset());
+  // A block body, not an expression: mockReset returns the mock itself, and a
+  // function returned from beforeEach is run and awaited as a teardown, which
+  // never settles when a test made get return a pending promise.
+  beforeEach(() => {
+    get.mockReset();
+  });
 
   // The pairing is the whole reason the database-backed tiers needed care: an
   // operator reading the YAML file is reading the seed, not the limit.
