@@ -182,6 +182,11 @@ type State struct {
 	// the failing objective straight back into the rotation.
 	Paused       bool   `json:"paused"`
 	PausedReason string `json:"paused_reason,omitempty"`
+	// PausedBy and PausedAt are who paused it and when, so a console shows
+	// who stopped an objective beside why (Phase 37 step 6). PausedBy is
+	// empty when the breaker or the stall detector paused it.
+	PausedBy string     `json:"paused_by,omitempty"`
+	PausedAt *time.Time `json:"paused_at,omitempty"`
 
 	// NextDueAt is the single value the supervisor's due-wheel queries on.
 	// Everything the cadence expresses — schedule, sense interval, resync,

@@ -1,6 +1,7 @@
 import { NavLink, Outlet } from 'react-router-dom';
 import { useAuth } from '@/auth/AuthProvider';
 import { visibleNavigation } from '@/auth/permissions';
+import { StopAllControl } from './StopAllControl';
 
 export function Layout() {
   const { health, identity, can, logout } = useAuth();
@@ -35,6 +36,8 @@ export function Layout() {
             {identity.principal.name || identity.principal.id}
           </span>
         )}
+        {/* On every page, for the moment something is wrong everywhere. */}
+        <StopAllControl />
         <button className="linklike small" onClick={() => void logout()}>
           Sign out
         </button>

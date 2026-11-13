@@ -107,6 +107,8 @@ func (ls *loopState) markStopped(principal, reason string, evenIfEnded bool) (st
 		cpID = *ls.result.CheckpointID
 	}
 	ls.stoppedBy, ls.stopReason = principal, reason
+	stoppedAt := time.Now().UTC()
+	ls.status.Stopped, ls.status.StoppedBy, ls.status.StopReason, ls.status.StoppedAt = true, principal, reason, &stoppedAt
 	ls.outcome = loop.RunStopped
 	ls.runErr = ""
 	ls.result.Status = objective.StatusStopped

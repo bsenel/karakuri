@@ -9,6 +9,9 @@ vi.mock('@/api/client', async () => {
   const actual = await vi.importActual<typeof import('@/api/client')>('@/api/client');
   return { ...actual, api: { get, post, put: vi.fn(), del: vi.fn() } };
 });
+// The stop control reads the caller's permissions (Phase 37 step 6); its own
+// tests are in ObjectiveDetailPage.stop.test.tsx.
+vi.mock('@/auth/AuthProvider', () => ({ useAuth: () => ({ can: () => true }) }));
 // jsdom has no EventSource, and the timeline is not what these tests are about.
 vi.mock('@/api/sse', () => ({ streamObjective: () => ({ close: () => {} }) }));
 // The standing panel makes its own requests; it has its own test.

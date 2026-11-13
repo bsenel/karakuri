@@ -47,7 +47,7 @@ Phases 27–32 were proposed from two kinds of evidence: what this repository de
 | 34    | Karakuri's Own Tools in Its Agents' Hands  | **Completed** |
 | 35    | An Unanswered Checkpoint Ends              | **Completed** |
 | 36    | A Provider's Refusal Is Not a Plan         | **Completed** |
-| 37    | Any Run Can Be Stopped at Any Time         | **Planned**   |
+| 37    | Any Run Can Be Stopped at Any Time         | **Completed** |
 | 38    | What Was Required and Not Done             | **Planned**   |
 | 39    | Autonomous Domain Packs Behind One Gateway | **Planned**   |
 | 40    | Streams That Run Without a Coordinator     | **Planned**   |
@@ -4028,7 +4028,7 @@ only, not PostgreSQL. Only the changed packages were tested; the full
 
 ---
 
-## Phase 37 — Any Run Can Be Stopped at Any Time (Planned)
+## Phase 37 — Any Run Can Be Stopped at Any Time (Completed)
 
 **The reason: the owner's requirement, 2026-10-10.** "We should be able to stop
 any run anytime." This phase is no longer a bet; it is asked for, and this
@@ -4444,6 +4444,49 @@ decides to end (AGENTS.md rule 8).
    *Acceptance:* component tests for each page: the control calls the route
    with the reason, the stopped state shows the principal and the reason, and
    the control is absent without the permission.
+
+   *As delivered:*
+   - *Pages and components.* The objective page
+     (`web/src/pages/ObjectiveDetailPage.tsx`) offers *Stop loop* on the loop
+     it started, behind `loop:stop`, and reads the status again once the stop
+     answers. The standing panel (`web/src/components/StandingPanel.tsx`)
+     asks for a reason before *Pause*, behind `objective:pause`; it no longer
+     sends a fixed reason. `web/src/components/StopAllControl.tsx`, mounted in
+     `Layout.tsx` on every page, is offered to a principal with `loop:stop` or
+     `objective:pause`, calls `POST /stop-all` with the reason, and lists
+     what was stopped, what was paused (naming a cancelled pass) and what was
+     not reached and why. All three go through one
+     `web/src/components/ReasonDialog.tsx`, whose confirm stays disabled until
+     a reason is written.
+   - *Who, when and why.* `loop.Status` (`internal/core/loop/loop.go`) gains
+     `stopped`, `stopped_by`, `stop_reason` and `stopped_at`, set by
+     `markStopped` (`internal/feature/loop/service.go`), so a stopped loop
+     reads stopped, never completed. `reconcile.State` gains `paused_by` and
+     `paused_at`, stored in two new columns of `reconcile_states` (GORM
+     AutoMigrate), set by `pause` and `finishStopped`, set without a
+     principal by the breaker and the stall detector, and cleared by
+     `Resume`. `docs/openapi.yaml` documents the six fields. Go tests:
+     `TestStatusOfAStoppedLoopSaysWhoStoppedItWhenAndWhy`,
+     `TestPauseRecordsWhoPausedItAndWhenAndResumeClearsThem`,
+     `TestPauseInFlightKeepsWhoPausedIt`.
+   - *Not verified.* The web tests were not run by their author, only by the
+     verify action and CI. The loop status of a loop stopped from its stored
+     row alone (a loop no longer in memory) still answers not found, as
+     before.
+
+**Shipped (steps 1–6).** A pause cancels the pass in flight (step 1); a stop
+reaches the delegated subprocess and its children (step 2); `POST
+/loops/{id}/stop` and `krk loop stop` end a loop and pause its standing
+objective (step 3); `POST /stop-all` stops every run the caller may stop and
+names the rest (step 4); every stop, pause and resume is on the audit record
+and in the evidence export (step 5); and the web interface offers each of
+these with a reason and shows who stopped a run, when and why (step 6).
+
+**Not verified for the phase.** The web tests were not run by their author,
+only by the verify action and CI. The phase acceptance replay against a live
+server (the 2026-10-10 case) was not run. The full `test/integration` package
+was not run, only its `OpenAPI` tests. Windows has no process groups, so step
+2's stop of a subprocess's children holds on Unix only.
 
 **Acceptance for the phase.** The 2026-10-10 case, replayed: a one-shot loop is
 started whose delegated action is a real subprocess that would commit and push

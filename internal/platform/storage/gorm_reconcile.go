@@ -25,6 +25,8 @@ func (s *GORMStorage) SaveReconcileState(ctx context.Context, st reconcile.State
 		Phase:        string(st.Phase),
 		Paused:       st.Paused,
 		PausedReason: st.PausedReason,
+		PausedBy:     st.PausedBy,
+		PausedAt:     st.PausedAt,
 
 		NextDueAt:       st.NextDueAt,
 		NextSenseAt:     st.NextSenseAt,
@@ -283,6 +285,8 @@ func reconcileStateFromModel(m schema.ReconcileStateModel) reconcile.State {
 		Phase:        reconcile.Phase(m.Phase),
 		Paused:       m.Paused,
 		PausedReason: m.PausedReason,
+		PausedBy:     m.PausedBy,
+		PausedAt:     m.PausedAt,
 
 		NextDueAt:       m.NextDueAt,
 		NextSenseAt:     m.NextSenseAt,

@@ -6889,6 +6889,16 @@ components:
           type: boolean
         step:
           type: string
+        stop_reason:
+          type: string
+        stopped:
+          type: boolean
+        stopped_at:
+          format: date-time
+          nullable: true
+          type: string
+        stopped_by:
+          type: string
       type: object
     LoopStopResult:
       additionalProperties: false
@@ -7573,6 +7583,12 @@ components:
           type: string
         paused:
           type: boolean
+        paused_at:
+          format: date-time
+          nullable: true
+          type: string
+        paused_by:
+          type: string
         paused_reason:
           type: string
         phase:

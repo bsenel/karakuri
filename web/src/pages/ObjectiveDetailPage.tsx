@@ -3,6 +3,8 @@ import { Link, useParams } from 'react-router-dom';
 import { api } from '@/api/client';
 import { streamObjective } from '@/api/sse';
 import { describe } from '@/api/useApi';
+import { useAuth } from '@/auth/AuthProvider';
+import { ReasonDialog } from '@/components/ReasonDialog';
 import { StandingPanel } from '@/components/StandingPanel';
 import type { Criterion, LoopStatus, Objective, SSEEvent } from '@/api/types';
 
@@ -17,6 +19,8 @@ export function ObjectiveDetailPage() {
   const [events, setEvents] = useState<SSEEvent[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const [loopID, setLoopID] = useState<string | null>(null);
+  const [stopping, setStopping] = useState(false);
+  const { can } = useAuth();
   const eventsBoxRef = useRef<HTMLDivElement>(null);
 
   const load = async () => {
@@ -63,6 +67,17 @@ export function ObjectiveDetailPage() {
     return () => { cancelled = true; clearInterval(h); };
   }, [loopID]);
 
+  // Stops the running loop with the operator's reason, then reads its status
+  // at once rather than waiting for the next poll (Phase 37 step 6). An error
+  // propagates to the dialog, which shows it and stays open.
+  const stopLoop = async (reason: string) => {
+    if (!loopID) return;
+    await api.post(`/loops/${loopID}/stop`, { reason });
+    setStatus(await api.get<LoopStatus>(`/loops/${loopID}/status`));
+  };
+
+  const ended = !!status && (status.completed || !!status.stopped);
+
   const startLoop = async () => {
     try {
       const resp = await api.post<{ loop_id: string }>('/loops/', { objective_id: id });
@@ -99,19 +114,30 @@ export function ObjectiveDetailPage() {
       </div>
 
       <div className="row">
-        <button className="primary" onClick={() => void startLoop()} disabled={!!loopID && !status?.completed}>
-          {!loopID ? 'Start loop' : status?.completed ? 'Run again' : 'Running…'}
+        <button className="primary" onClick={() => void startLoop()} disabled={!!loopID && !ended}>
+          {!loopID ? 'Start loop' : ended ? 'Run again' : 'Running…'}
         </button>
+        {loopID && status && !ended && can('loop:stop') && (
+          <button onClick={() => setStopping(true)}>Stop loop</button>
+        )}
         {/* Always mounted, so a screen reader hears each poll's change of state. */}
         <span className="small muted" role="status">
           {status && (
             <>
-              iteration {status.iteration} · {status.paused ? 'paused' : status.completed ? 'completed' : 'running'}
+              iteration {status.iteration} · <LoopState status={status} />
               {status.last_step && <> · last step: {status.last_step}</>}
             </>
           )}
         </span>
       </div>
+      {stopping && (
+        <ReasonDialog
+          title="Stop this loop"
+          confirmLabel="Stop the loop"
+          onClose={() => setStopping(false)}
+          onConfirm={stopLoop}
+        />
+      )}
 
       <StandingPanel objectiveID={id} budget={obj?.budget} />
 
@@ -126,6 +152,23 @@ export function ObjectiveDetailPage() {
       </div>
     </>
   );
+}
+
+// A stopped loop says who stopped it, when and why, and never that it
+// completed: a stop is not the run's own ending (Phase 37 step 6).
+function LoopState({ status }: { status: LoopStatus }) {
+  if (status.stopped) {
+    return (
+      <>
+        {status.stopped_by ? `stopped by ${status.stopped_by}` : 'stopped'}
+        {status.stopped_at && (
+          <> at <time dateTime={status.stopped_at}>{new Date(status.stopped_at).toLocaleString()}</time></>
+        )}
+        {status.stop_reason && <>: {status.stop_reason}</>}
+      </>
+    );
+  }
+  return <>{status.paused ? 'paused' : status.completed ? 'completed' : 'running'}</>;
 }
 
 // What the last verify step settled about each criterion, the same states the

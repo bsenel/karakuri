@@ -229,11 +229,13 @@ func (LoopStateModel) TableName() string { return "loop_states" }
 // must not scan. lease_until lets an operator find claims that outlived their
 // holder. paused keeps stopped objectives out of the due scan entirely.
 type ReconcileStateModel struct {
-	ObjectiveID  string `gorm:"primaryKey;column:objective_id"`
-	TwinID       string `gorm:"column:twin_id;not null;default:'';index"`
-	Phase        string `gorm:"column:phase;not null;default:'idle'"`
-	Paused       bool   `gorm:"column:paused;not null;default:false;index"`
-	PausedReason string `gorm:"column:paused_reason;not null;default:''"`
+	ObjectiveID  string     `gorm:"primaryKey;column:objective_id"`
+	TwinID       string     `gorm:"column:twin_id;not null;default:'';index"`
+	Phase        string     `gorm:"column:phase;not null;default:'idle'"`
+	Paused       bool       `gorm:"column:paused;not null;default:false;index"`
+	PausedReason string     `gorm:"column:paused_reason;not null;default:''"`
+	PausedBy     string     `gorm:"column:paused_by;not null;default:''"`
+	PausedAt     *time.Time `gorm:"column:paused_at"`
 
 	// Nullable because "never due on its own" is a real state — a standing
 	// objective that reconciles only when asked. A zero timestamp here would

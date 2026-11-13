@@ -398,6 +398,10 @@ func (s *Service) finishStopped(
 	outcome.EndedAt = s.now()
 	st.Paused = true
 	st.PausedReason = reason
+	// The pause stored these before it cancelled the pass; this copy of the
+	// state predates them.
+	pausedAt := s.now()
+	st.PausedBy, st.PausedAt = p.principal, &pausedAt
 	st.Phase = reconcile.PhasePaused
 	s.publish(ctx, event.TypeReconcileDeferred, obj, map[string]any{
 		"reason":  outcomeStopped,
@@ -764,8 +768,10 @@ func (s *Service) trip(ctx context.Context, st *reconcile.State, obj objective.O
 		return false
 	}
 
+	pausedAt := s.now()
 	st.Paused = true
 	st.PausedReason = summary
+	st.PausedBy, st.PausedAt = "", &pausedAt
 	st.Phase = reconcile.PhasePaused
 	st.NextDueAt = nil
 

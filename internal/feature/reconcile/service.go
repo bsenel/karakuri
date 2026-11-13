@@ -482,8 +482,10 @@ func (s *Service) pause(ctx context.Context, id objective.ObjectiveID, principal
 	if st.Paused {
 		return false, nil
 	}
+	pausedAt := s.now()
 	st.Paused = true
 	st.PausedReason = reason
+	st.PausedBy, st.PausedAt = principal, &pausedAt
 	st.Phase = reconcile.PhasePaused
 	if err := s.store.SaveReconcileState(ctx, st); err != nil {
 		return false, err
@@ -615,6 +617,7 @@ func (s *Service) Resume(ctx context.Context, id objective.ObjectiveID, principa
 	now := s.now()
 	st.Paused = false
 	st.PausedReason = ""
+	st.PausedBy, st.PausedAt = "", nil
 	st.Phase = reconcile.PhaseIdle
 	st.ConsecutiveFailures = 0
 	st.ScoreStreak = 0
