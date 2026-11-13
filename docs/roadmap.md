@@ -4518,6 +4518,38 @@ reviewer ever asks.
    add the list to the step-completed payload and to the audit event written
    on the finalise path in `internal/feature/loop/runner.go`. No model call is
    added and no judgement changes.
+
+   *What step 1 read (2026-11-13):* Since Phase 41, `stepVerify` sets
+   `State` and `Reason` on every criterion (`internal/feature/loop/verify.go`
+   lines 142 to 143) and puts the criteria in the step-completed payload
+   (line 169). The hub that event goes to is not stored: `event.Hub`
+   (`internal/core/event/event.go` lines 83 and 104) has one subscriber, the
+   SSE handler (`internal/api/handler/events.go` line 74). `finalizeLoop`
+   (`internal/feature/loop/runner.go` lines 500 to 578) writes no
+   `tool_events` row; its `objective.completed`/`objective.failed` payload
+   carries only `loop_id`, `criteria_met` and `error` (line 567). The states
+   do outlive the run in one place: `persistState` (line 564, then
+   `internal/feature/loop/service.go` line 484) stores them in
+   `loop_states.criteria_json` (`internal/platform/db/schema/models.go` line
+   207), which the evidence export does not read
+   (`internal/feature/audit/export.go` line 161 reads `tool_events` only).
+   How each criterion was settled is recorded nowhere. Part of it can be
+   inferred from `Verifier`, `State` and `Reason` (a verifier that is
+   reserved; `not_run` beside a declared verifier), but not all of it:
+   `unsupported` from a verifier declaring another unit (`verify.go` line
+   115) is the same entry whether that verifier ran or not. On the second
+   half of the kill criterion, this deployment's own standing delivery
+   objective declares verifiers (`software.verify.stream_pr`,
+   `software.verify.ci_green`, `software.verify.run_tests`), so "no stored
+   objective declares a verifier" is false for it. The deployment's database
+   was not read, so that is all that is known about the other objectives.
+   **The kill criterion does not close the phase.** The prototype is
+   specified by failing tests in `internal/feature/loop/settlement_test.go`:
+   the verify payload, the stored loop state, the terminal objective event
+   and one `tool_events` row written at finalisation each carry every
+   criterion with its `settlement`, and the `met` values, states and score
+   are today's. Which settlement an errored verifier call gets
+   (`verifier_error`) is left to the implementation, which should say so.
 2. **The export lists them.** An `unmet_obligations` section in
    `internal/feature/audit/export.go`: per finished run in the window, the
    criteria that ended unmet and the ones whose declared verifier never ran;

@@ -182,6 +182,10 @@ type Criterion struct {
 	// MarshalJSON.
 	State  CriterionState     `json:"state,omitempty"`
 	Reason InconclusiveReason `json:"reason,omitempty"`
+	// Settlement says how the last verify step settled the criterion, so the
+	// record can tell a check that ran and failed from one that never ran.
+	// Set only by the verify step (Phase 38).
+	Settlement Settlement `json:"settlement,omitempty"`
 
 	// Kind says what settles the criterion: a model, a verifier's pass or
 	// fail, or a measured number compared with a target.
@@ -513,6 +517,23 @@ const (
 	CriterionMet          CriterionState = "met"
 	CriterionNotMet       CriterionState = "not_met"
 	CriterionInconclusive CriterionState = "inconclusive"
+)
+
+// Settlement is how a verify step settled one criterion (Phase 38).
+type Settlement string
+
+const (
+	// SettledVerifierRan is a criterion its declared verifier settled.
+	SettledVerifierRan Settlement = "verifier_ran"
+	// SettledVerifierNeverRan is a criterion whose declared verifier did
+	// not run in the pass.
+	SettledVerifierNeverRan Settlement = "verifier_never_ran"
+	// SettledNoVerifier is a criterion that declares no verifier, judged
+	// by the agent.
+	SettledNoVerifier Settlement = "no_verifier"
+	// SettledReservedVerifier is a criterion whose verifier is reserved to
+	// a third party and so settles nothing (ADR 022).
+	SettledReservedVerifier Settlement = "reserved_verifier"
 )
 
 // InconclusiveReason says why a criterion could not be settled.
