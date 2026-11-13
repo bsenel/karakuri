@@ -11,18 +11,32 @@ import (
 // first call, and every call it shows names a subcommand that exists, so the
 // example cannot drift from the tree.
 func TestParentCommandsShowAFirstCall(t *testing.T) {
-	for _, cmd := range []*cobra.Command{checkpointCmd(), artifactCmd(), twinCmd()} {
+	quota := quotaCmd()
+	requests, _, err := quota.Find([]string{"requests"})
+	if err != nil {
+		t.Fatalf("quota has no requests subcommand: %v", err)
+	}
+	for _, cmd := range []*cobra.Command{
+		checkpointCmd(), artifactCmd(), twinCmd(), reportCmd(), quota, requests,
+	} {
 		requireExample(t, cmd)
 		requireExampleNamesSubcommands(t, cmd)
 	}
+
+	tiers, _, err := quota.Find([]string{"tiers"})
+	if err != nil {
+		t.Fatalf("quota has no tiers subcommand: %v", err)
+	}
+	requireExample(t, tiers)
 }
 
 func requireExampleNamesSubcommands(t *testing.T, cmd *cobra.Command) {
 	t.Helper()
-	prefix := "krk " + cmd.Name() + " "
+	prefix := "krk " + cmd.CommandPath() + " "
 	for _, line := range strings.Split(cmd.Example, "\n") {
 		line = strings.TrimSpace(line)
-		if line == "" || strings.HasPrefix(line, "#") {
+		// Comments, and the continuation lines of a call split with "\".
+		if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, "-") {
 			continue
 		}
 		rest, ok := strings.CutPrefix(line, prefix)

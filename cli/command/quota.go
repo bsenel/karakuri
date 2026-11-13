@@ -17,6 +17,10 @@ daily cap, a per-twin daily model budget, and a per-adapter daily cap.
 Reading them needs quota:read, which every role has. Resetting somebody's
 counters needs quota:admin, because it is an operator override rather than an
 ordinary operation.`,
+		Example: `  krk quota config
+  krk quota show --twin t_7f2a
+  krk quota request --tier llm-tokens --twin t_7f2a --cap 5000000 --reason "launch week"
+  krk quota requests list --status pending`,
 	}
 	cmd.AddCommand(quotaConfigCmd(), quotaShowCmd(), quotaResetCmd(),
 		quotaRequestCmd(), quotaRequestsCmd(),

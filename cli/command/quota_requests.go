@@ -81,6 +81,9 @@ func quotaRequestsCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "requests",
 		Short: "List, approve and reject quota requests",
+		Example: `  krk quota requests list --status pending
+  krk quota requests approve qr_9c1e4b2a7d3f6e08 --note "launch week only"
+  krk quota requests reject qr_9c1e4b2a7d3f6e08 --note "use the batch tier instead"`,
 	}
 	cmd.AddCommand(quotaRequestsListCmd(), quotaDecideCmd("approve"), quotaDecideCmd("reject"))
 	return cmd

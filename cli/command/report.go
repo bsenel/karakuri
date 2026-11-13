@@ -22,6 +22,10 @@ nine — so a schedule names the twin, the cadence, and where to send it.
 Every digest ends with the decisions it needs from you: the checkpoints still
 pending, oldest first, because the one that has been waiting three days is the
 one blocking work.`,
+		Example: `  krk report create --twin twin_1 --daily-at 08:00 --timezone Europe/Istanbul \
+      --channel messaging --target '#eng-standup'
+  krk report preview --twin twin_1
+  krk report list`,
 	}
 	cmd.AddCommand(reportCreateCmd(), reportListCmd(), reportPreviewCmd(), reportSendCmd(), reportDeleteCmd())
 	return cmd
