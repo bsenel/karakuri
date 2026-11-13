@@ -47,7 +47,7 @@ func run(name string, args ...string) error {
 	cmd.Stderr = os.Stderr
 	cmd.Stdin = os.Stdin
 	if _, err := os.Stat("web/package.json"); err != nil {
-		return fmt.Errorf("web/package.json not found — run this from the Karakuri repo root")
+		return fmt.Errorf("web/package.json not found in the current directory; krk web runs from the Karakuri repo root, e.g. cd ~/src/karakuri && krk web --install")
 	}
 	return cmd.Run()
 }
