@@ -12,6 +12,10 @@ func twinCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "twin",
 		Short: "Manage digital twins",
+		Example: `  krk twin create --name "Platform team"
+  krk twin list
+  krk twin get t_7f2a
+  krk twin bindings t_7f2a`,
 	}
 	cmd.AddCommand(twinCreateCmd(), twinGetCmd(), twinListCmd(), twinBindingsCmd())
 	return cmd
