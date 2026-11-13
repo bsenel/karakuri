@@ -497,6 +497,47 @@ func (s *serviceImpl) recordCheckpointTerminal(ctx context.Context, state *loopS
 	})
 }
 
+// recordRunEnd writes the storage.ToolEventRunEnd audit row (Phase 38 step 1):
+// how the run ended and every criterion with its state, reason and settlement.
+// The hub is not stored, so without this row the record of what a run was
+// required to do and did not would end with the process. Its payload is
+// {loop_id, objective_id, status, outcome, criteria_met, criteria, error?},
+// criteria in objective.Criterion's JSON form. A failed write is logged and
+// changes nothing about the run.
+func (s *serviceImpl) recordRunEnd(ctx context.Context, loopID string, obj objective.Objective, status objective.ObjectiveStatus, outcome loop.RunOutcome, criteriaMet bool, criteria []objective.Criterion, runErr error) {
+	if criteria == nil {
+		criteria = []objective.Criterion{}
+	}
+	payload := map[string]any{
+		"loop_id":      loopID,
+		"objective_id": string(obj.ID),
+		"status":       string(status),
+		"outcome":      string(outcome),
+		"criteria_met": criteriaMet,
+		"criteria":     criteria,
+	}
+	if runErr != nil {
+		payload["error"] = runErr.Error()
+	}
+	pj, err := json.Marshal(payload)
+	if err != nil {
+		slog.Warn("could not encode the run end audit row", "objective", string(obj.ID), "loop", loopID, "error", err)
+		return
+	}
+	now := time.Now().UTC()
+	if err := s.store.SaveToolEvent(ctx, storage.ToolEvent{
+		ID:          fmt.Sprintf("run-end-%s-%d", loopID, now.UnixNano()),
+		ObjectiveID: string(obj.ID),
+		Kind:        storage.ToolEventRunEnd,
+		TemplateID:  obj.TemplateID,
+		Success:     criteriaMet && runErr == nil,
+		PayloadJSON: string(pj),
+		CreatedAt:   now,
+	}); err != nil {
+		slog.Warn("could not write the run end audit row", "objective", string(obj.ID), "loop", loopID, "error", err)
+	}
+}
+
 func (s *serviceImpl) finalizeLoop(ctx context.Context, state *loopState, obj objective.Objective, iterations []loop.Iteration, criteriaMet bool, runErr error) {
 	// A stop took this loop's ending and stored it before cancelling: the
 	// cancel the runner is unwinding from is not a failure, and nothing here
@@ -564,10 +605,17 @@ func (s *serviceImpl) finalizeLoop(ctx context.Context, state *loopState, obj ob
 	s.persistState(ctx, state, true)
 
 	if obj.ID != "" {
-		payload := map[string]any{"loop_id": state.id, "criteria_met": criteriaMet}
+		state.mu.RLock()
+		criteria := slices.Clone(state.criteria)
+		state.mu.RUnlock()
+		// Every criterion as the last verify step left it, with how it was
+		// settled, so "the check ran and failed" and "the check never ran"
+		// are told apart once the run is over (Phase 38).
+		payload := map[string]any{"loop_id": state.id, "criteria_met": criteriaMet, "criteria": criteria}
 		if runErr != nil {
 			payload["error"] = runErr.Error()
 		}
+		s.recordRunEnd(ctx, state.id, obj, finalStatus, outcome, criteriaMet, criteria, runErr)
 		s.hub.Publish(ctx, event.Event{
 			Type:        evtType,
 			ObjectiveID: string(obj.ID),
