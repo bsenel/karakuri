@@ -52,7 +52,11 @@ on its own, which is what "we need double for launch week" actually means.`,
 			}
 			if until != "" {
 				if _, err := time.Parse(time.RFC3339, until); err != nil {
-					return fmt.Errorf("--until must be RFC3339, e.g. 2026-09-01T00:00:00Z: %w", err)
+					subject := ""
+					if twin != "" {
+						subject = " --twin " + twin
+					}
+					return fmt.Errorf("--until %q is not an RFC3339 timestamp; give a date, a time and a zone, e.g. `krk quota request --tier %s%s --cap %d --reason %q --until 2026-09-01T00:00:00Z`, or drop --until to make the raise permanent", until, tier, subject, cap, reason)
 				}
 				body["until"] = until
 			}
