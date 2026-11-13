@@ -111,6 +111,7 @@ func TestOpenAPIMarshalShapesMatchTheWire(t *testing.T) {
 	c := objective.Criterion{
 		ID: "c1", Description: "d", Verifier: "v", Threshold: 1, Weight: 1, Domain: "software",
 		Required: &required, State: objective.CriterionInconclusive, Reason: objective.ReasonVerifierError,
+		Settlement: objective.SettledVerifierRan,
 		Kind: objective.KindMeasured, Metric: "m", Op: objective.OpGreaterEqual, Target: &target, Unit: "ratio",
 		Params: map[string]any{"packages": "./..."}, Evidence: "e",
 		Samples: 3, Reducer: objective.ReducerKOfN, K: 2, MinSamples: 3,

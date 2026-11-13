@@ -6447,6 +6447,9 @@ components:
         samples:
           description: How many measurements of the metric a measured criterion takes.
           type: integer
+        settlement:
+          description: How the last verify step settled the criterion (verifier_ran, verifier_never_ran, no_verifier or reserved_verifier); absent before any verify step.
+          type: string
         state:
           description: What the last verify step settled (met, not_met or inconclusive).
           type: string
