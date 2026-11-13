@@ -91,6 +91,19 @@ describe('TwinDetailPage', () => {
     );
   });
 
+  it('tells a screen reader that the bindings were saved', async () => {
+    get.mockImplementation(answer);
+    put.mockResolvedValue(twin);
+
+    renderPage();
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Platform team' })).toBeInTheDocument());
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Save bindings' }));
+
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Bindings saved.'));
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
   it('keeps the twin on screen when saving bindings fails', async () => {
     get.mockImplementation(answer);
     put.mockRejectedValue(new Error('API 500: boom'));
