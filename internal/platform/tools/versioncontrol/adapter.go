@@ -104,5 +104,12 @@ type VersionControlAdapter interface {
 	// MarkReady takes a draft pull request out of draft, ready for review. An
 	// adapter whose forge cannot returns an error wrapping ErrUnsupported.
 	MarkReady(ctx context.Context, repo, prID string) error
+	// ListMergedPRs returns up to limit of the repository's most recently
+	// merged pull requests, newest first, with their head SHA and CheckState.
+	// An adapter whose forge cannot returns an error wrapping ErrUnsupported.
+	ListMergedPRs(ctx context.Context, repo string, limit int) ([]PRSummary, error)
+	// EditPRBody replaces a pull request's description with body. An adapter
+	// whose forge cannot returns an error wrapping ErrUnsupported.
+	EditPRBody(ctx context.Context, repo, prID, body string) error
 	Active() bool
 }
