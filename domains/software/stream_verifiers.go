@@ -202,6 +202,33 @@ func (e *gitEnv) verifyCIGreen(ctx context.Context, repo, branch string, params 
 	}
 }
 
+// ciGreenState is ci_green's rule over the checks at one head, read once and
+// without the wait: a failure is not met; a pending, cancelled or unapproved
+// check, or no green one, is inconclusive. mark_ready tries it on this forge's
+// own pull requests when a pull request changes this file (Phase 44 step 5).
+func ciGreenState(checks []versioncontrol.CheckRun) objective.CriterionState {
+	failing, pending, notRun, _, green := sortChecks(latestRuns(checks))
+	switch {
+	case len(failing) > 0:
+		return objective.CriterionNotMet
+	case len(pending) > 0, len(notRun) > 0, len(green) == 0:
+		return objective.CriterionInconclusive
+	}
+	return objective.CriterionMet
+}
+
+// atHead keeps the checks that ran on headSHA: a check on an older commit
+// settles nothing.
+func atHead(checks []versioncontrol.CheckRun, headSHA string) []versioncontrol.CheckRun {
+	var out []versioncontrol.CheckRun
+	for _, c := range checks {
+		if c.HeadSHA == headSHA {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
 // headChecks reads the checks at headSHA once and sorts the latest run of each
 // by what it says. A check on an older commit settles nothing, so it is left
 // out. ci_green and mark_ready share it so they share one set of rules.
@@ -210,13 +237,7 @@ func (e *gitEnv) headChecks(ctx context.Context, repo, headSHA string) (failing,
 	if err != nil {
 		return nil, nil, nil, nil, nil, err
 	}
-	var atHead []versioncontrol.CheckRun
-	for _, c := range checks {
-		if c.HeadSHA == headSHA {
-			atHead = append(atHead, c)
-		}
-	}
-	failing, pending, notRun, nonBlocking, green = sortChecks(latestRuns(atHead))
+	failing, pending, notRun, nonBlocking, green = sortChecks(latestRuns(atHead(checks, headSHA)))
 	return failing, pending, notRun, nonBlocking, green, nil
 }
 

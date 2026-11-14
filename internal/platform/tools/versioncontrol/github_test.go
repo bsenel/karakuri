@@ -353,3 +353,69 @@ func TestMarkReadyReturnsAnErrorOnAFailedCall(t *testing.T) {
 		}
 	})
 }
+
+// Merged pull requests are the closed ones with a merge time, newest merge
+// first, at most limit of them, each with its head and check state.
+func TestListMergedPRsKeepsTheMergedNewestFirst(t *testing.T) {
+	var gotQuery string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "/check-runs") {
+			_, _ = w.Write([]byte(`{"check_runs":[{"name":"build","status":"completed","conclusion":"success"}]}`))
+			return
+		}
+		gotQuery = r.URL.RawQuery
+		_, _ = w.Write([]byte(`[
+			{"number":5,"merged_at":"2026-11-01T10:00:00Z","head":{"ref":"a","sha":"h5"},"user":{"login":"x"}},
+			{"number":6,"merged_at":null,"head":{"ref":"b","sha":"h6"},"user":{"login":"x"}},
+			{"number":7,"merged_at":"2026-11-03T10:00:00Z","head":{"ref":"c","sha":"h7"},"user":{"login":"x"}},
+			{"number":8,"merged_at":"2026-11-02T10:00:00Z","head":{"ref":"d","sha":"h8"},"user":{"login":"x"}}
+		]`))
+	}))
+	defer srv.Close()
+	g := NewGitHub("t", "acme/api")
+	g.client = &http.Client{Transport: toServer{srv}}
+
+	prs, err := g.ListMergedPRs(context.Background(), "", 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(gotQuery, "state=closed") {
+		t.Errorf("query %q does not ask for closed pull requests", gotQuery)
+	}
+	var ids []string
+	for _, pr := range prs {
+		ids = append(ids, pr.ID+":"+pr.HeadSHA+":"+pr.CheckState)
+	}
+	if want := []string{"7:h7:success", "8:h8:success"}; !slices.Equal(ids, want) {
+		t.Errorf("merged = %v, want %v", ids, want)
+	}
+}
+
+// The body edit is one PATCH of the pull request with the new body, and a
+// failed call is an error.
+func TestEditPRBodyPatchesThePullRequest(t *testing.T) {
+	var method, path string
+	var sent map[string]string
+	status := http.StatusOK
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		method, path = r.Method, r.URL.Path
+		raw, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(raw, &sent)
+		w.WriteHeader(status)
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	defer srv.Close()
+	g := NewGitHub("t", "acme/api")
+	g.client = &http.Client{Transport: toServer{srv}}
+
+	if err := g.EditPRBody(context.Background(), "", "244", "new body"); err != nil {
+		t.Fatal(err)
+	}
+	if method != "PATCH" || path != "/repos/acme/api/pulls/244" || sent["body"] != "new body" {
+		t.Errorf("sent %s %s %v, want PATCH /repos/acme/api/pulls/244 with the body", method, path, sent)
+	}
+	status = http.StatusForbidden
+	if err := g.EditPRBody(context.Background(), "", "244", "x"); err == nil {
+		t.Error("a 403 was read as success")
+	}
+}

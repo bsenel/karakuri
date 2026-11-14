@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"sort"
 	"strings"
 	"time"
 )
@@ -77,26 +78,7 @@ func (g *GitHub) ListPRs(ctx context.Context, repo string, since time.Time) ([]P
 	if repo == "" {
 		return nil, fmt.Errorf("github: no repo configured")
 	}
-	var raw []struct {
-		Number    int       `json:"number"`
-		NodeID    string    `json:"node_id"`
-		Title     string    `json:"title"`
-		Body      string    `json:"body"`
-		Draft     bool      `json:"draft"`
-		HTMLURL   string    `json:"html_url"`
-		CreatedAt time.Time `json:"created_at"`
-		UpdatedAt time.Time `json:"updated_at"`
-		Head      struct {
-			Ref string `json:"ref"`
-			SHA string `json:"sha"`
-		} `json:"head"`
-		Base struct {
-			Ref string `json:"ref"`
-		} `json:"base"`
-		User struct {
-			Login string `json:"login"`
-		} `json:"user"`
-	}
+	var raw []ghPull
 	if err := g.do(ctx, "GET", fmt.Sprintf("/repos/%s/pulls?state=open&per_page=50", repo), nil, &raw); err != nil {
 		return nil, err
 	}
@@ -105,19 +87,48 @@ func (g *GitHub) ListPRs(ctx context.Context, repo string, since time.Time) ([]P
 		if !since.IsZero() && r.UpdatedAt.Before(since) {
 			continue
 		}
-		s := PRSummary{
-			ID: fmt.Sprintf("%d", r.Number), Title: r.Title, URL: r.HTMLURL,
-			Number: r.Number, NodeID: r.NodeID, Body: r.Body, Draft: r.Draft,
-			BaseBranch: r.Base.Ref,
-			Author:     r.User.Login,
-			OwnAuthor:  g.ownAuthors[strings.ToLower(r.User.Login)],
-			HeadBranch: r.Head.Ref, HeadSHA: r.Head.SHA,
-			CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
-		}
-		s.CheckState, s.FailingChecks = g.checkState(ctx, repo, r.Head.SHA)
-		out = append(out, s)
+		out = append(out, g.summary(ctx, repo, r))
 	}
 	return out, nil
+}
+
+// ghPull is a pull request as GitHub's pulls endpoint lists it.
+type ghPull struct {
+	Number    int        `json:"number"`
+	NodeID    string     `json:"node_id"`
+	Title     string     `json:"title"`
+	Body      string     `json:"body"`
+	Draft     bool       `json:"draft"`
+	HTMLURL   string     `json:"html_url"`
+	CreatedAt time.Time  `json:"created_at"`
+	UpdatedAt time.Time  `json:"updated_at"`
+	MergedAt  *time.Time `json:"merged_at"`
+	Head      struct {
+		Ref string `json:"ref"`
+		SHA string `json:"sha"`
+	} `json:"head"`
+	Base struct {
+		Ref string `json:"ref"`
+	} `json:"base"`
+	User struct {
+		Login string `json:"login"`
+	} `json:"user"`
+}
+
+// summary maps one listed pull request to a PRSummary, with the combined
+// check state of its head.
+func (g *GitHub) summary(ctx context.Context, repo string, r ghPull) PRSummary {
+	s := PRSummary{
+		ID: fmt.Sprintf("%d", r.Number), Title: r.Title, URL: r.HTMLURL,
+		Number: r.Number, NodeID: r.NodeID, Body: r.Body, Draft: r.Draft,
+		BaseBranch: r.Base.Ref,
+		Author:     r.User.Login,
+		OwnAuthor:  g.ownAuthors[strings.ToLower(r.User.Login)],
+		HeadBranch: r.Head.Ref, HeadSHA: r.Head.SHA,
+		CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
+	}
+	s.CheckState, s.FailingChecks = g.checkState(ctx, repo, r.Head.SHA)
+	return s
 }
 
 // checkState reads the combined CI verdict for one commit.
@@ -331,14 +342,52 @@ func (g *GitHub) MarkReady(ctx context.Context, repo, prID string) error {
 	return nil
 }
 
-// ListMergedPRs is not read yet (Phase 44 step 5 code); until then it says so.
-func (g *GitHub) ListMergedPRs(context.Context, string, int) ([]PRSummary, error) {
-	return nil, fmt.Errorf("github: merged pull requests: %w", ErrUnsupported)
+// ListMergedPRs reads up to limit of the most recently merged pull requests,
+// newest first. GitHub lists closed and merged together, so it reads one page
+// of the most recently updated closed ones and keeps those with a merge time.
+func (g *GitHub) ListMergedPRs(ctx context.Context, repo string, limit int) ([]PRSummary, error) {
+	if repo == "" {
+		repo = g.repo
+	}
+	if repo == "" {
+		return nil, fmt.Errorf("github: no repo configured")
+	}
+	var raw []ghPull
+	path := fmt.Sprintf("/repos/%s/pulls?state=closed&sort=updated&direction=desc&per_page=50", repo)
+	if err := g.do(ctx, "GET", path, nil, &raw); err != nil {
+		return nil, fmt.Errorf("github: merged pull requests: %w", err)
+	}
+	var merged []ghPull
+	for _, r := range raw {
+		if r.MergedAt != nil {
+			merged = append(merged, r)
+		}
+	}
+	// Updated is not merged: a comment moves an old pull request up the list.
+	sort.SliceStable(merged, func(i, j int) bool { return merged[i].MergedAt.After(*merged[j].MergedAt) })
+	if limit > 0 && len(merged) > limit {
+		merged = merged[:limit]
+	}
+	out := make([]PRSummary, 0, len(merged))
+	for _, r := range merged {
+		out = append(out, g.summary(ctx, repo, r))
+	}
+	return out, nil
 }
 
-// EditPRBody is not written yet (Phase 44 step 5 code); until then it says so.
-func (g *GitHub) EditPRBody(context.Context, string, string, string) error {
-	return fmt.Errorf("github: edit pull request body: %w", ErrUnsupported)
+// EditPRBody replaces a pull request's description.
+func (g *GitHub) EditPRBody(ctx context.Context, repo, prID, body string) error {
+	if repo == "" {
+		repo = g.repo
+	}
+	if repo == "" {
+		return fmt.Errorf("github: no repo configured")
+	}
+	path := fmt.Sprintf("/repos/%s/pulls/%s", repo, url.PathEscape(prID))
+	if err := g.do(ctx, "PATCH", path, map[string]string{"body": body}, nil); err != nil {
+		return fmt.Errorf("github: edit pull request body: %w", err)
+	}
+	return nil
 }
 
 func (g *GitHub) do(ctx context.Context, method, path string, body any, out any) error {

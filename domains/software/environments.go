@@ -76,7 +76,7 @@ func softwareEnvironmentFactories(reg *tools.Registry) []environment.Factory {
 				CapPathsDeclared,
 			},
 			Build: func(ctx environment.BuildContext) (environment.Environment, error) {
-				return &gitEnv{id: EnvGit, vc: boundVC(ctx)}, nil
+				return &gitEnv{id: EnvGit, vc: boundVC(ctx), verifiers: forgeVerifiers}, nil
 			},
 		},
 		{
