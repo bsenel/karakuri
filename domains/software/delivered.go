@@ -1,6 +1,7 @@
 package software
 
 import (
+	"context"
 	"fmt"
 	"regexp"
 	"strconv"
@@ -41,6 +42,12 @@ type checklistStep struct {
 type observedPR struct {
 	versioncontrol.PRSummary
 	Checklist []checklistStep `json:"checklist,omitempty"`
+	// The commits on the head branch since the base, read only when there is
+	// a checklist: at most sinceBaseCap of them, how many more there are, or
+	// why they could not be read.
+	SinceBase            []sinceBaseCommit `json:"commits_since_base,omitempty"`
+	SinceBaseMore        int               `json:"commits_since_base_more,omitempty"`
+	SinceBaseUnavailable string            `json:"commits_since_base_unavailable,omitempty"`
 }
 
 // prChecklist reads pr's body into the checklist the observation carries.
@@ -93,4 +100,55 @@ func withChecklists(prs []versioncontrol.PRSummary) (entries []observedPR, lines
 		}
 	}
 	return entries, lines
+}
+
+// sinceBaseCap is how many commits since base one pull request entry carries.
+// The lines land in every reason prompt, so a long branch is cut and the rest
+// counted.
+const sinceBaseCap = 30
+
+// sinceBaseCommit is one commit on a pull request's head branch since its
+// base: the short SHA and the subject line.
+type sinceBaseCommit struct {
+	SHA     string `json:"sha"`
+	Subject string `json:"subject"`
+}
+
+// withCommitsSinceBase reads, for each entry with a checklist, the commits on
+// its head branch since its base, and writes them as lines for the planner.
+// An entry without a checklist is not a delivery group a plan checks against,
+// so it costs no compare call. A failed or unsupported compare is said with
+// its reason, never left as an empty list (AGENTS.md rule 10).
+func withCommitsSinceBase(ctx context.Context, vc versioncontrol.VersionControlAdapter, repo string, entries []observedPR) (lines []string) {
+	for i := range entries {
+		e := &entries[i]
+		if len(e.Checklist) == 0 {
+			continue
+		}
+		prefix := fmt.Sprintf("#%d ", e.Number)
+		commits, err := vc.CompareCommits(ctx, repo, e.BaseBranch, e.HeadBranch)
+		if err != nil {
+			e.SinceBaseUnavailable = err.Error()
+			lines = append(lines, prefix+"commits since base: unavailable: "+err.Error())
+			continue
+		}
+		if len(commits) == 0 {
+			// The entry's list is omitted when empty, so the line is what
+			// tells "nothing on the branch yet" from "not read".
+			lines = append(lines, prefix+"commits since base: none")
+			continue
+		}
+		shown := commits[:min(len(commits), sinceBaseCap)]
+		e.SinceBase = make([]sinceBaseCommit, 0, len(shown))
+		for _, c := range shown {
+			sc := sinceBaseCommit{SHA: c.SHA[:min(len(c.SHA), 7)], Subject: strings.SplitN(c.Message, "\n", 2)[0]}
+			e.SinceBase = append(e.SinceBase, sc)
+			lines = append(lines, prefix+sc.SHA+" "+sc.Subject)
+		}
+		if more := len(commits) - len(shown); more > 0 {
+			e.SinceBaseMore = more
+			lines = append(lines, fmt.Sprintf("%scommits since base: %d more not shown", prefix, more))
+		}
+	}
+	return lines
 }
