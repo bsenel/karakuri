@@ -273,6 +273,11 @@ func (g *GitHub) ChangedFiles(ctx context.Context, repo, prID string) ([]string,
 	return nil, fmt.Errorf("github: changed files: pull request %s touches more files than GitHub lists", prID)
 }
 
+// MarkReady is scaffolding until Phase 44 step 1 lands; its tests are red.
+func (g *GitHub) MarkReady(_ context.Context, _, _ string) error {
+	return nil
+}
+
 func (g *GitHub) do(ctx context.Context, method, path string, body any, out any) error {
 	var reader io.Reader
 	if body != nil {
