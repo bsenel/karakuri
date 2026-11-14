@@ -11,6 +11,9 @@ export function TwinsPage() {
   // Whether the list has been read at least once. Without it a failed first
   // load renders the empty table, which says there are no twins.
   const [loaded, setLoaded] = useState(false);
+  // Name of the twin just created, so a successful create is announced
+  // rather than leaving the user to spot a new row in the table.
+  const [created, setCreated] = useState<string | null>(null);
 
   // Create form state
   const [name, setName] = useState('');
@@ -35,8 +38,10 @@ export function TwinsPage() {
 
   const create = async (e: React.FormEvent) => {
     e.preventDefault();
+    setCreated(null);
     try {
       await api.post<Twin>('/twins/', { name, kind, domain });
+      setCreated(name);
       setName('');
       await load();
     } catch (e) {
@@ -81,6 +86,7 @@ export function TwinsPage() {
           </div>
           <button className="primary" type="submit">Create</button>
         </form>
+        {created && <p className="muted small" role="status">Created twin “{created}”.</p>}
       </div>
 
       {err && (
