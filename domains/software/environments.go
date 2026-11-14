@@ -374,6 +374,19 @@ func (e *gitEnv) Observe(ctx context.Context, q environment.ObservationQuery) (e
 		}
 		state["failing_prs"] = broken
 	}
+	// What a failed coding action left on a salvage branch (Phase 44 step 2),
+	// by name and SHA, so the next pass's plan can cherry-pick it after its
+	// tests pass or discard it. A forge that cannot list branches says so.
+	salvaged, err := adapter.ListBranches(ctx, repo, salvageBranchPrefix)
+	if err != nil {
+		state["salvage_branches_error"] = err.Error()
+	} else {
+		branches := make([]map[string]any, 0, len(salvaged))
+		for _, b := range salvaged {
+			branches = append(branches, map[string]any{"branch": b.Name, "sha": b.SHA})
+		}
+		state["salvage_branches"] = branches
+	}
 	return environment.Observation{
 		EnvID: e.id, State: state, Version: stateVersion(state),
 		Timestamp: time.Now().UTC(), Trust: trust,
