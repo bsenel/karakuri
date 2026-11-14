@@ -160,8 +160,8 @@ func actWith(t *testing.T, worktree string, action environment.Action, run func(
 	return res
 }
 
-// exit1 is what the adapters return for a CLI that exited 1.
-var exit1 = errors.New("claude_code exited with status 1: usage limit reached")
+// errExit1 is what the adapters return for a CLI that exited 1.
+var errExit1 = errors.New("claude_code exited with status 1: usage limit reached")
 
 // An edit left uncommitted by a run that failed ends up on a salvage branch on
 // origin, holding every edit, parented on the item's head, while the item's
@@ -172,14 +172,14 @@ func TestSalvageCommitsAFailedRunsEditsToASideBranch(t *testing.T) {
 	res := actWith(t, f.worktree, salvageAction(f.worktree), func(t *testing.T, wt string) error {
 		writeFile(t, filepath.Join(wt, "new.txt"), "new file\n")
 		writeFile(t, filepath.Join(wt, "tracked.txt"), "edited\n")
-		return exit1
+		return errExit1
 	})
 
 	if res.Success {
 		t.Fatal("a failed run must stay a failed result after salvage")
 	}
-	if res.Error != exit1.Error() {
-		t.Errorf("Error = %q, want the delegate's own %q", res.Error, exit1.Error())
+	if res.Error != errExit1.Error() {
+		t.Errorf("Error = %q, want the delegate's own %q", res.Error, errExit1.Error())
 	}
 	if got := res.StateDelta["salvage_branch"]; got != salvageWantBranch {
 		t.Fatalf("salvage_branch = %v, want %q (delta %v)", got, salvageWantBranch, res.StateDelta)
@@ -219,10 +219,10 @@ func TestSalvageOnlyWhenAFailedRunLeftUncommittedWork(t *testing.T) {
 			writeFile(t, filepath.Join(wt, "tracked.txt"), "committed by the agent\n")
 			gitIn(t, wt, "add", "tracked.txt")
 			gitIn(t, wt, "commit", "-m", "agent commit")
-			return exit1
+			return errExit1
 		},
 		"failed having changed nothing": func(*testing.T, string) error {
-			return exit1
+			return errExit1
 		},
 		// Only a run that ended without success is salvaged.
 		"succeeded and left edits": func(t *testing.T, wt string) error {
@@ -262,14 +262,14 @@ func TestSalvageOfANonRepositorySaysWhy(t *testing.T) {
 
 	res := actWith(t, dir, salvageAction(dir), func(t *testing.T, wt string) error {
 		writeFile(t, filepath.Join(wt, "new.txt"), "nowhere to keep this\n")
-		return exit1
+		return errExit1
 	})
 
 	if res.Success {
 		t.Fatal("a failed run must stay a failed result")
 	}
-	if res.Error != exit1.Error() {
-		t.Errorf("Error = %q, want the delegate's own %q", res.Error, exit1.Error())
+	if res.Error != errExit1.Error() {
+		t.Errorf("Error = %q, want the delegate's own %q", res.Error, errExit1.Error())
 	}
 	reason, _ := res.StateDelta["salvage_error"].(string)
 	if strings.TrimSpace(reason) == "" {
