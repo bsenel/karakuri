@@ -147,7 +147,13 @@ export function ObjectiveDetailPage() {
 
       <h2>Loop timeline</h2>
       <div ref={eventsBoxRef} className="timeline" style={{ maxHeight: 480, overflowY: 'auto' }}>
-        {events.length === 0 && <p className="muted small">Waiting for events…</p>}
+        {/* Before any loop runs, "waiting" reads as if something were already
+            on its way; say what makes the timeline fill instead. */}
+        {events.length === 0 && (
+          <p className="muted small">
+            {loopID ? 'Waiting for events…' : 'No events yet. Start a loop and each step appears here as it runs.'}
+          </p>
+        )}
         {events.map((e, i) => <EventRow key={i} event={e} />)}
       </div>
     </>

@@ -93,6 +93,26 @@ describe('ObjectiveDetailPage', () => {
 
     await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('iteration 2 · completed'));
   });
+
+  it('says how to fill an empty timeline, then that it is waiting once a loop starts', async () => {
+    get.mockImplementation((path: string) =>
+      // The loop's status never answers: only the timeline is under test here.
+      path.startsWith('/loops/') ? new Promise(() => {}) : Promise.resolve(objective),
+    );
+    post.mockResolvedValue({ loop_id: 'l1' });
+
+    renderPage();
+    await waitFor(() =>
+      expect(
+        screen.getByText('No events yet. Start a loop and each step appears here as it runs.'),
+      ).toBeInTheDocument(),
+    );
+    expect(screen.queryByText('Waiting for events…')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Start loop' }));
+    await waitFor(() => expect(screen.getByText('Waiting for events…')).toBeInTheDocument());
+    expect(screen.queryByText(/No events yet/)).not.toBeInTheDocument();
+  });
 });
 
 // Phase 41 step 6: the success criteria panel shows what verify settled about
