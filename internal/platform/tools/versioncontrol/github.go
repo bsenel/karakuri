@@ -79,7 +79,10 @@ func (g *GitHub) ListPRs(ctx context.Context, repo string, since time.Time) ([]P
 	}
 	var raw []struct {
 		Number    int       `json:"number"`
+		NodeID    string    `json:"node_id"`
 		Title     string    `json:"title"`
+		Body      string    `json:"body"`
+		Draft     bool      `json:"draft"`
 		HTMLURL   string    `json:"html_url"`
 		CreatedAt time.Time `json:"created_at"`
 		UpdatedAt time.Time `json:"updated_at"`
@@ -87,6 +90,9 @@ func (g *GitHub) ListPRs(ctx context.Context, repo string, since time.Time) ([]P
 			Ref string `json:"ref"`
 			SHA string `json:"sha"`
 		} `json:"head"`
+		Base struct {
+			Ref string `json:"ref"`
+		} `json:"base"`
 		User struct {
 			Login string `json:"login"`
 		} `json:"user"`
@@ -101,6 +107,8 @@ func (g *GitHub) ListPRs(ctx context.Context, repo string, since time.Time) ([]P
 		}
 		s := PRSummary{
 			ID: fmt.Sprintf("%d", r.Number), Title: r.Title, URL: r.HTMLURL,
+			Number: r.Number, NodeID: r.NodeID, Body: r.Body, Draft: r.Draft,
+			BaseBranch: r.Base.Ref,
 			Author:     r.User.Login,
 			OwnAuthor:  g.ownAuthors[strings.ToLower(r.User.Login)],
 			HeadBranch: r.Head.Ref, HeadSHA: r.Head.SHA,
@@ -271,6 +279,56 @@ func (g *GitHub) ChangedFiles(ctx context.Context, repo, prID string) ([]string,
 		}
 	}
 	return nil, fmt.Errorf("github: changed files: pull request %s touches more files than GitHub lists", prID)
+}
+
+// markReadyMutation takes a draft out of draft. GitHub's REST API has no
+// endpoint for it, so this one call goes through GraphQL.
+const markReadyMutation = `mutation($id: ID!) {
+  markPullRequestReadyForReview(input: {pullRequestId: $id}) {
+    pullRequest { isDraft }
+  }
+}`
+
+// MarkReady reads the pull request's node ID, then posts the GraphQL mutation
+// that marks it ready for review.
+func (g *GitHub) MarkReady(ctx context.Context, repo, prID string) error {
+	if repo == "" {
+		repo = g.repo
+	}
+	if repo == "" {
+		return fmt.Errorf("github: no repo configured")
+	}
+	var pr struct {
+		NodeID string `json:"node_id"`
+	}
+	if err := g.do(ctx, "GET", fmt.Sprintf("/repos/%s/pulls/%s", repo, url.PathEscape(prID)), nil, &pr); err != nil {
+		return fmt.Errorf("github: mark ready: %w", err)
+	}
+	if pr.NodeID == "" {
+		return fmt.Errorf("github: mark ready: pull request %s has no node ID", prID)
+	}
+	body := map[string]any{
+		"query":     markReadyMutation,
+		"variables": map[string]string{"id": pr.NodeID},
+	}
+	var resp struct {
+		Errors []struct {
+			Message string `json:"message"`
+		} `json:"errors"`
+	}
+	if err := g.do(ctx, "POST", "/graphql", body, &resp); err != nil {
+		return fmt.Errorf("github: mark ready: %w", err)
+	}
+	// GraphQL answers most failures with a 200 and an errors array; reading
+	// that as success would leave the pull request a draft unnoticed.
+	if len(resp.Errors) > 0 {
+		msgs := make([]string, 0, len(resp.Errors))
+		for _, e := range resp.Errors {
+			msgs = append(msgs, e.Message)
+		}
+		return fmt.Errorf("github: mark ready: pull request %s: %s", prID, strings.Join(msgs, "; "))
+	}
+	return nil
 }
 
 func (g *GitHub) do(ctx context.Context, method, path string, body any, out any) error {

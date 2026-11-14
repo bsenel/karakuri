@@ -59,6 +59,10 @@ func (s *vcStub) ChangedFiles(context.Context, string, string) ([]string, error)
 	return nil, versioncontrol.ErrUnsupported
 }
 
+func (s *vcStub) MarkReady(context.Context, string, string) error {
+	return versioncontrol.ErrUnsupported
+}
+
 // A pull request title is typed by whoever opened it, which on a public
 // repository is anybody. The observation that carries one says so.
 func TestGitObservationIsThirdPartyOnlyWhenItCarriesAPullRequest(t *testing.T) {
