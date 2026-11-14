@@ -112,7 +112,7 @@ func stepDecide(ctx context.Context, sc *stepContext, p plan, mods *corecheckpoi
 	for _, action := range p.Actions {
 		planned = append(planned, capability.CapabilityID(action.CapabilityID))
 	}
-	verdict := authority.Decide(p.Confidence, threshold, planned, sc.evidence)
+	verdict := authority.Decide(p.Confidence, threshold, planned, nil, sc.evidence)
 	escalate = verdict.Escalate
 	escalateReason = verdict.Reason
 	if verdict.Allowed < len(p.Actions) {

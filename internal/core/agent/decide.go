@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/bsenel/karakuri/internal/core/capability"
+	"github.com/bsenel/karakuri/internal/core/environment"
 )
 
 // Evidence is where the material a plan was drafted from came from.
@@ -25,6 +26,9 @@ type Evidence struct {
 	// sorted and deduplicated by WithSource so an escalation reason and the
 	// audit row beside it read the same across runs.
 	ThirdParty []string
+
+	// Delivered is the work the iteration's observations say is already done.
+	Delivered []environment.DeliveredWork
 }
 
 // HasThirdParty reports whether a stranger's writing reached the planner.
@@ -93,7 +97,10 @@ type Verdict struct {
 // reason one step further: "a stranger's writing was in front of the planner"
 // is a fact about the world, actionable by looking at the named source, where
 // confidence is the model's own report on itself.
-func (b AuthorityBounds) Decide(confidence, threshold float64, plannedCapabilities []capability.CapabilityID, ev Evidence) Verdict {
+//
+// writes is the text of each planned action that writes files, which is what
+// a plan says it will do and so what it is checked against ev.Delivered.
+func (b AuthorityBounds) Decide(confidence, threshold float64, plannedCapabilities []capability.CapabilityID, writes []string, ev Evidence) Verdict {
 	v := Verdict{Allowed: len(plannedCapabilities)}
 
 	// 1. Provenance. A plan drafted while somebody else's writing was in
