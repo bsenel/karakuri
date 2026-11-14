@@ -21,20 +21,37 @@ const CapMarkReady = "software.act.mark_ready"
 // or holds an x of either case, and the item's text.
 var checklistItem = regexp.MustCompile(`^\s*[-*+]\s+\[([ xX])\]\s+(.*)$`)
 
-// checklist reads a pull request body's task list: how many items it has and
-// the text of each one not ticked.
-func checklist(body string) (items int, unticked []string) {
+// checkbox is one item of a pull request body's task list.
+type checkbox struct {
+	ticked bool
+	text   string
+}
+
+// checkboxes reads a pull request body's task list in order, one checkbox per
+// item. markReady and the git observation both read it here, so they cannot
+// disagree about what the list says.
+func checkboxes(body string) []checkbox {
+	var boxes []checkbox
 	for _, line := range strings.Split(body, "\n") {
 		m := checklistItem.FindStringSubmatch(strings.TrimRight(line, "\r"))
 		if m == nil {
 			continue
 		}
-		items++
-		if m[1] == " " {
-			unticked = append(unticked, strings.TrimSpace(m[2]))
+		boxes = append(boxes, checkbox{ticked: m[1] != " ", text: strings.TrimSpace(m[2])})
+	}
+	return boxes
+}
+
+// checklist reads a pull request body's task list: how many items it has and
+// the text of each one not ticked.
+func checklist(body string) (items int, unticked []string) {
+	boxes := checkboxes(body)
+	for _, b := range boxes {
+		if !b.ticked {
+			unticked = append(unticked, b.text)
 		}
 	}
-	return items, unticked
+	return len(boxes), unticked
 }
 
 // markReady marks the draft pull request on params.branch ready for review

@@ -54,7 +54,7 @@ func TestSRERemediationEscalatesHoweverConfident(t *testing.T) {
 			b.ConfidenceThreshold)
 	}
 
-	v := b.Decide(0.99, b.ConfidenceThreshold, []capability.CapabilityID{CapRunRemediation}, agent.Evidence{})
+	v := b.Decide(0.99, b.ConfidenceThreshold, []capability.CapabilityID{CapRunRemediation}, nil, agent.Evidence{})
 	if !v.Escalate {
 		t.Fatalf("the SRE planned %s at confidence 0.99 and ran it without asking", CapRunRemediation)
 	}
@@ -69,7 +69,7 @@ func TestSREInvestigationDoesNotNeedApproval(t *testing.T) {
 	b := sreAgent(t).Authority
 
 	plan := []capability.CapabilityID{CapFetchLogs, CapFetchMetrics, CapAlertsResolved}
-	v := b.Decide(0.99, b.ConfidenceThreshold, plan, agent.Evidence{})
+	v := b.Decide(0.99, b.ConfidenceThreshold, plan, nil, agent.Evidence{})
 	if strings.Contains(v.Reason, "requires approval") {
 		t.Errorf("a plan that only observes and verifies escalated for approval: %s", v.Reason)
 	}

@@ -350,6 +350,7 @@ func (e *gitEnv) Observe(ctx context.Context, q environment.ObservationQuery) (e
 	// environment, because a repository with no open PRs should not escalate
 	// every plan in the deployment for the rest of the run.
 	trust := environment.TrustOperator
+	var delivered []environment.DeliveredWork
 	commits, err := adapter.GetCommits(ctx, repo, since)
 	if err != nil {
 		state["commits_error"] = err.Error()
@@ -360,7 +361,24 @@ func (e *gitEnv) Observe(ctx context.Context, q environment.ObservationQuery) (e
 	if err != nil {
 		state["prs_error"] = err.Error()
 	} else {
-		state["prs"] = prs
+		// Each entry carries its body's checklist, and the checklists are
+		// written out as lines too, so a plan sees which steps are already
+		// ticked (Phase 44 step 3). The body is the author's writing like the
+		// title, so prTrust already covers it.
+		entries, lines := withChecklists(prs)
+		if len(lines) > 0 {
+			state["checklist_lines"] = lines
+		}
+		// And the commits on its branch since its base, so a plan sees what
+		// was delivered and not only what was ticked. Commit subjects on a
+		// stranger's branch are their writing too, under the same prTrust.
+		if since := withCommitsSinceBase(ctx, adapter, repo, entries); len(since) > 0 {
+			state["commits_since_base_lines"] = since
+		}
+		state["prs"] = entries
+		// The ticked steps once more, for the decide policy rather than the
+		// planner, so a plan that would redo one is asked about first.
+		delivered = deliveredWork(entries)
 		trust = prTrust(prs)
 		// What is currently broken, pulled out of the list rather than left
 		// for a reader to derive. Deferred from Phase 22, where "an operator
@@ -379,7 +397,7 @@ func (e *gitEnv) Observe(ctx context.Context, q environment.ObservationQuery) (e
 	}
 	return environment.Observation{
 		EnvID: e.id, State: state, Version: stateVersion(state),
-		Timestamp: time.Now().UTC(), Trust: trust,
+		Timestamp: time.Now().UTC(), Trust: trust, Delivered: delivered,
 	}, nil
 }
 

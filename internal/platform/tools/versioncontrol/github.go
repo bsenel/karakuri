@@ -331,6 +331,54 @@ func (g *GitHub) MarkReady(ctx context.Context, repo, prID string) error {
 	return nil
 }
 
+// CompareCommits reads the commits on head since base over one compare call,
+// oldest first as GitHub lists them. Without a page parameter GitHub lists at
+// most 250 commits; a branch further ahead than that is cut there.
+func (g *GitHub) CompareCommits(ctx context.Context, repo, base, head string) ([]Commit, error) {
+	if repo == "" {
+		repo = g.repo
+	}
+	if repo == "" {
+		return nil, fmt.Errorf("github: no repo configured")
+	}
+	var raw struct {
+		Commits []struct {
+			SHA    string `json:"sha"`
+			Commit struct {
+				Message string `json:"message"`
+				Author  struct {
+					Name string    `json:"name"`
+					Date time.Time `json:"date"`
+				} `json:"author"`
+			} `json:"commit"`
+		} `json:"commits"`
+	}
+	path := fmt.Sprintf("/repos/%s/compare/%s...%s", repo, refPath(base), refPath(head))
+	if err := g.do(ctx, "GET", path, nil, &raw); err != nil {
+		return nil, fmt.Errorf("github: compare commits: %w", err)
+	}
+	out := make([]Commit, 0, len(raw.Commits))
+	for _, r := range raw.Commits {
+		out = append(out, Commit{
+			SHA:     r.SHA,
+			Message: strings.SplitN(r.Commit.Message, "\n", 2)[0],
+			Author:  r.Commit.Author.Name,
+			Date:    r.Commit.Author.Date,
+		})
+	}
+	return out, nil
+}
+
+// refPath escapes a branch name for a URL path, keeping the slashes of
+// 'karakuri/phase-44-step-03' as GitHub expects them.
+func refPath(ref string) string {
+	parts := strings.Split(ref, "/")
+	for i, p := range parts {
+		parts[i] = url.PathEscape(p)
+	}
+	return strings.Join(parts, "/")
+}
+
 func (g *GitHub) do(ctx context.Context, method, path string, body any, out any) error {
 	var reader io.Reader
 	if body != nil {

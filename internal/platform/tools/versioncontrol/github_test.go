@@ -229,6 +229,59 @@ func TestListPRsCarriesTheBodyBaseDraftAndNodeID(t *testing.T) {
 	}
 }
 
+// The commits on a delivery branch since its base (Phase 44 step 3): one
+// compare call from base to head, each commit's full SHA, subject line,
+// author and date, oldest first as GitHub lists them.
+func TestCompareCommitsReadsTheCommitsFromBaseToHead(t *testing.T) {
+	var gotPath string
+	status := http.StatusOK
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		if status != http.StatusOK {
+			w.WriteHeader(status)
+			_, _ = w.Write([]byte(`{"message":"Not Found"}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"status":"ahead","ahead_by":2,"total_commits":2,"commits":[
+			{"sha":"a0a3ad28c5f4238900b6b9476156e77ff3a80e05","commit":{"message":"test(software): specify the checklist\n\nSlice A.",
+				"author":{"name":"Ada","date":"2026-11-14T17:30:14Z"}}},
+			{"sha":"b2dca659d49bc624890076218fe35ee284da7a15","commit":{"message":"feat(software): show the checklist",
+				"author":{"name":"Grace","date":"2026-11-14T17:43:18Z"}}}]}`))
+	}))
+	defer srv.Close()
+	g := NewGitHub("t", "acme/api")
+	g.client = &http.Client{Transport: toServer{srv}}
+
+	commits, err := g.CompareCommits(context.Background(), "", "karakuri/phase-44-mark-ready", "karakuri/phase-44-step-03")
+	if err != nil {
+		t.Fatalf("CompareCommits: %v", err)
+	}
+	if want := "/repos/acme/api/compare/karakuri/phase-44-mark-ready...karakuri/phase-44-step-03"; gotPath != want {
+		t.Errorf("path = %s, want %s", gotPath, want)
+	}
+	want := []Commit{
+		{SHA: "a0a3ad28c5f4238900b6b9476156e77ff3a80e05", Message: "test(software): specify the checklist",
+			Author: "Ada", Date: time.Date(2026, 11, 14, 17, 30, 14, 0, time.UTC)},
+		{SHA: "b2dca659d49bc624890076218fe35ee284da7a15", Message: "feat(software): show the checklist",
+			Author: "Grace", Date: time.Date(2026, 11, 14, 17, 43, 18, 0, time.UTC)},
+	}
+	if len(commits) != len(want) {
+		t.Fatalf("got %d commits, want %d: %+v", len(commits), len(want), commits)
+	}
+	for i, w := range want {
+		c := commits[i]
+		if c.SHA != w.SHA || c.Message != w.Message || c.Author != w.Author || !c.Date.Equal(w.Date) {
+			t.Errorf("commit %d = %+v, want %+v", i, c, w)
+		}
+	}
+
+	// A base or head the forge does not know is an error, not "no commits".
+	status = http.StatusNotFound
+	if commits, err := g.CompareCommits(context.Background(), "", "main", "gone"); err == nil {
+		t.Errorf("a 404 from compare was read as %d commits", len(commits))
+	}
+}
+
 // markReadyServer answers the pull request read with nodeID and the GraphQL
 // POST with graphqlStatus and graphqlBody, recording every request in order.
 type markReadyServer struct {

@@ -89,6 +89,10 @@ func (v *recordingVC) MarkReady(context.Context, string, string) error {
 	return versioncontrol.ErrUnsupported
 }
 
+func (v *recordingVC) CompareCommits(context.Context, string, string, string) ([]versioncontrol.Commit, error) {
+	return nil, versioncontrol.ErrUnsupported
+}
+
 // ── the acceptance test ──────────────────────────────────────────────────────
 
 // The write path, end to end, against a scratch repository.
