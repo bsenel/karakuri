@@ -1,6 +1,8 @@
 package command
 
 import (
+	"fmt"
+
 	"github.com/bsenel/karakuri/cli/client"
 	"github.com/spf13/cobra"
 )
@@ -49,6 +51,10 @@ func domainTestCmd() *cobra.Command {
 	}
 }
 
+// unknownDomainHint is the next step when --domain matches nothing, which is
+// usually a mistyped domain ID.
+const unknownDomainHint = "Check the domain ID: krk domain list shows the ones that exist"
+
 func domainCapabilitiesCmd() *cobra.Command {
 	var domain string
 	cmd := &cobra.Command{
@@ -64,6 +70,10 @@ func domainCapabilitiesCmd() *cobra.Command {
 			data, _, err := api.Get(path)
 			if err != nil {
 				return err
+			}
+			if domain != "" {
+				printList(c, data, fmt.Sprintf("capabilities in domain %q", domain), unknownDomainHint)
+				return nil
 			}
 			printList(c, data, "capabilities", "")
 			return nil

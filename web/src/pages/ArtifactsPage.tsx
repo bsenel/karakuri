@@ -14,6 +14,10 @@ export function ArtifactsPage() {
   const [sha1, setSha1] = useState('');
   const [sha2, setSha2] = useState('');
   const [diff, setDiff] = useState<string | null>(null);
+  const [diffing, setDiffing] = useState(false);
+  // Kept apart from err: a failed diff is reported beside the Diff button,
+  // not above the list, which it says nothing about.
+  const [diffErr, setDiffErr] = useState<string | null>(null);
 
   const load = async (objectiveID?: string) => {
     try {
@@ -39,10 +43,17 @@ export function ArtifactsPage() {
 
   const runDiff = async () => {
     if (!sha1 || !sha2) return;
+    setDiffing(true);
+    setDiffErr(null);
     try {
       const text = await api.get<string>(`/artifacts/${sha1}/diff/${sha2}`);
       setDiff(typeof text === 'string' ? text : JSON.stringify(text, null, 2));
-    } catch (e) { setErr(describe(e)); }
+    } catch (e) {
+      setDiff(null);
+      setDiffErr(describe(e));
+    } finally {
+      setDiffing(false);
+    }
   };
 
   return (
@@ -109,8 +120,11 @@ export function ArtifactsPage() {
             <label htmlFor="artifact-sha-b">SHA B</label>
             <input id="artifact-sha-b" value={sha2} onChange={(e) => setSha2(e.target.value)} className="mono" />
           </div>
-          <button className="primary" onClick={() => void runDiff()} disabled={!sha1 || !sha2}>Diff</button>
+          <button className="primary" onClick={() => void runDiff()} disabled={!sha1 || !sha2 || diffing}>Diff</button>
         </div>
+        {diffing && <p className="muted" role="status">Diffing…</p>}
+        {diffErr && <p className="pill red" role="alert">Could not diff these artifacts: {diffErr}</p>}
+        {!diffing && diff === '' && <p className="muted">No differences between these two artifacts.</p>}
         {diff && <pre className="payload" style={{ marginTop: 12, maxHeight: 480 }}>{diff}</pre>}
       </div>
     </>

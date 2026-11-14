@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { get } = vi.hoisted(() => ({ get: vi.fn() }));
@@ -8,6 +8,7 @@ vi.mock('@/api/client', async () => {
 });
 vi.mock('@/auth/AuthProvider', () => ({ useAuth: () => ({ can: () => true }) }));
 
+import { APIError } from '@/api/client';
 import { QuotaSettings } from './QuotaSettings';
 
 const config = (overrides: Record<string, unknown> = {}) => ({
@@ -27,7 +28,12 @@ const config = (overrides: Record<string, unknown> = {}) => ({
 });
 
 describe('QuotaSettings', () => {
-  beforeEach(() => get.mockReset());
+  // A block body, not an expression: mockReset returns the mock itself, and a
+  // function returned from beforeEach is run and awaited as a teardown, which
+  // never settles when a test made get return a pending promise.
+  beforeEach(() => {
+    get.mockReset();
+  });
 
   // The pairing is the whole reason the database-backed tiers needed care: an
   // operator reading the YAML file is reading the seed, not the limit.
@@ -72,6 +78,36 @@ describe('QuotaSettings', () => {
     render(<QuotaSettings />);
     await waitFor(() => expect(screen.getAllByText('1,000,000')).toHaveLength(1));
     expect(screen.queryByText(/Set by/)).not.toBeInTheDocument();
+  });
+
+  it('says it is loading, and announces it', () => {
+    get.mockReturnValue(new Promise(() => {}));
+
+    render(<QuotaSettings />);
+    expect(screen.getByRole('status')).toHaveTextContent('Loading…');
+  });
+
+  it('shows the server message when the limits cannot be read, and retries', async () => {
+    get.mockImplementation((path: string) =>
+      path === '/quota'
+        ? Promise.reject(new APIError(403, '{"message":"quota:read is not granted"}'))
+        : Promise.resolve({ stored: [], editable: true }),
+    );
+
+    render(<QuotaSettings />);
+    await waitFor(() =>
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        'Could not load the quota limits: quota:read is not granted',
+      ),
+    );
+    expect(screen.queryByText(/API 403/)).not.toBeInTheDocument();
+
+    get.mockImplementation((path: string) =>
+      Promise.resolve(path === '/quota' ? config() : { stored: [], editable: true }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    await waitFor(() => expect(screen.getByText('5,000,000')).toBeInTheDocument());
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
   // A deployment with no database is told why rather than offered a form whose

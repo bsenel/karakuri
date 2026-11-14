@@ -143,8 +143,8 @@ agree. It spends one model call per checkpoint and writes nothing back.`,
 		},
 	}
 	cmd.Flags().StringVar(&twin, "twin", "", "only this twin's checkpoints (see: krk twin list)")
-	cmd.Flags().DurationVar(&since, "since", 30*24*time.Hour, "how far back to read resolved checkpoints")
-	cmd.Flags().IntVar(&limit, "limit", 0, "judge at most N checkpoints")
+	cmd.Flags().DurationVar(&since, "since", 30*24*time.Hour, "how far back to read resolved checkpoints, as a duration such as 72h; 720h is 30 days")
+	cmd.Flags().IntVar(&limit, "limit", 0, "judge at most N checkpoints, the most recently resolved first; 0 judges every one in the window")
 	cmd.Flags().StringVar(&export, "export", "", "write the judged items to FILE as golden entries")
 	cmd.Flags().BoolVar(&markdown, "markdown", false, "print the report as markdown")
 	return cmd

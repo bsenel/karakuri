@@ -23,6 +23,9 @@ func orgCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "org",
 		Short: "Manage organisations",
+		Example: `  krk org create --name acme
+  krk org list
+  krk org rename acme --to acme-corp`,
 	}
 	cmd.AddCommand(
 		containerCreateCmd("org", "Create an organisation", false),
@@ -37,6 +40,9 @@ func teamCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "team",
 		Short: "Manage teams",
+		Example: `  krk team create --name eng --org acme
+  krk team list --org acme
+  krk team move eng --org acme --to-org globex`,
 	}
 	cmd.AddCommand(
 		containerCreateCmd("team", "Create a team inside an organisation", true),
@@ -52,6 +58,9 @@ func projectCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "project",
 		Short: "Manage projects — collaboration spaces that can span organisations",
+		Example: `  krk project create --name launch
+  krk project list
+  krk project add-twin --project launch --twin <twin-id>`,
 	}
 	cmd.AddCommand(
 		containerCreateCmd("project", "Create a project", false),

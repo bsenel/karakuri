@@ -86,7 +86,8 @@ func costReportCmd() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().DurationVar(&since, "since", 30*24*time.Hour, "how far back to total")
+	cmd.Flags().DurationVar(&since, "since", 30*24*time.Hour,
+		"how far back to total, in hours, minutes or seconds: 24h, 90m; there is no day unit, 30 days is 720h")
 	cmd.Flags().StringVar(&twin, "twin", "", "only this twin's spend (see: krk twin list)")
 	cmd.Flags().StringVar(&org, "org", "", "only this organisation's spend")
 	cmd.Flags().StringVar(&team, "team", "", "only this team's spend; needs --org")
@@ -94,6 +95,6 @@ func costReportCmd() *cobra.Command {
 	cmd.Flags().StringVar(&provider, "provider", "", "only this provider's spend")
 	cmd.Flags().StringVar(&groupBy, "group-by", "",
 		"bucket by: day, subject, resource, provider, model, label (comma-separated)")
-	cmd.Flags().IntVar(&limit, "limit", 0, "keep only the largest N buckets")
+	cmd.Flags().IntVar(&limit, "limit", 0, "keep only the largest N buckets; 0 asks for no cut")
 	return cmd
 }
