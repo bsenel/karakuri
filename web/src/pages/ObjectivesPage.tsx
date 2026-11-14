@@ -12,6 +12,9 @@ export function ObjectivesPage() {
   // Whether the list has been read at least once. `err` alone cannot say:
   // a failed create sets it too, and the list is still known then.
   const [loaded, setLoaded] = useState(false);
+  // Title of the objective just created, so a successful create is announced
+  // rather than leaving the user to spot a new row in the table.
+  const [created, setCreated] = useState<string | null>(null);
 
   // Create form
   const [title, setTitle] = useState('');
@@ -41,6 +44,7 @@ export function ObjectivesPage() {
 
   const create = async (e: React.FormEvent) => {
     e.preventDefault();
+    setCreated(null);
     try {
       await api.post<Objective>('/objectives/', {
         title,
@@ -49,6 +53,7 @@ export function ObjectivesPage() {
         template_id: templateID || undefined,
         max_iterations: maxIter,
       });
+      setCreated(title);
       setTitle('');
       await load();
     } catch (e) {
@@ -94,6 +99,7 @@ export function ObjectivesPage() {
             </div>
             <button className="primary" type="submit">Create</button>
           </div>
+          {created && <p className="muted small" role="status">Created objective “{created}”.</p>}
         </form>
       </div>
 

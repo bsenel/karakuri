@@ -22,6 +22,8 @@ that decide which twins you can list, so a report is not a way around tenancy.
 Nothing is priced by default: without a rate table the units are still counted
 and the money reads zero, which is the honest answer rather than an invented
 one.`,
+		Example: `  # What the last day cost, by provider
+  krk cost report --since 24h --group-by provider`,
 	}
 	cmd.AddCommand(costReportCmd())
 	return cmd
