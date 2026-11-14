@@ -360,7 +360,15 @@ func (e *gitEnv) Observe(ctx context.Context, q environment.ObservationQuery) (e
 	if err != nil {
 		state["prs_error"] = err.Error()
 	} else {
-		state["prs"] = prs
+		// Each entry carries its body's checklist, and the checklists are
+		// written out as lines too, so a plan sees which steps are already
+		// ticked (Phase 44 step 3). The body is the author's writing like the
+		// title, so prTrust already covers it.
+		entries, lines := withChecklists(prs)
+		state["prs"] = entries
+		if len(lines) > 0 {
+			state["checklist_lines"] = lines
+		}
 		trust = prTrust(prs)
 		// What is currently broken, pulled out of the list rather than left
 		// for a reader to derive. Deferred from Phase 22, where "an operator
