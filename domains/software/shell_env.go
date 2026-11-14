@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"regexp"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/bsenel/karakuri/internal/core/environment"
@@ -67,6 +68,14 @@ func (e *shellEnv) Observe(_ context.Context, _ environment.ObservationQuery) (e
 }
 
 func (e *shellEnv) Act(ctx context.Context, a environment.Action) (environment.ActionResult, error) {
+	res, _ := e.run(ctx, a)
+	return res, nil
+}
+
+// run is Act plus the command's whole stdout. The result carries only its
+// first 4000 bytes; a verifier reading go test's package lines needs the rest,
+// since a long run prints the packages that finished after that head.
+func (e *shellEnv) run(ctx context.Context, a environment.Action) (environment.ActionResult, string) {
 	if string(a.CapabilityID) != "software.act.shell_exec" {
 		// shellEnv only knows shell_exec. Other capabilities routed
 		// here are the agent's mistake — fail honestly so the audit
@@ -79,23 +88,23 @@ func (e *shellEnv) Act(ctx context.Context, a environment.Action) (environment.A
 				"status": "wrong_env",
 				"env_id": string(e.id),
 			},
-		}, nil
+		}, ""
 	}
 
 	cmd := asString(a.Params, "cmd")
 	if cmd == "" {
-		return failureResult(e.id, a.CapabilityID, "missing required param 'cmd'", nil), nil
+		return failureResult(e.id, a.CapabilityID, "missing required param 'cmd'", nil), ""
 	}
 
 	if reason, blocked := isDangerous(cmd); blocked {
 		return failureResult(e.id, a.CapabilityID, fmt.Sprintf("command blocked by safety guardrail: %s", reason), map[string]any{
 			"cmd_truncated": truncate(cmd, 200),
-		}), nil
+		}), ""
 	}
 
 	workdir, err := e.resolveWorkdir(asString(a.Params, "workdir"))
 	if err != nil {
-		return failureResult(e.id, a.CapabilityID, err.Error(), nil), nil
+		return failureResult(e.id, a.CapabilityID, err.Error(), nil), ""
 	}
 
 	timeout := e.timeout
@@ -111,6 +120,14 @@ func (e *shellEnv) Act(ctx context.Context, a environment.Action) (environment.A
 
 	c := exec.CommandContext(cmdCtx, "/bin/sh", "-c", cmd) // #nosec G204 -- running a planned command is this capability's purpose; it is gated by the blocked patterns above and the authority bounds
 	c.Dir = workdir
+	// The limit is for the whole command, not for /bin/sh alone: go test runs
+	// each package's test binary as a child, and a child that outlives its
+	// shell keeps stdout open, so the result waited for the child to end. The
+	// shell leads its own process group and the limit kills the group;
+	// WaitDelay bounds the wait on a descendant that left the group.
+	c.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	c.Cancel = func() error { return syscall.Kill(-c.Process.Pid, syscall.SIGKILL) }
+	c.WaitDelay = time.Second
 	var stdout, stderr bytes.Buffer
 	c.Stdout = &stdout
 	c.Stderr = &stderr
@@ -122,13 +139,17 @@ func (e *shellEnv) Act(ctx context.Context, a environment.Action) (environment.A
 		var exitErr *exec.ExitError
 		if errors.As(runErr, &exitErr) {
 			exitCode = exitErr.ExitCode()
+		} else if errors.Is(runErr, exec.ErrWaitDelay) && c.ProcessState != nil {
+			// The shell exited and a process it started in the background
+			// still held its output: the shell's own exit is the answer.
+			exitCode = c.ProcessState.ExitCode()
 		} else if !timedOut {
 			// Not a normal exit error — likely a startup failure
 			// (e.g. /bin/sh not found, permission denied on workdir).
 			return failureResult(e.id, a.CapabilityID, runErr.Error(), map[string]any{
 				"cmd":     truncate(cmd, 200),
 				"workdir": workdir,
-			}), nil
+			}), ""
 		}
 	}
 
@@ -154,7 +175,7 @@ func (e *shellEnv) Act(ctx context.Context, a environment.Action) (environment.A
 			"stderr":    truncate(stderr.String(), 4000),
 			"timed_out": timedOut,
 		},
-	}, nil
+	}, stdout.String()
 }
 
 func (e *shellEnv) Subscribe(_ context.Context, _ environment.EventFilter) (<-chan environment.EnvironmentEvent, error) {
