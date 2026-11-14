@@ -1,12 +1,12 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // vi.mock is hoisted above the imports, so the stub has to be created inside
 // the factory and reached through vi.hoisted rather than closed over.
-const { get } = vi.hoisted(() => ({ get: vi.fn() }));
+const { get, post } = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn() }));
 vi.mock('@/api/client', async () => {
   const actual = await vi.importActual<typeof import('@/api/client')>('@/api/client');
-  return { ...actual, api: { get, post: vi.fn(), put: vi.fn(), del: vi.fn() } };
+  return { ...actual, api: { get, post, put: vi.fn(), del: vi.fn() } };
 });
 
 import { APIError } from '@/api/client';
@@ -17,6 +17,7 @@ describe('ObjectivesPage', () => {
   // returned from beforeEach as that test's cleanup — it would call get().
   beforeEach(() => {
     get.mockReset();
+    post.mockReset();
   });
 
   it('says it is loading rather than that there are no objectives', () => {
@@ -80,6 +81,24 @@ describe('ObjectivesPage', () => {
       expect(screen.getByRole('alert')).toHaveTextContent('objective:read is not granted'),
     );
     expect(screen.queryByRole('status')).not.toBeInTheDocument();
+  });
+
+  it('announces the objective it just created', async () => {
+    get.mockResolvedValue([]);
+    post.mockResolvedValue({ id: 'o_1' });
+
+    render(<ObjectivesPage />);
+    await waitFor(() => expect(screen.getByText(/No objectives yet/)).toBeInTheDocument());
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByRole('textbox', { name: 'Title' }), { target: { value: 'Ship the docs' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Create' }));
+
+    await waitFor(() =>
+      expect(screen.getByRole('status')).toHaveTextContent('Created objective “Ship the docs”.'),
+    );
+    expect(post).toHaveBeenCalledWith('/objectives/', expect.objectContaining({ title: 'Ship the docs' }));
+    expect(screen.getByRole('textbox', { name: 'Title' })).toHaveValue('');
   });
 
   it('names the objectives table for a screen reader', async () => {
