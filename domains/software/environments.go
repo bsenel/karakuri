@@ -862,6 +862,15 @@ func (e *cliEnv) Act(ctx context.Context, a environment.Action) (environment.Act
 		if credential != nil {
 			delta["delegation_credential"] = credential
 		}
+		// What the failed run wrote and did not commit is kept on a side
+		// branch, never the item's, for the next pass to take or discard
+		// (Phase 44 step 2). The run's own error stays the action's error.
+		for k, v := range salvage(ctx, worktree) {
+			if s, ok := v.(string); ok {
+				v = scrub(s)
+			}
+			delta[k] = v
+		}
 		return environment.ActionResult{Success: false, Trust: trust, Error: scrub(err.Error()), StateDelta: delta}, nil
 	}
 	delta := map[string]any{
