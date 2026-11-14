@@ -4464,7 +4464,7 @@ in reconcile and the loop service, not by teaching the loop a new way to end.
 
 ---
 
-## Phase 38 — What Was Required and Not Done (Planned)
+## Phase 38 — What Was Required and Not Done (Completed)
 
 This is a **frontier bet**, proposed by the discovery cycle of 2026-10-08
 (`docs/research/discovery-2026-10-08.md`, 'Fit and bets', rank 4). Nobody asked
@@ -4572,6 +4572,44 @@ It reports what the loop already decided. It does not make a never-run verifier
 fail the criterion; whether it should is a separate decision for a person,
 informed by what this record shows. It does not enforce `Constraints`, whose
 use was not searched.
+
+**Shipped (step 1).** The finding is recorded under step 1 above: per-criterion
+results were stored only in `loop_states.criteria_json`, which the export does
+not read, and how a criterion was settled was recorded nowhere, so the kill
+criterion did not close the phase. `objective.Settlement`
+(`internal/core/objective/objective.go`) has the four values
+`verifier_ran`, `verifier_never_ran`, `no_verifier` and `reserved_verifier`,
+carried as `Criterion.Settlement`. `stepVerify`
+(`internal/feature/loop/verify.go`) sets it on every criterion beside `State`
+and `Reason`; a verifier call that errored ran, so it is `verifier_ran` and its
+reason, `verifier_error`, says the rest. `finalizeLoop`
+(`internal/feature/loop/runner.go`) puts the criteria in the terminal objective
+event and, through `recordRunEnd`, writes one `storage.ToolEventRunEnd`
+(`run_end`) row per run that ended on its own; a stopped run has its stop row
+instead. No model call was added, and the `met` values, states, score and
+termination are unchanged (`internal/feature/loop/settlement_test.go`).
+
+**Shipped (step 2).** `unmetObligations` in `internal/feature/audit/export.go`
+reads each `run_end` row in the window through the existing `exportStore`; no
+store method was added. The export's `unmet_obligations` lists, per run, the
+criteria that ended unmet and those whose declared verifier never ran even when
+the agent judged them met, each with objective, loop, row id, end time,
+description, state and settlement. A criterion with no recorded settlement is
+listed as `unknown` whatever its state, and a row that cannot be read or holds
+no criteria is one `unknown` entry with no criterion id (rule 10). A `trust`
+marking is carried only where the record holds one; the export never marks a
+criterion `third_party` itself (rule 9). `AuditExport.unmet_obligations` is in
+`docs/openapi.yaml`. Tests: `TestExportListsUnmetObligationsOfAFinishedRun`,
+`TestExportListsARunWithNoRecordedSettlementAsUnknown`,
+`TestExportKeepsTheTrustMarkingOfACriterion`,
+`TestExportListsOnlyObligationsOfRunsEndedInsideTheWindow` and
+`TestExportListsAnUnreadableRunEndRowAsUnknown` in
+`internal/feature/audit/export_test.go`.
+
+**Not verified.** Nothing was run against a live deployment: no stored
+objective was read, and no export was taken from a real database. Today no
+criterion carries a trust marking, so the trust field is empty in practice.
+Whether reviewers ask for this list is still the bet.
 
 ---
 
