@@ -101,6 +101,17 @@ func stepVerify(ctx context.Context, sc *stepContext, outcomes []actionOutcome) 
 		changed := sc.svc.measureChanged(criterion.Verifier, ran)
 		state := objective.CriterionNotMet
 		var reason objective.InconclusiveReason
+		// How it was settled, recorded beside the state (Phase 38): a
+		// state and reason alone cannot always tell a verifier that ran
+		// from one that never did. A verifier call that errored ran, and
+		// its reason, verifier_error, says the rest.
+		settlement := objective.SettledNoVerifier
+		if verifier != "" {
+			settlement = objective.SettledVerifierNeverRan
+			if len(ran) > 0 {
+				settlement = objective.SettledVerifierRan
+			}
+		}
 		switch {
 		case criterion.VerifierIsReserved():
 			// A tool a third party controls never settles whether this
@@ -108,6 +119,7 @@ func stepVerify(ctx context.Context, sc *stepContext, outcomes []actionOutcome) 
 			// objective — boot only warns about templates, so this is the
 			// place that refuses (ADR 022). Not met, and not handed to the
 			// agent either: its judgement would be read off that tool's output.
+			settlement = objective.SettledReservedVerifier
 		case criterion.Kind == objective.KindMeasured && sc.svc.declaresOtherUnit(criterion):
 			// The verifier does not measure this metric in the unit the
 			// criterion asks for, so no value it emits is one the author's
@@ -141,6 +153,7 @@ func stepVerify(ctx context.Context, sc *stepContext, outcomes []actionOutcome) 
 
 		criteria[i].State = state
 		criteria[i].Reason = reason
+		criteria[i].Settlement = settlement
 		if state == objective.CriterionMet {
 			metWeight += weight
 			metCount++

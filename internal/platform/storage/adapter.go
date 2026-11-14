@@ -178,6 +178,11 @@ const (
 	// source and trust, and the commit it was taken at. One row per
 	// measurement, whether or not it settled a criterion.
 	ToolEventMeasurement = "measurement"
+	// ToolEventRunEnd (Phase 38 step 1) records how a loop run ended and every
+	// criterion as the last verify step left it, with how each was settled
+	// (verifier_ran, verifier_never_ran, no_verifier, reserved_verifier). One
+	// row per run that ended on its own; a stopped run has its stop row.
+	ToolEventRunEnd = "run_end"
 )
 
 // ResolvedCheckpointFilter narrows the resolved-checkpoint listing. Empty
