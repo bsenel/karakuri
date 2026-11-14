@@ -563,6 +563,12 @@ const (
 	// definition is read from, so the measure moved with the work and waits
 	// for a person (Phase 41, decision 6, 'Anti-gaming').
 	ReasonMeasureChanged InconclusiveReason = "measure_changed"
+
+	// ReasonTimeout is a verification killed at its time limit before it
+	// finished. Running out of time says nothing about the work, so it is not
+	// not_met; the packages that did finish are reported beside it (Phase 44
+	// step 4).
+	ReasonTimeout InconclusiveReason = "timeout"
 )
 
 // IsRequired reports whether the criterion gates completion.
