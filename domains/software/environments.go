@@ -456,6 +456,8 @@ func (e *gitEnv) Act(ctx context.Context, a environment.Action) (environment.Act
 		}
 		return environment.ActionResult{Success: true,
 			StateDelta: map[string]any{"adapter": adapter.Name(), "pr_url": url}}, nil
+	case CapMarkReady:
+		return e.markReady(ctx, a), nil
 	default:
 		// Capability not handled by this env — return noop success so the loop continues.
 		return noopAct(a), nil
