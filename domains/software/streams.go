@@ -112,7 +112,14 @@ func streamTemplates() []objective.Template {
 				// A squash merge leaves the later branch without the earlier
 				// group's commit on main, so main must be merged in, not rebased
 				// onto: the stream never force-pushes (Phase 40 step 6a).
-				"Once the earlier group's pull request merges, the first action on the later group's branch merges main into it, keeping both sides, never rebasing.",
+				"Once the earlier group's pull request merges, the first action on the later group's branch merges main into it, keeping both sides, never rebasing. " +
+				// Salvage only parks the work (Phase 44 step 2); a pass must
+				// settle each branch or they pile up with nobody deciding.
+				"A salvage branch (karakuri/salvage/...) holds a failed coding action's uncommitted work. " +
+				"For each one the git observation lists, the plan either cherry-picks it onto the item's branch in a write action " +
+				"that then runs that item's targeted tests and keeps it only if they pass, never onto main, " +
+				"or discards it with git push origin --delete <branch> when the work is redone, already delivered or broken. " +
+				"The action's reason says which it chose and why.",
 			SuccessCriteria: []objective.Criterion{
 				verified("pr", "The item's pull request was opened or updated in this pass (params: branch, since)", CapStreamPR, 0.2),
 				verified("ci", "Every check is green at the pull request's head (params: branch)", CapCIGreen, 0.2),
