@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/bsenel/karakuri/internal/core/environment"
 	"github.com/bsenel/karakuri/internal/platform/tools/versioncontrol"
 )
 
@@ -100,6 +101,26 @@ func withChecklists(prs []versioncontrol.PRSummary) (entries []observedPR, lines
 		}
 	}
 	return entries, lines
+}
+
+// deliveredWork is the ticked items of the entries' checklists that name a
+// step, in the core's own terms, so the decide policy can ask about a plan
+// that would do one again without reading pull requests or Markdown. An
+// unticked item is not delivered, and a ticked one whose step cannot be read
+// names nothing a plan could be matched against.
+func deliveredWork(entries []observedPR) []environment.DeliveredWork {
+	var delivered []environment.DeliveredWork
+	for _, e := range entries {
+		for _, s := range e.Checklist {
+			if !s.Ticked || s.Step == "" {
+				continue
+			}
+			delivered = append(delivered, environment.DeliveredWork{
+				Ref: s.Step, Where: fmt.Sprintf("pull request #%d", e.Number), SHAs: s.SHAs,
+			})
+		}
+	}
+	return delivered
 }
 
 // sinceBaseCap is how many commits since base one pull request entry carries.
