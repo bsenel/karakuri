@@ -331,6 +331,16 @@ func (g *GitHub) MarkReady(ctx context.Context, repo, prID string) error {
 	return nil
 }
 
+// ListMergedPRs is not read yet (Phase 44 step 5 code); until then it says so.
+func (g *GitHub) ListMergedPRs(context.Context, string, int) ([]PRSummary, error) {
+	return nil, fmt.Errorf("github: merged pull requests: %w", ErrUnsupported)
+}
+
+// EditPRBody is not written yet (Phase 44 step 5 code); until then it says so.
+func (g *GitHub) EditPRBody(context.Context, string, string, string) error {
+	return fmt.Errorf("github: edit pull request body: %w", ErrUnsupported)
+}
+
 func (g *GitHub) do(ctx context.Context, method, path string, body any, out any) error {
 	var reader io.Reader
 	if body != nil {

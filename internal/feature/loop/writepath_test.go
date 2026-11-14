@@ -89,6 +89,14 @@ func (v *recordingVC) MarkReady(context.Context, string, string) error {
 	return versioncontrol.ErrUnsupported
 }
 
+func (v *recordingVC) ListMergedPRs(context.Context, string, int) ([]versioncontrol.PRSummary, error) {
+	return nil, versioncontrol.ErrUnsupported
+}
+
+func (v *recordingVC) EditPRBody(context.Context, string, string, string) error {
+	return versioncontrol.ErrUnsupported
+}
+
 // ── the acceptance test ──────────────────────────────────────────────────────
 
 // The write path, end to end, against a scratch repository.

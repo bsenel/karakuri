@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/bsenel/karakuri/internal/core/environment"
+	"github.com/bsenel/karakuri/internal/core/objective"
 	"github.com/bsenel/karakuri/internal/platform/tools/versioncontrol"
 )
 
@@ -16,6 +17,15 @@ import (
 // draft once every item of its body's checklist is ticked and every check at
 // its head is green (Phase 44 step 1).
 const CapMarkReady = "software.act.mark_ready"
+
+// verifierRule is a forge verifier as mark_ready tries it on recorded data:
+// its capability, the files that register or implement it, and its rule over
+// the check runs the forge reports on one pull request's head commit.
+type verifierRule struct {
+	id    string
+	files []string
+	rule  func(checks []versioncontrol.CheckRun) objective.CriterionState
+}
 
 // checklistItem is one Markdown task list item: a bullet, a box that is empty
 // or holds an x of either case, and the item's text.

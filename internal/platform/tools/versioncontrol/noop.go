@@ -39,3 +39,11 @@ func (n *NoOp) ChangedFiles(_ context.Context, _, _ string) ([]string, error) {
 func (n *NoOp) MarkReady(_ context.Context, _, _ string) error {
 	return fmt.Errorf("noop: mark ready: %w", ErrUnsupported)
 }
+
+func (n *NoOp) ListMergedPRs(_ context.Context, _ string, _ int) ([]PRSummary, error) {
+	return nil, fmt.Errorf("noop: merged pull requests: %w", ErrUnsupported)
+}
+
+func (n *NoOp) EditPRBody(_ context.Context, _, _, _ string) error {
+	return fmt.Errorf("noop: edit pull request body: %w", ErrUnsupported)
+}
