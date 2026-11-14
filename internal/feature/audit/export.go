@@ -41,7 +41,32 @@ type Export struct {
 	AutonomyChanges    []ExportRow               `json:"autonomy_changes"`
 	CountsByKind       []ExportKindCount         `json:"counts_by_kind"`
 	PendingCheckpoints []ExportPendingCheckpoint `json:"pending_checkpoints"`
+	UnmetObligations   []ExportObligation        `json:"unmet_obligations"`
 	NotACertification  string                    `json:"not_a_certification"`
+}
+
+// SettlementUnknown is the settlement of a criterion whose run's record holds
+// none, such as a row written before Phase 38: unknown, never zero misses.
+const SettlementUnknown = "unknown"
+
+// ExportObligation is one criterion a run that finished in the window was
+// required to meet and did not, or whose declared verifier never ran, read
+// from the run's storage.ToolEventRunEnd row (Phase 38 step 2).
+type ExportObligation struct {
+	ObjectiveID string `json:"objective_id"`
+	LoopID      string `json:"loop_id"`
+	// RowID is the run end row the entry was read from.
+	RowID       string `json:"row_id"`
+	EndedAt     string `json:"ended_at"`
+	CriterionID string `json:"criterion_id"`
+	Description string `json:"description"`
+	// Settlement is one of objective.Settlement's values, or
+	// SettlementUnknown when the record holds none.
+	Settlement string `json:"settlement"`
+	State      string `json:"state"`
+	// Trust is the criterion's trust marking as the record carries it
+	// (ADR 021); empty when the record carries none.
+	Trust string `json:"trust"`
 }
 
 // ExportWindow is the closed-open window [From, To), as UTC RFC3339Nano.
@@ -181,6 +206,7 @@ func (e *Exporter) Export(ctx context.Context, from, to, now time.Time) ([]byte,
 		AutonomyChanges:    []ExportRow{},
 		CountsByKind:       []ExportKindCount{},
 		PendingCheckpoints: []ExportPendingCheckpoint{},
+		UnmetObligations:   []ExportObligation{},
 		NotACertification:  notACertification,
 	}
 
