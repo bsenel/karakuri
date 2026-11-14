@@ -13,8 +13,9 @@ import (
 
 func verifierCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "verifier",
-		Short: "Inspect the verifiers that settle success criteria",
+		Use:     "verifier",
+		Short:   "Inspect the verifiers that settle success criteria",
+		Example: `  krk verifier list --domain software`,
 	}
 	cmd.AddCommand(verifierListCmd())
 	return cmd

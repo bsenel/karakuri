@@ -10,8 +10,9 @@ import (
 
 func memoryCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "memory",
-		Short: "Query and manage agent memory",
+		Use:     "memory",
+		Short:   "Query and manage agent memory",
+		Example: `  krk memory recall --agent agent_42 --query "login test flakiness"`,
 	}
 	cmd.AddCommand(memoryRecallCmd())
 	return cmd
