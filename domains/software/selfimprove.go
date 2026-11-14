@@ -496,6 +496,7 @@ func mutatingCapabilities() []capability.CapabilityID {
 		"software.act.write_code",
 		"software.act.write_test",
 		"software.act.create_pr",
+		CapMarkReady,
 		"software.act.shell_exec",
 		"software.act.delegate_to_cli",
 	}

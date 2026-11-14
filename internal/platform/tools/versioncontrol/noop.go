@@ -35,3 +35,7 @@ func (n *NoOp) ListChecks(_ context.Context, _, _ string) ([]CheckRun, error) {
 func (n *NoOp) ChangedFiles(_ context.Context, _, _ string) ([]string, error) {
 	return nil, fmt.Errorf("noop: changed files: %w", ErrUnsupported)
 }
+
+func (n *NoOp) MarkReady(_ context.Context, _, _ string) error {
+	return fmt.Errorf("noop: mark ready: %w", ErrUnsupported)
+}

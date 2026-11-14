@@ -56,6 +56,9 @@ func softwareEnvironmentFactories(reg *tools.Registry) []environment.Factory {
 			Description: "Git repository: commits, branches, PRs, worktrees, diffs",
 			Serves: []capability.CapabilityID{
 				"software.act.create_pr",
+				// Marking a group's pull request ready reads and writes the
+				// same forge create_pr opened it on (Phase 44 step 1).
+				CapMarkReady,
 				// Drafting lives here because a roadmap phase and an ADR are
 				// files in this repository, and because gitEnv answers both
 				// before its adapter check — a deployment with no version
@@ -403,6 +406,11 @@ func (e *gitEnv) Act(ctx context.Context, a environment.Action) (environment.Act
 	// forge is bound, so they check the adapter themselves.
 	if res, ok := e.streamVerify(ctx, a); ok {
 		return res, nil
+	}
+	// mark_ready names what is missing when no forge is bound, so it also
+	// checks the adapter itself.
+	if a.CapabilityID == CapMarkReady {
+		return e.markReady(ctx, a), nil
 	}
 
 	adapter := e.vc

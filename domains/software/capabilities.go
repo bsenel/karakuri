@@ -167,6 +167,23 @@ func softwareCapabilities() []capability.Capability {
 			OutputSchema: capability.Schema{Type: "object"},
 		},
 		writes(act("software.act.create_pr", "Create PR", "Submit a worktree branch as a pull request", false)),
+		// A forge call on a pull request that already exists, so no worktree.
+		// Gated wherever create_pr is: marking ready asks a person to review.
+		{
+			ID: CapMarkReady, Name: "Mark PR Ready", Domain: "software",
+			Description: "Take the open draft pull request on params.branch out of draft, only when its body has a checklist with every item ticked " +
+				"and every check at its head is green. Requires params.branch; optional params.repo. It does not wait for pending checks; " +
+				"a pull request already ready is a success with already_ready.",
+			InputSchema: capability.Schema{
+				Type: "object",
+				Properties: map[string]capability.SchemaProperty{
+					"branch": {Type: "string", Description: "The head branch of the group's pull request"},
+					"repo":   {Type: "string", Description: "owner/name of the repository when it is not the bound one"},
+				},
+				Required: []string{"branch"},
+			},
+			OutputSchema: capability.Schema{Type: "object"},
+		},
 		act("software.act.create_ticket", "Create Ticket", "Create ticket in project management tool", false),
 		act("software.act.send_message", "Send Message", "Send a message via MessagingAdapter", false),
 		writes(act("software.act.delegate_to_cli", "Delegate to CLI Agent", "Hand a task to a coding-agent CLI (Claude Code, Cursor, Gemini, Copilot) in an isolated worktree", false)),

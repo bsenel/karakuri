@@ -33,16 +33,25 @@ type fakeForge struct {
 
 	prsErr, checksErr, filesErr error
 
+	// markReadyErr is what MarkReady returns.
+	markReadyErr error
+
 	// What the verifier asked for, so a test can tell it read the right PR.
 	checkReads int
 	gotPRID    string
+
+	// What was written: each MarkReady call as "repo#prID", and each pull
+	// request CreatePR was handed.
+	markedReady []string
+	created     []versioncontrol.PullRequest
 }
 
 func (f *fakeForge) Name() string { return "fake_forge" }
 func (f *fakeForge) Active() bool { return true }
 
-func (f *fakeForge) CreatePR(context.Context, versioncontrol.PullRequest) (string, error) {
-	return "", nil
+func (f *fakeForge) CreatePR(_ context.Context, pr versioncontrol.PullRequest) (string, error) {
+	f.created = append(f.created, pr)
+	return "https://example.invalid/pull/202", nil
 }
 
 func (f *fakeForge) ListPRs(context.Context, string, time.Time) ([]versioncontrol.PRSummary, error) {
@@ -72,6 +81,11 @@ func (f *fakeForge) ChangedFiles(_ context.Context, _, prID string) ([]string, e
 		return nil, f.filesErr
 	}
 	return f.files, nil
+}
+
+func (f *fakeForge) MarkReady(_ context.Context, repo, prID string) error {
+	f.markedReady = append(f.markedReady, repo+"#"+prID)
+	return f.markReadyErr
 }
 
 // passStart is when the pass under verification began.
