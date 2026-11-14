@@ -36,7 +36,6 @@ func (n *NoOp) ChangedFiles(_ context.Context, _, _ string) ([]string, error) {
 	return nil, fmt.Errorf("noop: changed files: %w", ErrUnsupported)
 }
 
-// MarkReady is scaffolding until Phase 44 step 1 lands; its test is red.
 func (n *NoOp) MarkReady(_ context.Context, _, _ string) error {
-	return nil
+	return fmt.Errorf("noop: mark ready: %w", ErrUnsupported)
 }
