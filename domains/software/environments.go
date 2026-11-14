@@ -189,7 +189,9 @@ func softwareEnvironmentFactories(reg *tools.Registry) []environment.Factory {
 			EnvID:  "software.env.verify",
 			Domain: "software",
 			Description: "Verification commands: runs a test suite or a linter and reports the verdict by exit code. " +
-				"Takes params.cmd (required) and optional params.workdir, params.timeout_sec (max 600).",
+				"Takes params.cmd (required) and optional params.workdir, params.timeout_sec (max 600). " +
+				"A command killed at its time limit is inconclusive: timeout and lists the go test packages that finished; " +
+				"a command whose tool is missing or not executable (exit 127 or 126) is inconclusive: unsupported and names it.",
 			// Declared since Phase 2 on four criteria of the delivery
 			// template and served by nothing until now. A criterion naming a
 			// verifier that never runs does not fail — verify.go falls back to
@@ -981,17 +983,15 @@ func (e *verifyEnv) Act(ctx context.Context, a environment.Action) (environment.
 	// Reuse the shell executor wholesale: the denylist, the workdir
 	// confinement and the timeout are the same guarantees a verification
 	// command needs, and a second copy of them would be a second set of bugs.
-	res, err := e.shell.Act(ctx, environment.Action{
+	res, stdout := e.shell.run(ctx, environment.Action{
 		CapabilityID: "software.act.shell_exec",
 		Params:       a.Params,
 	})
-	if err != nil {
-		return res, err
-	}
 	if res.StateDelta == nil {
 		res.StateDelta = map[string]any{}
 	}
 	res.StateDelta["verifier"] = string(a.CapabilityID)
+	settleOutsideTheWork(&res, asString(a.Params, "cmd"), stdout)
 	if files, trust, ok := e.changedFiles(ctx, a.Params); ok {
 		res.StateDelta["changed_files"] = files
 		if trust.IsThirdParty() {
