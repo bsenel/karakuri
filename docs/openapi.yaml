@@ -5926,7 +5926,7 @@ components:
           nullable: true
           type: array
         unmet_obligations:
-          description: Per run that ended in the window (its run_end audit row), each criterion that ended unmet or whose declared verifier never ran, with how it was settled (verifier_ran, verifier_never_ran, no_verifier, reserved_verifier). A criterion whose record holds no settlement, such as a row written before Phase 38, is listed with settlement unknown, never left out. trust is the criterion's trust marking as the record carries it, empty when it carries none. Empty, never null, when there is nothing to list.
+          description: Per run that ended in the window (its run_end audit row), each criterion that ended unmet or whose declared verifier never ran, with how it was settled (verifier_ran, verifier_never_ran, no_verifier, reserved_verifier). A criterion whose record holds no settlement, such as a row written before Phase 38, is listed with settlement unknown, never left out; a run_end row whose payload cannot be read or holds no criteria is one unknown entry with an empty criterion_id. trust is the criterion's trust marking as the record carries it, empty when it carries none. Empty, never null, when there is nothing to list.
           items:
             additionalProperties: false
             properties:

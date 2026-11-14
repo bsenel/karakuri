@@ -1117,3 +1117,27 @@ func TestExportListsOnlyObligationsOfRunsEndedInsideTheWindow(t *testing.T) {
 		t.Errorf("unmet_obligations criteria = %v, want only the run that ended inside the window", got)
 	}
 }
+
+// A run end row the export cannot read, or one that holds no criteria, still
+// names its run, as one unknown entry with no criterion id: dropping it would
+// read as a run that missed nothing (AGENTS.md rule 10).
+func TestExportListsAnUnreadableRunEndRowAsUnknown(t *testing.T) {
+	at := exportFrom.Add(3 * time.Hour)
+	unreadable := storage.ToolEvent{ID: "run-end-bad", ObjectiveID: "obj-bad", Kind: storage.ToolEventRunEnd, PayloadJSON: "not json {", CreatedAt: at}
+	empty := runEndRow("run-end-empty", "obj-empty", "loop-empty", at.Add(time.Minute))
+
+	doc, _ := exportDoc(t, &fakeExportStore{events: []storage.ToolEvent{unreadable, empty}}, exportRetention, exportFrom, exportTo)
+
+	if len(doc.UnmetObligations) != 2 {
+		t.Fatalf("unmet_obligations = %+v, want one unknown entry per row", doc.UnmetObligations)
+	}
+	for i, want := range []struct{ row, objective, loop string }{
+		{"run-end-bad", "obj-bad", ""},
+		{"run-end-empty", "obj-empty", "loop-empty"},
+	} {
+		o := doc.UnmetObligations[i]
+		if o.RowID != want.row || o.ObjectiveID != want.objective || o.LoopID != want.loop || o.CriterionID != "" || o.Settlement != SettlementUnknown {
+			t.Errorf("entry %d = %+v, want row %q, objective %q, loop %q, no criterion, settlement %q", i, o, want.row, want.objective, want.loop, SettlementUnknown)
+		}
+	}
+}

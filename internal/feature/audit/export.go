@@ -233,6 +233,8 @@ func (e *Exporter) Export(ctx context.Context, from, to, now time.Time) ([]byte,
 			doc.Oversight.Stops = append(doc.Oversight.Stops, row)
 		case storage.ToolEventPromotion, storage.ToolEventDemotion:
 			doc.AutonomyChanges = append(doc.AutonomyChanges, row)
+		case storage.ToolEventRunEnd:
+			doc.UnmetObligations = append(doc.UnmetObligations, unmetObligations(ev)...)
 		}
 	}
 	for kind, n := range counts {
@@ -340,6 +342,57 @@ func (e *Exporter) retentionSection(from, to time.Time) ExportRetention {
 }
 
 func formatTime(t time.Time) string { return t.UTC().Format(time.RFC3339Nano) }
+
+// unmetObligations reads one storage.ToolEventRunEnd row: the criteria that
+// ended unmet, and the ones whose declared verifier never ran even if the
+// agent judged them met, because nothing checked them. It reports what the
+// loop decided and judges nothing again.
+//
+// A criterion the record holds no settlement for is listed as
+// SettlementUnknown whatever its state: leaving it out would read as a run
+// that missed nothing (AGENTS.md rule 10). A row whose payload cannot be read,
+// or that holds no criteria, is one unknown entry with no criterion id, so the
+// run is still named.
+func unmetObligations(ev storage.ToolEvent) []ExportObligation {
+	var p struct {
+		LoopID      string `json:"loop_id"`
+		ObjectiveID string `json:"objective_id"`
+		Criteria    []struct {
+			ID          string `json:"id"`
+			Description string `json:"description"`
+			State       string `json:"state"`
+			Settlement  string `json:"settlement"`
+			// Trust is carried only when the record holds one; the export
+			// cannot know who wrote a criterion it does not mark (ADR 021).
+			Trust string `json:"trust"`
+		} `json:"criteria"`
+	}
+	err := json.Unmarshal([]byte(ev.PayloadJSON), &p)
+	base := ExportObligation{ObjectiveID: ev.ObjectiveID, LoopID: p.LoopID, RowID: ev.ID, EndedAt: formatTime(ev.CreatedAt)}
+	if base.ObjectiveID == "" {
+		base.ObjectiveID = p.ObjectiveID
+	}
+	if err != nil || len(p.Criteria) == 0 {
+		base.Settlement = SettlementUnknown
+		return []ExportObligation{base}
+	}
+	out := []ExportObligation{}
+	for _, c := range p.Criteria {
+		settlement := c.Settlement
+		switch {
+		case settlement == "":
+			settlement = SettlementUnknown
+		case settlement == string(objective.SettledVerifierNeverRan):
+		case c.State != string(objective.CriterionMet):
+		default:
+			continue
+		}
+		o := base
+		o.CriterionID, o.Description, o.State, o.Settlement, o.Trust = c.ID, c.Description, c.State, settlement, c.Trust
+		out = append(out, o)
+	}
+	return out
+}
 
 func pendingCheckpoint(c checkpoint.Checkpoint) ExportPendingCheckpoint {
 	return ExportPendingCheckpoint{ID: c.ID, ObjectiveID: string(c.ObjectiveID), RaisedAt: formatTime(c.CreatedAt)}
