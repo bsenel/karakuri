@@ -161,7 +161,12 @@ function Orgs() {
         beside the tree rather than inside it.
       </p>
       {mayWrite && <CreateRow noun="project" onCreate={(name) => create('project', name, '')} />}
-      {projects.length === 0 && <p className="muted">No projects.</p>}
+      {/* Says what fills the list, as the organisations empty state does. */}
+      {projects.length === 0 && (
+        <p className="muted">
+          No projects yet. Add one above, or run <code>krk project create --name platform</code>.
+        </p>
+      )}
       <ul>
         {projects.map((p) => (
           <li key={p.id} className="row">

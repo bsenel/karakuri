@@ -1,6 +1,7 @@
 package command
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -218,13 +219,24 @@ the two-tier split is working.`,
   # Only the five most recent passes, as JSON
   krk objective reconcile-status obj_123 --limit 5 --output json`,
 		Args: cobra.ExactArgs(1),
-		RunE: func(_ *cobra.Command, args []string) error {
+		RunE: func(c *cobra.Command, args []string) error {
 			path := fmt.Sprintf("/objectives/%s/reconcile?limit=%d", args[0], limit)
 			data, _, err := api.Get(path)
 			if err != nil {
 				return err
 			}
 			client.PrintOutput(data, output)
+			// An empty history prints as "history": null, which reads like a
+			// failure; say so on stderr, as printList does for a list.
+			if output == "json" || output == "quiet" {
+				return nil
+			}
+			var shown struct {
+				History []json.RawMessage `json:"history"`
+			}
+			if json.Unmarshal(data, &shown) == nil && len(shown.History) == 0 {
+				fmt.Fprintf(c.ErrOrStderr(), "No reconcile passes yet. Run one now with: krk objective reconcile %s\n", args[0])
+			}
 			return nil
 		},
 	}

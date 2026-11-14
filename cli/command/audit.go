@@ -93,7 +93,7 @@ most recent entries across all kinds.`,
 	cmd.Flags().StringVar(&template, "template", "", "Filter by the template the objective was created from")
 	cmd.Flags().StringVar(&since, "since", "", "Show events on or after this RFC3339 timestamp")
 	cmd.Flags().IntVar(&limit, "limit", 50, "Max entries to return (server caps at 100 by default)")
-	cmd.Flags().BoolVar(&boundsViolation, "bounds-violation", false, "Explicit tri-state filter; use --violations-only as shorthand for true")
+	cmd.Flags().BoolVar(&boundsViolation, "bounds-violation", false, "Show only entries that broke their authority bounds (--bounds-violation) or only those that kept them (--bounds-violation=false); omit it to show both")
 	cmd.Flags().BoolVar(&violationOnly, "violations-only", false, "Shorthand for --bounds-violation=true")
 	cmd.AddCommand(auditExportCmd())
 	return cmd

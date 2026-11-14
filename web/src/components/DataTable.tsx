@@ -29,6 +29,7 @@ export function DataTable<T>({
   error,
   empty,
   label,
+  onRetry,
 }: {
   columns: Column<T>[];
   rows: T[];
@@ -39,11 +40,14 @@ export function DataTable<T>({
   empty?: ReactNode;
   /** Names the table, for a page that has more than one. */
   label?: string;
+  /** Offered beside a failed load, so the reader has a next step. */
+  onRetry?: () => void;
 }) {
   if (error) {
     return (
       <div className="card">
         <p className="error" role="alert">{error}</p>
+        {onRetry && <button onClick={onRetry}>Retry</button>}
       </div>
     );
   }

@@ -12,6 +12,7 @@ export function TwinDetailPage() {
   const [adapters, setAdapters] = useState<HealthAdapter[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const [savingBindings, setSavingBindings] = useState(false);
+  const [saved, setSaved] = useState(false);
   const [draftBindings, setDraftBindings] = useState<Record<string, string>>({});
 
   const load = async () => {
@@ -35,9 +36,11 @@ export function TwinDetailPage() {
 
   const saveBindings = async () => {
     setSavingBindings(true);
+    setSaved(false);
     try {
       await api.put<Twin>(`/twins/${id}/bindings`, { adapter_bindings: draftBindings });
       await load();
+      setSaved(true);
     } catch (e) {
       setErr(describe(e));
     } finally {
@@ -90,7 +93,10 @@ export function TwinDetailPage() {
                     <select
                       aria-label={`Instance for ${slot}`}
                       value={draftBindings[slot] ?? ''}
-                      onChange={(e) => setDraftBindings({ ...draftBindings, [slot]: e.target.value })}
+                      onChange={(e) => {
+                        setSaved(false);
+                        setDraftBindings({ ...draftBindings, [slot]: e.target.value });
+                      }}
                     >
                       <option value="">(default)</option>
                       {slotAdapters.map((a) => (
@@ -113,6 +119,8 @@ export function TwinDetailPage() {
           <button className="primary" onClick={() => void saveBindings()} disabled={savingBindings}>
             {savingBindings ? 'Saving…' : 'Save bindings'}
           </button>
+          {/* Saving reloads the same values, so without this a success looks like nothing happened. */}
+          {saved && <span className="muted small" role="status">Bindings saved.</span>}
         </div>
       </div>
 

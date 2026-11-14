@@ -78,5 +78,8 @@ func parseDSN(s string) (string, string, error) {
 	if !ok || driver == "" || dsn == "" {
 		return "", "", fmt.Errorf("expected <driver>:<dsn>, got %q; put the driver first, e.g. sqlite:./karakuri.db or postgres:postgres://user:pass@localhost:5432/karakuri", s)
 	}
+	if driver != "sqlite" && driver != "postgres" {
+		return "", "", fmt.Errorf("driver %q is not supported; use sqlite or postgres, e.g. sqlite:./karakuri.db or postgres:postgres://user:pass@localhost:5432/karakuri", driver)
+	}
 	return driver, dsn, nil
 }

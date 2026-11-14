@@ -40,7 +40,9 @@ describe('OrgsPage', () => {
         'No organisations yet. Add one above, or run krk org create --name acme.',
       ),
     );
-    expect(screen.getByText('No projects.')).toBeInTheDocument();
+    expect(screen.getByText(/No projects yet/)).toHaveTextContent(
+      'No projects yet. Add one above, or run krk project create --name platform.',
+    );
     expect(screen.queryByRole('status')).not.toBeInTheDocument();
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
