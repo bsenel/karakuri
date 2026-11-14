@@ -2,6 +2,8 @@ package versioncontrol
 
 import (
 	"context"
+	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -204,4 +206,171 @@ func TestChangedFilesNamesARenamesOldPath(t *testing.T) {
 	if !slices.Equal(files, want) {
 		t.Errorf("files = %v, want %v", files, want)
 	}
+}
+
+// What the delivery stream reads to mark a group ready (Phase 44 step 1): the
+// body holding the group's checklist, the base it is stacked on, whether it is
+// still a draft, and the node ID GitHub's GraphQL API needs to change that.
+func TestListPRsCarriesTheBodyBaseDraftAndNodeID(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "/check-runs") {
+			_, _ = w.Write([]byte(`{"check_runs":[]}`))
+			return
+		}
+		_, _ = w.Write([]byte(`[{"number":244,"node_id":"PR_kwDOAbc123","title":"feat(software): group 2",
+			"body":"## What changed\n- [x] Step 1a\n- [ ] Step 1b","draft":true,
+			"updated_at":"2026-11-14T10:00:00Z",
+			"head":{"ref":"karakuri/phase-44-group-2","sha":"c3"},
+			"base":{"ref":"karakuri/phase-44-group-1","sha":"c1"},
+			"user":{"login":"x"}}]`))
+	}))
+	defer srv.Close()
+	g := NewGitHub("t", "acme/api")
+	g.client = &http.Client{Transport: toServer{srv}}
+
+	prs, err := g.ListPRs(context.Background(), "", time.Time{})
+	if err != nil || len(prs) != 1 {
+		t.Fatalf("prs %v, err %v", prs, err)
+	}
+	pr := prs[0]
+	if pr.Number != 244 {
+		t.Errorf("Number = %d, want 244", pr.Number)
+	}
+	if pr.Body != "## What changed\n- [x] Step 1a\n- [ ] Step 1b" {
+		t.Errorf("Body = %q", pr.Body)
+	}
+	if pr.BaseBranch != "karakuri/phase-44-group-1" {
+		t.Errorf("BaseBranch = %q, want the base ref", pr.BaseBranch)
+	}
+	if !pr.Draft {
+		t.Error("Draft = false for a draft pull request")
+	}
+	if pr.NodeID != "PR_kwDOAbc123" {
+		t.Errorf("NodeID = %q, want PR_kwDOAbc123", pr.NodeID)
+	}
+}
+
+// markReadyServer answers the pull request read with nodeID and the GraphQL
+// POST with graphqlStatus and graphqlBody, recording every request in order.
+type markReadyServer struct {
+	nodeID        string
+	getStatus     int
+	graphqlStatus int
+	graphqlBody   string
+
+	requests []string // "METHOD path"
+	auth     []string
+	mutation string
+}
+
+func (m *markReadyServer) start(t *testing.T) *GitHub {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		m.requests = append(m.requests, r.Method+" "+r.URL.Path)
+		m.auth = append(m.auth, r.Header.Get("Authorization"))
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/repos/acme/api/pulls/244":
+			if m.getStatus != 0 {
+				w.WriteHeader(m.getStatus)
+				_, _ = w.Write([]byte(`{"message":"Not Found"}`))
+				return
+			}
+			_, _ = w.Write([]byte(`{"number":244,"node_id":"` + m.nodeID + `","draft":true}`))
+		case r.Method == http.MethodPost && r.URL.Path == "/graphql":
+			b, _ := io.ReadAll(r.Body)
+			m.mutation = string(b)
+			if m.graphqlStatus != 0 {
+				w.WriteHeader(m.graphqlStatus)
+			}
+			_, _ = w.Write([]byte(m.graphqlBody))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	g := NewGitHub("t", "acme/api")
+	g.client = &http.Client{Transport: toServer{srv}}
+	return g
+}
+
+// GitHub has no REST endpoint that takes a pull request out of draft: the
+// adapter reads the pull request's node ID, then posts the GraphQL mutation
+// carrying it.
+func TestMarkReadyPostsTheMutationWithThePullRequestsNodeID(t *testing.T) {
+	m := &markReadyServer{
+		nodeID:      "PR_kwDOAbc123",
+		graphqlBody: `{"data":{"markPullRequestReadyForReview":{"pullRequest":{"isDraft":false}}}}`,
+	}
+	g := m.start(t)
+
+	if err := g.MarkReady(context.Background(), "", "244"); err != nil {
+		t.Fatalf("MarkReady: %v", err)
+	}
+	want := []string{"GET /repos/acme/api/pulls/244", "POST /graphql"}
+	if !slices.Equal(m.requests, want) {
+		t.Fatalf("requests = %v, want %v", m.requests, want)
+	}
+	for i, a := range m.auth {
+		if a != "Bearer t" {
+			t.Errorf("request %d Authorization = %q, want the adapter's token", i, a)
+		}
+	}
+	var payload struct {
+		Query     string         `json:"query"`
+		Variables map[string]any `json:"variables"`
+	}
+	if err := json.Unmarshal([]byte(m.mutation), &payload); err != nil {
+		t.Fatalf("GraphQL body is not JSON: %v: %s", err, m.mutation)
+	}
+	if !strings.Contains(payload.Query, "markPullRequestReadyForReview") {
+		t.Errorf("query does not call markPullRequestReadyForReview: %s", payload.Query)
+	}
+	// The ID may be inlined in the query or passed as a variable; either way
+	// it is the node ID read from the pull request, not its number.
+	if !strings.Contains(m.mutation, `PR_kwDOAbc123`) {
+		t.Errorf("mutation does not carry the pull request's node ID: %s", m.mutation)
+	}
+}
+
+// GraphQL reports most failures with a 200 and an errors array; reading that
+// as success would leave the pull request a draft while the stream believes it
+// ready.
+func TestMarkReadyReturnsGraphQLErrors(t *testing.T) {
+	m := &markReadyServer{
+		nodeID:      "PR_kwDOAbc123",
+		graphqlBody: `{"data":{"markPullRequestReadyForReview":null},"errors":[{"type":"FORBIDDEN","message":"Resource not accessible by integration"}]}`,
+	}
+	g := m.start(t)
+
+	err := g.MarkReady(context.Background(), "", "244")
+	if err == nil {
+		t.Fatal("a GraphQL response with errors was read as success")
+	}
+	if !strings.Contains(err.Error(), "Resource not accessible by integration") {
+		t.Errorf("error does not name GraphQL's reason: %v", err)
+	}
+}
+
+// A non-2xx from either call is an error, and a pull request that cannot be
+// read is never marked.
+func TestMarkReadyReturnsAnErrorOnAFailedCall(t *testing.T) {
+	t.Run("graphql", func(t *testing.T) {
+		m := &markReadyServer{nodeID: "PR_kwDOAbc123", graphqlStatus: http.StatusBadGateway, graphqlBody: `bad gateway`}
+		g := m.start(t)
+		if err := g.MarkReady(context.Background(), "", "244"); err == nil {
+			t.Fatal("a 502 from the GraphQL endpoint was read as success")
+		}
+	})
+	t.Run("pull request read", func(t *testing.T) {
+		m := &markReadyServer{getStatus: http.StatusNotFound}
+		g := m.start(t)
+		if err := g.MarkReady(context.Background(), "", "244"); err == nil {
+			t.Fatal("a 404 reading the pull request was read as success")
+		}
+		for _, r := range m.requests {
+			if strings.HasPrefix(r, "POST ") {
+				t.Errorf("posted %s after the pull request could not be read", r)
+			}
+		}
+	})
 }

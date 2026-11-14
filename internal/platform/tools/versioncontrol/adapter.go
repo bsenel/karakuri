@@ -23,6 +23,21 @@ type PRSummary struct {
 	Title string
 	URL   string
 
+	// Number is the forge's pull request number; ID is the same number as text.
+	Number int
+	// Body is the description, where a delivery pull request keeps the
+	// checklist of its group's steps.
+	Body string
+	// BaseBranch is the branch the pull request merges into: main, or the head
+	// of an earlier group it is stacked on.
+	BaseBranch string
+	// Draft reports whether the pull request is still a draft, not yet ready
+	// for review.
+	Draft bool
+	// NodeID is the forge's global ID, which GitHub's GraphQL API needs where
+	// its REST API has no endpoint, as for marking a draft ready.
+	NodeID string
+
 	// CheckState is the combined CI verdict on the pull request's head:
 	// "success", "failure", "pending", or "" when the adapter could not tell.
 	//
@@ -94,5 +109,8 @@ type VersionControlAdapter interface {
 	ChangedFiles(ctx context.Context, repo, prID string) ([]string, error)
 	// ListBranches returns the branches whose name starts with prefix.
 	ListBranches(ctx context.Context, repo, prefix string) ([]Branch, error)
+	// MarkReady takes a draft pull request out of draft, ready for review. An
+	// adapter whose forge cannot returns an error wrapping ErrUnsupported.
+	MarkReady(ctx context.Context, repo, prID string) error
 	Active() bool
 }

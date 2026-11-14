@@ -60,7 +60,8 @@ var targetWriterMethods = []string{"SetTarget", "SetBaseline", "SaveObjective"}
 var reviewedLoopCapabilities = []string{
 	"observe.fetch_signal", "reason.evaluate", "reason.plan", "reason.synthesize",
 	"software.act.create_pr", "software.act.create_ticket", "software.act.delegate_to_cli",
-	"software.act.draft_adr", "software.act.propose_roadmap_phase", "software.act.run_remediation",
+	"software.act.draft_adr", "software.act.mark_ready", "software.act.propose_roadmap_phase",
+	"software.act.run_remediation",
 	"software.act.send_message", "software.act.shell_exec", "software.act.write_code",
 	"software.act.write_design_doc", "software.act.write_test", "software.decide.prioritize_tasks",
 	"software.learn.extract_patterns", "software.learn.update_tech_radar",

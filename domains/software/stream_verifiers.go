@@ -167,17 +167,10 @@ func (e *gitEnv) verifyCIGreen(ctx context.Context, repo, branch string, params 
 	trust := prTrust([]versioncontrol.PRSummary{pr})
 	deadline := time.Now().Add(time.Duration(ciGreenWaitSec(params)) * time.Second)
 	for {
-		checks, err := e.vc.ListChecks(ctx, repo, pr.HeadSHA)
+		failing, pending, notRun, nonBlocking, green, err := e.headChecks(ctx, repo, pr.HeadSHA)
 		if err != nil {
 			return forgeFailure(CapCIGreen, "list checks", err)
 		}
-		var atHead []versioncontrol.CheckRun
-		for _, c := range checks {
-			if c.HeadSHA == pr.HeadSHA {
-				atHead = append(atHead, c)
-			}
-		}
-		failing, pending, notRun, nonBlocking, green := sortChecks(latestRuns(atHead))
 		extra := prRef(pr)
 		extra["green"], extra["failing"], extra["pending"], extra["not_run"] = green, failing, pending, notRun
 		extra["skipped_or_neutral"] = nonBlocking
@@ -207,6 +200,24 @@ func (e *gitEnv) verifyCIGreen(ctx context.Context, repo, branch string, params 
 		}
 		return verdict(CapCIGreen, objective.CriterionMet, "", "", trust, extra)
 	}
+}
+
+// headChecks reads the checks at headSHA once and sorts the latest run of each
+// by what it says. A check on an older commit settles nothing, so it is left
+// out. ci_green and mark_ready share it so they share one set of rules.
+func (e *gitEnv) headChecks(ctx context.Context, repo, headSHA string) (failing, pending, notRun, nonBlocking, green []string, err error) {
+	checks, err := e.vc.ListChecks(ctx, repo, headSHA)
+	if err != nil {
+		return nil, nil, nil, nil, nil, err
+	}
+	var atHead []versioncontrol.CheckRun
+	for _, c := range checks {
+		if c.HeadSHA == headSHA {
+			atHead = append(atHead, c)
+		}
+	}
+	failing, pending, notRun, nonBlocking, green = sortChecks(latestRuns(atHead))
+	return failing, pending, notRun, nonBlocking, green, nil
 }
 
 // latestRuns keeps the latest run of each check by name. The forge lists every

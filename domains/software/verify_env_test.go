@@ -146,6 +146,9 @@ func (w *windowVC) ChangedFiles(context.Context, string, string) ([]string, erro
 func (w *windowVC) ListBranches(context.Context, string, string) ([]versioncontrol.Branch, error) {
 	return nil, versioncontrol.ErrUnsupported
 }
+func (w *windowVC) MarkReady(context.Context, string, string) error {
+	return versioncontrol.ErrUnsupported
+}
 
 // Every byte here is re-serialised into the reason prompt of every iteration of
 // every loop watching the repository. An unfiltered read pulled the adapter's

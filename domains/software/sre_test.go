@@ -104,12 +104,14 @@ func TestSREAgentCanRemediateAndAsksFirst(t *testing.T) {
 		}
 	}
 
+	// mark_ready is gated wherever create_pr is (Phase 44 step 1).
 	wantApproval := map[capability.CapabilityID]bool{
-		"software.act.create_pr": true,
-		CapRunRemediation:        true,
+		"software.act.create_pr":  true,
+		"software.act.mark_ready": true,
+		CapRunRemediation:         true,
 	}
 	if len(sre.Authority.RequiresApprovalFor) != len(wantApproval) {
-		t.Errorf("RequiresApprovalFor = %v, want exactly software.act.create_pr and %s",
+		t.Errorf("RequiresApprovalFor = %v, want exactly software.act.create_pr, software.act.mark_ready and %s",
 			sre.Authority.RequiresApprovalFor, CapRunRemediation)
 	}
 	seen := map[capability.CapabilityID]bool{}

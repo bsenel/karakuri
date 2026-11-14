@@ -89,6 +89,10 @@ func (v *recordingVC) ListBranches(context.Context, string, string) ([]versionco
 	return nil, versioncontrol.ErrUnsupported
 }
 
+func (v *recordingVC) MarkReady(context.Context, string, string) error {
+	return versioncontrol.ErrUnsupported
+}
+
 // ── the acceptance test ──────────────────────────────────────────────────────
 
 // The write path, end to end, against a scratch repository.
