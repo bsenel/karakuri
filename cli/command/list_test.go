@@ -47,6 +47,10 @@ func TestEmptyListsSaySo(t *testing.T) {
 		// A --domain that matches nothing is usually a typo.
 		{[]string{"domain", "capabilities", "--domain", "nosuch"}, "No capabilities in domain \"nosuch\". Check the domain ID: krk domain list shows the ones that exist\n"},
 		{[]string{"verifier", "list"}, "No verifiers.\n"},
+		{[]string{"auth", "users", "list"}, "No principals. Create one with: krk auth users add\n"},
+		{[]string{"auth", "roles", "list"}, "No roles.\n"},
+		{[]string{"auth", "policies", "list"}, "No policies.\n"},
+		{[]string{"auth", "policies", "list", "--principal", "alice"}, "No grants reach principal \"alice\".\n"},
 		{[]string{"verifier", "list", "--domain", "nosuch"}, "No verifiers in domain \"nosuch\". Check the domain ID: krk domain list shows the ones that exist\n"},
 	} {
 		for _, body := range []string{"null", "[]\n"} {
