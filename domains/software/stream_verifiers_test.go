@@ -88,6 +88,10 @@ func (f *fakeForge) MarkReady(_ context.Context, repo, prID string) error {
 	return f.markReadyErr
 }
 
+func (f *fakeForge) CompareCommits(context.Context, string, string, string) ([]versioncontrol.Commit, error) {
+	return nil, versioncontrol.ErrUnsupported
+}
+
 // passStart is when the pass under verification began.
 var passStart = time.Date(2026, 10, 17, 12, 0, 0, 0, time.UTC)
 

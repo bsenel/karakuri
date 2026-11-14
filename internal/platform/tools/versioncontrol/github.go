@@ -331,6 +331,11 @@ func (g *GitHub) MarkReady(ctx context.Context, repo, prID string) error {
 	return nil
 }
 
+// CompareCommits is a stub until Phase 44 step 3 slice B is implemented.
+func (g *GitHub) CompareCommits(_ context.Context, _, _, _ string) ([]Commit, error) {
+	return nil, fmt.Errorf("github: compare commits: %w", ErrUnsupported)
+}
+
 func (g *GitHub) do(ctx context.Context, method, path string, body any, out any) error {
 	var reader io.Reader
 	if body != nil {

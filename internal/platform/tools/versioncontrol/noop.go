@@ -39,3 +39,7 @@ func (n *NoOp) ChangedFiles(_ context.Context, _, _ string) ([]string, error) {
 func (n *NoOp) MarkReady(_ context.Context, _, _ string) error {
 	return fmt.Errorf("noop: mark ready: %w", ErrUnsupported)
 }
+
+func (n *NoOp) CompareCommits(_ context.Context, _, _, _ string) ([]Commit, error) {
+	return nil, fmt.Errorf("noop: compare commits: %w", ErrUnsupported)
+}

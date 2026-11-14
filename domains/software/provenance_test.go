@@ -24,6 +24,12 @@ type vcStub struct {
 	gotRepo  string
 	gotSince time.Time
 	reads    int
+
+	// compared is what CompareCommits returns, or compareErr when that is
+	// set; compares records each call as "repo:base...head".
+	compared   []versioncontrol.Commit
+	compareErr error
+	compares   []string
 }
 
 func (s *vcStub) Name() string { return "stub" }
@@ -61,6 +67,14 @@ func (s *vcStub) ChangedFiles(context.Context, string, string) ([]string, error)
 
 func (s *vcStub) MarkReady(context.Context, string, string) error {
 	return versioncontrol.ErrUnsupported
+}
+
+func (s *vcStub) CompareCommits(_ context.Context, repo, base, head string) ([]versioncontrol.Commit, error) {
+	s.compares = append(s.compares, repo+":"+base+"..."+head)
+	if s.compareErr != nil {
+		return nil, s.compareErr
+	}
+	return s.compared, nil
 }
 
 // A pull request title is typed by whoever opened it, which on a public
