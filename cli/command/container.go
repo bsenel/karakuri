@@ -411,7 +411,7 @@ func resolveContainer(kind, name, parentID string) (string, error) {
 		if kind == "team" {
 			hint = " — name the organisation with --org"
 		}
-		return "", fmt.Errorf("%d %ss are called %q%s", len(found), kind, name, hint)
+		return "", fmt.Errorf("%d %ss are called %q%s\nRun 'krk %s list' to see them", len(found), kind, name, hint, kind)
 	}
 }
 
@@ -427,9 +427,9 @@ func containerScope(org, team, project string) (string, error) {
 	case org == "" && team == "" && project == "":
 		return "", nil
 	case project != "" && (org != "" || team != ""):
-		return "", fmt.Errorf("a project spans organisations, so it cannot be qualified by --org or --team")
+		return "", fmt.Errorf("a project spans organisations, so it cannot be qualified by --org or --team; drop them and name the project alone, e.g. --project %s", project)
 	case team != "" && org == "":
-		return "", fmt.Errorf("--team needs --org: two organisations may each have a team called %q", team)
+		return "", fmt.Errorf("--team needs --org: two organisations may each have a team called %q; name the organisation, e.g. --team %s --org acme\nRun 'krk org list' to see the organisations that exist", team, team)
 	}
 
 	if project != "" {

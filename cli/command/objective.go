@@ -17,6 +17,10 @@ func objectiveCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "objective",
 		Short: "Manage objectives",
+		Example: `  # Say what done looks like, then start a loop on it with: krk loop start <id>
+  krk objective create --title "Fix the flaky login test" --twin t_7f2a
+  krk objective list
+  krk objective criteria obj_123`,
 	}
 	cmd.AddCommand(objectiveCreateCmd(), objectiveGetCmd(), objectiveListCmd(), objectiveTemplatesCmd(), objectiveCriteriaCmd())
 	cmd.AddCommand(standingCmds()...)

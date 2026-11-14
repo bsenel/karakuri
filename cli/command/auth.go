@@ -142,12 +142,12 @@ func authUsersCmd() *cobra.Command {
 	cmd.AddCommand(&cobra.Command{
 		Use:   "list",
 		Short: "List principals",
-		RunE: func(_ *cobra.Command, _ []string) error {
+		RunE: func(c *cobra.Command, _ []string) error {
 			data, _, err := api.Get("/auth/users")
 			if err != nil {
 				return err
 			}
-			client.PrintOutput(data, output)
+			printList(c, data, "principals", createWith("krk auth users add"))
 			return nil
 		},
 	})
@@ -218,12 +218,12 @@ func authRolesCmd() *cobra.Command {
 	cmd.AddCommand(&cobra.Command{
 		Use:   "list",
 		Short: "List roles with their policies",
-		RunE: func(_ *cobra.Command, _ []string) error {
+		RunE: func(c *cobra.Command, _ []string) error {
 			data, _, err := api.Get("/auth/roles")
 			if err != nil {
 				return err
 			}
-			client.PrintOutput(data, output)
+			printList(c, data, "roles", "")
 			return nil
 		},
 	})
@@ -236,16 +236,18 @@ func authPoliciesCmd() *cobra.Command {
 	list := &cobra.Command{
 		Use:   "list",
 		Short: "List every policy, or the effective grants reaching one principal",
-		RunE: func(_ *cobra.Command, _ []string) error {
+		RunE: func(c *cobra.Command, _ []string) error {
 			path := "/auth/policies"
+			noun := "policies"
 			if principal != "" {
 				path += "?" + url.Values{"principal": {principal}}.Encode()
+				noun = fmt.Sprintf("grants reach principal %q", principal)
 			}
 			data, _, err := api.Get(path)
 			if err != nil {
 				return err
 			}
-			client.PrintOutput(data, output)
+			printList(c, data, noun, "")
 			return nil
 		},
 	}

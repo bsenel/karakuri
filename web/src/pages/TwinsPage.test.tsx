@@ -1,13 +1,13 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // vi.mock is hoisted above the imports, so the stub has to be created inside
 // the factory and reached through vi.hoisted rather than closed over.
-const { get } = vi.hoisted(() => ({ get: vi.fn() }));
+const { get, post } = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn() }));
 vi.mock('@/api/client', async () => {
   const actual = await vi.importActual<typeof import('@/api/client')>('@/api/client');
-  return { ...actual, api: { get, post: vi.fn(), put: vi.fn(), del: vi.fn() } };
+  return { ...actual, api: { get, post, put: vi.fn(), del: vi.fn() } };
 });
 
 import { APIError } from '@/api/client';
@@ -25,6 +25,7 @@ describe('TwinsPage', () => {
   // returned from beforeEach as that test's cleanup — it would call get().
   beforeEach(() => {
     get.mockReset();
+    post.mockReset();
   });
 
   it('says it is loading rather than that there are no twins', () => {
@@ -82,5 +83,24 @@ describe('TwinsPage', () => {
 
     renderPage();
     await waitFor(() => expect(screen.getByRole('table', { name: 'Twins' })).toBeInTheDocument());
+  });
+
+  it('announces the twin it just created', async () => {
+    get.mockResolvedValue([]);
+    post.mockResolvedValue({ id: 't_1' });
+
+    renderPage();
+    await waitFor(() => expect(screen.getByRole('table', { name: 'Twins' })).toBeInTheDocument());
+
+    fireEvent.change(screen.getByRole('textbox', { name: 'Name' }), { target: { value: 'Platform team' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Create' }));
+
+    // The reload after the create shows "Loading…" in a status of its own;
+    // waitFor retries until that one is gone and only the announcement stays.
+    await waitFor(() =>
+      expect(screen.getByRole('status')).toHaveTextContent('Created twin “Platform team”.'),
+    );
+    expect(post).toHaveBeenCalledWith('/twins/', expect.objectContaining({ name: 'Platform team' }));
+    expect(screen.getByRole('textbox', { name: 'Name' })).toHaveValue('');
   });
 });

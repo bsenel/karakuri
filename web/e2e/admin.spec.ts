@@ -96,7 +96,10 @@ test.describe('admin flows', () => {
     const twinName = `e2e-twin-${Date.now()}`;
     await page.getByLabel('Name').fill(twinName);
     await page.getByRole('button', { name: 'Create' }).click();
-    await expect(page.getByText(twinName)).toBeVisible();
+    // The name appears twice once created: in the announcement and in the
+    // row's link. Look up each one by role, so neither is ambiguous.
+    await expect(page.getByRole('link', { name: twinName, exact: true })).toBeVisible();
+    await expect(page.getByRole('status').filter({ hasText: 'Created twin' })).toContainText(twinName);
 
     await page.getByRole('link', { name: 'Quota' }).click();
     await page.getByRole('link', { name: 'Requests' }).click();

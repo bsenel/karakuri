@@ -11,6 +11,8 @@ func domainCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "domain",
 		Short: "Inspect registered domain packs",
+		Example: `  krk domain list
+  krk domain capabilities`,
 	}
 	cmd.AddCommand(domainListCmd(), domainCapabilitiesCmd(), domainTestCmd())
 	return cmd

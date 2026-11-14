@@ -69,6 +69,8 @@ func evalCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "eval",
 		Short: "Measure the judge against what humans decided",
+		Example: `  # How often the judge agreed with humans over the last 30 days
+  krk eval calibrate --since 720h`,
 	}
 	cmd.AddCommand(evalCalibrateCmd())
 	return cmd
