@@ -136,6 +136,27 @@ func TestListChecks(t *testing.T) {
 	}
 }
 
+// The branches under a prefix, by name without refs/heads/ and with their tip.
+func TestListBranchesUnderAPrefix(t *testing.T) {
+	var gotPath string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		_, _ = w.Write([]byte(`[{"ref":"refs/heads/karakuri/salvage/o1/a1","object":{"sha":"s1","type":"commit"}}]`))
+	}))
+	defer srv.Close()
+	g := NewGitHub("t", "acme/api")
+	g.client = &http.Client{Transport: toServer{srv}}
+
+	branches, err := g.ListBranches(t.Context(), "", "karakuri/salvage/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := Branch{Name: "karakuri/salvage/o1/a1", SHA: "s1"}
+	if gotPath != "/repos/acme/api/git/matching-refs/heads/karakuri/salvage/" || len(branches) != 1 || branches[0] != want {
+		t.Errorf("path %s, branches %+v", gotPath, branches)
+	}
+}
+
 // Every changed path, across pages.
 func TestChangedFilesReadsEveryPage(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

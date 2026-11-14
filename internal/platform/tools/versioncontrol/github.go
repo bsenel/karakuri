@@ -281,6 +281,32 @@ func (g *GitHub) ChangedFiles(ctx context.Context, repo, prID string) ([]string,
 	return nil, fmt.Errorf("github: changed files: pull request %s touches more files than GitHub lists", prID)
 }
 
+// ListBranches reads the branches under prefix from the matching-refs
+// endpoint, which answers with every match in one response.
+func (g *GitHub) ListBranches(ctx context.Context, repo, prefix string) ([]Branch, error) {
+	if repo == "" {
+		repo = g.repo
+	}
+	if repo == "" {
+		return nil, fmt.Errorf("github: no repo configured")
+	}
+	var raw []struct {
+		Ref    string `json:"ref"`
+		Object struct {
+			SHA string `json:"sha"`
+		} `json:"object"`
+	}
+	path := fmt.Sprintf("/repos/%s/git/matching-refs/heads/%s", repo, prefix)
+	if err := g.do(ctx, "GET", path, nil, &raw); err != nil {
+		return nil, err
+	}
+	out := make([]Branch, 0, len(raw))
+	for _, r := range raw {
+		out = append(out, Branch{Name: strings.TrimPrefix(r.Ref, "refs/heads/"), SHA: r.Object.SHA})
+	}
+	return out, nil
+}
+
 // markReadyMutation takes a draft out of draft. GitHub's REST API has no
 // endpoint for it, so this one call goes through GraphQL.
 const markReadyMutation = `mutation($id: ID!) {

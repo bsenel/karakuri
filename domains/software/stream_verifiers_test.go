@@ -83,6 +83,10 @@ func (f *fakeForge) ChangedFiles(_ context.Context, _, prID string) ([]string, e
 	return f.files, nil
 }
 
+func (f *fakeForge) ListBranches(context.Context, string, string) ([]versioncontrol.Branch, error) {
+	return nil, versioncontrol.ErrUnsupported
+}
+
 func (f *fakeForge) MarkReady(_ context.Context, repo, prID string) error {
 	f.markedReady = append(f.markedReady, repo+"#"+prID)
 	return f.markReadyErr

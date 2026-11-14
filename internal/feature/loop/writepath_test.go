@@ -85,6 +85,10 @@ func (v *recordingVC) ChangedFiles(context.Context, string, string) ([]string, e
 	return nil, versioncontrol.ErrUnsupported
 }
 
+func (v *recordingVC) ListBranches(context.Context, string, string) ([]versioncontrol.Branch, error) {
+	return nil, versioncontrol.ErrUnsupported
+}
+
 func (v *recordingVC) MarkReady(context.Context, string, string) error {
 	return versioncontrol.ErrUnsupported
 }
