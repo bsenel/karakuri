@@ -106,7 +106,9 @@ func streamTemplates() []objective.Template {
 			Risk:            objective.RiskConsequential,
 			SuggestedAgents: []agent.Definition{{ID: "software.agent.implementer"}},
 			Description: "Implement the roadmap phases and backlog entries marked Planned on main, as many verified slices per pass as fit, " +
-				"and open each item's pull request when it is complete.",
+				"and open each item's pull request when it is complete. " +
+				"When a group's checklist is fully ticked, the plan includes software.act.mark_ready with params.branch, " +
+				"and a later group of the same phase opens with software.act.create_pr params.base_branch set to the earlier group's head.",
 			SuccessCriteria: []objective.Criterion{
 				verified("pr", "The item's pull request was opened or updated in this pass (params: branch, since)", CapStreamPR, 0.2),
 				verified("ci", "Every check is green at the pull request's head (params: branch)", CapCIGreen, 0.2),

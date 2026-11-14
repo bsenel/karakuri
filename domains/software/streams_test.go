@@ -2,10 +2,26 @@ package software
 
 import (
 	"math"
+	"strings"
 	"testing"
 
 	"github.com/bsenel/karakuri/internal/core/objective"
 )
+
+// The delivery brief tells a pass to mark a ticked group's pull request ready
+// and to stack a later group of the same phase on the earlier head (Phase 44
+// step 1); the plan follows the brief, so the brief is what carries it.
+func TestRoadmapDeliveryBriefMarksReadyAndStacks(t *testing.T) {
+	desc := streamTemplate(t, roadmapDeliveryTemplateID).Description
+	for _, want := range []string{
+		"When a group's checklist is fully ticked, the plan includes software.act.mark_ready with params.branch",
+		"a later group of the same phase opens with software.act.create_pr params.base_branch set to the earlier group's head",
+	} {
+		if !strings.Contains(desc, want) {
+			t.Errorf("the delivery brief does not say %q:\n%s", want, desc)
+		}
+	}
+}
 
 // streamCases is what each standing stream template is pinned to: how its
 // author regards a mistake, and the agent whose bounds it runs under.

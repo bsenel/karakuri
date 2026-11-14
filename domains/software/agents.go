@@ -80,7 +80,7 @@ func softwareAgentDefinitions() []agent.Definition {
 			Memory: mem, ReasoningStrategy: agent.ReasoningReAct,
 			// Listing run_remediation here is the whole gate: a plan that
 			// names it escalates whatever its confidence (ADR 015).
-			Authority: authority(10, 0.8, "software.act.create_pr", CapRunRemediation),
+			Authority: authority(10, 0.8, "software.act.create_pr", CapMarkReady, CapRunRemediation),
 			LLMHints:  capability.LLMHints{PreferredProvider: "claude", TemperatureMax: 0.4},
 		},
 		{
