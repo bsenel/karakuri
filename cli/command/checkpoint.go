@@ -11,6 +11,9 @@ func checkpointCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "checkpoint",
 		Short: "Review and resolve checkpoints: the points where a loop stops for a human decision",
+		Example: `  krk checkpoint list
+  krk checkpoint get cp_123
+  krk checkpoint resolve cp_123 --decision approve --note "plan looks right"`,
 	}
 	cmd.AddCommand(checkpointListCmd(), checkpointGetCmd(), checkpointResolveCmd())
 	return cmd

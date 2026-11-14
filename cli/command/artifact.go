@@ -9,6 +9,9 @@ func artifactCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "artifact",
 		Short: "Manage artifacts",
+		Example: `  krk artifact list
+  krk artifact get <sha>
+  krk artifact diff <sha-a> <sha-b>`,
 	}
 	cmd.AddCommand(artifactListCmd(), artifactGetCmd(), artifactDiffCmd())
 	return cmd

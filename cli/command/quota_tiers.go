@@ -121,6 +121,7 @@ func quotaTiersCmd() *cobra.Command {
 
 An empty list means every tier comes from configuration, which is the state a
 fresh deployment is in.`,
+		Example: `  krk quota tiers`,
 		RunE: func(c *cobra.Command, _ []string) error {
 			data, _, err := api.Get("/quota/tiers")
 			if err != nil {
