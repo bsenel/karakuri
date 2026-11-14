@@ -12,6 +12,7 @@ import (
 
 	"github.com/bsenel/karakuri/internal/core/environment"
 	"github.com/bsenel/karakuri/internal/platform/tools/cliagent"
+	"github.com/bsenel/karakuri/internal/platform/tools/versioncontrol"
 )
 
 // Phase 44 step 2: a coding action that ends without a commit of its own
@@ -278,5 +279,44 @@ func TestSalvageOfANonRepositorySaysWhy(t *testing.T) {
 	}
 	if v, ok := res.StateDelta["salvage_branch"]; ok {
 		t.Errorf("salvage_branch = %v, want none for a worktree that is not a repository", v)
+	}
+}
+
+// Part (c): the next pass learns of a salvage branch from the git observation,
+// which lists each one by name and SHA so a plan can cherry-pick or discard it.
+// Other branches are not listed.
+func TestGitObservationListsSalvageBranches(t *testing.T) {
+	salvaged := versioncontrol.Branch{Name: salvageWantBranch, SHA: strings.Repeat("a", 40)}
+	env := &gitEnv{id: EnvGit, vc: &vcStub{branches: []versioncontrol.Branch{
+		salvaged,
+		{Name: salvageItemBranch, SHA: strings.Repeat("b", 40)},
+	}}}
+
+	obs, err := env.Observe(t.Context(), environment.ObservationQuery{})
+	if err != nil {
+		t.Fatalf("observe: %v", err)
+	}
+	got, ok := obs.State["salvage_branches"].([]map[string]any)
+	if !ok {
+		t.Fatalf("salvage_branches = %#v, want a list (state %v)", obs.State["salvage_branches"], obs.State)
+	}
+	if len(got) != 1 || got[0]["branch"] != salvaged.Name || got[0]["sha"] != salvaged.SHA {
+		t.Errorf("salvage_branches = %v, want only %s at %s", got, salvaged.Name, salvaged.SHA)
+	}
+}
+
+// A forge that cannot list branches says so rather than reporting none.
+func TestGitObservationSaysWhenItCannotListSalvageBranches(t *testing.T) {
+	env := &gitEnv{id: EnvGit, vc: &vcStub{err: versioncontrol.ErrUnsupported}}
+
+	obs, err := env.Observe(t.Context(), environment.ObservationQuery{})
+	if err != nil {
+		t.Fatalf("observe: %v", err)
+	}
+	if _, ok := obs.State["salvage_branches"]; ok {
+		t.Errorf("salvage_branches = %v, want none when the read failed", obs.State["salvage_branches"])
+	}
+	if reason, _ := obs.State["salvage_branches_error"].(string); reason == "" {
+		t.Errorf("salvage_branches_error = %v, want the reason (state %v)", obs.State["salvage_branches_error"], obs.State)
 	}
 }

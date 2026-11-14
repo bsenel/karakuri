@@ -35,3 +35,7 @@ func (n *NoOp) ListChecks(_ context.Context, _, _ string) ([]CheckRun, error) {
 func (n *NoOp) ChangedFiles(_ context.Context, _, _ string) ([]string, error) {
 	return nil, fmt.Errorf("noop: changed files: %w", ErrUnsupported)
 }
+
+func (n *NoOp) ListBranches(_ context.Context, _, _ string) ([]Branch, error) {
+	return nil, fmt.Errorf("noop: branches: %w", ErrUnsupported)
+}

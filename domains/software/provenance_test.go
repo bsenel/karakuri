@@ -2,6 +2,7 @@ package software
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -16,6 +17,8 @@ import (
 type vcStub struct {
 	prs     []versioncontrol.PRSummary
 	commits []versioncontrol.Commit
+	// branches is what ListBranches returns, filtered by its prefix.
+	branches []versioncontrol.Branch
 	// err, when set, is what both reads return instead of their list.
 	err error
 
@@ -57,6 +60,19 @@ func (s *vcStub) ListChecks(context.Context, string, string) ([]versioncontrol.C
 
 func (s *vcStub) ChangedFiles(context.Context, string, string) ([]string, error) {
 	return nil, versioncontrol.ErrUnsupported
+}
+
+func (s *vcStub) ListBranches(_ context.Context, _, prefix string) ([]versioncontrol.Branch, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	var out []versioncontrol.Branch
+	for _, b := range s.branches {
+		if strings.HasPrefix(b.Name, prefix) {
+			out = append(out, b)
+		}
+	}
+	return out, nil
 }
 
 // A pull request title is typed by whoever opened it, which on a public

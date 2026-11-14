@@ -74,6 +74,10 @@ func (f *fakeForge) ChangedFiles(_ context.Context, _, prID string) ([]string, e
 	return f.files, nil
 }
 
+func (f *fakeForge) ListBranches(context.Context, string, string) ([]versioncontrol.Branch, error) {
+	return nil, versioncontrol.ErrUnsupported
+}
+
 // passStart is when the pass under verification began.
 var passStart = time.Date(2026, 10, 17, 12, 0, 0, 0, time.UTC)
 
