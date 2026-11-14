@@ -16,6 +16,7 @@ func TestRoadmapDeliveryBriefMarksReadyAndStacks(t *testing.T) {
 	for _, want := range []string{
 		"When a group's checklist is fully ticked, the plan includes software.act.mark_ready with params.branch",
 		"a later group of the same phase opens with software.act.create_pr params.base_branch set to the earlier group's head",
+		"Once the earlier group's pull request merges, the first action on the later group's branch merges main into it, keeping both sides, never rebasing",
 	} {
 		if !strings.Contains(desc, want) {
 			t.Errorf("the delivery brief does not say %q:\n%s", want, desc)
