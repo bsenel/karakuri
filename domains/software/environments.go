@@ -76,7 +76,7 @@ func softwareEnvironmentFactories(reg *tools.Registry) []environment.Factory {
 				CapPathsDeclared,
 			},
 			Build: func(ctx environment.BuildContext) (environment.Environment, error) {
-				return &gitEnv{id: EnvGit, vc: boundVC(ctx)}, nil
+				return &gitEnv{id: EnvGit, vc: boundVC(ctx), verifiers: forgeVerifiers}, nil
 			},
 		},
 		{
@@ -283,6 +283,10 @@ func (e *noopEnv) Snapshot(_ context.Context) (environment.EnvironmentSnapshot, 
 type gitEnv struct {
 	id environment.EnvironmentID
 	vc versioncontrol.VersionControlAdapter
+	// verifiers are the forge verifiers mark_ready tries on this forge's own
+	// pull requests when a pull request changes one of their files (Phase 44
+	// step 5).
+	verifiers []verifierRule
 }
 
 // gitObservationWindow is how far back the repository observation reaches.

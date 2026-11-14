@@ -44,6 +44,26 @@ type fakeForge struct {
 	// request CreatePR was handed.
 	markedReady []string
 	created     []versioncontrol.PullRequest
+
+	// merged is what ListMergedPRs returns, and mergedReads how often it was
+	// asked.
+	merged      []versioncontrol.PRSummary
+	mergedReads int
+	// bodyEdits is each EditPRBody call, in order.
+	bodyEdits []bodyEdit
+}
+
+// bodyEdit is one EditPRBody call.
+type bodyEdit struct{ repo, prID, body string }
+
+func (f *fakeForge) ListMergedPRs(context.Context, string, int) ([]versioncontrol.PRSummary, error) {
+	f.mergedReads++
+	return f.merged, nil
+}
+
+func (f *fakeForge) EditPRBody(_ context.Context, repo, prID, body string) error {
+	f.bodyEdits = append(f.bodyEdits, bodyEdit{repo, prID, body})
+	return nil
 }
 
 func (f *fakeForge) Name() string { return "fake_forge" }
