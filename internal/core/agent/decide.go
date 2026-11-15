@@ -2,10 +2,12 @@ package agent
 
 import (
 	"fmt"
+	"regexp"
 	"sort"
 	"strings"
 
 	"github.com/bsenel/karakuri/internal/core/capability"
+	"github.com/bsenel/karakuri/internal/core/environment"
 )
 
 // Evidence is where the material a plan was drafted from came from.
@@ -25,6 +27,9 @@ type Evidence struct {
 	// sorted and deduplicated by WithSource so an escalation reason and the
 	// audit row beside it read the same across runs.
 	ThirdParty []string
+
+	// Delivered is the work the iteration's observations say is already done.
+	Delivered []environment.DeliveredWork
 }
 
 // HasThirdParty reports whether a stranger's writing reached the planner.
@@ -48,7 +53,36 @@ func (e Evidence) WithSource(envID string) Evidence {
 	next = append(next, e.ThirdParty...)
 	next = append(next, envID)
 	sort.Strings(next)
-	return Evidence{ThirdParty: next}
+	// Only the sources change: the work an earlier observation reported
+	// delivered is still delivered after a stranger's observation arrives.
+	e.ThirdParty = next
+	return e
+}
+
+// redoes returns the first delivered work a write names, and whether one does.
+//
+// A Ref names work the way a plan would, so a write names it when the Ref's
+// words appear in its text in order, in any case, as whole words: "Phase 44
+// Step 5" names "phase 44 step 5", where "phase 44 step 50" and "phase 44 step
+// 15" do not. The text is matched rather than understood, so the check holds
+// however a plan is worded as long as it says which work it is.
+func (e Evidence) redoes(writes []string) (environment.DeliveredWork, bool) {
+	for _, d := range e.Delivered {
+		words := strings.Fields(d.Ref)
+		if len(words) == 0 {
+			continue
+		}
+		for i, w := range words {
+			words[i] = regexp.QuoteMeta(w)
+		}
+		ref := regexp.MustCompile(`(?i)(?:^|[^\pL\pN])` + strings.Join(words, `\s+`) + `(?:$|[^\pL\pN])`)
+		for _, w := range writes {
+			if ref.MatchString(w) {
+				return d, true
+			}
+		}
+	}
+	return environment.DeliveredWork{}, false
 }
 
 // Verdict is what a set of authority bounds permits for one plan.
@@ -93,7 +127,10 @@ type Verdict struct {
 // reason one step further: "a stranger's writing was in front of the planner"
 // is a fact about the world, actionable by looking at the named source, where
 // confidence is the model's own report on itself.
-func (b AuthorityBounds) Decide(confidence, threshold float64, plannedCapabilities []capability.CapabilityID, ev Evidence) Verdict {
+//
+// writes is the text of each planned action that writes files, which is what
+// a plan says it will do and so what it is checked against ev.Delivered.
+func (b AuthorityBounds) Decide(confidence, threshold float64, plannedCapabilities []capability.CapabilityID, writes []string, ev Evidence) Verdict {
 	v := Verdict{Allowed: len(plannedCapabilities)}
 
 	// 1. Provenance. A plan drafted while somebody else's writing was in
@@ -110,14 +147,28 @@ func (b AuthorityBounds) Decide(confidence, threshold float64, plannedCapabiliti
 			strings.Join(ev.ThirdParty, ", "))
 	}
 
-	// 2. Confidence. A threshold of zero opts out rather than escalating
+	// 2. Delivered work. A plan whose write names work an observation says is
+	// already done goes to a human with where it was done: redoing it is at
+	// best wasted and at worst a second pull request racing the first. It
+	// comes before confidence and the approval set because it is a fact about
+	// this plan a reviewer checks in one click, where those say nothing about
+	// this plan in particular.
+	if d, ok := ev.redoes(writes); !v.Escalate && ok && len(plannedCapabilities) > 0 {
+		v.Escalate = true
+		v.Reason = fmt.Sprintf("plan redoes delivered work: %s is ticked on %s", d.Ref, d.Where)
+		if len(d.SHAs) > 0 {
+			v.Reason += " (" + strings.Join(d.SHAs, ", ") + ")"
+		}
+	}
+
+	// 3. Confidence. A threshold of zero opts out rather than escalating
 	// everything — an agent that declared no threshold has no opinion.
 	if !v.Escalate && threshold > 0 && confidence < threshold {
 		v.Escalate = true
 		v.Reason = fmt.Sprintf("confidence %.2f below threshold %.2f", confidence, threshold)
 	}
 
-	// 3. Capabilities that need approval: the ones the bounds name, plus every
+	// 4. Capabilities that need approval: the ones the bounds name, plus every
 	// tool discovered from an MCP server.
 	//
 	// The MCP namespace is in the approval set by default because no pack can
@@ -146,14 +197,14 @@ func (b AuthorityBounds) Decide(confidence, threshold float64, plannedCapabiliti
 		}
 	}
 
-	// 4. A cap of zero is the "draft and ask" bound: no autonomous actions at
+	// 5. A cap of zero is the "draft and ask" bound: no autonomous actions at
 	// all. It escalates rather than trimming, for the reason on Verdict.Allowed.
 	if !v.Escalate && b.MaxAutonomousActions == 0 && len(plannedCapabilities) > 0 {
 		v.Escalate = true
 		v.Reason = "agent is bounded to no autonomous actions"
 	}
 
-	// 5. Trim to the cap. UnlimitedActions (negative) and zero both opt out of
+	// 6. Trim to the cap. UnlimitedActions (negative) and zero both opt out of
 	// trimming — zero because it escalated above. The cap applies whatever
 	// escalated: an approval falls through to act, so the reviewer must be
 	// shown the plan that will actually run, and the cap is what will run.

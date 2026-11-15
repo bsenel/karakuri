@@ -93,6 +93,10 @@ func (v *recordingVC) MarkReady(context.Context, string, string) error {
 	return versioncontrol.ErrUnsupported
 }
 
+func (v *recordingVC) CompareCommits(context.Context, string, string, string) ([]versioncontrol.Commit, error) {
+	return nil, versioncontrol.ErrUnsupported
+}
+
 func (v *recordingVC) ListMergedPRs(context.Context, string, int) ([]versioncontrol.PRSummary, error) {
 	return nil, versioncontrol.ErrUnsupported
 }

@@ -30,6 +30,7 @@ func stepObserve(ctx context.Context, sc *stepContext) loop.WorldState {
 	var observations []environment.Observation
 	var versions []string
 	var blind []string
+	var delivered []environment.DeliveredWork
 
 	for _, env := range sc.envs {
 		obs, err := env.Observe(ctx, environment.ObservationQuery{Limit: 20})
@@ -42,6 +43,7 @@ func stepObserve(ctx context.Context, sc *stepContext) loop.WorldState {
 			continue
 		}
 		observations = append(observations, obs)
+		delivered = append(delivered, obs.Delivered...)
 		if obs.Version != "" {
 			versions = append(versions, obs.Version)
 		}
@@ -56,6 +58,10 @@ func stepObserve(ctx context.Context, sc *stepContext) loop.WorldState {
 	}
 
 	sort.Strings(blind)
+	// Unlike the third-party sources, what is delivered is replaced each
+	// iteration: it is a reading of the world as it is now, and a step the
+	// last iteration saw ticked may since have been unticked.
+	sc.evidence.Delivered = delivered
 
 	// 3. Compute composite version SHA
 	compositeVersion := vfs.SHA([]byte(strings.Join(versions, ",")))

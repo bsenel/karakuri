@@ -15,7 +15,7 @@ func TestMCPActionEscalatesWithBoundsThatNameNothing(t *testing.T) {
 	bounds := agent.AuthorityBounds{MaxAutonomousActions: agent.UnlimitedActions}
 	mcpTool := capability.MCPCapabilityID("acme_files", "read_file")
 
-	v := bounds.Decide(1.0, 0, []capability.CapabilityID{"test.act.real", mcpTool}, agent.Evidence{})
+	v := bounds.Decide(1.0, 0, []capability.CapabilityID{"test.act.real", mcpTool}, nil, agent.Evidence{})
 	if !v.Escalate {
 		t.Fatal("a discovered tool ran without asking on a fresh deployment")
 	}
@@ -31,7 +31,7 @@ func TestMCPActionEscalatesWithBoundsThatNameNothing(t *testing.T) {
 // measuring the namespace and not something else about the plan.
 func TestThePlanWithoutTheMCPActionRunsUnasked(t *testing.T) {
 	bounds := agent.AuthorityBounds{MaxAutonomousActions: agent.UnlimitedActions}
-	v := bounds.Decide(1.0, 0, []capability.CapabilityID{"test.act.real"}, agent.Evidence{})
+	v := bounds.Decide(1.0, 0, []capability.CapabilityID{"test.act.real"}, nil, agent.Evidence{})
 	if v.Escalate {
 		t.Fatalf("a plan with no MCP action escalated: %s", v.Reason)
 	}

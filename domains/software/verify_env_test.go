@@ -149,6 +149,9 @@ func (w *windowVC) ListBranches(context.Context, string, string) ([]versioncontr
 func (w *windowVC) MarkReady(context.Context, string, string) error {
 	return versioncontrol.ErrUnsupported
 }
+func (w *windowVC) CompareCommits(context.Context, string, string, string) ([]versioncontrol.Commit, error) {
+	return nil, versioncontrol.ErrUnsupported
+}
 func (w *windowVC) ListMergedPRs(context.Context, string, int) ([]versioncontrol.PRSummary, error) {
 	return nil, versioncontrol.ErrUnsupported
 }

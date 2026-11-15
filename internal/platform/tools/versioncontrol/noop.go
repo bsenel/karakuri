@@ -44,6 +44,10 @@ func (n *NoOp) MarkReady(_ context.Context, _, _ string) error {
 	return fmt.Errorf("noop: mark ready: %w", ErrUnsupported)
 }
 
+func (n *NoOp) CompareCommits(_ context.Context, _, _, _ string) ([]Commit, error) {
+	return nil, fmt.Errorf("noop: compare commits: %w", ErrUnsupported)
+}
+
 func (n *NoOp) ListMergedPRs(_ context.Context, _ string, _ int) ([]PRSummary, error) {
 	return nil, fmt.Errorf("noop: merged pull requests: %w", ErrUnsupported)
 }

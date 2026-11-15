@@ -25,12 +25,12 @@ func TestSamePlanEscalatesOnUntrustedEvidenceAndNotOtherwise(t *testing.T) {
 	// anyway would prove nothing.
 	bounds := agent.AuthorityBounds{MaxAutonomousActions: agent.UnlimitedActions}
 
-	trusted := bounds.Decide(0.95, 0, plan(2), agent.Evidence{})
+	trusted := bounds.Decide(0.95, 0, plan(2), nil, agent.Evidence{})
 	if trusted.Escalate {
 		t.Fatalf("a plan built from the operator's own infrastructure escalated: %s", trusted.Reason)
 	}
 
-	untrusted := bounds.Decide(0.95, 0, plan(2), agent.Evidence{}.WithSource("software.env.communication"))
+	untrusted := bounds.Decide(0.95, 0, plan(2), nil, agent.Evidence{}.WithSource("software.env.communication"))
 	if !untrusted.Escalate {
 		t.Fatal("a plan built from somebody else's writing ran without asking")
 	}
@@ -56,7 +56,7 @@ func TestUntrustedEvidenceEscalatesAtEveryLevelOfAutonomy(t *testing.T) {
 		{"no threshold", agent.AuthorityBounds{MaxAutonomousActions: 5, ConfidenceThreshold: 0}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			v := tc.bounds.Decide(1.0, 0, plan(1), ev)
+			v := tc.bounds.Decide(1.0, 0, plan(1), nil, ev)
 			if !v.Escalate {
 				t.Errorf("%s ran a plan drafted from untrusted material without asking", tc.name)
 			}
@@ -71,7 +71,7 @@ func TestProvenanceIsTheReasonWhenConfidenceAlsoFails(t *testing.T) {
 	v := agent.AuthorityBounds{
 		MaxAutonomousActions: agent.UnlimitedActions,
 		ConfidenceThreshold:  0.9,
-	}.Decide(0.4, 0.9, plan(2), agent.Evidence{}.WithSource("software.env.git"))
+	}.Decide(0.4, 0.9, plan(2), nil, agent.Evidence{}.WithSource("software.env.git"))
 
 	if !v.Escalate {
 		t.Fatal("did not escalate")
@@ -85,7 +85,7 @@ func TestProvenanceIsTheReasonWhenConfidenceAlsoFails(t *testing.T) {
 // actions is noise a reviewer cannot answer — the same guard the zero cap has.
 func TestUntrustedEvidenceWithNothingPlannedDoesNotEscalate(t *testing.T) {
 	v := agent.AuthorityBounds{MaxAutonomousActions: agent.UnlimitedActions}.
-		Decide(1.0, 0, nil, agent.Evidence{}.WithSource("software.env.git"))
+		Decide(1.0, 0, nil, nil, agent.Evidence{}.WithSource("software.env.git"))
 	if v.Escalate {
 		t.Errorf("an empty plan escalated on provenance: %s", v.Reason)
 	}
@@ -95,7 +95,7 @@ func TestUntrustedEvidenceWithNothingPlannedDoesNotEscalate(t *testing.T) {
 // act and the reviewer must be shown what will actually run.
 func TestProvenanceEscalationStillRespectsTheCap(t *testing.T) {
 	v := agent.AuthorityBounds{MaxAutonomousActions: 2}.
-		Decide(1.0, 0, plan(5), agent.Evidence{}.WithSource("software.env.git"))
+		Decide(1.0, 0, plan(5), nil, agent.Evidence{}.WithSource("software.env.git"))
 	if !v.Escalate {
 		t.Fatal("did not escalate")
 	}

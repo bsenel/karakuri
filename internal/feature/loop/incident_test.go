@@ -263,7 +263,7 @@ func TestIncidentObservedEscalatedRemediatedRecorded(t *testing.T) {
 		for _, a := range p.Actions {
 			planned = append(planned, capability.CapabilityID(a.CapabilityID))
 		}
-		v := b.Decide(0.99, b.ConfidenceThreshold, planned, coreagent.Evidence{})
+		v := b.Decide(0.99, b.ConfidenceThreshold, planned, nil, coreagent.Evidence{})
 		if !v.Escalate {
 			t.Fatalf("the SRE planned %s with nothing third-party in evidence and ran it without asking", software.CapRunRemediation)
 		}

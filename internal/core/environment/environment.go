@@ -79,6 +79,21 @@ type Observation struct {
 	// infrastructure; an environment that returns a third party's prose says
 	// so, and the loop escalates any plan drafted while it is in evidence.
 	Trust Trust
+
+	// Delivered is the work this observation says is already done, so a plan
+	// that would do it again is asked about before it runs (Phase 44 step 3).
+	Delivered []DeliveredWork
+}
+
+// DeliveredWork is one piece of work an environment saw delivered. What a Ref
+// names is the domain's business; the core only matches it against a plan.
+type DeliveredWork struct {
+	// Ref names the work as a plan would, such as "phase 44 step 5".
+	Ref string
+	// Where says where it was seen delivered, such as "pull request #12".
+	Where string
+	// SHAs are the commits that delivered it, when the source names any.
+	SHAs []string
 }
 
 type Action struct {
