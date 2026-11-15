@@ -54,7 +54,7 @@ Phases 27–32 were proposed from two kinds of evidence: what this repository de
 | 41    | Success a Machine Can Check                | **Completed** |
 | 42    | An MCP Call Carries Only What the Tool Declared | **Planned** |
 | 43    | A Provider's Tool-Call Shape, Pinned by a Test | **Planned** |
-| 44    | Delivery That Shapes and Recovers Its Own Work | **Planned** |
+| 44    | Delivery That Shapes and Recovers Its Own Work | **Completed** |
 | 45    | The Repository's Own Checks Run Before a Delegated Push | **Planned** |
 | 46    | An Approval After Third-Party Text Buys One Action, Never a Rung | **Planned** |
 | 47    | First Alpha Release (`v0.1.0-alpha.1`, tagged once 37 to 41 and 47 are Completed) | **Planned** |
@@ -6504,7 +6504,7 @@ adopt the Go SDK 2.0.0; whether to do either is what step 1 finds out.
 
 ---
 
-## Phase 44 — Delivery That Shapes and Recovers Its Own Work (Planned)
+## Phase 44 — Delivery That Shapes and Recovers Its Own Work (Completed)
 
 Each step below is a task a person did by hand for the delivery stream between
 2026-10-17 and 2026-11-01, while Phase 41 was built. Phase 40 already takes
@@ -6634,6 +6634,27 @@ read this forge correctly. Not
 EB-004 (Planned, an exit 1 leaves no reason), which step 2 builds on without
 redoing. It merges nothing: whether a ready pull request is merged stays the
 owner's decision.
+
+**Shipped (step 1).** Pull requests in groups shipped in #243.
+
+**Shipped (step 2).** Keeping what a killed action wrote, on a
+`karakuri/salvage/...` branch, shipped in #244.
+
+**Shipped (step 3).** Planning from what is delivered shipped in #246.
+
+**Shipped (step 4).** Verification inside its limit is in this pull request,
+#245.
+
+**Shipped (step 5).** A new verifier meeting this deployment's data before
+review shipped in #247.
+
+**Not verified.** The last acceptance line has not been observed yet: no week
+of the delivery stream on the new code has passed, so neither the count of
+rejections whose note says a plan "redoes" delivered work nor the absence of a
+verification failed only for time has been measured. Step 4's timeout and
+missing-tool behaviour is shown on fixtures (a two-package module with a test
+that sleeps past a 20 s limit, and a command that is not installed), not on a
+real 10-minute run.
 
 ---
 
