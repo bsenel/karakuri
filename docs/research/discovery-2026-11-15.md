@@ -21,7 +21,7 @@ Part 2: items 1 to 7 written in p2 with ranking table and Still thin list; item 
 ### Part 3
 
 <!-- w3:start -->
-Part 3: started; nothing written yet.
+Part 3: wrote three products: Codex and Agents SDK, Claude Code and Agent SDK, LangGraph and LangSmith. Each one covers only the newest weeks; all [E]. Not reached: May to October for Codex, LangGraph April to June and LangSmith April to August (all still unread), and complaints for Codex and LangGraph.
 <!-- w3:end -->
 
 ### Part 4
@@ -162,7 +162,7 @@ Read before writing: p1w above. The 2026-11-08 and 2026-11-01 sections of this h
 ### Products 1 to 3 (part 3)
 
 <!-- p3:start -->
-Part 3 status: in progress
+Part 3 status: truncated, not reached: Codex 2026-05-01 to 10-28, Agents SDK May to September, Claude Code version dates, LangGraph 2026-04-08 to 06-29, LangSmith April to August, complaints for Codex and LangGraph, OpenAI automations, review and Decisions API pages
 
 Part 3 extends the p3 sections of discovery-2026-11-08.md, -11-01.md and -10-25.md, and does not restate them. On 2026-11-15 every page loaded, but each one only showed its newest entries. All fetches went through a tool that returns a model-written extract, so every item below is [E] and nothing is quoted. Where the tool only summarised the unread tail of a page, that is said, and those items are weaker than the rest. Vendor notes are claims, not measurements.
 
@@ -180,6 +180,43 @@ New: yes, but only for the newest weeks. The thin spot, 2026-05-01 to 2026-10-28
 - **(iii) What Karakuri does that it does not.** The authority bounds fail toward asking: if nobody fills them in, a run may take no action without a person, and opting out takes the explicit `UnlimitedActions = -1` (internal/core/agent/agent.go:32-35, opened). A plan built while third-party text is in evidence escalates, whatever autonomy the agent has earned (internal/core/environment/environment.go:55-59, opened). Inferred: neither SDK release note read here describes provenance on tool results that changes whether a run escalates. Codex's `--trust` gates a whole directory, not a payload. This rests on the two newest weeks of notes only.
 - **(iv) Complaints.** Not read this pass [N]. Time went to the release notes.
 - **(v) Inferred.** The Agents SDK is adding durable sessions, reconciliation on resume and budgets, which overlaps with Karakuri's reconcile and checkpoint layers. A cost cap per run is the gap most worth a proposal (part 8). This rests on alpha release notes, which are vendor claims; nothing was measured.
+
+#### 2. Claude Code and the Claude Agent SDK
+
+New: yes. Issue #27661, the Agent SDK feed, and the newest CHANGELOG.md entries were read for the first time. The window 2026-05-15 to 2026-10-19 is still undated: CHANGELOG.md entries carry version numbers but no dates.
+
+- **(i) Shipped.** [E] https://raw.githubusercontent.com/anthropics/claude-code/main/CHANGELOG.md (read 2026-11-15; about 1.25M characters, the first ~40,000 read, which covers 2.1.325 and 2.1.323).
+  - 2.1.325: scheduled tasks and `/loop` ask before running a skill that declares tools or hooks, unless the skill is on the allow list. Sandboxed Bash goes through the normal permission prompts by default. Writes to settings, skills, agents and hooks are refused in added directories. A background MCP task tells the model when it is waiting for an answer. `--max-budget-usd` counts a mod's model calls.
+  - 2.1.323: an experimental Code Mode, where the model writes JavaScript to call its tools; a version gate in `plugin.json`; a heartbeat while long hooks run in headless and SDK sessions.
+  - 2.1.314 to 2.1.322 come only from the tool's summary and are unverified: `permissions.denyInsteadOfPrompting`, `permissions.blockWritesOutsideWorkingDirectories`, and a self-paced `/loop` that ends unless a keepalive is set.
+- **(i) Shipped, Agent SDK.** [E] https://github.com/anthropics/claude-agent-sdk-python/releases.atom (read 2026-11-15; full feed, 10 entries from v0.2.173 on 2026-10-22 to v0.2.182 on 2026-11-13). Most entries only bump the bundled CLI (2.1.309 to 2.1.318). The one feature is in v0.2.177 (2026-11-03): `HookMatcher(on_failure="block")` blocks the action when a hook callback fails. The default is still "continue".
+- **(ii) What it does that Karakuri does not.** Inferred from (i): a cost cap per session (`--max-budget-usd`), sandboxed shell commands, and an option to make a failing hook block the action. Karakuri's bounds have no money dimension (internal/core/agent/agent.go:37-46, opened).
+- **(iii) What Karakuri does that it does not.** Karakuri's reasoning loop converges once and stops, and the long-running work lives in a separate reconcile layer that calls the loop (AGENTS.md rule 8, opened). In the 2.1.319 summary, which is unverified, a self-paced `/loop` simply ends unless a keepalive is set. Karakuri escalates a plan when third-party text is in evidence (internal/core/environment/environment.go:55-59, opened). Inferred: no Claude Code entry read here ties autonomy to where the text came from. Its gates key on the tool, the path and the directory.
+- **(iv) Complaints.** [E] https://github.com/anthropics/claude-code/issues/27661 (read 2026-11-15, full thread). "Subagents should inherit parent session hooks and permission rules", opened 2026-02-22. Observed: subagents started through the Task tool do not apply the project's PreToolUse hooks, allow and deny rules, or CLAUDE.md, so a guard the user set up silently stops applying. The proposed fix is an option to pass them down, or inheritance by default. The workaround is to copy each hook into every agent file. The author closed it the same day as a duplicate of #21460, #18950 and #27533, and a bot locked it on 2026-03-02. There is no other human discussion. Whether those three issues are fixed was not read.
+- **(v) Inferred.** The complaint, rules that do not reach delegated agents, is the same failure Karakuri's feasibility work checks for, namely sub-agents inheriting bounds (2026-11-08 Feasibility (ii)). That makes "delegated runs inherit authority" a claim worth testing in Karakuri's conformance suite, not just asserting. Nothing was tested this pass.
+
+#### 3. LangGraph and LangSmith
+
+New: yes, for 2026-11-05 to 11-14 only. The fifth-cycle thin spot, LangGraph OSS from 2026-04-08 to 2026-06-29, is **still unread**: the Atom feed holds only the newest 10 releases. LangSmith from April to August is also still unread.
+
+- **(i) Shipped.** [E] https://github.com/langchain-ai/langgraph/releases.atom (read 2026-11-15; full feed, 10 entries dated 2026-11-05 to 11-14).
+  - langgraph 1.2.20 (2026-11-05): each `interrupt()` in a task gets its own ID, and a strict resume mode refuses stale answers to an interrupt.
+  - langgraph-sdk 0.4.13 and 0.4.14 (2026-11-05 to 11-06): `cancel_reason` on runs, and `strict_resume` on `runs.create`, `stream` and `wait`.
+  - langgraph-cli 0.4.42 (2026-11-06): a deploy metrics command.
+  - 1.2.21 and 1.2.22, and the checkpoint packages (2026-11-12 to 11-14): fixes and performance work on checkpoint reads.
+- **(i) Shipped, LangSmith.** [E] https://docs.langchain.com/langsmith/changelog (read 2026-11-15; about 343,000 characters, the first ~40,000 read). Only the 2026-10-26 to 11-09 weeks were read, and they repeat what 2026-11-08 recorded. The tool's summary of the tail reaches only back to October. April to August is not reached.
+- **(ii) What it does that Karakuri does not.** Inferred from (i): each pending human question carries its own ID, a stale answer is refused rather than applied, and a cancelled run records why.
+- **(iii) What Karakuri does that it does not.** Karakuri decides from the provenance of evidence whether a plan escalates (internal/core/environment/environment.go:55-59, opened). It also fails toward asking when bounds are unset (internal/core/agent/agent.go:32-35, opened). Inferred: none of the LangGraph notes read describe either. An interrupt is something the graph author places in code, not something triggered by where the data came from.
+- **(iv) Complaints.** Not read this pass [N]. Time went to the release notes.
+- **(v) Inferred.** Strict resume answers "what if a person answers an old question". Whether Karakuri's checkpoint resolution refuses an answer to a superseded checkpoint was not checked this pass; it is a concrete question for part 6 or part 8. This rests on vendor notes; nothing was tested.
+
+#### Still thin (part 3)
+
+1. Codex 2026-05-01 to 2026-10-28: re-fetch https://github.com/openai/codex/releases.atom from character offset ~40,000 onward, or https://developers.openai.com/codex/changelog (not tried this pass). Scheduled automations, automatic review and the Decisions API pages were not reached.
+2. Agents SDK 2026-05-15 to 2026-09-30: continue https://github.com/openai/openai-agents-python/releases.atom from offset ~40,000.
+3. Claude Code: CHANGELOG.md has no dates. Map versions to dates through https://github.com/anthropics/claude-code/releases?page=10 or the npm registry page https://registry.npmjs.org/@anthropic-ai/claude-code, which lists publish times. Also read duplicates #21460, #18950 and #27533 to see whether subagent inheritance shipped.
+4. LangGraph 2026-04-08 to 2026-06-29: https://github.com/langchain-ai/langgraph/releases?page=6 (the Atom feed holds only 10 entries). LangSmith April to August: https://docs.langchain.com/langsmith/changelog from offset ~140,000.
+5. Complaints for Codex and LangGraph: not read.
 <!-- p3:end -->
 
 ### Products 4 to 6 (part 4)
@@ -255,6 +292,17 @@ Part 2 sources, all read 2026-11-15:
 ### Part 3
 
 <!-- s3:start -->
+All read 2026-11-15, through a tool that returns a model-written extract.
+
+- https://github.com/openai/codex/releases.atom: primary; the first ~40,000 of ~425,000 characters were read, and the tail was summarised by the tool; [E].
+- https://github.com/openai/openai-agents-python/releases.atom: primary; the first ~40,000 of ~335,000 characters were read, and the tail was summarised; [E].
+- https://raw.githubusercontent.com/anthropics/claude-code/main/CHANGELOG.md: primary; the first ~40,000 of ~1.25M characters were read, and part of the rest was summarised; [E].
+- https://github.com/anthropics/claude-agent-sdk-python/releases.atom: primary; full feed of 10 entries; [E].
+- https://github.com/anthropics/claude-code/issues/27661: primary; full thread; [E].
+- https://github.com/langchain-ai/langgraph/releases.atom: primary; full feed of 10 entries; [E].
+- https://docs.langchain.com/langsmith/changelog: primary; the first ~40,000 of ~343,000 characters were read, and part of the tail was summarised; [E].
+- https://developers.openai.com/codex/changelog, https://github.com/langchain-ai/langgraph/releases?page=6, and OpenAI's scheduled automations, automatic review and Decisions API pages: not tried this pass; [N].
+- Karakuri files opened: internal/core/agent/agent.go:32-46, internal/core/environment/environment.go:55-59, AGENTS.md (rule 8).
 <!-- s3:end -->
 
 ### Part 4
