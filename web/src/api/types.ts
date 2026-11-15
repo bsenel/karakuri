@@ -28,7 +28,8 @@ export type InconclusiveReason =
   | 'unsupported'
   | 'too_few_samples'
   | 'no_baseline'
-  | 'measure_changed';
+  | 'measure_changed'
+  | 'timeout';
 
 export interface Criterion {
   id: string;
