@@ -35,6 +35,14 @@ func FindTemplate(domReg *domain.Registry, id string) (objective.Template, bool)
 	return objective.Template{}, false
 }
 
+// withTemplateConstraints is the objective as the planner is shown it: its own
+// constraints, then each of its template's whose ID it does not already hold.
+// Scaffolding for Phase 40 step 2; it returns the objective unchanged until the
+// fix lands.
+func withTemplateConstraints(domReg *domain.Registry, obj objective.Objective) objective.Objective {
+	return obj
+}
+
 // SelectAgent picks the agent definition an objective runs under.
 //
 // For a cross-domain objective it walks the declared domains in order and
