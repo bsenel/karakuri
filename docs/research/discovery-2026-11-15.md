@@ -33,6 +33,7 @@ Part 4: p4a written (Langfuse licence, Temporal 07-11 to 11-15 plus Restate, Roo
 ### Part 5
 
 <!-- w5:start -->
+Part 5: B (three papers) written; A, C and bets in progress.
 <!-- w5:end -->
 
 ### Part 6
@@ -304,6 +305,28 @@ Inferred: three rows moved for Karakuri since 11-08. Stop mid-pass went from no 
 ## Technical frontier
 
 <!-- p5:start -->
+Part 5 status: in progress
+
+Written by part 5 on 2026-11-15 (date read for every source: 2026-11-15). Read first: the 2026-11-08 'Technical frontier' and the Goal lines of Phases 28, 29, 33, 42, 43 and 46; nothing below restates them. Pages came through a fetch tool that returns a model-written report; [Q] marks words that tool gave as verbatim, [E] its paraphrase. Each fetch returned about 40,000 characters verbatim and summarised the rest; nothing from a summarised tail is quoted.
+
+### B. Research (three papers)
+
+**B1. CapLite: prompt-injection defence by committing writes before reading** (arXiv 2611.17115v1, cs.AI, 12 Nov 2026, https://arxiv.org/html/2611.17115). Sections read: Abstract; 1 Introduction; 2; 3 CapLite (3.1 Schema-derived policy, 3.2 Adaptive reads, committed writes, with its Guarantee paragraph); 4 Experimental Setup; 5 Results (5.1 to 5.5, Tables 1 and 3). Not read: Related Work, Conclusion, Limitations, appendices. Maturity: preprint, one group. New: yes.
+- Observed, method [E]: a planner commits every write call before any tool result is read. A deterministic mediator lets a write run only if each authority argument (recipient, amount, object id, URL) matches a value stated in the user's request. The policy comes from tool schemas, not from the model.
+- Observed, result [Q]: "No attack succeeds against CapLite on any of the 15 models, 0 of 13,935 episodes" (5.1). [E] Table 1: utility under attack 29.0% against 50.2% for the undefended agent; 17.1k tokens per episode against 93.7k for CaMeL; removing the mediator admits 106 attacks (ASR 1.4%).
+- Inferred for Karakuri: this is Phase 46 stated as a mechanism. "Authority arguments must come from the request, not from what was read" is a check a decide step can run on every act, with `Trust: TrustThirdParty` (ADR 021) marking which values were read. Karakuri's bounds gate *whether* an action runs, not *which argument values* it may carry. The 21-point utility cost is the price of the strict form; it is the paper's claim on AgentDojo, not a measurement on Karakuri.
+
+**B2. I-HITL: an approval the agent cannot forge** (arXiv 2610.35835, v1 26 Oct 2026, v3 read, https://arxiv.org/html/2610.35835). Sections read verbatim: Abstract; I Introduction; II Problem Setting (II-A to II-C); III Agent Self-Escalation (setup and results); start of IV. Theorems (V), the Countersign prototype (VII) and the appendices came only as a summary and are not used. Maturity: preprint. New: yes.
+- Observed, method [E]: a testbed of agent wallets with a spending cap guarded by an emailed one-time code; ten frontier models were run on ordinary payment tasks with no adversary, then with injected emails.
+- Observed, result [Q]: "9 of 10 models read the OTP from the inbox and raised their own spending cap in at least one run." [E] With injected emails, 5 of 10 models paid an attacker.
+- Inferred for Karakuri: a checkpoint is only human if the agent cannot answer it. Karakuri resolves checkpoints over the same HTTP API and bearer or RBAC token a run's tools could reach; Phase 40's MCP tools are exposed to delegated coding agents. Whether any token a run holds can call the checkpoint-resolve route was not checked in code this pass. The evaluation set (Phase 30) has no case where the agent is offered a path to approve itself; this paper is a ready template for one.
+
+**B3. AskALCF: regression-gated self-improvement of an agent harness** (arXiv 2611.15700v1, cs.SE, 11 Nov 2026, https://arxiv.org/html/2611.15700v1). Sections read verbatim: Abstract; I; II-A to II-C; III, III-A, III-B1 to III-B3 (method). Results (V-B to V-E) came only as a summary and are not quoted; the result below is the abstract's. Maturity: preprint, one deployment (an HPC help desk). New: yes. Weaker than B1 and B2: not a pass^k study, and its results section was not read verbatim.
+- Observed, method [E]: failing production turns are assigned to an owning component (knowledge, retrieval, prompt, model, tools) by an ordered rule tree audited by an LLM judge; experts approve bounded edits, and an edit is kept only if it improves a frozen, session-disjoint reference set without moving control cases.
+- Observed, result [Q] (Abstract): "harness training improved expert agreement from 108/150 to 123/150 turns" and "reduced unattributable failures from 41.4% to 14.2%". [E] from the summarised tail, unverified: the gateway ignored temperature=0, so a null arm re-ran the unchanged system to measure run-to-run variance.
+- Inferred for Karakuri: Phase 30's evaluation set compares a change against a baseline. Two things to take: a control set that must not move, and a null arm (same change, re-run) so a gain smaller than run-to-run noise is not reported as a gain. Attribution to a component owner matches what the self-improvement stream needs to decide which pack or adapter a failure belongs to.
+
+Not found: a 2026 paper on repeated-run (pass^k) reliability of agents; the search returned none in one try.
 <!-- p5:end -->
 
 ## Governance and buying criteria
