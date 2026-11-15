@@ -33,7 +33,7 @@ Part 4: p4a written (Langfuse licence, Temporal 07-11 to 11-15 plus Restate, Roo
 ### Part 5
 
 <!-- w5:start -->
-Part 5: B (three papers) written; A, C and bets in progress.
+Part 5: wrote B (three papers), A (MCP, A2A, OTel, IETF titles), C (Anthropic only) and three bets; not reached: OpenAI, Google and ADK changelogs, MCP SEPs and ext-auth.
 <!-- w5:end -->
 
 ### Part 6
@@ -305,7 +305,7 @@ Inferred: three rows moved for Karakuri since 11-08. Stop mid-pass went from no 
 ## Technical frontier
 
 <!-- p5:start -->
-Part 5 status: in progress
+Part 5 status: truncated, not reached: OpenAI changelog, Google AI Studio changelog, Google ADK release notes, MCP SEP list and ext-auth, an A2A implementer
 
 Written by part 5 on 2026-11-15 (date read for every source: 2026-11-15). Read first: the 2026-11-08 'Technical frontier' and the Goal lines of Phases 28, 29, 33, 42, 43 and 46; nothing below restates them. Pages came through a fetch tool that returns a model-written report; [Q] marks words that tool gave as verbatim, [E] its paraphrase. Each fetch returned about 40,000 characters verbatim and summarised the rest; nothing from a summarised tail is quoted.
 
@@ -327,6 +327,39 @@ Written by part 5 on 2026-11-15 (date read for every source: 2026-11-15). Read f
 - Inferred for Karakuri: Phase 30's evaluation set compares a change against a baseline. Two things to take: a control set that must not move, and a null arm (same change, re-run) so a gain smaller than run-to-run noise is not reported as a gain. Attribution to a component owner matches what the self-improvement stream needs to decide which pack or adapter a failure belongs to.
 
 Not found: a 2026 paper on repeated-run (pass^k) reliability of agents; the search returned none in one try.
+
+### A. Protocols and standards
+
+**A1. MCP: a second draft entry; no release after 2026-07-28.** Observed (https://modelcontextprotocol.io/specification/draft/changelog) [Q]: besides the `_meta` fix, "Update the referenced version of OAuth Client ID Metadata Document from `draft-ietf-oauth-client-id-metadata-document-00` to `draft-ietf-oauth-client-id-metadata-document-03`. MCP implementations that support Client ID Metadata Documents **MUST** follow this version." Releases (https://github.com/modelcontextprotocol/modelcontextprotocol/releases) [Q]: latest tag `2026-07-28`, "the stable release of the `2026-07-28` revision". Maturity: draft change to a stable spec. New: yes (the auth entry). Inferred: an MCP client that registers by Client ID Metadata Document must follow draft -03; whether Karakuri's MCP client (Phases 28 and 33) uses CIMD at all was not checked. The open SEP list and the ext-auth repository were not read.
+
+**A2. A2A: v1.0.1, a bug-fix release.** Observed (https://github.com/a2aproject/A2A/releases) [Q]: "1.0.1 (2026-05-26)", with "spec: prefer application/a2a+json in HTTP binding (#1753)" and "TaskStatus values in the specification (#1801)". Maturity: 1.0 spec. New: yes (the release; nothing since May). No implementer page was read.
+
+**A3. OpenTelemetry GenAI conventions moved.** Observed (https://opentelemetry.io/docs/specs/semconv/gen-ai/gen-ai-agent-spans/) [Q]: "GenAI semantic conventions have moved to the OpenTelemetry GenAI semantic conventions repository", linking https://github.com/open-telemetry/semantic-conventions-genai, which was not fetched. New: yes. Inferred: Phase 29's reference URL for agent spans now points at a move notice; the span names and stability were not re-read this cycle.
+
+**A4. IETF: agent-authorization drafts are active and recent.** Observed (https://datatracker.ietf.org/doc/search?name=agent&sort=&rfcs=on&activedrafts=on, verbatim part only) [Q] titles: `draft-chen-oauth-agent-authz-use-cases-05` "Agent Authorization use cases and gap analysis" (2026-10-26); `draft-chen-oauth-agent-revocation-01` "OAuth 2.0 Agent Authorization Explicit Revocation" (2026-10-30); `draft-niyikiza-oauth-attenuating-agent-tokens-02` "Attenuating Authorization Tokens for Agentic Delegation Chains" (2026-10-26); `draft-ni-wimse-ai-agent-identity-04` "WIMSE Applicability for AI Agents" (2026-10-27); `draft-araut-oauth-transaction-tokens-for-agents-03` "Transaction Tokens For Agents" (2026-10-31). Maturity: individual drafts, none adopted as a standard. Only titles were read, not draft text. Inferred: "attenuating tokens for delegation chains" is the wire form of `AuthorityBounds.CanDelegate` with narrowing; if one of these is adopted, a delegated coding agent could carry a token weaker than the run's own. Unverified until a draft body is read.
+
+### C. Model and provider capabilities, 2026-11-06 to 2026-11-15
+
+**C1. Anthropic.** Observed (https://platform.claude.com/docs/en/release-notes/api) [Q]: 12 November, "We’ve launched self-hosted Claude Managed Agents." 9 November, "We’ve launched Claude Fable 5.2 (`claude-fable-5-2`), built for demanding reasoning and long-horizon agentic work."; "Both models require 30-day data retention"; "Thinking blocks that Claude Fable 5.2 and Claude Mythos 5.2 produce work only in the account that produced them, or in an account linked to it."; fast mode for Fable 5.2 on the Messages API. Maturity: shipped by one vendor. New: yes.
+- Smaller requests, followed (https://platform.claude.com/docs/en/build-with-claude/message-threads) [Q]: "A message thread keeps a conversation on the server for a short time." [E] a turn sends only new messages plus `previous_message_id`, under beta header `message-threads-2026-08-12`. Inferred: server-side state means a restarted Karakuri loop (Restate executor) cannot rely on the thread surviving; the transcript must stay the source of truth, with threads as a cache.
+- Inferred: thinking blocks bound to one account mean a fallback from one Anthropic account to another (Phase 6 chain, multi-tenant instances) cannot replay a Fable 5.2 transcript with its thinking; and "30-day data retention" is a buying-criteria fact for part 6.
+
+**C2. OpenAI, Google, Google ADK: not read** (time). See Still thin.
+
+### Candidate frontier bets (part 5)
+
+**Bet 1 re-examined (2026-11-08): provider cost data reconciles Karakuri's spend counter. Verdict: keep, narrowed.** Observed (https://platform.claude.com/docs/en/manage-claude/usage-cost-analytics-api) [Q] dimensions in the sample `group` object: `product`, `model`, `context_window`, `inference_geo`, `speed`, `slack_channel_id`, `claude_tag_category`, `claude_tag_user_id`, `rbac_group_id`, `workspace_id`, `service_tier`, `user_profile_id`, `agent_id`, `environment_id`, `deployment_id`, `session_id`, `actor`, `actor_type`, `api_key_id`; [Q] "`group_by[]` takes up to five dimensions." Filters seen verbatim: `workspace_ids[]`, `api_key_ids[]`, `models[]`, `actor_ids[]`. No free-form request tag appears, and the legacy `description` grouping is removed. Inferred: `api_key_id` (and `workspace_id`) map to a Karakuri deployment or provider instance, not to an objective; `agent_id` and `session_id` appear to be Managed Agents concepts. So reconciliation works per provider key, and per objective only if each objective, or each twin, gets its own key or workspace. Proved wrong if Karakuri's own per-key token total is not computable from its records. First step, half a day: sum Karakuri's recorded tokens per provider instance for one week and compare with `group_by[]=api_key_id`; kill if the gap cannot be explained below 5%.
+
+**Bet 2. Authority arguments come from the request, never from third-party text.** Primary evidence: B1 (CapLite). The bet: at act time, any argument that names a recipient, an amount, a target repository or a URL must equal a value from the objective or an approved checkpoint, and a value that first appeared in a `TrustThirdParty` observation fails the action into a checkpoint. Proved wrong if Karakuri's acts already take such values only from the objective spec. First step, one day: list the act tools of the software pack and mark which arguments are authority arguments and where each value comes from; kill if none can come from read text.
+
+**Bet 3. A checkpoint the run itself cannot resolve.** Primary evidence: B2 (I-HITL). The bet: the token a run, or a delegated coding agent, holds is refused by the checkpoint-resolve route, and the evaluation set holds a case where the agent is shown a path to approve itself. Proved wrong if no credential reachable from a run can call that route. First step, two hours: trace which credentials a delegated agent receives (Phase 40) and test them against the resolve route; kill if every one is refused.
+
+### Still thin (part 5)
+
+- (B) No pass^k or repeated-run reliability paper found; B3's results section was read only in summary; B2's prototype and theorems not read.
+- (A) MCP open SEPs and ext-auth not read; no A2A implementer page; OTel span names not re-read at the new repository; IETF drafts read by title only.
+- (C) OpenAI changelog, Google AI Studio changelog and Google ADK release notes not read this cycle (ADK now two cycles running).
+- Not checked in code: whether Karakuri's MCP client uses Client ID Metadata Documents; whether a run's credentials can resolve a checkpoint.
 <!-- p5:end -->
 
 ## Governance and buying criteria
@@ -420,6 +453,24 @@ All read 2026-11-15 through a fetch tool that returns an extract.
 ### Part 5
 
 <!-- s5:start -->
+All read 2026-11-15 through a fetch tool (about 40k characters verbatim per page, rest summarised and unused).
+
+- https://arxiv.org/html/2611.17115 — primary, full text to Related Work; [Q]; Abstract, 1, 2, 3 (3.1, 3.2), 4, 5 (5.1 to 5.5).
+- https://arxiv.org/html/2610.35835 — primary, partial (v3); [Q]; Abstract, I, II (A to C), III, start of IV.
+- https://arxiv.org/html/2611.15700v1 — primary, partial; [Q] abstract, [E] method; Abstract, I, II-A to II-C, III, III-A, III-B1 to III-B3.
+- https://arxiv.org/search/?query=prompt+injection+defense+agents&searchtype=all&order=-announced_date_first — search, used only to find B1; not cited.
+- https://export.arxiv.org/api/query (two queries) — search, used only to find B2 and B3; not cited.
+- https://modelcontextprotocol.io/specification/draft/changelog — primary, full; [Q].
+- https://github.com/modelcontextprotocol/modelcontextprotocol/releases — primary, extract; [Q] tag and line.
+- https://github.com/a2aproject/A2A/releases — primary, extract; [Q].
+- https://opentelemetry.io/docs/specs/semconv/gen-ai/gen-ai-agent-spans/ — primary, move notice only; [Q].
+- https://github.com/open-telemetry/semantic-conventions-genai — [N] not fetched (time).
+- https://datatracker.ietf.org/doc/search?name=agent&sort=&rfcs=on&activedrafts=on — primary listing, partial; [Q] titles and dates only.
+- https://platform.claude.com/docs/en/release-notes/api — primary, first 39,934 characters; [Q].
+- https://platform.claude.com/docs/en/build-with-claude/message-threads — primary, partial; [Q] one line, [E] mechanism.
+- https://platform.claude.com/docs/en/manage-claude/usage-cost-analytics-api — primary, partial; [Q] dimensions and limit.
+- https://platform.claude.com/docs/en/build-with-claude/usage-cost-api — primary (legacy API), extract; [E].
+- https://platform.openai.com/docs/changelog, https://aistudio.google.com/docs/changelog, Google ADK release notes, the MCP SEP list — [N] not attempted (time).
 <!-- s5:end -->
 
 ### Part 6
