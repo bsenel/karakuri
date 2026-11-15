@@ -45,6 +45,7 @@ Part 6: wrote p6a (OWASP titles mapped, retention checked; Art. 113 unread, NIST
 ### Part 7
 
 <!-- w7:start -->
+Part 7: completeness audit written in p7a; verdict, fit, ranking and p7b not yet written.
 <!-- w7:end -->
 
 ### Part 8
@@ -79,6 +80,7 @@ Roadmap on main (`grep '^## Phase' docs/roadmap.md`, `git log -20 origin/main`):
 ### Comparison (part 7)
 
 <!-- p7b:start -->
+Part 7 status: in progress
 <!-- p7b:end -->
 
 ## Who the users are and what they are trying to do
@@ -424,6 +426,25 @@ Part 6 status: truncated, not reached: F1 to F15, F18
 ## Fit and bets
 
 <!-- p7a:start -->
+Part 7 status: in progress
+
+### 0. Completeness audit (part 7)
+
+Observed, from each section's status line and headings, read 2026-11-15:
+
+| Section | Status line | 'Still thin' list | Rows 'Not assessed (part 6)' |
+|---|---|---|---|
+| p1w | complete (local reading only; ai-use-cases-2026.md not opened) | absent (lists earlier reports' thin spots instead) | n/a |
+| p1 | truncated: SRE postmortem, self-hosters and enterprises, who merges gh-aw PRs | present | n/a |
+| p2 | truncated: item 5 second sources (cancelled-run state, output overload); opencode, gemini-cli, n8n, langgraph searches; tracker sweep | present | n/a |
+| p3 | truncated: Codex 05-01 to 10-28, Agents SDK May to Sept, Claude Code dates, LangGraph 04-08 to 06-29, LangSmith Apr to Aug, complaints, OpenAI automations | present | n/a |
+| p4a | truncated: Langfuse changelog window (404), Langfuse and Temporal complaints, Rootly and PagerDuty complaints | present | n/a |
+| p4b | complete | absent | n/a |
+| p5 | truncated: OpenAI, Google AI Studio, ADK changelogs; MCP SEPs and ext-auth; A2A implementer | present | n/a |
+| p6a | truncated: Art. 113 and 26(6) text, OWASP descriptions, NIST AI 600-1, ISO/IEC 42001, questionnaire | present | n/a |
+| p6b | truncated: F1 to F15, F18 | present | 16 of 18: F1 to F15, F18. Assessed: F16, F17 |
+
+Consequence (rule of this part): every candidate whose feasibility row is F1 to F15 or F18 cannot PASS. Only F16 and F17 have a feasibility row, and F16 is already Phase 49 (Planned).
 <!-- p7a:end -->
 
 ## Proposed phases
