@@ -21,6 +21,7 @@ Part 2: items 1 to 7 written in p2 with ranking table and Still thin list; item 
 ### Part 3
 
 <!-- w3:start -->
+Part 3: started; nothing written yet.
 <!-- w3:end -->
 
 ### Part 4
@@ -161,6 +162,7 @@ Read before writing: p1w above. The 2026-11-08 and 2026-11-01 sections of this h
 ### Products 1 to 3 (part 3)
 
 <!-- p3:start -->
+Part 3 status: in progress
 <!-- p3:end -->
 
 ### Products 4 to 6 (part 4)
