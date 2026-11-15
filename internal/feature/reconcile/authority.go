@@ -18,7 +18,12 @@ import (
 // mistake. Two places that decide whether an action may run are two places
 // that can disagree, and the one that disagrees quietly is the one that lets
 // something through.
-func effectiveAuthority(def agent.Definition, level objective.AutonomyLevel) agent.AuthorityBounds {
+//
+// tmpl is the template the objective was built from, or the zero template.
+// Its action limits are meant to narrow the definition's (Phase 40 step 2);
+// this scaffolding does not read them yet.
+func effectiveAuthority(def agent.Definition, tmpl objective.Template, level objective.AutonomyLevel) agent.AuthorityBounds {
+	_ = tmpl
 	bounds := def.Authority
 
 	switch level {
