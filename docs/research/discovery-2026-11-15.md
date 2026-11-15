@@ -39,6 +39,7 @@ Part 5: wrote B (three papers), A (MCP, A2A, OTel, IETF titles), C (Anthropic on
 ### Part 6
 
 <!-- w6:start -->
+Part 6: wrote the p6a and p6b skeletons (every feasibility row 'Not assessed (part 6)'); governance and feasibility not yet reached.
 <!-- w6:end -->
 
 ### Part 7
@@ -365,11 +366,34 @@ Not found: a 2026 paper on repeated-run (pass^k) reliability of agents; the sear
 ## Governance and buying criteria
 
 <!-- p6a:start -->
+Part 6 status: in progress
 <!-- p6a:end -->
 
 ## Feasibility
 
 <!-- p6b:start -->
+Part 6 status: in progress
+
+| # | Candidate | Exists | Missing | First slice (files) | Not verified | Phase on main |
+|---|---|---|---|---|---|---|
+| F1 | Rewind/undo of an agent's changes (part 2 gap, high) | Not assessed (part 6) | | | | |
+| F2 | Configured timeout bounds the whole call, retries included (part 2 gap) | Not assessed (part 6) | | | | |
+| F3 | One recap of what ran unattended (part 2 gap) | Not assessed (part 6) | | | | |
+| F4 | Re-validate authority at execution after a long wait (part 2 gap, partly Phase 46) | Not assessed (part 6) | | | | |
+| F5 | Memory write guards in multi-agent crews (part 2 gap) | Not assessed (part 6) | | | | |
+| F6 | MCP tool output encoding degrades non-English text (part 2 gap) | Not assessed (part 6) | | | | |
+| F7 | Bet 1: provider cost data reconciles the spend counter (part 5) | Not assessed (part 6) | | | | |
+| F8 | Bet 2: authority arguments come from the request, never from third-party text (part 5) | Not assessed (part 6) | | | | |
+| F9 | Bet 3: a checkpoint the run itself cannot resolve (part 5) | Not assessed (part 6) | | | | |
+| F10 | Carried: rewind/undo of an agent's changes | Not assessed (part 6) | | | | |
+| F11 | Carried: read-access audit | Not assessed (part 6) | | | | |
+| F12 | Carried: MCP elicitation as a checkpoint surface | Not assessed (part 6) | | | | |
+| F13 | Carried: provider cost reconciliation | Not assessed (part 6) | | | | |
+| F14 | Carried: blob provenance | Not assessed (part 6) | | | | |
+| F15 | Carried: tool-set pinning | Not assessed (part 6) | | | | |
+| F16 | Code check: `AuthorityBounds.Decide` and `CanDelegate` | Not assessed (part 6) | | | | |
+| F17 | Code check: internal/platform/procenv/ | Not assessed (part 6) | | | | |
+| F18 | Code check: the software.verify.review runner | Not assessed (part 6) | | | | |
 <!-- p6b:end -->
 
 ## Fit and bets
