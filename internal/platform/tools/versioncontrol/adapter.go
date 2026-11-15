@@ -91,6 +91,12 @@ type Commit struct {
 	Date    time.Time
 }
 
+// Branch is a branch on the forge and the commit at its tip.
+type Branch struct {
+	Name string
+	SHA  string
+}
+
 type VersionControlAdapter interface {
 	Name() string
 	CreatePR(ctx context.Context, pr PullRequest) (prURL string, err error)
@@ -101,8 +107,17 @@ type VersionControlAdapter interface {
 	ListChecks(ctx context.Context, repo, ref string) ([]CheckRun, error)
 	// ChangedFiles returns the paths a pull request's diff touches.
 	ChangedFiles(ctx context.Context, repo, prID string) ([]string, error)
+	// ListBranches returns the branches whose name starts with prefix.
+	ListBranches(ctx context.Context, repo, prefix string) ([]Branch, error)
 	// MarkReady takes a draft pull request out of draft, ready for review. An
 	// adapter whose forge cannot returns an error wrapping ErrUnsupported.
 	MarkReady(ctx context.Context, repo, prID string) error
+	// ListMergedPRs returns up to limit of the repository's most recently
+	// merged pull requests, newest first, with their head SHA and CheckState.
+	// An adapter whose forge cannot returns an error wrapping ErrUnsupported.
+	ListMergedPRs(ctx context.Context, repo string, limit int) ([]PRSummary, error)
+	// EditPRBody replaces a pull request's description with body. An adapter
+	// whose forge cannot returns an error wrapping ErrUnsupported.
+	EditPRBody(ctx context.Context, repo, prID, body string) error
 	Active() bool
 }
