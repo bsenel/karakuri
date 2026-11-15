@@ -55,7 +55,7 @@ describe('TwinsPage', () => {
 
     renderPage();
     await waitFor(() =>
-      expect(screen.getByText('twin:read is not granted')).toBeInTheDocument(),
+      expect(screen.getByText('Could not load twins: twin:read is not granted')).toBeInTheDocument(),
     );
     expect(screen.getByText('Retry')).toBeInTheDocument();
     expect(screen.queryByText(/No twins yet/)).not.toBeInTheDocument();
@@ -102,5 +102,24 @@ describe('TwinsPage', () => {
     );
     expect(post).toHaveBeenCalledWith('/twins/', expect.objectContaining({ name: 'Platform team' }));
     expect(screen.getByRole('textbox', { name: 'Name' })).toHaveValue('');
+  });
+
+  it('says a failed create was the create, not the list', async () => {
+    get.mockResolvedValue([]);
+    post.mockRejectedValue(new APIError(409, '{"message":"a twin with that name exists"}'));
+
+    renderPage();
+    await waitFor(() => expect(screen.getByRole('table', { name: 'Twins' })).toBeInTheDocument());
+
+    fireEvent.change(screen.getByRole('textbox', { name: 'Name' }), { target: { value: 'Platform team' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Create' }));
+
+    await waitFor(() =>
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        'Could not create twin “Platform team”: a twin with that name exists',
+      ),
+    );
+    // The list itself loaded, so there is nothing to retry.
+    expect(screen.queryByText('Retry')).not.toBeInTheDocument();
   });
 });
