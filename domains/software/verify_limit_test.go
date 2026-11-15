@@ -179,6 +179,46 @@ func TestRunTestsTimeoutListsFinishedPackagesFromPlainOutput(t *testing.T) {
 	})
 }
 
+// (1, 2) The roadmap's acceptance on a real go test run: a fixture module with
+// one package that passes at once and one whose test sleeps past the limit.
+// run_tests runs it with -json, is killed at its limit, settles
+// inconclusive: timeout, and lists the package that finished and not the one
+// still sleeping. The limit leaves room to compile two tiny test binaries.
+func TestRunTestsFixturePackageSleepingPastTheLimitIsInconclusiveTimeout(t *testing.T) {
+	dir := t.TempDir()
+	files := map[string]string{
+		"go.mod":            "module example.com/fixture44\n\ngo 1.21\n",
+		"fast/fast_test.go": "package fast\n\nimport \"testing\"\n\nfunc TestFast(t *testing.T) {}\n",
+		"slow/slow_test.go": "package slow\n\nimport (\n\t\"testing\"\n\t\"time\"\n)\n\nfunc TestSleeps(t *testing.T) { time.Sleep(10 * time.Minute) }\n",
+	}
+	for name, body := range files {
+		path := filepath.Join(dir, name)
+		if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	const limit = 20
+	start := time.Now()
+	res := runTestsWith(t, "GOWORK=off go test -count=1 ./...", map[string]any{"workdir": dir, "timeout_sec": limit})
+	elapsed := time.Since(start)
+
+	requireInconclusive(t, res, objective.ReasonTimeout)
+	got := finishedPackages(t, res)
+	if got["example.com/fixture44/fast"] != "pass" {
+		t.Errorf("the package that finished is not listed as pass: finished_packages = %v (stdout %q)", got, res.StateDelta["stdout"])
+	}
+	if _, listed := got["example.com/fixture44/slow"]; listed {
+		t.Errorf("the package still sleeping at the limit is listed as finished: %v", got)
+	}
+	if elapsed > (limit+5)*time.Second {
+		t.Errorf("a %ds limit returned after %s: the sleeping test binary kept the run alive", limit, elapsed.Round(time.Millisecond))
+	}
+}
+
 // (2) A timeout before any package finished still says so: an empty list, not
 // a missing one, so the reader can tell "nothing finished" from "not read".
 func TestRunTestsTimeoutWithNothingFinishedListsNoPackages(t *testing.T) {
