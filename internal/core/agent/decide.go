@@ -97,6 +97,10 @@ type Verdict struct {
 	// to the reviewer intact, and an approval falls straight through to the
 	// act step, so an emptied plan would silently discard approved work.
 	Allowed int
+	// Refuse says the plan is outside its action limits under bounds that
+	// refuse rather than escalate: none of it runs and no person is asked.
+	// Reason names the violation (Phase 40 step 2).
+	Refuse bool
 }
 
 // Decide applies the bounds to a plan and reports what they permit.

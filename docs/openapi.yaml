@@ -7153,6 +7153,22 @@ components:
     ObjectiveTemplate:
       additionalProperties: false
       properties:
+        action_limits:
+          items:
+            additionalProperties: false
+            properties:
+              Capability:
+                type: string
+              Parameter:
+                type: string
+              Patterns:
+                items:
+                  type: string
+                nullable: true
+                type: array
+            type: object
+          nullable: true
+          type: array
         constraints:
           items:
             $ref: '#/components/schemas/Constraint'
@@ -7178,6 +7194,22 @@ components:
               Authority:
                 additionalProperties: false
                 properties:
+                  ActionLimits:
+                    items:
+                      additionalProperties: false
+                      properties:
+                        Capability:
+                          type: string
+                        Parameter:
+                          type: string
+                        Patterns:
+                          items:
+                            type: string
+                          nullable: true
+                          type: array
+                      type: object
+                    nullable: true
+                    type: array
                   CanDelegate:
                     type: boolean
                   CanModifyObjective:
@@ -7186,6 +7218,8 @@ components:
                     type: number
                   MaxAutonomousActions:
                     type: integer
+                  RefuseOutsideLimits:
+                    type: boolean
                   RequiresApprovalFor:
                     items:
                       type: string
@@ -7889,6 +7923,22 @@ components:
               Authority:
                 additionalProperties: false
                 properties:
+                  ActionLimits:
+                    items:
+                      additionalProperties: false
+                      properties:
+                        Capability:
+                          type: string
+                        Parameter:
+                          type: string
+                        Patterns:
+                          items:
+                            type: string
+                          nullable: true
+                          type: array
+                      type: object
+                    nullable: true
+                    type: array
                   CanDelegate:
                     type: boolean
                   CanModifyObjective:
@@ -7897,6 +7947,8 @@ components:
                     type: number
                   MaxAutonomousActions:
                     type: integer
+                  RefuseOutsideLimits:
+                    type: boolean
                   RequiresApprovalFor:
                     items:
                       type: string

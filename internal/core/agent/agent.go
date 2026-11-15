@@ -43,6 +43,15 @@ type AuthorityBounds struct {
 	CanDelegate          bool
 	CanModifyObjective   bool
 	ConfidenceThreshold  float64 // below this, escalate to human
+	// ActionLimits bound the values a planned action's named parameters may
+	// hold. Empty means no limit, which is how every plan was treated before.
+	ActionLimits []ActionLimit
+	// RefuseOutsideLimits makes a plan outside ActionLimits a refusal rather
+	// than an escalation: the iteration ends with a bounds refusal in the
+	// audit log and no checkpoint. The supervisor sets it at the rungs that
+	// act, so a mechanical check is not handed back to a person (Phase 40
+	// step 2). False keeps step 1's escalation.
+	RefuseOutsideLimits bool
 }
 
 type MemoryConfig struct {

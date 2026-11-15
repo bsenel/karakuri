@@ -8,6 +8,7 @@ import (
 
 	"github.com/bsenel/karakuri/internal/core/capability"
 	corecheckpoint "github.com/bsenel/karakuri/internal/core/checkpoint"
+	"github.com/bsenel/karakuri/internal/core/environment"
 	"github.com/bsenel/karakuri/internal/core/event"
 	"github.com/bsenel/karakuri/internal/core/loop"
 	featurecp "github.com/bsenel/karakuri/internal/feature/checkpoint"
@@ -108,18 +109,20 @@ func stepDecide(ctx context.Context, sc *stepContext, p plan, mods *corecheckpoi
 	// same function, which is the only way a check on a declaration is a check
 	// rather than a restatement (Phase 24). What is left here is carrying out
 	// the verdict: the audit row, the checkpoint, the trim.
-	planned := make([]capability.CapabilityID, 0, len(p.Actions))
+	// The actions go to the policy whole, parameters included, so the bounds'
+	// action limits are checked here with every other bound (Phase 40 step 1).
+	planned := make([]environment.Action, 0, len(p.Actions))
 	// The prompt of each action that writes files, read from its capability's
 	// declaration rather than its name, is what the policy checks against the
 	// delivered work: reviewing a delivered step is not redoing it.
 	var writes []string
 	for _, action := range p.Actions {
-		planned = append(planned, capability.CapabilityID(action.CapabilityID))
+		planned = append(planned, environment.Action{CapabilityID: capability.CapabilityID(action.CapabilityID), Params: action.Params})
 		if prompt, ok := action.Params["prompt"].(string); ok && sc.svc.needsWorkspace(action.CapabilityID) {
 			writes = append(writes, prompt)
 		}
 	}
-	verdict := authority.Decide(p.Confidence, threshold, planned, writes, sc.evidence)
+	verdict := authority.DecideActions(p.Confidence, threshold, planned, writes, sc.evidence)
 	escalate = verdict.Escalate
 	escalateReason = verdict.Reason
 	if verdict.Allowed < len(p.Actions) {
@@ -138,6 +141,30 @@ func stepDecide(ctx context.Context, sc *stepContext, p plan, mods *corecheckpoi
 		sc.state.status.Paused = true
 		sc.state.mu.Unlock()
 		paused = true
+	} else if verdict.Refuse {
+		// 3a. Outside the action limits at a rung that refuses (Phase 40 step
+		// 2): one bounds row, no checkpoint, no pause, and no action carried
+		// into act, so the iteration ends having done nothing. The row keeps
+		// the plan as drafted, since the trim above has already emptied it.
+		payload := map[string]any{
+			"actions":             planned,
+			"confidence":          p.Confidence,
+			"third_party_sources": sc.evidence.ThirdParty,
+		}
+		row := storage.ToolEvent{
+			ID:               fmt.Sprintf("audit-%d", time.Now().UnixNano()),
+			ObjectiveID:      string(sc.obj.ID),
+			AgentID:          string(sc.agentDef.ID),
+			Success:          false,
+			Confidence:       p.Confidence,
+			Kind:             storage.ToolEventRefusal,
+			EscalationReason: verdict.Reason,
+			BoundsViolation:  true,
+		}
+		sc.stampProvenance(&row, p, payload)
+		auditPayload, _ := json.Marshal(payload)
+		row.PayloadJSON = string(auditPayload)
+		_ = sc.svc.store.SaveToolEvent(ctx, row)
 	} else if escalate {
 		// 3. Write the audit row first so the checkpoint payload can
 		// reference its ID — reviewers deep-link from /checkpoints into
@@ -240,6 +267,7 @@ func stepDecide(ctx context.Context, sc *stepContext, p plan, mods *corecheckpoi
 		Payload: map[string]any{
 			"step":                string(loop.StepDecide),
 			"escalated":           escalate,
+			"refused":             verdict.Refuse,
 			"adjusted_confidence": p.Confidence,
 			"capability_history":  capHistory,
 		},

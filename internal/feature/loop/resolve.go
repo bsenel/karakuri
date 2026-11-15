@@ -14,6 +14,68 @@ import (
 	"github.com/bsenel/karakuri/internal/platform/storage"
 )
 
+// FindTemplate looks a template up by ID in every registered pack, since a
+// cross-domain objective's template may live outside its primary domain. ok is
+// false for an empty ID, a nil registry, or a template no pack declares.
+//
+// Exported for the same reason as SelectAgent: the supervisor reads the
+// template's action limits into the bounds before the loop starts, and the
+// loop reads its risk class, and both must find the same template.
+func FindTemplate(domReg *domain.Registry, id string) (objective.Template, bool) {
+	if id == "" || domReg == nil {
+		return objective.Template{}, false
+	}
+	for _, pack := range domReg.List() {
+		for _, tmpl := range pack.ObjectiveTemplates() {
+			if tmpl.ID == id {
+				return tmpl, true
+			}
+		}
+	}
+	return objective.Template{}, false
+}
+
+// withTemplateConstraints is the objective as the planner is shown it: its own
+// constraints, then each of its template's whose ID it does not already hold.
+//
+// An objective's constraints are copied from its template only at creation,
+// while the template's action limits are read at run time (FindTemplate in the
+// supervisor), so an objective created before its template gained a constraint
+// is held to limits its planner would otherwise never be told about. The
+// result is a copy with a new Constraints slice, so appending never writes
+// into the caller's backing array; it is shown to the agent, never saved.
+func withTemplateConstraints(domReg *domain.Registry, obj objective.Objective) objective.Objective {
+	tmpl, ok := FindTemplate(domReg, obj.TemplateID)
+	if !ok {
+		return obj
+	}
+	held := make(map[string]bool, len(obj.Constraints))
+	for _, c := range obj.Constraints {
+		held[c.ID] = true
+	}
+	constraints := make([]objective.Constraint, 0, len(obj.Constraints)+len(tmpl.Constraints))
+	constraints = append(constraints, obj.Constraints...)
+	for _, c := range tmpl.Constraints {
+		if held[c.ID] {
+			continue
+		}
+		held[c.ID] = true
+		constraints = append(constraints, c)
+	}
+	obj.Constraints = constraints
+	return obj
+}
+
+// shownObjective is sc.obj as every agent input carries it. A step context
+// with no service has no registry to read a template from, so it shows the
+// objective as it is.
+func (sc *stepContext) shownObjective() objective.Objective {
+	if sc.svc == nil {
+		return sc.obj
+	}
+	return withTemplateConstraints(sc.svc.domReg, sc.obj)
+}
+
 // SelectAgent picks the agent definition an objective runs under.
 //
 // For a cross-domain objective it walks the declared domains in order and

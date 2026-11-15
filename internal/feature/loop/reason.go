@@ -79,7 +79,7 @@ func stepReason(ctx context.Context, sc *stepContext, ws loop.WorldState) plan {
 	provenance := buildProvenanceNotice(sc, ws)
 
 	input := coreagent.Input{
-		Objective:  sc.obj,
+		Objective:  sc.shownObjective(),
 		WorldState: ws,
 		Memory:     memEntries,
 		Task: "Plan the next actions to make progress on this objective. " +
@@ -261,7 +261,7 @@ func reflexionPass(ctx context.Context, sc *stepContext, draft plan) (plan, stri
 		sc.obj.Title, string(draftJSON),
 	)
 	critOut, err := sc.agent.Run(ctx, coreagent.Input{
-		Objective:  sc.obj,
+		Objective:  sc.shownObjective(),
 		WorldState: nil,
 		Memory:     nil,
 		Task:       critiqueTask,
@@ -278,7 +278,7 @@ func reflexionPass(ctx context.Context, sc *stepContext, draft plan) (plan, stri
 		string(draftJSON), critOut.Content,
 	)
 	revOut, err := sc.agent.Run(ctx, coreagent.Input{
-		Objective:  sc.obj,
+		Objective:  sc.shownObjective(),
 		WorldState: nil,
 		Memory:     nil,
 		Task:       reviseTask,
@@ -370,7 +370,7 @@ func stepReasonRevise(ctx context.Context, sc *stepContext, draft plan, dec core
 		sc.obj.Title, string(draftJSON), critique.String(),
 	)
 	revOut, err := sc.agent.Run(ctx, coreagent.Input{
-		Objective:  sc.obj,
+		Objective:  sc.shownObjective(),
 		WorldState: nil,
 		Memory:     nil,
 		Task:       reviseTask,
