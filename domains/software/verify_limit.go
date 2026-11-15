@@ -36,6 +36,27 @@ func settleOutsideTheWork(res *environment.ActionResult, cmd, stdout string) {
 	}
 }
 
+// goTestInvocation is "go test" as a command word: at the start or after a
+// shell separator, so "mongo test" and "cargo test" are not it.
+var goTestInvocation = regexp.MustCompile(`(^|[\s;&|(])go\s+test(\s|$)`)
+
+// goTestJSONFlag is a -json flag already in the command.
+var goTestJSONFlag = regexp.MustCompile(`(^|\s)-json(\s|=|$)`)
+
+// withGoTestJSON adds -json right after the first "go test" in cmd, so a run
+// killed at its limit leaves test2json lines that say which packages finished
+// (Phase 44 step 4). A command that already asks for -json, or runs no go test,
+// is returned as written. The verdict is still the exit code, which -json does
+// not change.
+func withGoTestJSON(cmd string) string {
+	loc := goTestInvocation.FindStringSubmatchIndex(cmd)
+	if loc == nil || goTestJSONFlag.MatchString(cmd) {
+		return cmd
+	}
+	// loc[4] is where the group after "test" starts: insert the flag there.
+	return cmd[:loc[4]] + " -json" + cmd[loc[4]:]
+}
+
 func isMissingToolExit(code any) bool {
 	c, ok := code.(int)
 	return ok && (c == 127 || c == 126)

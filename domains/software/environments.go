@@ -1017,9 +1017,18 @@ func (e *verifyEnv) Act(ctx context.Context, a environment.Action) (environment.
 	// Reuse the shell executor wholesale: the denylist, the workdir
 	// confinement and the timeout are the same guarantees a verification
 	// command needs, and a second copy of them would be a second set of bugs.
+	params := a.Params
+	if a.CapabilityID == "software.verify.run_tests" {
+		// A copy, so the plan's own params still hold the command it wrote.
+		params = make(map[string]any, len(a.Params))
+		for k, v := range a.Params {
+			params[k] = v
+		}
+		params["cmd"] = withGoTestJSON(asString(a.Params, "cmd"))
+	}
 	res, stdout := e.shell.run(ctx, environment.Action{
 		CapabilityID: "software.act.shell_exec",
-		Params:       a.Params,
+		Params:       params,
 	})
 	if res.StateDelta == nil {
 		res.StateDelta = map[string]any{}

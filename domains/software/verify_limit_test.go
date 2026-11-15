@@ -268,3 +268,47 @@ func TestLintFailureIsStillAFailure(t *testing.T) {
 		t.Errorf("a lint failure must stay a failure, got Success=%v StateDelta %v", res.Success, res.StateDelta)
 	}
 }
+
+// (1) run_tests runs go test with -json, so a run cut off at its limit still
+// names the packages that finished, from test2json lines. The command defines
+// a shell function named go that echoes its arguments, so the test sees what
+// would have been run without a Go toolchain inside it.
+func TestRunTestsRunsGoTestWithJSON(t *testing.T) {
+	res := runTestsWith(t, `go() { echo "args: $*"; }; go test ./example/... -count=1`, map[string]any{"timeout_sec": 5})
+	out, _ := res.StateDelta["stdout"].(string)
+	if !strings.Contains(out, "args: test -json ./example/... -count=1") {
+		t.Errorf("run_tests did not add -json to go test; the command printed %q", out)
+	}
+}
+
+// lint is not a go test run, so its command is left as written.
+func TestLintCommandIsNotRewritten(t *testing.T) {
+	res, err := newTestVerifyEnv().Act(context.Background(), environment.Action{
+		CapabilityID: "software.verify.lint",
+		Params:       map[string]any{"cmd": `go() { echo "args: $*"; }; go test ./example/...`},
+	})
+	if err != nil {
+		t.Fatalf("Act: %v", err)
+	}
+	if out, _ := res.StateDelta["stdout"].(string); !strings.Contains(out, "args: test ./example/...") {
+		t.Errorf("lint rewrote its command; it printed %q", out)
+	}
+}
+
+func TestWithGoTestJSON(t *testing.T) {
+	for _, tc := range []struct{ cmd, want string }{
+		{"go test ./... -count=1", "go test -json ./... -count=1"},
+		{"cd sub && go test ./...", "cd sub && go test -json ./..."},
+		{"go test", "go test -json"},
+		{"go test -json ./...", "go test -json ./..."},
+		{"go test ./... -json", "go test ./... -json"},
+		{"go vet ./...", "go vet ./..."},
+		{"cd web && npm test", "cd web && npm test"},
+		{"cargo test", "cargo test"},
+		{"mongo test", "mongo test"},
+	} {
+		if got := withGoTestJSON(tc.cmd); got != tc.want {
+			t.Errorf("withGoTestJSON(%q) = %q, want %q", tc.cmd, got, tc.want)
+		}
+	}
+}
