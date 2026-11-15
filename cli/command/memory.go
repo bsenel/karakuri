@@ -2,6 +2,7 @@ package command
 
 import (
 	"bytes"
+	"cmp"
 	"fmt"
 
 	"github.com/bsenel/karakuri/cli/client"
@@ -29,6 +30,11 @@ func memoryRecallCmd() *cobra.Command {
 		RunE: func(c *cobra.Command, _ []string) error {
 			tiers := []string{"episodic"}
 			if tier != "" {
+				switch tier {
+				case "working", "episodic", "semantic", "procedural":
+				default:
+					return fmt.Errorf("invalid --tier %q: use working, episodic, semantic or procedural, e.g. `krk memory recall --agent %s --query %q --tier semantic`", tier, cmp.Or(agentID, "agent_42"), cmp.Or(query, "deploy steps"))
+				}
 				tiers = []string{tier}
 			}
 			data, _, err := api.Post("/memory/recall", map[string]any{
