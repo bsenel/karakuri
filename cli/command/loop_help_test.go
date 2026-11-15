@@ -23,6 +23,10 @@ func TestLoopStartHelp(t *testing.T) {
 	if !strings.Contains(cmd.Example, "--watch") {
 		t.Errorf("start Example %q does not show --watch", cmd.Example)
 	}
+	// 0 is a valid --max-iter; the usage has to say what it falls back to.
+	if usage := cmd.Flags().Lookup("max-iter").Usage; !strings.Contains(usage, "0 uses the objective's own limit") {
+		t.Errorf("--max-iter usage %q does not say what 0 means", usage)
+	}
 }
 
 // loop resume and checkpoint resolve take the same decisions: both show the

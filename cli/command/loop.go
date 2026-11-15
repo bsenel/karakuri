@@ -51,7 +51,7 @@ func loopStartCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&twinID, "twin", "", "ID of the objective's twin (see: krk twin list)")
-	cmd.Flags().IntVar(&maxIter, "max-iter", 50, "Maximum loop iterations")
+	cmd.Flags().IntVar(&maxIter, "max-iter", 50, "Maximum loop iterations; 0 uses the objective's own limit (krk objective create --max-iter), or 50 when it has none")
 	cmd.Flags().BoolVar(&watchMode, "watch", false, "Keep watching after the loop finishes: declares the objective standing and observe-only (stop with: krk objective pause)")
 	return cmd
 }
