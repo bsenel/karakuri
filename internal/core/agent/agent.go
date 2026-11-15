@@ -43,6 +43,9 @@ type AuthorityBounds struct {
 	CanDelegate          bool
 	CanModifyObjective   bool
 	ConfidenceThreshold  float64 // below this, escalate to human
+	// ActionLimits bound the values a planned action's named parameters may
+	// hold. Empty means no limit, which is how every plan was treated before.
+	ActionLimits []ActionLimit
 }
 
 type MemoryConfig struct {
