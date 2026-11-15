@@ -464,6 +464,12 @@ func (g *GitHub) EditPRBody(ctx context.Context, repo, prID, body string) error 
 	return nil
 }
 
+// BranchProtected is not implemented yet (Phase 40 step 3); its tests specify
+// the read of GET /repos/{owner}/{repo}/branches/{branch}.
+func (g *GitHub) BranchProtected(_ context.Context, _, _ string) (bool, error) {
+	return false, fmt.Errorf("github: branch protection: %w", ErrUnsupported)
+}
+
 func (g *GitHub) do(ctx context.Context, method, path string, body any, out any) error {
 	var reader io.Reader
 	if body != nil {
