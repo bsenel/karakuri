@@ -57,6 +57,61 @@ func withGoTestJSON(cmd string) string {
 	return cmd[:loc[4]] + " -json" + cmd[loc[4]:]
 }
 
+// goTestJSONExcerpt is what a person reads of a go test -json run in place of
+// the first 4000 bytes of its stdout: in -json mode every passing test writes
+// run, output and pass events, so a failure's message fell outside that head.
+// It holds the output of each failed test and failed package, in the order
+// they failed, then one line per finished package ("ok pkg", "FAIL pkg" or
+// "? pkg"). A package whose test binary did not compile reports the compiler's
+// output as build-output events keyed by ImportPath, with no Package; those
+// lines count as a failure on build-fail. ok is false when no line is a
+// test2json event, or the excerpt is empty, and then the raw head stays.
+func goTestJSONExcerpt(stdout string) (excerpt string, ok bool) {
+	type key struct {
+		pkg, test string
+		build     bool
+	}
+	pending := map[key][]string{}
+	var failed, finished []string
+	parsed := false
+	sc := bufio.NewScanner(strings.NewReader(stdout))
+	sc.Buffer(make([]byte, 64*1024), 1024*1024)
+	for sc.Scan() {
+		line := sc.Text()
+		if !strings.HasPrefix(line, "{") {
+			continue
+		}
+		var ev struct{ Action, Package, Test, Output, ImportPath string }
+		if json.Unmarshal([]byte(line), &ev) != nil || ev.Action == "" {
+			continue
+		}
+		parsed = true
+		k := key{pkg: ev.Package, test: ev.Test}
+		if ev.Action == "build-output" || ev.Action == "build-fail" {
+			k = key{pkg: ev.ImportPath, build: true}
+		}
+		switch ev.Action {
+		case "output", "build-output":
+			pending[k] = append(pending[k], ev.Output)
+		case "fail", "build-fail":
+			failed = append(failed, pending[k]...)
+			delete(pending, k)
+		case "pass", "skip":
+			delete(pending, k)
+		}
+		if ev.Test == "" && ev.Package != "" {
+			if result, done := map[string]string{"pass": "ok", "fail": "FAIL", "skip": "?"}[ev.Action]; done {
+				finished = append(finished, result+" "+ev.Package+"\n")
+			}
+		}
+	}
+	excerpt = strings.Join(failed, "") + strings.Join(finished, "")
+	if !parsed || excerpt == "" {
+		return "", false
+	}
+	return truncate(excerpt, 4000), true
+}
+
 func isMissingToolExit(code any) bool {
 	c, ok := code.(int)
 	return ok && (c == 127 || c == 126)
