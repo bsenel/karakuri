@@ -414,8 +414,8 @@ Part 6 status: in progress
 | F13 | Carried: provider cost reconciliation | Not assessed (part 6) | | | | |
 | F14 | Carried: blob provenance | Not assessed (part 6) | | | | |
 | F15 | Carried: tool-set pinning | Not assessed (part 6) | | | | |
-| F16 | Code check: `AuthorityBounds.Decide` and `CanDelegate` | Not assessed (part 6) | | | | |
-| F17 | Code check: internal/platform/procenv/ | Not assessed (part 6) | | | | |
+| F16 | Code check: `AuthorityBounds.Decide` and `CanDelegate` | Observed: `CanDelegate` declared at internal/core/agent/agent.go:43; `Decide` at internal/core/agent/decide.go:96 (opened to :100). Outside tests, the only other references are writes, internal/feature/reconcile/authority.go:32 and :59 (`bounds.CanDelegate = false`, grep hits, not opened) | Inferred: nothing reads `CanDelegate`; the gap of 2026-11-08 stands | The slice Phase 49 already names | decide.go past line 100 not re-read this pass; authority.go not opened | Phase 49 'A Bound That Says No Delegation Is Kept', **Planned** (docs/roadmap.md:62, :7085; Goal read: an agent with `CanDelegate` false never hands a task to a coding-agent CLI without approval). Already planned; Steps not read (time) |
+| F17 | Code check: internal/platform/procenv/ | Observed: `Merge` (procenv.go:15-22) overlays per-call variables onto the process environment, an override replacing the inherited entry; `ScrubNestedSession` (:44-68) drops `CLAUDECODE` and every `CLAUDE_CODE_*` variable and, by its comment, leaves `ANTHROPIC_API_KEY` untouched | Inferred: the child inherits the whole server environment except session markers, so any other secret in the server's environment reaches a spawned `claude` | An allow-list in procenv.go (PATH, HOME, the config's named variables) with a test in procenv_test.go | Merge body (:23-40) not read; callers not opened; whether the server env holds other secrets in practice | none found (no phase title searched beyond Phase 49) |
 | F18 | Code check: the software.verify.review runner | Not assessed (part 6) | | | | |
 <!-- p6b:end -->
 
