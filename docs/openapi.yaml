@@ -7178,6 +7178,22 @@ components:
               Authority:
                 additionalProperties: false
                 properties:
+                  ActionLimits:
+                    items:
+                      additionalProperties: false
+                      properties:
+                        Capability:
+                          type: string
+                        Parameter:
+                          type: string
+                        Patterns:
+                          items:
+                            type: string
+                          nullable: true
+                          type: array
+                      type: object
+                    nullable: true
+                    type: array
                   CanDelegate:
                     type: boolean
                   CanModifyObjective:
@@ -7889,6 +7905,22 @@ components:
               Authority:
                 additionalProperties: false
                 properties:
+                  ActionLimits:
+                    items:
+                      additionalProperties: false
+                      properties:
+                        Capability:
+                          type: string
+                        Parameter:
+                          type: string
+                        Patterns:
+                          items:
+                            type: string
+                          nullable: true
+                          type: array
+                      type: object
+                    nullable: true
+                    type: array
                   CanDelegate:
                     type: boolean
                   CanModifyObjective:
