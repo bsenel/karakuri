@@ -163,6 +163,23 @@ Read before writing: p1w above. The 2026-11-08 and 2026-11-01 sections of this h
 
 <!-- p3:start -->
 Part 3 status: in progress
+
+Part 3 extends the p3 sections of discovery-2026-11-08.md, -11-01.md and -10-25.md, and does not restate them. On 2026-11-15 every page loaded, but each one only showed its newest entries. All fetches went through a tool that returns a model-written extract, so every item below is [E] and nothing is quoted. Where the tool only summarised the unread tail of a page, that is said, and those items are weaker than the rest. Vendor notes are claims, not measurements.
+
+#### 1. OpenAI Codex and the OpenAI Agents SDK
+
+New: yes, but only for the newest weeks. The thin spot, 2026-05-01 to 2026-10-28, is **still unread**. The Atom feeds load, but in the part read they reach back only to 2026-11-13 (Codex) and 2026-10-15 (Agents SDK).
+
+- **(i) Shipped.** [E] https://github.com/openai/codex/releases.atom (read 2026-11-15; about 425,000 characters, the first ~40,000 read). 0.169.0, dated 2026-11-13: in untrusted directories `codex exec` keeps project config and MCP servers disabled unless `--trust` is passed. It also adds custom model providers with device-code sign-in, multiple side-chat tabs, and a "clear context and implement" handoff from a plan. 0.171.0-alpha.2 to alpha.5 (2026-11-13 to 11-14) carry no notes. The tool's summary of the unread tail mentions guardian reviewers, permission profiles, network policy and lazy MCP startup. That is unverified, so it is graded [E] at most and nothing rests on it.
+- **(i) Shipped, Agents SDK.** [E] https://github.com/openai/openai-agents-python/releases.atom (read 2026-11-15; about 335,000 characters, the first ~40,000 read).
+  - v0.24.0, 2026-10-15: automatic compaction waits while approvals are pending.
+  - v0.24.0-alpha.6, 2026-11-03: a `Turn` object for queued, steered and cancelled work; child agents can ask for approvals and forms; a `NetworkPolicy` for commands run on Linux and macOS executors; recovery for deferred external jobs; an MCP Tasks adapter; native OpenTelemetry export; `ScriptedResponses` for tests that run without a model.
+  - v0.24.0-alpha.7, 2026-11-08: durable root sessions on custom storage, and tool calls whose effect is unknown are reconciled before a resume instead of being replayed; a `RunBudget` that caps requests, tokens or cost; a hook that decides whether a proposed final answer is accepted; A2A adapters; a strict write policy as the default (breaking).
+  - v0.23.0 and v0.23.1, about 2026-10-01: these come only from the tool's summary of the unread tail.
+- **(ii) What it does that Karakuri does not.** Inferred from (i): a per-run budget in money and tokens (`RunBudget`), a per-command network policy, and reconciling tool calls with an unknown effect before a resume. Karakuri's `AuthorityBounds` caps a run by *number of actions* and by capability, not by cost (internal/core/agent/agent.go:37-46, opened).
+- **(iii) What Karakuri does that it does not.** The authority bounds fail toward asking: if nobody fills them in, a run may take no action without a person, and opting out takes the explicit `UnlimitedActions = -1` (internal/core/agent/agent.go:32-35, opened). A plan built while third-party text is in evidence escalates, whatever autonomy the agent has earned (internal/core/environment/environment.go:55-59, opened). Inferred: neither SDK release note read here describes provenance on tool results that changes whether a run escalates. Codex's `--trust` gates a whole directory, not a payload. This rests on the two newest weeks of notes only.
+- **(iv) Complaints.** Not read this pass [N]. Time went to the release notes.
+- **(v) Inferred.** The Agents SDK is adding durable sessions, reconciliation on resume and budgets, which overlaps with Karakuri's reconcile and checkpoint layers. A cost cap per run is the gap most worth a proposal (part 8). This rests on alpha release notes, which are vendor claims; nothing was measured.
 <!-- p3:end -->
 
 ### Products 4 to 6 (part 4)
