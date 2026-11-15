@@ -86,16 +86,11 @@ func (sc *stepContext) stampProvenance(e *storage.ToolEvent, p plan, payload map
 // cross-domain objective's template may live outside its primary domain. No
 // template, or one no pack declares any more, is unclassified.
 func (sc *stepContext) riskClass() objective.RiskClass {
-	id := sc.obj.TemplateID
-	if id == "" || sc.svc == nil || sc.svc.domReg == nil {
+	if sc.svc == nil {
 		return objective.RiskUnclassified
 	}
-	for _, pack := range sc.svc.domReg.List() {
-		for _, tmpl := range pack.ObjectiveTemplates() {
-			if tmpl.ID == id {
-				return tmpl.Risk
-			}
-		}
+	if tmpl, ok := FindTemplate(sc.svc.domReg, sc.obj.TemplateID); ok {
+		return tmpl.Risk
 	}
 	return objective.RiskUnclassified
 }

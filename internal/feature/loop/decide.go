@@ -141,6 +141,30 @@ func stepDecide(ctx context.Context, sc *stepContext, p plan, mods *corecheckpoi
 		sc.state.status.Paused = true
 		sc.state.mu.Unlock()
 		paused = true
+	} else if verdict.Refuse {
+		// 3a. Outside the action limits at a rung that refuses (Phase 40 step
+		// 2): one bounds row, no checkpoint, no pause, and no action carried
+		// into act, so the iteration ends having done nothing. The row keeps
+		// the plan as drafted, since the trim above has already emptied it.
+		payload := map[string]any{
+			"actions":             planned,
+			"confidence":          p.Confidence,
+			"third_party_sources": sc.evidence.ThirdParty,
+		}
+		row := storage.ToolEvent{
+			ID:               fmt.Sprintf("audit-%d", time.Now().UnixNano()),
+			ObjectiveID:      string(sc.obj.ID),
+			AgentID:          string(sc.agentDef.ID),
+			Success:          false,
+			Confidence:       p.Confidence,
+			Kind:             storage.ToolEventRefusal,
+			EscalationReason: verdict.Reason,
+			BoundsViolation:  true,
+		}
+		sc.stampProvenance(&row, p, payload)
+		auditPayload, _ := json.Marshal(payload)
+		row.PayloadJSON = string(auditPayload)
+		_ = sc.svc.store.SaveToolEvent(ctx, row)
 	} else if escalate {
 		// 3. Write the audit row first so the checkpoint payload can
 		// reference its ID — reviewers deep-link from /checkpoints into
@@ -243,6 +267,7 @@ func stepDecide(ctx context.Context, sc *stepContext, p plan, mods *corecheckpoi
 		Payload: map[string]any{
 			"step":                string(loop.StepDecide),
 			"escalated":           escalate,
+			"refused":             verdict.Refuse,
 			"adjusted_confidence": p.Confidence,
 			"capability_history":  capHistory,
 		},

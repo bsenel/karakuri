@@ -119,6 +119,11 @@ func limitValues(raw any) []any {
 // action would do outside its authority; any reason Decide escalated for as
 // well follows it, so the reviewer is not shown one bound and left to approve
 // past another. Allowed is Decide's: an escalated plan is shown intact.
+//
+// Under RefuseOutsideLimits a violation is a refusal instead: Refuse is set,
+// Escalate is not, whatever else would have escalated, and Allowed is zero.
+// The reason names only the violations, since nothing runs and nobody is asked
+// about the other bounds (Phase 40 step 2).
 func (b AuthorityBounds) DecideActions(confidence, threshold float64, actions []environment.Action, writes []string, ev Evidence) Verdict {
 	planned := make([]capability.CapabilityID, 0, len(actions))
 	for _, a := range actions {
@@ -133,6 +138,9 @@ func (b AuthorityBounds) DecideActions(confidence, threshold float64, actions []
 	reasons := make([]string, 0, len(violations)+1)
 	for _, viol := range violations {
 		reasons = append(reasons, viol.reason())
+	}
+	if b.RefuseOutsideLimits {
+		return Verdict{Refuse: true, Reason: strings.Join(reasons, "; ")}
 	}
 	if v.Escalate {
 		reasons = append(reasons, v.Reason)
