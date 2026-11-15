@@ -15,6 +15,7 @@ Part 1: bootstrap done (branch, skeleton, draft PR #249); p1w complete; p1 trunc
 ### Part 2
 
 <!-- w2:start -->
+Part 2: started; status line written in p2, nothing else yet.
 <!-- w2:end -->
 
 ### Part 3
@@ -112,6 +113,7 @@ Written by part 1 on 2026-11-15. Session limit 600 seconds; the bootstrap and p1
 ## What they ask for and complain about
 
 <!-- p2:start -->
+Part 2 status: in progress
 <!-- p2:end -->
 
 ## Competitive teardown
