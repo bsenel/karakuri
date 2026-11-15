@@ -1052,6 +1052,13 @@ func (e *verifyEnv) Act(ctx context.Context, a environment.Action) (environment.
 		res.StateDelta = map[string]any{}
 	}
 	res.StateDelta["verifier"] = string(a.CapabilityID)
+	if asString(params, "cmd") != asString(a.Params, "cmd") {
+		// The command was rewritten for -json, whose events crowd a failure's
+		// message out of the 4000-byte head: carry the failures instead.
+		if excerpt, ok := goTestJSONExcerpt(stdout); ok {
+			res.StateDelta["stdout"] = excerpt
+		}
+	}
 	settleOutsideTheWork(&res, asString(a.Params, "cmd"), stdout)
 	if files, trust, ok := e.changedFiles(ctx, a.Params); ok {
 		res.StateDelta["changed_files"] = files
