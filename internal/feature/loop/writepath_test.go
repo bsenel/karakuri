@@ -85,12 +85,24 @@ func (v *recordingVC) ChangedFiles(context.Context, string, string) ([]string, e
 	return nil, versioncontrol.ErrUnsupported
 }
 
+func (v *recordingVC) ListBranches(context.Context, string, string) ([]versioncontrol.Branch, error) {
+	return nil, versioncontrol.ErrUnsupported
+}
+
 func (v *recordingVC) MarkReady(context.Context, string, string) error {
 	return versioncontrol.ErrUnsupported
 }
 
 func (v *recordingVC) CompareCommits(context.Context, string, string, string) ([]versioncontrol.Commit, error) {
 	return nil, versioncontrol.ErrUnsupported
+}
+
+func (v *recordingVC) ListMergedPRs(context.Context, string, int) ([]versioncontrol.PRSummary, error) {
+	return nil, versioncontrol.ErrUnsupported
+}
+
+func (v *recordingVC) EditPRBody(context.Context, string, string, string) error {
+	return versioncontrol.ErrUnsupported
 }
 
 // ── the acceptance test ──────────────────────────────────────────────────────

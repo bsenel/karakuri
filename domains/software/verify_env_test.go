@@ -143,11 +143,20 @@ func (w *windowVC) ListChecks(context.Context, string, string) ([]versioncontrol
 func (w *windowVC) ChangedFiles(context.Context, string, string) ([]string, error) {
 	return nil, versioncontrol.ErrUnsupported
 }
+func (w *windowVC) ListBranches(context.Context, string, string) ([]versioncontrol.Branch, error) {
+	return nil, versioncontrol.ErrUnsupported
+}
 func (w *windowVC) MarkReady(context.Context, string, string) error {
 	return versioncontrol.ErrUnsupported
 }
 func (w *windowVC) CompareCommits(context.Context, string, string, string) ([]versioncontrol.Commit, error) {
 	return nil, versioncontrol.ErrUnsupported
+}
+func (w *windowVC) ListMergedPRs(context.Context, string, int) ([]versioncontrol.PRSummary, error) {
+	return nil, versioncontrol.ErrUnsupported
+}
+func (w *windowVC) EditPRBody(context.Context, string, string, string) error {
+	return versioncontrol.ErrUnsupported
 }
 
 // Every byte here is re-serialised into the reason prompt of every iteration of

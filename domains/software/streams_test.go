@@ -24,6 +24,26 @@ func TestRoadmapDeliveryBriefMarksReadyAndStacks(t *testing.T) {
 	}
 }
 
+// The delivery brief tells a pass to settle each salvage branch the git
+// observation lists: take it onto the item's own branch once that item's tests
+// pass, or delete it, and say which (Phase 44 step 2). Like the rule above, the
+// plan follows the brief, so the brief is what carries it.
+func TestRoadmapDeliveryBriefSettlesSalvageBranches(t *testing.T) {
+	desc := streamTemplate(t, roadmapDeliveryTemplateID).Description
+	for _, want := range []string{
+		"A salvage branch (karakuri/salvage/...) holds a failed coding action's uncommitted work",
+		"For each one the git observation lists, the plan either cherry-picks it",
+		"cherry-picks it onto the item's branch in a write action that then runs that item's targeted tests and keeps it only if they pass",
+		"or discards it with git push origin --delete <branch>",
+		"The action's reason says which it chose and why",
+		"never onto main",
+	} {
+		if !strings.Contains(desc, want) {
+			t.Errorf("the delivery brief does not say %q:\n%s", want, desc)
+		}
+	}
+}
+
 // streamCases is what each standing stream template is pinned to: how its
 // author regards a mistake, and the agent whose bounds it runs under.
 var streamCases = []struct {
