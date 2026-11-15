@@ -27,6 +27,7 @@ Part 3: wrote three products: Codex and Agents SDK, Claude Code and Agent SDK, L
 ### Part 4
 
 <!-- w4:start -->
+Part 4: p4a written (Langfuse licence, Temporal 07-11 to 11-15 plus Restate, Rootly and PagerDuty), matrix steps A and B, and s4. Not reached: Langfuse releases 04-25 to 10-15, complaint threads, Inngest.
 <!-- w4:end -->
 
 ### Part 5
@@ -222,11 +223,82 @@ New: yes, for 2026-11-05 to 11-14 only. The fifth-cycle thin spot, LangGraph OSS
 ### Products 4 to 6 (part 4)
 
 <!-- p4a:start -->
+Part 4 status: truncated, not reached: Langfuse changelog for 2026-04-25 to 10-15 (langfuse.com/changelog returned 404), a Langfuse complaint thread, Temporal complaints, the Rootly and PagerDuty complaint threads
+
+Part 4 extends the p4a sections of discovery-2026-11-08.md and does not restate them. Every page was read through a fetch tool that returns a model-written report, so every item is [E] unless marked [Q], and [Q] here means a phrase the tool reported as verbatim. Release pages show day and month only; 2026 is inferred. Vendor notes are claims, not measurements.
+
+#### 4. Langfuse
+
+New: yes, for `ee/LICENSE`. The release window 2026-04-25 to 10-15 is **still unread**.
+
+- **(i) Shipped.** https://langfuse.com/changelog returned HTTP 404 on 2026-11-15 [N]; releases page 3 onward was not tried this pass. What was seen in the window comes from the issue search (https://github.com/langfuse/langfuse/issues?q=audit+log, read 2026-11-15) [E]: PR #19759, "record read-access events for MCP tools", merged 2026-11-10; PR #20045, "read audit logs from ClickHouse", opened 2026-11-10 and still open, 17 comments. Both continue the read-access audit work recorded on 2026-11-08.
+- **Licence.** https://github.com/langfuse/langfuse/blob/main/ee/LICENSE (read 2026-11-15) [E], with phrases [Q]. The file is titled "Langfuse Enterprise license" (copyright ClickHouse, Inc). Without a valid enterprise licence it allows copying and modifying "for development and testing purposes, without requiring a subscription". Otherwise it forbids distributing or selling. The file does not define production. Inferred: running the `ee/` features (the audit logs among them, per 2026-11-08) in production needs a paid licence.
+- **(ii) What it does that Karakuri does not.** It records *reads* of traces and MCP tool reads as audit events (PR #19759, [E]).
+- **(iii) What Karakuri does that it does not.** Karakuri stops a run and records who stopped it and why: `Stop(ctx, loopID, principal, reason)` at internal/feature/loop/stop.go:79 (opened). Nothing read shows Langfuse acting on a run.
+- **(iv) Complaints.** None found. Page 1 of the issue search held pull requests, not complaints [E].
+- **(v) Inferred.** The licence text confirms the 11-08 inference: in Langfuse an audit trail is a paid feature. Karakuri's export (internal/feature/audit/export.go, Apache 2.0) has no such gate. That is a licensing difference, not a measured one.
+
+#### 5. Temporal, and Restate (first read)
+
+New: yes. It settles the activity-pause question.
+
+- **(i) Shipped.** https://github.com/temporalio/temporal/releases (page 1, read 2026-11-15) [E]: **v1.32.0 (09-11)**: Standalone Activities GA, with opt-in operator APIs to **pause and resume an Activity**, and Standalone Nexus Operations in pre-release. v1.30.7 and v1.31.3 (09-18): a Nexus callback header toggle. v1.32.1 (10-08), and v1.30.8 and v1.31.4 (10-12): CVE bumps and fixes. v1.32.2, v1.31.5 and v1.30.9 (11-02): security fixes; in v1.32.2, a worker-deployment compute-config change needs namespace Write access (breaking). **v1.31.0** (https://github.com/temporalio/temporal/releases/tag/v1.31.0) is dated 04-29, outside the window: Serverless Workers pre-release, principal attribution, Worker Versioning GA, Standalone Activities preview. It mentions no pause and nothing for AI.
+- **Pause.** https://github.com/temporalio/temporal/issues/3006 is still **open** on 2026-11-15; its newest comment is a "+1" from 2026-07-08 [E]. Observed: *activity* pause shipped as operator APIs in v1.32.0. *Workflow* pause has still not shipped, after four years open.
+- **Restate.** https://restate.dev/blog (read 2026-11-15) [E]. It markets itself for agents: its tagline is "The Durable Runtime for your Agents and Backends" [Q], and the blog has an "AI & Agents" category. In the window: 1.7 "End-to-end Flow Control" (07-07), BYOC (07-07), a $20M Series A (09-30), 1.8 "Mind the Queue" (10-15), "Durable Coroutines for TypeScript" (11-03), and "Agent checkpointing is far from production-grade resiliency" (06-15). A case study says Replit moved its coding agent from Temporal to Restate (a vendor claim). Restate's own changelog and GitHub releases were not read.
+- **(ii) What they do that Karakuri does not.** Inferred: they pause a single activity with operator APIs (Temporal), and offer flow control and queueing across agents (Restate, per its post titles).
+- **(iii) What Karakuri does that they do not.** Stopping a standing objective's loop also pauses the objective, so a cadence does not just start it again: `StopLoop` at internal/feature/reconcile/stoploop.go:39 and `pauseForStop` at :80 (opened). Karakuri runs on Restate rather than competing with it (internal/platform/executor/restate.go, per 11-08).
+- **(iv) Complaints.** #3006 is a request, not a complaint thread, and no counts were given. No other thread was read [N].
+- **(v) Inferred.** Restate now pitches itself as an agent runtime and is the engine Karakuri runs on, so its agent features could overlap Karakuri's loop layer. Watch its "agent checkpointing" claims against Karakuri's checkpoints. Nothing was tested.
+
+#### 6. AI SRE: Rootly, and PagerDuty
+
+New: yes. These are the first AI SRE changelogs read inside the window (`grep -F` shows earlier reports only named Rootly and PagerDuty as future reads).
+
+- **(i) Shipped, Rootly.** https://rootly.com/changelog (read 2026-11-15; page 1 covers the whole window, 26 entries from 05-21 on) [E]. Rootly MCP supports OAuth 2.0 with scoped, short-lived tokens (05-28). A Rootly AI agent in Slack (06-04) and the web app (07-01). Read-only connections to observability tools (07-29). A mobile agent (08-27). Scribe for meetings and call transcripts (08-12, 09-10). Related incidents detected automatically (09-03). Organisation-wide "AI Instructions" for agents (10-07). The agent can create on-call overrides (10-28). AI Timelines (11-05, early access). Microsoft Teams (11-12). No entry names autonomous remediation, approval gates or an agent audit log.
+- **(i) Shipped, PagerDuty.** https://docs.pagerduty.com/get-started/release-notes, reached by a 301 from https://support.pagerduty.com/main/changelog (read 2026-11-15) [E]. SRE Agent recommended workflows GA (06-03). SRE Agent connectors and tools, through MCP or the API, GA (06-30). SRE Agent triggered from incident workflows GA (07-31). A PagerDuty agent app in GitHub that suggests fixes as pull requests (08-11, early access). SRE Agent Skills GA (09-21). Scoped OAuth for public apps GA (09-22). AI settings per team (10-20). AI incident communications GA, where the incident commander reviews and edits drafts before they are published (10-22). Claude auto-connect for the PagerDuty MCP server, in early access, acting with the user's own permissions (11-03).
+- **(ii) What they do that Karakuri does not.** Paging and on-call, an agent inside the incident channel, MCP with OAuth, and in PagerDuty's case fixes proposed as pull requests from an incident.
+- **(iii) What Karakuri does that they do not.** Karakuri reads PagerDuty alerts and nothing more (internal/platform/tools/observability/pagerduty.go:60, carried from 11-08, not re-opened). What it adds is earned autonomy with promotion and demotion: `promote` at internal/feature/reconcile/authority.go:78 and `demote` at :95 (opened). Inferred: neither changelog describes autonomy that grows with clean runs. Rootly's "AI Instructions" and PagerDuty's per-team settings are static.
+- **(iv) Complaints.** Not read [N].
+- **(v) Inferred.** Both vendors moved from summarising incidents to agents that act: Rootly creates overrides, and PagerDuty proposes fixes as pull requests. Both keep a person in the loop, by review of drafts or by acting with the user's own permissions. This is the first in-window evidence for the SRE segment, which 2026-11-08 rated WEAK, and every item is a vendor claim.
+
+#### Still thin (part 4)
+
+1. **Next cycle's first product:** a separate agent-governance or agent-identity product (for example Credo AI, or an agent-identity vendor). Out of scope this part.
+2. Langfuse 2026-04-25 to 10-15: try https://github.com/langfuse/langfuse/releases?page=3 onward (langfuse.com/changelog returned 404). No complaint thread was found.
+3. Restate's own changelog or GitHub releases, and Inngest: not read.
+4. Complaint threads for Temporal, Rootly and PagerDuty: not read.
+5. Whether `internal/feature/delegation/issuer.go` passes the parent's `AuthorityBounds` to a delegated run: grep found no bounds field in it. Not proven either way; see the matrix.
 <!-- p4a:end -->
 
 ## Capability matrix
 
 <!-- p4b:start -->
+Part 4 status: complete
+
+Steps A and B were written together. Key: **O** observed on a page read, **C** claimed by the vendor, **U** unknown, then yes, partial or no. "(11-08)" marks a cell carried from the 2026-11-08 matrix. Karakuri cells cite code opened in this pass, unless marked (11-08). "Not checked" is not proof of absence.
+
+| Capability | Karakuri | Codex / Agents SDK | Claude Code | LangGraph / LangSmith | Langfuse | Temporal | Restate | Rootly | PagerDuty |
+|---|---|---|---|---|---|---|---|---|---|
+| Cadence / standing objectives | O yes, `objective/standing.go:43` (11-08) | U | O yes (11-08) | C partial (11-08) | no (11-08) | U | U | U | C partial, workflow-triggered agent |
+| Human checkpoints | O yes, `loop/service.go:219` (11-08) | C yes, approvals, child approvals (p3) | C partial (11-08) | C yes, strict resume (p3) | no (11-08) | no (11-08) | U | U | C yes, the commander reviews drafts |
+| Earned autonomy | O yes, `reconcile/authority.go:78` promote, `:95` demote | no seen | no seen (11-08) | no seen | no | no | U | no, static instructions | no, static per-team settings |
+| Digests | O yes, `digest/digest.go:65` (11-08) | U | U | U | no (11-08) | no | U | C partial, AI Timelines | U |
+| Audit log and evidence export | O yes, `audit/export.go:149` (11-08); stops are listed in the export (`audit/export_test.go:770`) | U | U | O partial (11-08) | O yes, `ee/` licence only | C partial (11-08) | U | U | U |
+| Stop a run mid-pass | O yes, `loop/stop.go:79`; Phase 37 Completed (`roadmap.md:4031`) | C partial, cancelled `Turn` (p3) | U | C partial, `cancel_reason` (p3) | no | C partial, activity pause v1.32.0; workflow pause open | U | U | U |
+| Durable resume | O yes, `loop/service.go:394` (11-08) | C yes, durable sessions (p3) | O partial (11-08) | O yes (11-08) | no | C yes | C yes | no | no |
+| MCP client | O yes, `platform/tools/mcp/client.go:95` (tools/list and tools/call, `:66`) | C yes (11-08) | C yes (11-08) | U | U | U | U | U | C yes, SRE Agent connectors |
+| MCP server | O yes, `api/handler/mcp.go:484` | U | U | C yes (11-08) | C yes (11-08) | U | U | C yes | C yes |
+| MCP OAuth | O no: grep finds no "oauth" in `platform/tools/mcp` or `handler/mcp.go` | U | U | U | U | U | U | C yes, 05-28 | C yes, scoped OAuth 09-22 |
+| GenAI OTel telemetry | O yes, `telemetry/genai.go:7` (11-08) | C yes, native OTel (p3) | C yes (11-08) | U | C yes (11-08) | no seen (11-08) | U | U | U |
+| Incident and paging | O partial, reads PagerDuty only, `pagerduty.go:60` (11-08) | no (11-08) | no (11-08) | no (11-08) | no | no | no | C yes | C yes |
+| Authority bounds inherited by delegated runs | partial: reconcile derives bounds from the objective's autonomy level (`reconcile/authority.go:21`); `delegation/issuer.go` names no bounds (grep); inheritance not proven | U | O no, issue #27661 (p3) | U | no | no | U | U | C partial, acts with the user's permissions |
+| Rewind / undo | U (not checked this cycle) | U | U | U | no | no | U | U | U |
+| Required-and-not-done record | O yes, Phase 38 Completed (`roadmap.md:4510`, Goal: unmet criteria in the export) | C partial, final-answer hook (p3) | U | U | U | no | U | U | U |
+| Machine-checkable success criteria | O yes, Phase 41 Completed (`roadmap.md:5719`) | U | U | O yes, `reference_outputs` (11-08) | C yes, batch evaluation (11-08) | no | U | U | U |
+| Per-run cost budget (p3) | O no: bounds count actions, not money (`core/agent/agent.go:37-46`, p3) | C yes, `RunBudget` (p3) | C yes, `--max-budget-usd` (p3) | U | U | no | U | U | U |
+| Self-hosting and licence | O yes, Apache 2.0 (11-08) | C partial (11-08) | no (11-08) | U | O MIT core, `ee/` dev and test only without a licence | O yes, MIT (11-08) | C yes, plus BYOC | no, SaaS | no, SaaS |
+
+Inferred: three rows moved for Karakuri since 11-08. Stop mid-pass went from no to yes (Phase 37). MCP client and server went from not checked to yes. MCP OAuth is a new "no", while both AI SRE vendors shipped it this window. Per-run cost budget is a "no" that two vendors in part 3 filled. Delegated-run inheritance is still the weakest Karakuri cell to assert.
 <!-- p4b:end -->
 
 ## Technical frontier
@@ -308,6 +380,18 @@ All read 2026-11-15, through a tool that returns a model-written extract.
 ### Part 4
 
 <!-- s4:start -->
+All read 2026-11-15 through a fetch tool that returns an extract.
+- https://langfuse.com/changelog: primary; HTTP 404; [N].
+- https://github.com/langfuse/langfuse/blob/main/ee/LICENSE: primary; full text; [E], with phrases [Q].
+- https://github.com/langfuse/langfuse/issues?q=audit+log: primary; page 1 of the search; [E].
+- https://github.com/temporalio/temporal/releases: primary; page 1; [E].
+- https://github.com/temporalio/temporal/releases/tag/v1.31.0: primary; full notes; [E].
+- https://github.com/temporalio/temporal/issues/3006: primary; full thread; [E].
+- https://restate.dev/blog: primary (vendor blog); post list only; [E], tagline [Q].
+- https://rootly.com/changelog: primary; page 1, the whole window; [E].
+- https://docs.pagerduty.com/get-started/release-notes (via a 301 from https://support.pagerduty.com/main/changelog): primary; the window; [E].
+- https://www.pagerduty.com/release-notes/: HTTP 404; [N].
+- Karakuri files opened: internal/feature/loop/stop.go:75-82, internal/feature/reconcile/stoploop.go:39,80, internal/feature/reconcile/authority.go:21,78,95, internal/platform/tools/mcp/client.go:66-72,95, internal/api/handler/mcp.go:484, docs/roadmap.md:4031, 4510-4520, 5719.
 <!-- s4:end -->
 
 ### Part 5
