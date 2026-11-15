@@ -51,7 +51,7 @@ Part 7: wrote p7a (audit, verdict, fit by segment, ranking of 16 candidates: non
 ### Part 8
 
 <!-- w8:start -->
-Part 8: p7a passed no candidate, so no phase is proposed and docs/roadmap.md is untouched; p8 written; empty pairs s7 and s8 marked; PR title and body set to their final state.
+Part 8: p7a passed no candidate, so no phase is proposed and docs/roadmap.md is untouched; p8 written; empty pairs s7 and s8 marked; PR #249 retitled 'docs(research): record discovery cycle, no new phase (discovery 2026-11-15)' and body rebuilt. CI at af5c516, read twice: PR title SUCCESS (a re-run for the new title was queued), SBOM skipped, CodeQL and Security Scan jobs queued or in progress; nothing failed, nothing claimed green.
 <!-- w8:end -->
 
 ## What changed since the last report
