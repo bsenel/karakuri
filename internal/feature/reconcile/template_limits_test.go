@@ -290,41 +290,95 @@ func TestTemplateLimitsNarrowTheAgentsAndNeverWiden(t *testing.T) {
 // The supervisor finds the objective's template and hands its limits to the
 // loop with the rest of the bounds. Without this the template's limits exist
 // and nothing reads them.
+//
+// The limits are read from the template at run time and the constraints were
+// copied onto the objective at creation, so the objective created before #252,
+// holding only no-merge, is held to the same limits as one created after: a
+// write action with no params.branch is refused for both. The loop is what
+// tells its planner the template's constraints (internal/feature/loop); the
+// stored objective is never rewritten to carry them.
 func TestTheSupervisorHandsTheTemplatesLimitsToTheLoop(t *testing.T) {
 	c := streamCases(t)[3]
-	f := newFixture(t, Config{})
-	reg := domain.NewRegistry()
-	if err := reg.Register(context.Background(), software.New(), domain.Config{}); err != nil {
-		t.Fatalf("register software: %v", err)
-	}
-	f.svc.domReg = reg
-	f.use(t, map[string]string{"git": "aaa"})
-	f.loops.criteriaMet = 1.0
-	obj := f.declare(t, objective.Objective{
-		AdditionalDomains: []string{"software"},
-		TemplateID:        c.tmpl.ID,
-		AgentID:           string(c.def.ID),
-		Cadence:           &objective.Cadence{Every: "1h"},
-		Autonomy:          &objective.Autonomy{Level: objective.AutonomyActWithNotice, Ceiling: objective.AutonomyActWithNotice},
-	})
-
-	f.pass(t, obj.ID, reconcile.TriggerManual)
-
-	if f.loops.count() != 1 {
-		t.Fatalf("the loop ran %d times, want 1", f.loops.count())
-	}
-	bounds := f.loops.bounds()
 	if len(c.tmpl.ActionLimits) == 0 {
 		t.Fatal("the delivery template declares no limits")
 	}
-	for _, l := range c.tmpl.ActionLimits {
-		if !containsLimit(bounds.ActionLimits, l) {
-			t.Errorf("the loop was not given the template's limit %+v", l)
-		}
+	byID := map[string]objective.Constraint{}
+	for _, k := range c.tmpl.Constraints {
+		byID[k.ID] = k
 	}
-	if !bounds.RefuseOutsideLimits {
-		t.Error("the loop was not told to refuse at act_with_notice")
+	if _, ok := byID["no-merge"]; !ok {
+		t.Fatal("the delivery template holds no no-merge constraint")
 	}
+	if _, ok := byID["action-limits"]; !ok {
+		t.Fatal("the delivery template holds no action-limits constraint")
+	}
+
+	for name, constraints := range map[string][]objective.Constraint{
+		"declared with no constraints":         nil,
+		"created before #252, only no-merge":   {byID["no-merge"]},
+		"created after #252, every constraint": append([]objective.Constraint(nil), c.tmpl.Constraints...),
+	} {
+		t.Run(name, func(t *testing.T) {
+			f := newFixture(t, Config{})
+			reg := domain.NewRegistry()
+			if err := reg.Register(context.Background(), software.New(), domain.Config{}); err != nil {
+				t.Fatalf("register software: %v", err)
+			}
+			f.svc.domReg = reg
+			f.use(t, map[string]string{"git": "aaa"})
+			f.loops.criteriaMet = 1.0
+			obj := f.declare(t, objective.Objective{
+				AdditionalDomains: []string{"software"},
+				TemplateID:        c.tmpl.ID,
+				AgentID:           string(c.def.ID),
+				Constraints:       constraints,
+				Cadence:           &objective.Cadence{Every: "1h"},
+				Autonomy:          &objective.Autonomy{Level: objective.AutonomyActWithNotice, Ceiling: objective.AutonomyActWithNotice},
+			})
+
+			f.pass(t, obj.ID, reconcile.TriggerManual)
+
+			if f.loops.count() != 1 {
+				t.Fatalf("the loop ran %d times, want 1", f.loops.count())
+			}
+			bounds := f.loops.bounds()
+			for _, l := range c.tmpl.ActionLimits {
+				if !containsLimit(bounds.ActionLimits, l) {
+					t.Errorf("the loop was not given the template's limit %+v", l)
+				}
+			}
+			if !bounds.RefuseOutsideLimits {
+				t.Error("the loop was not told to refuse at act_with_notice")
+			}
+
+			noBranch := environment.Action{CapabilityID: writeCode, Params: map[string]any{
+				"prompt": "do the slice", "allowed_tools": []any{"Read", "Edit"},
+			}}
+			if v := decide(bounds, noBranch); !v.Refuse || v.Escalate {
+				t.Errorf("a write action with no params.branch: refuse=%v escalate=%v %q, want refused", v.Refuse, v.Escalate, v.Reason)
+			}
+			if v := decide(bounds, codeAction(c.tools, c.branch)); v.Refuse || v.Escalate {
+				t.Errorf("the brief's own plan stopped: refuse=%v escalate=%v %q", v.Refuse, v.Escalate, v.Reason)
+			}
+
+			stored, err := f.store.GetObjective(context.Background(), obj.ID)
+			if err != nil {
+				t.Fatalf("read the objective back: %v", err)
+			}
+			if !reflect.DeepEqual(constraintIDs(stored.Constraints), constraintIDs(constraints)) {
+				t.Errorf("the stored objective now holds %v, want %v; the template's constraints are read at run time, never written",
+					constraintIDs(stored.Constraints), constraintIDs(constraints))
+			}
+		})
+	}
+}
+
+func constraintIDs(cs []objective.Constraint) []string {
+	ids := []string{}
+	for _, k := range cs {
+		ids = append(ids, k.ID)
+	}
+	return ids
 }
 
 func containsLimit(ls []coreagent.ActionLimit, want coreagent.ActionLimit) bool {

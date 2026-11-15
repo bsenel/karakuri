@@ -420,7 +420,7 @@ func evaluateWithAgent(ctx context.Context, sc *stepContext, criterion objective
 	)
 
 	input := coreagent.Input{
-		Objective: sc.obj,
+		Objective: sc.shownObjective(),
 		// The results are in the task rather than WorldState because
 		// WorldState is the observed world at the start of the iteration —
 		// what was true before the actions ran, which is the wrong half of a
