@@ -117,6 +117,19 @@ type ActionResult struct {
 	// Measurements are the named numbers a verifier computed, typed so that
 	// a measured criterion never has to scrape one out of StateDelta or prose.
 	Measurements []Measurement
+
+	// BoundsViolation is set when the action ran and did something outside
+	// the bounds it declared, such as a push to a ref it never named (Phase 40
+	// step 3). Typed so the loop never has to read it out of Error's text.
+	BoundsViolation *BoundsViolation
+}
+
+// BoundsViolation is what an action did outside its declared bounds. Refs
+// names each ref that moved outside them; Reason is the sentence an operator
+// reads.
+type BoundsViolation struct {
+	Reason string
+	Refs   []string
 }
 
 // Measurement is one named number a verifier emitted. Which names exist is a
