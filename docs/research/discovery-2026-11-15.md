@@ -39,7 +39,7 @@ Part 5: wrote B (three papers), A (MCP, A2A, OTel, IETF titles), C (Anthropic on
 ### Part 6
 
 <!-- w6:start -->
-Part 6: wrote the p6a and p6b skeletons (every feasibility row 'Not assessed (part 6)'); governance and feasibility not yet reached.
+Part 6: wrote p6a (OWASP titles mapped, retention checked; Art. 113 unread, NIST/ISO/questionnaire not reached) and the p6b table; feasibility rows not yet assessed.
 <!-- w6:end -->
 
 ### Part 7
@@ -366,7 +366,30 @@ Not found: a 2026 paper on repeated-run (pass^k) reliability of agents; the sear
 ## Governance and buying criteria
 
 <!-- p6a:start -->
-Part 6 status: in progress
+Part 6 status: truncated, not reached: EU AI Act Art. 113 and Art. 26(6) text (EUR-Lex returned an empty 202 twice), OWASP risk descriptions beyond titles, NIST AI 600-1, ISO/IEC 42001, a published AI-vendor questionnaire
+
+**(1) EU AI Act Art. 113, dates of application.** Observed: https://eur-lex.europa.eu/legal-content/EN/TXT/HTML/?uri=OJ:L_202401689 and https://eur-lex.europa.eu/eli/reg/2024/1689/oj (via the 307 from http://data.europa.eu/eli/reg/2024/1689/oj) both returned HTTP 202 with an empty body, 2026-11-15 [N]. Not quoted; second cycle unread. Karakuri evidence: not applicable until the text is read.
+
+**(2) OWASP Top 10 for Agentic Applications 2026.** Observed: https://genai.owasp.org/download/52117/ returned the PDF (2026-11-15); the ten titles below are read from its table of contents, pages 2 to 4 [Q] for titles only, descriptions not read. Karakuri column: a file:line I opened this pass, or 'no'.
+
+| ID | Title [Q] | Karakuri can evidence today |
+|---|---|---|
+| ASI01 | Agent Goal Hijack | Partly: internal/core/agent/decide.go:96-100, provenance is checked first and a plan drafted with third-party text in evidence escalates; internal/core/environment/environment.go:59 `TrustThirdParty` |
+| ASI02 | Tool Misuse and Exploitation | Partly: internal/core/agent/agent.go:37-44 `MaxAutonomousActions`, `RequiresApprovalFor`; argument-level checks: no (see F8) |
+| ASI03 | Identity and Privilege Abuse | Partly: agent.go:43 declares `CanDelegate`; whether the decision reads it: see F16 |
+| ASI04 | Agentic Supply Chain Vulnerabilities | no (tool-set pinning, F15) |
+| ASI05 | Unexpected Code Execution (RCE) | Partly: internal/platform/procenv/procenv.go:1-22 shapes the environment of spawned CLIs; a sandbox: no evidence opened |
+| ASI06 | Memory & Context Poisoning | no (memory write path not opened) |
+| ASI07 | Insecure Inter-Agent Communication | no |
+| ASI08 | Cascading Failures | no (not opened) |
+| ASI09 | Human-Agent Trust Exploitation | no (checkpoint code not opened; see F9) |
+| ASI10 | Rogue Agents | no file opened; part 2 names Phase 37 (stop any run) as Completed |
+
+**(3) Retention against Art. 26(6).** Observed: config/default.yaml:243-251, `audit.retention.floor_days: 183` ("The minimum the audit log is kept: six months") and `days: 0` (never prunes); internal/feature/audit/retention.go:16 `const FloorDays = 183` and :30-31 refuse a lower floor. config/default.yaml:231 keeps cost events 90 days, but those are cost records, not the run log. Inferred: the default audit log meets a six-month minimum with margin. Not verified: the Art. 26(6) wording itself (EUR-Lex unread, see (1)), and whether tool_events hold everything a deployer's "logs" means.
+
+**(4) NIST AI 600-1, ISO/IEC 42001, procurement questionnaire.** Not reached.
+
+**Still thin (part 6).** Art. 113 and Art. 26(6) primary text, two cycles running; OWASP descriptions and mitigations (only titles read); ASI04, ASI06 to ASI10 have no opened Karakuri evidence; no buyer questionnaire read.
 <!-- p6a:end -->
 
 ## Feasibility
@@ -500,6 +523,10 @@ All read 2026-11-15 through a fetch tool (about 40k characters verbatim per page
 ### Part 6
 
 <!-- s6:start -->
+- https://eur-lex.europa.eu/legal-content/EN/TXT/HTML/?uri=OJ:L_202401689 — 2026-11-15, primary, HTTP 202 empty body [N].
+- http://data.europa.eu/eli/reg/2024/1689/oj → https://eur-lex.europa.eu/eli/reg/2024/1689/oj — 2026-11-15, primary, HTTP 202 empty body [N].
+- https://genai.owasp.org/download/52117/ — 2026-11-15, primary, PDF; table of contents read (titles [Q]), body not read.
+- https://genai.owasp.org/resource/owasp-top-10-for-agentic-applications-for-2026/ and https://genai.owasp.org/initiatives/agentic-security-initiative/ — 2026-11-15, primary, landing pages without the list; cited for nothing [N].
 <!-- s6:end -->
 
 ### Part 7
