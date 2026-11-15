@@ -145,3 +145,28 @@ func TestGoTestJSONExcerpt(t *testing.T) {
 		t.Error("an excerpt from output with no test2json event")
 	}
 }
+
+// A test file that does not compile is reported as build-output events keyed
+// by ImportPath, not Package, then a build-fail (go 1.24 and later print them
+// to stdout under -json). The compiler's message is the failure a person needs,
+// and it is the usual one for a pushed red test.
+func TestGoTestJSONExcerptKeepsACompileError(t *testing.T) {
+	stdout := strings.Join([]string{
+		`{"ImportPath":"example.com/d [example.com/d.test]","Action":"build-output","Output":"# example.com/d [example.com/d.test]\n"}`,
+		`{"ImportPath":"example.com/d [example.com/d.test]","Action":"build-output","Output":"./d_test.go:3:27: undefined: notYetWritten\n"}`,
+		`{"ImportPath":"example.com/d [example.com/d.test]","Action":"build-fail"}`,
+		`{"Action":"start","Package":"example.com/d"}`,
+		`{"Action":"output","Package":"example.com/d","Output":"FAIL\texample.com/d [build failed]\n"}`,
+		`{"Action":"fail","Package":"example.com/d","FailedBuild":"example.com/d [example.com/d.test]"}`,
+	}, "\n")
+
+	got, ok := goTestJSONExcerpt(stdout)
+	if !ok {
+		t.Fatal("no excerpt from test2json output")
+	}
+	want := "# example.com/d [example.com/d.test]\n./d_test.go:3:27: undefined: notYetWritten\n" +
+		"FAIL\texample.com/d [build failed]\nFAIL example.com/d\n"
+	if got != want {
+		t.Errorf("excerpt =\n%s\nwant\n%s", got, want)
+	}
+}

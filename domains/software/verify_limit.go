@@ -62,10 +62,15 @@ func withGoTestJSON(cmd string) string {
 // run, output and pass events, so a failure's message fell outside that head.
 // It holds the output of each failed test and failed package, in the order
 // they failed, then one line per finished package ("ok pkg", "FAIL pkg" or
-// "? pkg"). ok is false when no line is a test2json event, or the excerpt is
-// empty, and then the raw head stays.
+// "? pkg"). A package whose test binary did not compile reports the compiler's
+// output as build-output events keyed by ImportPath, with no Package; those
+// lines count as a failure on build-fail. ok is false when no line is a
+// test2json event, or the excerpt is empty, and then the raw head stays.
 func goTestJSONExcerpt(stdout string) (excerpt string, ok bool) {
-	type key struct{ pkg, test string }
+	type key struct {
+		pkg, test string
+		build     bool
+	}
 	pending := map[key][]string{}
 	var failed, finished []string
 	parsed := false
@@ -76,16 +81,19 @@ func goTestJSONExcerpt(stdout string) (excerpt string, ok bool) {
 		if !strings.HasPrefix(line, "{") {
 			continue
 		}
-		var ev struct{ Action, Package, Test, Output string }
+		var ev struct{ Action, Package, Test, Output, ImportPath string }
 		if json.Unmarshal([]byte(line), &ev) != nil || ev.Action == "" {
 			continue
 		}
 		parsed = true
-		k := key{ev.Package, ev.Test}
+		k := key{pkg: ev.Package, test: ev.Test}
+		if ev.Action == "build-output" || ev.Action == "build-fail" {
+			k = key{pkg: ev.ImportPath, build: true}
+		}
 		switch ev.Action {
-		case "output":
+		case "output", "build-output":
 			pending[k] = append(pending[k], ev.Output)
-		case "fail":
+		case "fail", "build-fail":
 			failed = append(failed, pending[k]...)
 			delete(pending, k)
 		case "pass", "skip":
