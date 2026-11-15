@@ -136,7 +136,7 @@ that krk loop start prints; krk checkpoint list shows what the loop is waiting o
 	cmd.Flags().StringVar(&approver, "approver", "", "Identifier of the operator approving/rejecting (audit attribution)")
 	cmd.Flags().StringSliceVar(&removeActions, "remove-action", nil, "Capability ID to drop from the draft (repeatable; only valid with --decision modify)")
 	cmd.Flags().StringArrayVar(&constraints, "constraint", nil, "Constraint to feed into the revise pass (repeatable; only valid with --decision modify)")
-	cmd.Flags().Float64Var(&revisedConfidence, "revised-confidence", -1, "Floor for the revised plan's confidence (only valid with --decision modify; the default -1 sends no floor)")
+	cmd.Flags().Float64Var(&revisedConfidence, "revised-confidence", -1, "Floor for the revised plan's confidence, from 0 to 1, e.g. 0.6 (only valid with --decision modify; the default -1 sends no floor)")
 	_ = cmd.MarkFlagRequired("decision")
 	return cmd
 }

@@ -43,6 +43,9 @@ func TestResumeHelpShowsModify(t *testing.T) {
 		if usage := c.Flags().Lookup("revised-confidence").Usage; !strings.Contains(usage, "-1 sends no floor") {
 			t.Errorf("%s --revised-confidence usage %q does not say what -1 means", name, usage)
 		}
+		if usage := c.Flags().Lookup("revised-confidence").Usage; !strings.Contains(usage, "from 0 to 1") {
+			t.Errorf("%s --revised-confidence usage %q does not give the scale", name, usage)
+		}
 	}
 }
 
