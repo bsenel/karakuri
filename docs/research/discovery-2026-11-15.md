@@ -15,7 +15,7 @@ Part 1: bootstrap done (branch, skeleton, draft PR #249); p1w complete; p1 trunc
 ### Part 2
 
 <!-- w2:start -->
-Part 2: started; status line written in p2, nothing else yet.
+Part 2: items 1 to 4 written in p2 (langgraph #5672, crewAI #6043, autogen, Temporal forum) with ranking table; items 5 to 7 not yet reached.
 <!-- w2:end -->
 
 ### Part 3
@@ -114,6 +114,28 @@ Written by part 1 on 2026-11-15. Session limit 600 seconds; the bootstrap and p1
 
 <!-- p2:start -->
 Part 2 status: in progress
+
+Read before writing: p1w above. The 2026-11-08 and 2026-11-01 sections of this heading are not restated; the items below only add to them. All reads 2026-11-15 through a fetch agent; a quote marked [Q] is the fetch agent's verbatim copy, not re-checked by hand.
+
+**Item 1. langgraph #5672, comments 21 to 52.** New: yes (the unread pages). Observed: the issue is open, 52 comments, 9 reactions (all +1), labels bug, pending, external. Pages 2 and 3 hold no comment with association MEMBER, COLLABORATOR or OWNER, so there is still no maintainer decision; commenters report a bot auto-closed a contributor PR (#8634), which is a bot action, not a decision. [Q] 1320800521 (NONE, 2026-09-01): "durability=sync changes write timing for completed graph-state changes; it does not turn unfinished node-local streamed progress into a state update." [Q] safal207 (NONE, 2026-08-15): "streamed visibility, durable graph state, and safe resume are different facts". Page 3 (12 comments) was read verbatim; the tail of page 2 came back partly as an extract [E]. https://api.github.com/repos/langchain-ai/langgraph/issues/5672/comments?per_page=20&page=2 and &page=3. Inferred: users separate "what was streamed" from "what is durable"; the documented `durability` option does not close the gap they describe.
+
+**Item 2. crewAI #6043, comments 13 to 31.** New: yes. Observed: open, 31 comments, 2 reactions on the body, every comment 0 reactions, label feature-request; no comment by a MEMBER, COLLABORATOR or OWNER anywhere in the thread, so no maintainer decision. Comments 13 to 20 came back as an extract [E] and are mostly links, promotion of outside projects or off-topic posts; 21 to 31 were read verbatim. [Q] tonydzi (NONE, 2026-09-03): "the failure a write guard can't see is revocation that doesn't propagate." [Q] 1picassoai (NONE, 2026-09-06): "An ingest gatekeeper validates writes BEFORE they become memory". https://api.github.com/repos/crewAIInc/crewAI/issues/6043/comments?per_page=20&page=2. Inferred: the thread's volume is inflated by promotion; strength is low (2 reactions) and should not be counted as demand.
+
+**Item 3. microsoft/autogen #1700, #4079, #4006.** New: yes, but none is about agent behaviour. Observed [E]: #1700 is a Go/Rust port request (4 comments, 34 reactions), #4079 a `ModuleNotFoundError` install error (27 comments, 6 reactions), #4006 the AutoGen Studio roadmap (0 comments, 5 reactions). #1700 has no MEMBER/COLLABORATOR/OWNER comment; [Q] ekzhu (CONTRIBUTOR, 2024-02-17): "You are welcome to start a new language implementation." The most-reacted open issue about agent behaviour in the github.com reaction-sorted list is #6995, MCP tool JSON serialised without `ensure_ascii=False` (5 reactions, 0 comments, 2025-09-06), [Q] "JSON serialization does not set `ensure_ascii=False`." https://github.com/microsoft/autogen/issues/6995. The API `sort=reactions-+1` parameter was ignored [N for ranking]. Inferred: autogen's open tracker carries little agent-behaviour demand by reactions; it is a weak source for this question.
+
+**Item 4. Temporal community forum.** New: yes (never read). Observed: the two 2026 AI-agent threads found by Discourse search both have zero staff replies. (a) "Pattern Sharing: Durable Multi-Agent AI Workflows with HITL via CrewAI", 2026-07-08, 1097 views, 1 reply; a pattern share, not a complaint: [Q] "fault-tolerant, long-running multi-agent AI orchestrations with Temporal and CrewAI, including explicit Human-in-the-Loop (HITL) approval gates." https://community.temporal.io/t/19715. (b) "Dealing with Authorization/Execution Drift (TOCTOU) in long-running workflows", 2026-06-05, 439 views, 3 replies (one hidden by a flag, not read): [Q] "how do you recommend ensuring that the execution step re-validates the initial authorization context?" https://community.temporal.io/t/19610. Inferred: (b) is a new requirement shape, re-checking authority at the moment of action after a long human wait, with one source so far.
+
+**Ranking (part 2), updated after item 4.** Counts as the source shows them; "phase" is matched by phase title and Goal only.
+
+| Requirement | Independent sources | Counts | Strength | Phase on main |
+|---|---|---|---|---|
+| Durable state across a cancelled run (streamed work not lost) | langgraph #5672 (1 org this pass) | 52 comments, 9 reactions, no maintainer reply | medium | Phase 37 (Completed, stop any run); Phase 44 step 2 salvage branch covers coding edits only |
+| Re-validate authority at execution after a long wait | Temporal forum t/19610 (1) | 439 views, 3 replies | low | partly Phase 46 (approval buys one action); else gap |
+| Memory write guards in multi-agent crews | crewAI #6043 (1) | 31 comments, 2 reactions | low | gap |
+| MCP tool output encoding degrades non-English text | autogen #6995 (1) | 5 reactions, 0 comments | low | gap (Phase 42 is about call arguments, not encoding) |
+
+**Still thin (part 2).**
+- Temporal forum post 4 of t/19610 hidden; next: https://community.temporal.io/t/19610 read by a signed-in human.
 <!-- p2:end -->
 
 ## Competitive teardown
@@ -176,6 +198,13 @@ Part 1 status: complete
 ### Part 2
 
 <!-- s2:start -->
+Part 2 sources, all read 2026-11-15:
+- https://api.github.com/repos/langchain-ai/langgraph/issues/5672 and /comments?per_page=20&page=2, &page=3. Primary; page 3 full text, page 2 partly extract. [Q]/[E]
+- https://api.github.com/repos/crewAIInc/crewAI/issues/6043 and /comments?per_page=20&page=1, &page=2. Primary; page 2 full text, page 1 truncated to extract. [Q]/[E]
+- https://api.github.com/repos/microsoft/autogen/issues/1700, /4079, /4006, /1700/comments, /4006/comments, /6995. Primary; extract except quoted lines. [E]/[Q]
+- https://api.github.com/repos/microsoft/autogen/issues?state=open&sort=reactions-+1 (sort ignored, not used for ranking). [N]
+- https://github.com/microsoft/autogen/issues?q=is%3Aissue+is%3Aopen+sort%3Areactions-%2B1-desc. Primary, first page, extract. [E]
+- https://community.temporal.io/search.json (two queries), https://community.temporal.io/t/19715.json, https://community.temporal.io/t/19610.json. Primary; full text except a flagged hidden post. [Q]
 <!-- s2:end -->
 
 ### Part 3
