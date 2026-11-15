@@ -14,6 +14,9 @@ export function CheckpointsPage() {
   const [loaded, setLoaded] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [modifying, setModifying] = useState<Checkpoint | null>(null);
+  // The decided card leaves the queue, and a card that vanishes says nothing
+  // on its own: this line is what tells the operator the decision went through.
+  const [decided, setDecided] = useState<string | null>(null);
 
   const load = async () => {
     try {
@@ -36,15 +39,19 @@ export function CheckpointsPage() {
 
   const resolve = async (id: string, decision: 'approve' | 'reject') => {
     setBusy(id);
+    setDecided(null);
     try {
       await api.post(`/checkpoints/${id}/resolve`, { decision });
+      setDecided(`${decision === 'approve' ? 'Approved' : 'Rejected'} checkpoint ${id}.`);
       await load();
     } catch (e) { setErr(`Could not ${decision} checkpoint ${id}: ${describe(e)}`); }
     finally { setBusy(null); }
   };
 
   const submitModify = async (id: string, note: string, modifications: CheckpointModifications) => {
+    setDecided(null);
     await api.post(`/checkpoints/${id}/resolve`, { decision: 'modify', note, modifications });
+    setDecided(`Sent checkpoint ${id} back with changes.`);
     await load();
   };
 
@@ -58,6 +65,7 @@ export function CheckpointsPage() {
 
       {err && <p className="pill red" role="alert">{err}</p>}
       {err && !loaded && <p><button onClick={retry}>Retry</button></p>}
+      {decided && <p className="muted small" role="status">{decided}</p>}
 
       <div className="col" style={{ marginTop: 16 }}>
         {/* Neither "not loaded yet" nor "could not load" is "nothing pending":

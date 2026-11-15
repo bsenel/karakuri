@@ -5,6 +5,14 @@ import (
 	"testing"
 )
 
+// --batch 0 is accepted and falls back to 200; the usage has to say so.
+func TestMigrateBatchUsageSaysWhatZeroMeans(t *testing.T) {
+	usage := migrateCmd().Flags().Lookup("batch").Usage
+	if !strings.Contains(usage, "0 or less uses 200") {
+		t.Errorf("--batch usage %q does not say what 0 means", usage)
+	}
+}
+
 // An unknown driver must name the drivers krk migrate takes and show one.
 func TestMigrateUnknownDriverNamesTheSupportedOnes(t *testing.T) {
 	cmd := migrateCmd()

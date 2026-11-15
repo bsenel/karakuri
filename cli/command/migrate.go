@@ -65,7 +65,7 @@ rows copied per table is printed when it finishes.`,
 	}
 	cmd.Flags().StringVar(&from, "from", "", "Source DSN as <driver>:<dsn>, e.g. sqlite:./karakuri.db (required)")
 	cmd.Flags().StringVar(&to, "to", "", "Target DSN as <driver>:<dsn>, e.g. postgres:postgres://… (required)")
-	cmd.Flags().IntVar(&batch, "batch", 200, "Rows read from the source and inserted into the target per batch")
+	cmd.Flags().IntVar(&batch, "batch", 200, "Rows read from the source and inserted into the target per batch; 0 or less uses 200")
 	_ = cmd.MarkFlagRequired("from")
 	_ = cmd.MarkFlagRequired("to")
 	return cmd

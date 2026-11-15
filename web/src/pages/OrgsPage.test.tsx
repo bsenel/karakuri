@@ -10,7 +10,7 @@ vi.mock('@/api/client', async () => {
 });
 vi.mock('@/auth/AuthProvider', () => ({ useAuth: () => ({ can: () => true }) }));
 
-import { APIError } from '@/api/client';
+import { api, APIError } from '@/api/client';
 import { OrgsPage } from './OrgsPage';
 
 describe('OrgsPage', () => {
@@ -89,5 +89,41 @@ describe('OrgsPage', () => {
     expect(screen.getByRole('button', { name: 'Delete team Core' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Delete project Apollo' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'delete' })).not.toBeInTheDocument();
+  });
+
+  it('says which add failed, since three add rows share one alert', async () => {
+    get.mockResolvedValue([]);
+    vi.mocked(api.post).mockRejectedValueOnce(new APIError(409, '{"message":"name already taken"}'));
+
+    render(<OrgsPage />);
+    fireEvent.change(await screen.findByRole('textbox', { name: 'New organisation' }), {
+      target: { value: 'Acme' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Add organisation' }));
+
+    await waitFor(() =>
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        'Could not add organisation "Acme": name already taken',
+      ),
+    );
+  });
+
+  it('says which row a refused delete was about', async () => {
+    get.mockResolvedValue([
+      { id: 'o1', kind: 'org', name: 'Acme' },
+      { id: 't1', kind: 'team', name: 'Core', parent_id: 'o1' },
+    ]);
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    vi.mocked(api.del).mockRejectedValueOnce(new APIError(409, '{"message":"container is not empty"}'));
+
+    render(<OrgsPage />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Delete organisation Acme' }));
+
+    await waitFor(() =>
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        'Could not delete organisation "Acme": container is not empty',
+      ),
+    );
+    confirm.mockRestore();
   });
 });

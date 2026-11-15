@@ -54,7 +54,8 @@ function Orgs() {
       await api.post('/containers', { kind, name, parent_id: parentID });
       containers.reload();
     } catch (e) {
-      setError(describe(e));
+      // Three add rows share this one alert, so it says which add failed.
+      setError(`Could not add ${noun(kind)} "${name}": ${describe(e)}`);
     }
   };
 
@@ -67,8 +68,9 @@ function Orgs() {
       containers.reload();
     } catch (e) {
       // The server refuses a container with anything in it, which is the
-      // message worth showing rather than a generic failure.
-      setError(describe(e));
+      // message worth showing rather than a generic failure; the prefix says
+      // which row it was about.
+      setError(`Could not delete ${noun(c.kind)} "${c.name}": ${describe(e)}`);
     } finally {
       setBusy(null);
     }
@@ -219,6 +221,11 @@ function CreateRow({
       </button>
     </div>
   );
+}
+
+// The API says "org"; the page says "organisation", as its buttons do.
+function noun(kind: string) {
+  return kind === 'org' ? 'organisation' : kind;
 }
 
 function byName(a: Container, b: Container) {

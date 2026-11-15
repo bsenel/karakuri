@@ -1,6 +1,26 @@
 package command
 
-import "testing"
+import (
+	"net/http"
+	"testing"
+)
+
+// A --tier there is no tier for is refused before any request, with the four
+// tiers there are and a command that uses one.
+func TestMemoryRecallListsTheTiersOnAnUnknownTier(t *testing.T) {
+	srv, apiURL := startLoopStopServer(t, http.StatusOK, "[]")
+	_, _, err := runKrkSplit("--api-url", apiURL, "memory", "recall", "--agent", "agent_42", "--query", "deploy", "--tier", "long")
+	if err == nil {
+		t.Fatal("krk memory recall --tier long succeeded, want an error")
+	}
+	want := "invalid --tier \"long\": use working, episodic, semantic or procedural, e.g. `krk memory recall --agent agent_42 --query \"deploy\" --tier semantic`"
+	if err.Error() != want {
+		t.Errorf("error = %q, want %q", err.Error(), want)
+	}
+	if srv.requests != 0 {
+		t.Errorf("server saw %d requests, want none", srv.requests)
+	}
+}
 
 // A recall that matches nothing says so, in the words the web UI's memory
 // page uses, and points at what to change. Stdout is the server's bytes in

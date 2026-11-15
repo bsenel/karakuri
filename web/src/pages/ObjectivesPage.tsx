@@ -36,7 +36,8 @@ export function ObjectivesPage() {
       setErr(null);
       setLoaded(true);
     } catch (e) {
-      setErr(describe(e));
+      // The load and the create share one alert, so each says which it was.
+      setErr(`Could not load objectives: ${describe(e)}`);
     }
   };
 
@@ -57,7 +58,7 @@ export function ObjectivesPage() {
       setTitle('');
       await load();
     } catch (e) {
-      setErr(describe(e));
+      setErr(`Could not create objective “${title}”: ${describe(e)}`);
     }
   };
 
