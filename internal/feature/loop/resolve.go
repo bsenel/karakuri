@@ -66,6 +66,16 @@ func withTemplateConstraints(domReg *domain.Registry, obj objective.Objective) o
 	return obj
 }
 
+// shownObjective is sc.obj as every agent input carries it. A step context
+// with no service has no registry to read a template from, so it shows the
+// objective as it is.
+func (sc *stepContext) shownObjective() objective.Objective {
+	if sc.svc == nil {
+		return sc.obj
+	}
+	return withTemplateConstraints(sc.svc.domReg, sc.obj)
+}
+
 // SelectAgent picks the agent definition an objective runs under.
 //
 // For a cross-domain objective it walks the declared domains in order and
