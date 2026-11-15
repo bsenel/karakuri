@@ -831,6 +831,12 @@ func (e *cliEnv) Act(ctx context.Context, a environment.Action) (environment.Act
 				a.CapabilityID, e.cli.Name()),
 		}, nil
 	}
+	// Origin's refs are read before the run and again after it, so a push the
+	// agent made outside its declared refs is a failed action (Phase 40 step
+	// 3). An origin that cannot be read is never a pass: a run that succeeded
+	// fails for it, and one that failed keeps its own error and records why.
+	declared := declaredRefs(asString(a.Params, "branch"), worktree)
+	refsBefore, refsBeforeErr := readRemoteRefs(ctx, worktree)
 	// scrub keeps the delegation token out of anything the result carries.
 	scrub := func(s string) string { return s }
 	var credential map[string]any
@@ -885,6 +891,7 @@ func (e *cliEnv) Act(ctx context.Context, a environment.Action) (environment.Act
 	}
 
 	out, err := e.cli.Delegate(ctx, in)
+	pushed, pushedErr := checkPushedRefs(ctx, worktree, declared, refsBefore, refsBeforeErr)
 	// What a Karakuri tool returned can be a stranger's prose (an audit row
 	// holds pull-request titles), and the agent wrote everything after it
 	// having read that. Decided from the calls the run made, not from what was
@@ -916,7 +923,14 @@ func (e *cliEnv) Act(ctx context.Context, a environment.Action) (environment.Act
 			}
 			delta[k] = v
 		}
-		return environment.ActionResult{Success: false, Trust: trust, Error: scrub(err.Error()), StateDelta: delta}, nil
+		if pushedErr != nil {
+			delta["pushed_refs_error"] = scrub(pushedErr.Error())
+		}
+		msg := err.Error()
+		if pushed != "" {
+			msg = pushed + "; the run itself failed: " + msg
+		}
+		return environment.ActionResult{Success: false, Trust: trust, Error: scrub(msg), StateDelta: delta}, nil
 	}
 	delta := map[string]any{
 		"adapter":    e.cli.Name(),
@@ -927,6 +941,12 @@ func (e *cliEnv) Act(ctx context.Context, a environment.Action) (environment.Act
 	}
 	if credential != nil {
 		delta["delegation_credential"] = credential
+	}
+	if pushedErr != nil {
+		pushed = pushedErr.Error()
+	}
+	if pushed != "" {
+		return environment.ActionResult{Success: false, Trust: trust, Error: scrub(pushed), StateDelta: delta, ArtifactSHAs: out.ArtifactSHAs}, nil
 	}
 	return environment.ActionResult{Success: true, Trust: trust, StateDelta: delta, ArtifactSHAs: out.ArtifactSHAs}, nil
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"reflect"
 	"strings"
 	"testing"
@@ -75,9 +76,12 @@ func newRecordingIssuer() *recordingIssuer {
 }
 
 // delegateAction is a delegation that asks for the given Karakuri tools; with
-// none, params carries no karakuri_tools at all.
-func delegateAction(karakuriTools ...string) environment.Action {
-	params := map[string]any{"prompt": "read the audit log", "worktree_path": "/tmp/wt"}
+// none, params carries no karakuri_tools at all. Its worktree is a real one
+// with an origin, because Act reads origin's refs around the run and refuses
+// when it cannot (Phase 40 step 3).
+func delegateAction(t *testing.T, karakuriTools ...string) environment.Action {
+	t.Helper()
+	params := map[string]any{"prompt": "read the audit log", "worktree_path": newSalvageFixture(t).worktree}
 	if len(karakuriTools) > 0 {
 		list := make([]any, 0, len(karakuriTools))
 		for _, n := range karakuriTools {
@@ -100,7 +104,7 @@ func TestKarakuriToolsRefusedWhenAttachmentIsOff(t *testing.T) {
 	cli, iss := &recordingCLI{}, newRecordingIssuer()
 	env := &cliEnv{id: "software.env.cli_agent", cli: cli, twinID: "twin-1", issuer: iss}
 
-	res, err := env.Act(context.Background(), delegateAction("audit_list"))
+	res, err := env.Act(context.Background(), delegateAction(t, "audit_list"))
 	if err != nil {
 		t.Fatalf("act: %v", err)
 	}
@@ -122,18 +126,21 @@ func TestKarakuriToolsRefusedWhenAttachmentIsOff(t *testing.T) {
 // today, attachment enabled or not, and nothing is issued for it.
 func TestNoKarakuriToolsMeansNoAttachment(t *testing.T) {
 	base := &recordingCLI{}
-	if _, err := (&cliEnv{id: "software.env.cli_agent", cli: base}).Act(context.Background(), delegateAction()); err != nil {
+	baseline := delegateAction(t)
+	if _, err := (&cliEnv{id: "software.env.cli_agent", cli: base}).Act(context.Background(), baseline); err != nil {
 		t.Fatalf("act: %v", err)
 	}
 	if len(base.calls) != 1 {
 		t.Fatalf("baseline adapter calls = %d, want 1", len(base.calls))
 	}
 
-	empty := delegateAction()
+	// The same worktree as the baseline, so the inputs can be compared whole.
+	absent := environment.Action{CapabilityID: baseline.CapabilityID, Params: maps.Clone(baseline.Params)}
+	empty := environment.Action{CapabilityID: baseline.CapabilityID, Params: maps.Clone(baseline.Params)}
 	empty.Params["karakuri_tools"] = []any{}
 
 	for name, a := range map[string]environment.Action{
-		"absent":     delegateAction(),
+		"absent":     absent,
 		"empty list": empty,
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -170,7 +177,7 @@ func TestNoKarakuriToolsMeansNoAttachment(t *testing.T) {
 func TestKarakuriToolsAttachedWithAScopedCredential(t *testing.T) {
 	cli, iss := &recordingCLI{}, newRecordingIssuer()
 
-	res, err := attachingEnv(cli, iss).Act(context.Background(), delegateAction("audit_list"))
+	res, err := attachingEnv(cli, iss).Act(context.Background(), delegateAction(t, "audit_list"))
 	if err != nil {
 		t.Fatalf("act: %v", err)
 	}
@@ -217,7 +224,7 @@ func TestKarakuriToolsAttachedWithAScopedCredential(t *testing.T) {
 func TestCredentialRevokedWhenTheAdapterFails(t *testing.T) {
 	cli, iss := &recordingCLI{err: errors.New("exit status 1")}, newRecordingIssuer()
 
-	res, err := attachingEnv(cli, iss).Act(context.Background(), delegateAction("audit_list"))
+	res, err := attachingEnv(cli, iss).Act(context.Background(), delegateAction(t, "audit_list"))
 	if err != nil {
 		t.Fatalf("act: %v", err)
 	}
@@ -248,7 +255,7 @@ func TestKarakuriToolsRefusedWithoutTwinOrIssuer(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			cli := &recordingCLI{}
 			tc.env.id, tc.env.cli = "software.env.cli_agent", cli
-			res, err := tc.env.Act(context.Background(), delegateAction("audit_list"))
+			res, err := tc.env.Act(context.Background(), delegateAction(t, "audit_list"))
 			if err != nil {
 				t.Fatalf("act: %v", err)
 			}
@@ -278,7 +285,7 @@ func TestActionResultRecordsTheScopeAndNeverTheToken(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			cli, iss := &recordingCLI{err: adapterErr}, newRecordingIssuer()
 
-			res, err := attachingEnv(cli, iss).Act(context.Background(), delegateAction("audit_list"))
+			res, err := attachingEnv(cli, iss).Act(context.Background(), delegateAction(t, "audit_list"))
 			if err != nil {
 				t.Fatalf("act: %v", err)
 			}
@@ -335,7 +342,7 @@ func TestAttachOptionChangesTheDelegation(t *testing.T) {
 		cli := &recordingCLI{}
 		env := &cliEnv{id: "software.env.cli_agent", cli: cli, twinID: "twin-1", issuer: newRecordingIssuer()}
 		env.attachMCP, env.mcpURL = cliMCPOptions(opts)
-		res, err := env.Act(context.Background(), delegateAction("audit_list"))
+		res, err := env.Act(context.Background(), delegateAction(t, "audit_list"))
 		if err != nil {
 			t.Fatalf("act: %v", err)
 		}
@@ -413,7 +420,7 @@ func TestTimeoutOptionChangesTheDelegation(t *testing.T) {
 		cli, iss := &recordingCLI{}, newRecordingIssuer()
 		env := attachingEnv(cli, iss)
 		env.timeoutSeconds = cliTimeoutSeconds(opts)
-		res, err := env.Act(context.Background(), delegateAction("audit_list"))
+		res, err := env.Act(context.Background(), delegateAction(t, "audit_list"))
 		if err != nil {
 			t.Fatalf("act: %v", err)
 		}
@@ -441,11 +448,11 @@ func TestTimeoutOptionChangesTheDelegation(t *testing.T) {
 }
 
 // delegateActionWithTools is a delegation whose params name its own tool list.
-func delegateActionWithTools(allowedTools ...string) environment.Action {
-	a := delegateAction()
+func delegateActionWithTools(t *testing.T, allowedTools ...string) environment.Action {
+	a := delegateAction(t)
 	list := make([]any, 0, len(allowedTools))
-	for _, t := range allowedTools {
-		list = append(list, t)
+	for _, tool := range allowedTools {
+		list = append(list, tool)
 	}
 	a.Params["allowed_tools"] = list
 	return a
@@ -457,7 +464,7 @@ func TestActionToolListWinsOverTheInstanceDefault(t *testing.T) {
 	cli := &recordingCLI{name: "claude_code"}
 	env := &cliEnv{id: "software.env.cli_agent", cli: cli, allowedTools: []string{"Read", "Edit", "Bash(git:*)"}}
 
-	res, err := env.Act(context.Background(), delegateActionWithTools("Read"))
+	res, err := env.Act(context.Background(), delegateActionWithTools(t, "Read"))
 	if err != nil {
 		t.Fatalf("act: %v", err)
 	}
@@ -475,7 +482,7 @@ func TestInstanceToolListAppliesWhenTheActionNamesNone(t *testing.T) {
 	cli := &recordingCLI{name: "claude_code"}
 	env := &cliEnv{id: "software.env.cli_agent", cli: cli, allowedTools: []string{"Read", "Edit"}}
 
-	res, err := env.Act(context.Background(), delegateAction())
+	res, err := env.Act(context.Background(), delegateAction(t))
 	if err != nil {
 		t.Fatalf("act: %v", err)
 	}
@@ -495,7 +502,7 @@ func TestClaudeCodeWithNoToolListIsRefusedBeforeItStarts(t *testing.T) {
 	env := &cliEnv{id: "software.env.cli_agent", cli: cli, twinID: "twin-1",
 		attachMCP: true, mcpURL: testMCPURL, issuer: iss}
 
-	res, err := env.Act(context.Background(), delegateAction())
+	res, err := env.Act(context.Background(), delegateAction(t))
 	if err != nil {
 		t.Fatalf("act: %v", err)
 	}
@@ -519,7 +526,7 @@ func TestClaudeCodeWithNoToolListIsRefusedBeforeItStarts(t *testing.T) {
 func TestKarakuriToolsAloneAreNotRefused(t *testing.T) {
 	cli, iss := &recordingCLI{name: "claude_code"}, newRecordingIssuer()
 
-	res, err := attachingEnv(cli, iss).Act(context.Background(), delegateAction("audit_list"))
+	res, err := attachingEnv(cli, iss).Act(context.Background(), delegateAction(t, "audit_list"))
 	if err != nil {
 		t.Fatalf("act: %v", err)
 	}
@@ -537,7 +544,7 @@ func TestInstanceToolListIsNotSharedBetweenDelegations(t *testing.T) {
 	cli := &recordingCLI{name: "claude_code"}
 	env := &cliEnv{id: "software.env.cli_agent", cli: cli, allowedTools: []string{"Read", "Edit"}}
 
-	if _, err := env.Act(context.Background(), delegateAction()); err != nil {
+	if _, err := env.Act(context.Background(), delegateAction(t)); err != nil {
 		t.Fatalf("act: %v", err)
 	}
 	cli.calls[0].AllowedTools[0] = "Bash"
@@ -554,7 +561,7 @@ func TestOtherAdaptersRunWithoutAToolList(t *testing.T) {
 			cli := &recordingCLI{name: name}
 			env := &cliEnv{id: "software.env.cli_agent", cli: cli}
 
-			res, err := env.Act(context.Background(), delegateAction())
+			res, err := env.Act(context.Background(), delegateAction(t))
 			if err != nil {
 				t.Fatalf("act: %v", err)
 			}
