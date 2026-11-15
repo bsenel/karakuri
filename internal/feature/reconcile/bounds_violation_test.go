@@ -3,6 +3,7 @@ package reconcile
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/bsenel/karakuri/internal/core/environment"
 	"github.com/bsenel/karakuri/internal/core/objective"
@@ -83,6 +84,9 @@ func TestABlockedStreamRunsNoPassUntilItsOwnerResumesIt(t *testing.T) {
 	f.loops.violation, f.loops.failure, f.loops.status = nil, "", objective.StatusCompleted
 	f.loops.mu.Unlock()
 
+	// Past the cadence floor, so it is the block and not the floor that
+	// holds these passes.
+	f.clock = f.clock.Add(2 * time.Hour)
 	f.pass(t, obj.ID, reconcile.TriggerManual)
 	f.pass(t, obj.ID, reconcile.TriggerSchedule)
 	if got := f.loops.count(); got != 1 {
@@ -98,6 +102,7 @@ func TestABlockedStreamRunsNoPassUntilItsOwnerResumesIt(t *testing.T) {
 	if got := f.objectiveStatus(t, obj.ID); got == objective.StatusBlocked {
 		t.Error("the objective is still blocked after its owner resumed it")
 	}
+	f.clock = f.clock.Add(2 * time.Hour)
 	f.pass(t, obj.ID, reconcile.TriggerManual)
 	if got := f.loops.count(); got != 2 {
 		t.Errorf("after the owner resumed it the stream ran %d loops in all, want 2", got)

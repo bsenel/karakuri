@@ -14,6 +14,7 @@ import (
 	"github.com/bsenel/karakuri/internal/core/capability"
 	"github.com/bsenel/karakuri/internal/core/checkpoint"
 	"github.com/bsenel/karakuri/internal/core/container"
+	"github.com/bsenel/karakuri/internal/core/environment"
 	coreerrors "github.com/bsenel/karakuri/internal/core/errors"
 	coreloop "github.com/bsenel/karakuri/internal/core/loop"
 	"github.com/bsenel/karakuri/internal/core/memory"
@@ -768,6 +769,13 @@ func (s *GORMStorage) SaveLoopState(ctx context.Context, st coreloop.State) erro
 		}
 		m.CriteriaJSON = string(b)
 	}
+	if st.BoundsViolation != nil {
+		b, err := json.Marshal(st.BoundsViolation)
+		if err != nil {
+			return err
+		}
+		m.BoundsViolationJSON = string(b)
+	}
 	return s.db.WithContext(ctx).Save(&m).Error
 }
 
@@ -806,26 +814,36 @@ func loopStateFromModel(m schema.LoopStateModel) coreloop.State {
 	// written before they were recorded.
 	var criteria []objective.Criterion
 	_ = json.Unmarshal([]byte(m.CriteriaJSON), &criteria)
+	// A violation that cannot be read back is still a violation: the stream
+	// blocks on a generic reason rather than passing for want of the refs.
+	var violation *environment.BoundsViolation
+	if m.BoundsViolationJSON != "" {
+		violation = &environment.BoundsViolation{}
+		if err := json.Unmarshal([]byte(m.BoundsViolationJSON), violation); err != nil {
+			violation = &environment.BoundsViolation{Reason: "a bounds violation was recorded but could not be read back"}
+		}
+	}
 	return coreloop.State{
-		Outcome:      coreloop.RunOutcome(m.Outcome),
-		Criteria:     criteria,
-		LoopID:       m.LoopID,
-		ObjectiveID:  objective.ObjectiveID(m.ObjectiveID),
-		TwinID:       m.TwinID,
-		AgentID:      m.AgentID,
-		Iteration:    m.Iteration,
-		Paused:       m.Paused,
-		Completed:    m.Completed,
-		LastStep:     coreloop.Step(m.LastStep),
-		Status:       objective.ObjectiveStatus(m.Status),
-		CriteriaMet:  m.CriteriaMet,
-		CheckpointID: m.CheckpointID,
-		Error:        m.Error,
-		StoppedBy:    m.StoppedBy,
-		StopReason:   m.StopReason,
-		RequestJSON:  m.RequestJSON,
-		CreatedAt:    m.CreatedAt,
-		UpdatedAt:    m.UpdatedAt,
+		BoundsViolation: violation,
+		Outcome:         coreloop.RunOutcome(m.Outcome),
+		Criteria:        criteria,
+		LoopID:          m.LoopID,
+		ObjectiveID:     objective.ObjectiveID(m.ObjectiveID),
+		TwinID:          m.TwinID,
+		AgentID:         m.AgentID,
+		Iteration:       m.Iteration,
+		Paused:          m.Paused,
+		Completed:       m.Completed,
+		LastStep:        coreloop.Step(m.LastStep),
+		Status:          objective.ObjectiveStatus(m.Status),
+		CriteriaMet:     m.CriteriaMet,
+		CheckpointID:    m.CheckpointID,
+		Error:           m.Error,
+		StoppedBy:       m.StoppedBy,
+		StopReason:      m.StopReason,
+		RequestJSON:     m.RequestJSON,
+		CreatedAt:       m.CreatedAt,
+		UpdatedAt:       m.UpdatedAt,
 	}
 }
 

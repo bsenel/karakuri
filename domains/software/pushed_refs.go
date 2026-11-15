@@ -14,6 +14,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/bsenel/karakuri/internal/core/environment"
 )
 
 const headsPrefix = "refs/heads/"
@@ -29,27 +31,31 @@ func readRemoteRefs(ctx context.Context, worktree string) (map[string]string, er
 
 // checkPushedRefs reads origin's refs after a run and compares them with
 // before, the read taken before it (nil when that read failed with
-// beforeErr). It returns the bounds violation, or "" when every ref that moved
-// was declared and kept its previous tip, and an error when the comparison
-// could not be made, which the caller must not treat as a pass.
-func checkPushedRefs(ctx context.Context, worktree string, declared map[string]bool, before map[string]string, beforeErr error) (string, error) {
+// beforeErr). It returns the bounds violation, typed so the loop and reconcile
+// never read it out of Error's text, or nil when every ref that moved was
+// declared and kept its previous tip, and an error when the comparison could
+// not be made, which the caller must not treat as a pass.
+func checkPushedRefs(ctx context.Context, worktree string, declared map[string]bool, before map[string]string, beforeErr error) (*environment.BoundsViolation, error) {
 	if beforeErr != nil {
-		return "", fmt.Errorf("what the run pushed could not be checked: %w", beforeErr)
+		return nil, fmt.Errorf("what the run pushed could not be checked: %w", beforeErr)
 	}
 	after, err := readRemoteRefs(ctx, worktree)
 	if err != nil {
-		return "", fmt.Errorf("what the run pushed could not be checked: %w", err)
+		return nil, fmt.Errorf("what the run pushed could not be checked: %w", err)
 	}
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), salvageTimeout)
 	defer cancel()
-	violations, err := pushedRefsViolations(ctx, worktree, declared, before, after)
+	violations, refs, err := pushedRefsViolations(ctx, worktree, declared, before, after)
 	if err != nil {
-		return "", fmt.Errorf("what the run pushed could not be checked: %w", err)
+		return nil, fmt.Errorf("what the run pushed could not be checked: %w", err)
 	}
 	if len(violations) == 0 {
-		return "", nil
+		return nil, nil
 	}
-	return "bounds violation: " + strings.Join(violations, "; "), nil
+	return &environment.BoundsViolation{
+		Reason: "bounds violation: " + strings.Join(violations, "; "),
+		Refs:   refs,
+	}, nil
 }
 
 // remoteRefs maps every branch and tag on the worktree's origin to its SHA. An
@@ -87,8 +93,9 @@ func declaredRefs(branch, worktree string) map[string]bool {
 // pushedRefsViolations compares origin's refs before and after a run and
 // returns one line per bounds violation: an undeclared ref that was created,
 // moved or deleted, or a declared ref that no longer contains its previous
-// tip. An error means the comparison could not be made, which is not a pass.
-func pushedRefsViolations(ctx context.Context, worktree string, declared map[string]bool, before, after map[string]string) ([]string, error) {
+// tip, and the refs those lines name. An error means the comparison could not
+// be made, which is not a pass.
+func pushedRefsViolations(ctx context.Context, worktree string, declared map[string]bool, before, after map[string]string) ([]string, []string, error) {
 	names := map[string]bool{}
 	for ref := range before {
 		names[ref] = true
@@ -102,7 +109,7 @@ func pushedRefsViolations(ctx context.Context, worktree string, declared map[str
 	}
 	sort.Strings(sorted)
 
-	var violations []string
+	var violations, refs []string
 	for _, ref := range sorted {
 		old, now := before[ref], after[ref]
 		if old == now {
@@ -116,18 +123,20 @@ func pushedRefsViolations(ctx context.Context, worktree string, declared map[str
 			if now != "" {
 				kept, err := containsTip(ctx, worktree, ref, old, now)
 				if err != nil {
-					return nil, err
+					return nil, nil, err
 				}
 				if kept {
 					continue
 				}
 			}
 			violations = append(violations, refMove(ref, old, now)+", which drops its previous tip")
+			refs = append(refs, ref)
 			continue
 		}
 		violations = append(violations, refMove(ref, old, now)+", outside the action's declared refs")
+		refs = append(refs, ref)
 	}
-	return violations, nil
+	return violations, refs, nil
 }
 
 // containsTip reports whether commit now has old in its history. now is

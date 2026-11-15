@@ -927,10 +927,10 @@ func (e *cliEnv) Act(ctx context.Context, a environment.Action) (environment.Act
 			delta["pushed_refs_error"] = scrub(pushedErr.Error())
 		}
 		msg := err.Error()
-		if pushed != "" {
-			msg = pushed + "; the run itself failed: " + msg
+		if pushed != nil {
+			msg = pushed.Reason + "; the run itself failed: " + msg
 		}
-		return environment.ActionResult{Success: false, Trust: trust, Error: scrub(msg), StateDelta: delta}, nil
+		return environment.ActionResult{Success: false, Trust: trust, Error: scrub(msg), StateDelta: delta, BoundsViolation: pushed}, nil
 	}
 	delta := map[string]any{
 		"adapter":    e.cli.Name(),
@@ -942,11 +942,13 @@ func (e *cliEnv) Act(ctx context.Context, a environment.Action) (environment.Act
 	if credential != nil {
 		delta["delegation_credential"] = credential
 	}
+	// A push that could not be checked fails the action but is not a
+	// violation: only a ref seen to move outside its bounds blocks the stream.
 	if pushedErr != nil {
-		pushed = pushedErr.Error()
+		return environment.ActionResult{Success: false, Trust: trust, Error: scrub(pushedErr.Error()), StateDelta: delta, ArtifactSHAs: out.ArtifactSHAs}, nil
 	}
-	if pushed != "" {
-		return environment.ActionResult{Success: false, Trust: trust, Error: scrub(pushed), StateDelta: delta, ArtifactSHAs: out.ArtifactSHAs}, nil
+	if pushed != nil {
+		return environment.ActionResult{Success: false, Trust: trust, Error: scrub(pushed.Reason), StateDelta: delta, ArtifactSHAs: out.ArtifactSHAs, BoundsViolation: pushed}, nil
 	}
 	return environment.ActionResult{Success: true, Trust: trust, StateDelta: delta, ArtifactSHAs: out.ArtifactSHAs}, nil
 }
