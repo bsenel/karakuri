@@ -414,6 +414,21 @@ func (e *gitEnv) Observe(ctx context.Context, q environment.ObservationQuery) (e
 		}
 		state["salvage_branches"] = branches
 	}
+	// Whether main is protected, so the oversight view can show it (Phase 40
+	// step 3). This is detection, not prevention. A read that failed is "not
+	// known" whatever the bool says, never "protected" (AGENTS.md rule 10).
+	// "main" because nothing in the adapter or config names another base;
+	// create_pr defaults to it as well.
+	protected, err := adapter.BranchProtected(ctx, repo, "main")
+	switch {
+	case err != nil:
+		state["main_protection"] = "not known"
+		state["main_protection_error"] = err.Error()
+	case protected:
+		state["main_protection"] = "protected"
+	default:
+		state["main_protection"] = "not protected"
+	}
 	return environment.Observation{
 		EnvID: e.id, State: state, Version: stateVersion(state),
 		Timestamp: time.Now().UTC(), Trust: trust, Delivered: delivered,
