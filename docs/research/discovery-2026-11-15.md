@@ -51,6 +51,7 @@ Part 7: wrote p7a (audit, verdict, fit by segment, ranking of 16 candidates: non
 ### Part 8
 
 <!-- w8:start -->
+Part 8: p7a passed no candidate, so no phase is proposed and docs/roadmap.md is untouched; p8 written; empty pairs s7 and s8 marked; PR title and body set to their final state.
 <!-- w8:end -->
 
 ## What changed since the last report
@@ -505,6 +506,13 @@ Passed: none. Amendment for the human: Phase 46 could take CapLite's check (auth
 ## Proposed phases
 
 <!-- p8:start -->
+Part 8 status: complete
+
+No phase proposed, because part 7 passed no candidate (p7a section 3: 'Passed: none'). Part 6 assessed only F16 and F17 (p6b). Every other candidate has no feasibility row, F16 is already Phase 49 (Planned), and F17 has no external primary source. docs/roadmap.md is not edited in this cycle.
+
+Carried to the next cycle, in part 7's order: rewind that reverts files (F1, F10; three organisations, p2 [Q]), a timeout that bounds the whole call including retries (F2; two organisations, p2 [Q]), authority arguments taken from the request (F8, Bet 2; CapLite, p5 B1), a checkpoint the run cannot resolve (F9, Bet 3), provider cost reconciliation (F7, F13), MCP OAuth (CIMD draft -03, p5 A1) and a per-run money budget (p3, vendor claims only). Each needs a p6b row first.
+
+Amendments to existing phases, for a human to weigh (from p7a; no phase edited): Phase 46 could take CapLite's check (authority argument values must come from the request or an approved checkpoint) once F8 is sized, and Phase 30's eval set could take AskALCF's control set and null arm once that paper's results are read (p5 B3). Inferred (p7a row 13): the procenv inheritance finding (F17) fits the tech-backlog stream, not discovery.
 <!-- p8:end -->
 
 ## Sources
@@ -610,9 +618,11 @@ All read 2026-11-15 through a fetch tool (about 40k characters verbatim per page
 ### Part 7
 
 <!-- s7:start -->
+Not reached in this cycle
 <!-- s7:end -->
 
 ### Part 8
 
 <!-- s8:start -->
+Not reached in this cycle
 <!-- s8:end -->
