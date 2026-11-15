@@ -15,7 +15,7 @@ Part 1: bootstrap done (branch, skeleton, draft PR #249); p1w complete; p1 trunc
 ### Part 2
 
 <!-- w2:start -->
-Part 2: items 1 to 4 written in p2 (langgraph #5672, crewAI #6043, autogen, Temporal forum) with ranking table; items 5 to 7 not yet reached.
+Part 2: items 1 to 7 written in p2 with ranking table and Still thin list; item 5 only half done (timeout and recap found second sources; cancelled-run state and output overload not searched); optional tracker sweep not reached.
 <!-- w2:end -->
 
 ### Part 3
@@ -113,7 +113,7 @@ Written by part 1 on 2026-11-15. Session limit 600 seconds; the bootstrap and p1
 ## What they ask for and complain about
 
 <!-- p2:start -->
-Part 2 status: in progress
+Part 2 status: truncated, not reached: item 5 second sources for durable cancelled-run state and "nobody can read all these outputs"; opencode, gemini-cli, n8n and langgraph searches; optional sweep of two unread trackers
 
 Read before writing: p1w above. The 2026-11-08 and 2026-11-01 sections of this heading are not restated; the items below only add to them. All reads 2026-11-15 through a fetch agent; a quote marked [Q] is the fetch agent's verbatim copy, not re-checked by hand.
 
@@ -125,17 +125,35 @@ Read before writing: p1w above. The 2026-11-08 and 2026-11-01 sections of this h
 
 **Item 4. Temporal community forum.** New: yes (never read). Observed: the two 2026 AI-agent threads found by Discourse search both have zero staff replies. (a) "Pattern Sharing: Durable Multi-Agent AI Workflows with HITL via CrewAI", 2026-07-08, 1097 views, 1 reply; a pattern share, not a complaint: [Q] "fault-tolerant, long-running multi-agent AI orchestrations with Temporal and CrewAI, including explicit Human-in-the-Loop (HITL) approval gates." https://community.temporal.io/t/19715. (b) "Dealing with Authorization/Execution Drift (TOCTOU) in long-running workflows", 2026-06-05, 439 views, 3 replies (one hidden by a flag, not read): [Q] "how do you recommend ensuring that the execution step re-validates the initial authorization context?" https://community.temporal.io/t/19610. Inferred: (b) is a new requirement shape, re-checking authority at the moment of action after a long human wait, with one source so far.
 
-**Ranking (part 2), updated after item 4.** Counts as the source shows them; "phase" is matched by phase title and Goal only.
+**Item 5. Second organisations for four candidates.** Searched only openai/codex, anthropics/claude-code and BerriAI/litellm issue search pages; opencode, gemini-cli, n8n and langgraph not searched.
+- Configured timeout honoured on every provider path. New: yes, second organisation found. [Q] BerriAI/litellm #49751 body: "On the proxy, `x-litellm-timeout` (or `timeout` in the body) only bounds each upstream attempt." Opened 2026-11-03, closed as completed 2026-11-08 via PR #50496, 2 comments, no reactions shown. https://github.com/BerriAI/litellm/issues/49751. Observed: retries and Retry-After sleeps overran the caller's deadline. Inferred: the candidate now has two organisations; the second was fixed upstream within five days.
+- One digest of what ran unattended. New: yes, closest match only. [Q] anthropics/claude-code #109737 (open, 2026-11-14, 0 comments): "A recap costs one small request and is what tells the user what an unattended window was doing." https://github.com/anthropics/claude-code/issues/109737. Observed: it is a bug that a recap is skipped, not a request for a digest, but it shows a vendor shipping a recap for unattended windows. Counted as a weak second source. Not a match: openai/codex #60696 (overnight schedule never created) https://github.com/openai/codex/issues/60696.
+- Durable state across a cancelled run: second organisation not searched this pass.
+- "Nobody can read all these outputs": not searched this pass.
+
+**Item 6. Rewind/undo, newest replies.** New: yes. Observed: claude-code #52209 is closed (completed), locked, 18 comments, 19 reactions; it is a /rewind picker freeze, and the last human replies say an update fixed it: [Q] datatrigger (NONE, 2026-04-28): "It seems like this problem is fixed, thanks!" https://github.com/anthropics/claude-code/issues/52209. opencode #31338 (API now reports the repo as anomalyco/opencode) closed as duplicate of #5474, 3 comments: [Q] sfdeggb (NONE, 2026-06-08): "These are indeed the same problem, but none of them has been solved." https://github.com/sst/opencode/issues/31338. gemini-cli #10223 closed (completed), 3 comments, 11 reactions: [Q] Adib234 (CONTRIBUTOR, 2026-01-22): "we have `/rewind` feature now on main branch"; then [Q] W0BBLEMASTER (NONE, 2026-01-23): "there's no option to disable it for users that don't like it." https://github.com/google-gemini/gemini-cli/issues/10223. Inferred: shipping rewind closed the trackers, but satisfaction is mixed; opencode users say undo still does not revert files. Next: https://github.com/sst/opencode/issues/5474.
+
+**Item 7. Unverified figures.** New: no. Both searches ('$4,200 in 63 Hours'; '78% / under 15%') hit a DuckDuckGo CAPTCHA (HTTP 202) [N]. Both figures stay unverified and must not be cited.
+
+**Ranking (part 2), updated after item 7.** Counts as the source shows them; "phase" is matched by phase title and Goal only.
 
 | Requirement | Independent sources | Counts | Strength | Phase on main |
 |---|---|---|---|---|
+| Rewind/undo of an agent's changes actually reverts files | claude-code #52209, opencode #31338 (+#5474), gemini-cli #10223 (3) | 19, 0, 11 reactions; all closed; opencode says unsolved | high | Phase 44 step 2 (salvage branch for a killed run) partly; else gap |
+| Configured timeout bounds the whole call, retries included | 2026-11-08 tracker + litellm #49751 (2) | 2 comments; fixed upstream 2026-11-08 | medium | gap (not matched to a phase title) |
 | Durable state across a cancelled run (streamed work not lost) | langgraph #5672 (1 org this pass) | 52 comments, 9 reactions, no maintainer reply | medium | Phase 37 (Completed, stop any run); Phase 44 step 2 salvage branch covers coding edits only |
+| One recap of what ran unattended | 2026-11-08 tracker + claude-code #109737 (weak 2nd) | 0 comments | low-medium | gap |
 | Re-validate authority at execution after a long wait | Temporal forum t/19610 (1) | 439 views, 3 replies | low | partly Phase 46 (approval buys one action); else gap |
 | Memory write guards in multi-agent crews | crewAI #6043 (1) | 31 comments, 2 reactions | low | gap |
 | MCP tool output encoding degrades non-English text | autogen #6995 (1) | 5 reactions, 0 comments | low | gap (Phase 42 is about call arguments, not encoding) |
 
 **Still thin (part 2).**
 - Temporal forum post 4 of t/19610 hidden; next: https://community.temporal.io/t/19610 read by a signed-in human.
+- Durable state across a cancelled run, second organisation: next https://github.com/openai/codex/issues?q=is%3Aissue+interrupt+lost and https://github.com/n8n-io/n8n/issues?q=is%3Aissue+cancel+execution+lost
+- "Nobody can read all these outputs": next https://github.com/anthropics/claude-code/issues?q=is%3Aissue+too+much+output+review
+- opencode undo still unsolved: next https://github.com/sst/opencode/issues/5474
+- The two figures: original URLs needed; web search was blocked by a CAPTCHA.
+- crewAI #6043 comments 13 to 20 only as extract.
 <!-- p2:end -->
 
 ## Competitive teardown
@@ -205,6 +223,14 @@ Part 2 sources, all read 2026-11-15:
 - https://api.github.com/repos/microsoft/autogen/issues?state=open&sort=reactions-+1 (sort ignored, not used for ranking). [N]
 - https://github.com/microsoft/autogen/issues?q=is%3Aissue+is%3Aopen+sort%3Areactions-%2B1-desc. Primary, first page, extract. [E]
 - https://community.temporal.io/search.json (two queries), https://community.temporal.io/t/19715.json, https://community.temporal.io/t/19610.json. Primary; full text except a flagged hidden post. [Q]
+- https://github.com/BerriAI/litellm/issues/49751. Primary, full text. [Q]
+- https://github.com/anthropics/claude-code/issues/109737. Primary, full text. [Q]
+- https://github.com/openai/codex/issues/60696. Primary; read, not a match. [E]
+- GitHub issue search pages for openai/codex, anthropics/claude-code, BerriAI/litellm (used to find issues, cited for nothing). [N]
+- https://api.github.com/repos/anthropics/claude-code/issues/52209 and /comments. Primary, full text. [Q]
+- https://api.github.com/repos/sst/opencode/issues/31338 and /comments. Primary, full text. [Q]
+- https://api.github.com/repos/google-gemini/gemini-cli/issues/10223 and /comments. Primary, full text. [Q]
+- https://html.duckduckgo.com/html/ (two queries for the unverified figures). HTTP 202 CAPTCHA. [N]
 <!-- s2:end -->
 
 ### Part 3
