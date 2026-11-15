@@ -37,9 +37,32 @@ func FindTemplate(domReg *domain.Registry, id string) (objective.Template, bool)
 
 // withTemplateConstraints is the objective as the planner is shown it: its own
 // constraints, then each of its template's whose ID it does not already hold.
-// Scaffolding for Phase 40 step 2; it returns the objective unchanged until the
-// fix lands.
+//
+// An objective's constraints are copied from its template only at creation,
+// while the template's action limits are read at run time (FindTemplate in the
+// supervisor), so an objective created before its template gained a constraint
+// is held to limits its planner would otherwise never be told about. The
+// result is a copy with a new Constraints slice, so appending never writes
+// into the caller's backing array; it is shown to the agent, never saved.
 func withTemplateConstraints(domReg *domain.Registry, obj objective.Objective) objective.Objective {
+	tmpl, ok := FindTemplate(domReg, obj.TemplateID)
+	if !ok {
+		return obj
+	}
+	held := make(map[string]bool, len(obj.Constraints))
+	for _, c := range obj.Constraints {
+		held[c.ID] = true
+	}
+	constraints := make([]objective.Constraint, 0, len(obj.Constraints)+len(tmpl.Constraints))
+	constraints = append(constraints, obj.Constraints...)
+	for _, c := range tmpl.Constraints {
+		if held[c.ID] {
+			continue
+		}
+		held[c.ID] = true
+		constraints = append(constraints, c)
+	}
+	obj.Constraints = constraints
 	return obj
 }
 
