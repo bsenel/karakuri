@@ -109,10 +109,17 @@ func stepDecide(ctx context.Context, sc *stepContext, p plan, mods *corecheckpoi
 	// rather than a restatement (Phase 24). What is left here is carrying out
 	// the verdict: the audit row, the checkpoint, the trim.
 	planned := make([]capability.CapabilityID, 0, len(p.Actions))
+	// The prompt of each action that writes files, read from its capability's
+	// declaration rather than its name, is what the policy checks against the
+	// delivered work: reviewing a delivered step is not redoing it.
+	var writes []string
 	for _, action := range p.Actions {
 		planned = append(planned, capability.CapabilityID(action.CapabilityID))
+		if prompt, ok := action.Params["prompt"].(string); ok && sc.svc.needsWorkspace(action.CapabilityID) {
+			writes = append(writes, prompt)
+		}
 	}
-	verdict := authority.Decide(p.Confidence, threshold, planned, sc.evidence)
+	verdict := authority.Decide(p.Confidence, threshold, planned, writes, sc.evidence)
 	escalate = verdict.Escalate
 	escalateReason = verdict.Reason
 	if verdict.Allowed < len(p.Actions) {

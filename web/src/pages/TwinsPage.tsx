@@ -28,7 +28,8 @@ export function TwinsPage() {
       setLoaded(true);
       setErr(null);
     } catch (e) {
-      setErr(describe(e));
+      // The load and the create share one alert, so each says which it was.
+      setErr(`Could not load twins: ${describe(e)}`);
     } finally {
       setLoading(false);
     }
@@ -45,7 +46,7 @@ export function TwinsPage() {
       setName('');
       await load();
     } catch (e) {
-      setErr(describe(e));
+      setErr(`Could not create twin “${name}”: ${describe(e)}`);
     }
   };
 

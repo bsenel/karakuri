@@ -237,7 +237,7 @@ func checkAgentBoundsBehave(_ context.Context, p domain.Pack) Result {
 			// "Draft and ask". Three actions must escalate, and must survive
 			// intact — an approval falls straight through to act, so trimming
 			// here would discard the work the operator approved.
-			v := b.Decide(confident, 0, plan(3), agent.Evidence{})
+			v := b.Decide(confident, 0, plan(3), nil, agent.Evidence{})
 			if !v.Escalate {
 				return fail("agent %q declares MaxAutonomousActions: 0 but a 3-action plan runs without asking", def.ID)
 			}
@@ -248,13 +248,13 @@ func checkAgentBoundsBehave(_ context.Context, p domain.Pack) Result {
 		case b.MaxAutonomousActions > 0:
 			// A cap trims to exactly the cap, and does not escalate for it.
 			over := b.MaxAutonomousActions + 2
-			v := b.Decide(confident, 0, plan(over), agent.Evidence{})
+			v := b.Decide(confident, 0, plan(over), nil, agent.Evidence{})
 			if v.Allowed != b.MaxAutonomousActions {
 				return fail("agent %q declares a cap of %d but a %d-action plan left %d actions",
 					def.ID, b.MaxAutonomousActions, over, v.Allowed)
 			}
 			// And a plan within the cap is untouched.
-			under := b.Decide(confident, 0, plan(b.MaxAutonomousActions), agent.Evidence{})
+			under := b.Decide(confident, 0, plan(b.MaxAutonomousActions), nil, agent.Evidence{})
 			if under.Allowed != b.MaxAutonomousActions {
 				return fail("agent %q trimmed a plan already within its cap of %d to %d",
 					def.ID, b.MaxAutonomousActions, under.Allowed)
@@ -266,7 +266,7 @@ func checkAgentBoundsBehave(_ context.Context, p domain.Pack) Result {
 
 		default:
 			// agent.UnlimitedActions. Nothing is trimmed, however long.
-			v := b.Decide(confident, 0, plan(50), agent.Evidence{})
+			v := b.Decide(confident, 0, plan(50), nil, agent.Evidence{})
 			if v.Allowed != 50 {
 				return fail("agent %q declares UnlimitedActions and a 50-action plan was trimmed to %d", def.ID, v.Allowed)
 			}
@@ -282,7 +282,7 @@ func checkAgentBoundsBehave(_ context.Context, p domain.Pack) Result {
 			if !declared[c] {
 				return fail("agent %q requires approval for %q, which this pack does not declare", def.ID, c)
 			}
-			v := b.Decide(confident, 0, []capability.CapabilityID{c}, agent.Evidence{})
+			v := b.Decide(confident, 0, []capability.CapabilityID{c}, nil, agent.Evidence{})
 			if !v.Escalate {
 				return fail("agent %q lists %q under RequiresApprovalFor and plans it without asking", def.ID, c)
 			}
@@ -291,13 +291,13 @@ func checkAgentBoundsBehave(_ context.Context, p domain.Pack) Result {
 		// A declared threshold must bite. Below it, escalate; at or above it,
 		// do not — a threshold that escalates everything is not a threshold.
 		if b.ConfidenceThreshold > 0 {
-			low := b.Decide(b.ConfidenceThreshold-0.01, b.ConfidenceThreshold, plan(1), agent.Evidence{})
+			low := b.Decide(b.ConfidenceThreshold-0.01, b.ConfidenceThreshold, plan(1), nil, agent.Evidence{})
 			if !low.Escalate {
 				return fail("agent %q declares a confidence threshold of %.2f and ran a plan below it",
 					def.ID, b.ConfidenceThreshold)
 			}
 			if b.MaxAutonomousActions != 0 {
-				high := b.Decide(1.0, b.ConfidenceThreshold, plan(1), agent.Evidence{})
+				high := b.Decide(1.0, b.ConfidenceThreshold, plan(1), nil, agent.Evidence{})
 				if high.Escalate && strings.Contains(high.Reason, "threshold") {
 					return fail("agent %q escalates a fully confident plan on its %.2f threshold: %s",
 						def.ID, b.ConfidenceThreshold, high.Reason)
@@ -350,7 +350,7 @@ func checkProvenanceEscalates(_ context.Context, p domain.Pack) Result {
 	for _, def := range p.AgentDefinitions() {
 		b := def.Authority
 
-		got := b.Decide(1.0, 0, plan, untrusted)
+		got := b.Decide(1.0, 0, plan, nil, untrusted)
 		if !got.Escalate {
 			return fail("agent %q ran a plan drafted from %s without asking; untrusted evidence must escalate whatever autonomy an agent has earned",
 				def.ID, stranger)
@@ -370,7 +370,7 @@ func checkProvenanceEscalates(_ context.Context, p domain.Pack) Result {
 		// It may still escalate for another — an agent bounded to no autonomous
 		// actions escalates everything, and that is a different bound doing its
 		// job.
-		trusted := b.Decide(1.0, 0, plan, agent.Evidence{})
+		trusted := b.Decide(1.0, 0, plan, nil, agent.Evidence{})
 		if strings.Contains(trusted.Reason, stranger) {
 			return fail("agent %q blames %s for a plan drafted from nothing but the operator's own infrastructure: %q",
 				def.ID, stranger, trusted.Reason)

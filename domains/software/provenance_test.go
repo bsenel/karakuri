@@ -27,6 +27,12 @@ type vcStub struct {
 	gotRepo  string
 	gotSince time.Time
 	reads    int
+
+	// compared is what CompareCommits returns, or compareErr when that is
+	// set; compares records each call as "repo:base...head".
+	compared   []versioncontrol.Commit
+	compareErr error
+	compares   []string
 }
 
 func (s *vcStub) Name() string { return "stub" }
@@ -77,6 +83,14 @@ func (s *vcStub) ListBranches(_ context.Context, _, prefix string) ([]versioncon
 
 func (s *vcStub) MarkReady(context.Context, string, string) error {
 	return versioncontrol.ErrUnsupported
+}
+
+func (s *vcStub) CompareCommits(_ context.Context, repo, base, head string) ([]versioncontrol.Commit, error) {
+	s.compares = append(s.compares, repo+":"+base+"..."+head)
+	if s.compareErr != nil {
+		return nil, s.compareErr
+	}
+	return s.compared, nil
 }
 
 func (s *vcStub) ListMergedPRs(context.Context, string, int) ([]versioncontrol.PRSummary, error) {

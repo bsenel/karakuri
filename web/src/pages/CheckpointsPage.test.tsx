@@ -139,4 +139,32 @@ describe('CheckpointsPage', () => {
     // The queue was read, so a failed decision does not offer to reload it.
     expect(screen.queryByRole('button', { name: 'Retry' })).not.toBeInTheDocument();
   });
+
+  it('tells a screen reader that a decision went through, as its card leaves the queue', async () => {
+    get.mockResolvedValueOnce([
+      {
+        id: 'cp-1',
+        objective_id: 'obj-1',
+        reason: 'Deploy to production',
+        status: 'pending',
+        created_at: '2026-11-01T10:00:00Z',
+      },
+    ]);
+    get.mockResolvedValueOnce([]);
+    post.mockResolvedValue({});
+
+    render(
+      <MemoryRouter>
+        <CheckpointsPage />
+      </MemoryRouter>,
+    );
+    fireEvent.click(await screen.findByRole('button', { name: 'Approve' }));
+    await waitFor(() =>
+      expect(screen.getByRole('status')).toHaveTextContent('Approved checkpoint cp-1.'),
+    );
+    expect(post).toHaveBeenCalledWith('/checkpoints/cp-1/resolve', { decision: 'approve' });
+    expect(
+      screen.queryByRole('group', { name: 'Checkpoint: Deploy to production' }),
+    ).not.toBeInTheDocument();
+  });
 });

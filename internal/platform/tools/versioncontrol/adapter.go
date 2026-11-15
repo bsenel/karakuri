@@ -112,6 +112,9 @@ type VersionControlAdapter interface {
 	// MarkReady takes a draft pull request out of draft, ready for review. An
 	// adapter whose forge cannot returns an error wrapping ErrUnsupported.
 	MarkReady(ctx context.Context, repo, prID string) error
+	// CompareCommits returns the commits on head that base does not have,
+	// oldest first, each Message cut to its subject line.
+	CompareCommits(ctx context.Context, repo, base, head string) ([]Commit, error)
 	// ListMergedPRs returns up to limit of the repository's most recently
 	// merged pull requests, newest first, with their head SHA and CheckState.
 	// An adapter whose forge cannot returns an error wrapping ErrUnsupported.

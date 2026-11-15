@@ -45,7 +45,7 @@ describe('ObjectivesPage', () => {
 
     render(<ObjectivesPage />);
     await waitFor(() =>
-      expect(screen.getByText('objective:read is not granted')).toBeInTheDocument(),
+      expect(screen.getByText('Could not load objectives: objective:read is not granted')).toBeInTheDocument(),
     );
     expect(screen.getByText('Retry')).toBeInTheDocument();
     expect(screen.queryByText(/No objectives yet/)).not.toBeInTheDocument();
@@ -99,6 +99,25 @@ describe('ObjectivesPage', () => {
     );
     expect(post).toHaveBeenCalledWith('/objectives/', expect.objectContaining({ title: 'Ship the docs' }));
     expect(screen.getByRole('textbox', { name: 'Title' })).toHaveValue('');
+  });
+
+  it('says a failed create was the create, not the list', async () => {
+    get.mockResolvedValue([]);
+    post.mockRejectedValue(new APIError(400, '{"message":"max_iterations must be positive"}'));
+
+    render(<ObjectivesPage />);
+    await waitFor(() => expect(screen.getByText(/No objectives yet/)).toBeInTheDocument());
+
+    fireEvent.change(screen.getByRole('textbox', { name: 'Title' }), { target: { value: 'Ship the docs' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Create' }));
+
+    await waitFor(() =>
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        'Could not create objective “Ship the docs”: max_iterations must be positive',
+      ),
+    );
+    // The list itself loaded, so there is nothing to retry.
+    expect(screen.queryByText('Retry')).not.toBeInTheDocument();
   });
 
   it('names the objectives table for a screen reader', async () => {
