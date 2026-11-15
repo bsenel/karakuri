@@ -39,7 +39,7 @@ Part 5: wrote B (three papers), A (MCP, A2A, OTel, IETF titles), C (Anthropic on
 ### Part 6
 
 <!-- w6:start -->
-Part 6: wrote p6a (OWASP titles mapped, retention checked; Art. 113 unread, NIST/ISO/questionnaire not reached) and the p6b table; feasibility rows not yet assessed.
+Part 6: wrote p6a (OWASP titles mapped, retention checked; Art. 113 unread, NIST/ISO/questionnaire not reached) and p6b rows F16 (already Phase 49, Planned) and F17; F1 to F15 and F18 left 'Not assessed (part 6)'.
 <!-- w6:end -->
 
 ### Part 7
@@ -395,7 +395,7 @@ Part 6 status: truncated, not reached: EU AI Act Art. 113 and Art. 26(6) text (E
 ## Feasibility
 
 <!-- p6b:start -->
-Part 6 status: in progress
+Part 6 status: truncated, not reached: F1 to F15, F18
 
 | # | Candidate | Exists | Missing | First slice (files) | Not verified | Phase on main |
 |---|---|---|---|---|---|---|
@@ -417,6 +417,8 @@ Part 6 status: in progress
 | F16 | Code check: `AuthorityBounds.Decide` and `CanDelegate` | Observed: `CanDelegate` declared at internal/core/agent/agent.go:43; `Decide` at internal/core/agent/decide.go:96 (opened to :100). Outside tests, the only other references are writes, internal/feature/reconcile/authority.go:32 and :59 (`bounds.CanDelegate = false`, grep hits, not opened) | Inferred: nothing reads `CanDelegate`; the gap of 2026-11-08 stands | The slice Phase 49 already names | decide.go past line 100 not re-read this pass; authority.go not opened | Phase 49 'A Bound That Says No Delegation Is Kept', **Planned** (docs/roadmap.md:62, :7085; Goal read: an agent with `CanDelegate` false never hands a task to a coding-agent CLI without approval). Already planned; Steps not read (time) |
 | F17 | Code check: internal/platform/procenv/ | Observed: `Merge` (procenv.go:15-22) overlays per-call variables onto the process environment, an override replacing the inherited entry; `ScrubNestedSession` (:44-68) drops `CLAUDECODE` and every `CLAUDE_CODE_*` variable and, by its comment, leaves `ANTHROPIC_API_KEY` untouched | Inferred: the child inherits the whole server environment except session markers, so any other secret in the server's environment reaches a spawned `claude` | An allow-list in procenv.go (PATH, HOME, the config's named variables) with a test in procenv_test.go | Merge body (:23-40) not read; callers not opened; whether the server env holds other secrets in practice | none found (no phase title searched beyond Phase 49) |
 | F18 | Code check: the software.verify.review runner | Not assessed (part 6) | | | | |
+
+**Still thin (part 6).** 16 of 18 rows not assessed. That includes rewind/undo, ranked high by part 2: the Phase 37 text at docs/roadmap.md:4502 ('stopped, not undone') and the worktree manager methods (internal/platform/git/gogitwt.go:56-143) were located but not read. Phase 49's Steps were not read, so whether they also cover the reconcile writes is unverified.
 <!-- p6b:end -->
 
 ## Fit and bets
