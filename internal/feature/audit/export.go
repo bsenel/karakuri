@@ -220,7 +220,7 @@ func (e *Exporter) Export(ctx context.Context, from, to, now time.Time) ([]byte,
 		counts[ev.Kind]++
 		row := exportRow(ev)
 		switch ev.Kind {
-		case storage.ToolEventExecute, storage.ToolEventEscalation:
+		case storage.ToolEventExecute, storage.ToolEventEscalation, storage.ToolEventRefusal:
 			doc.Decisions.Rows = append(doc.Decisions.Rows, row)
 			if ev.Provider == "" && ev.Model == "" && ev.TemplateID == "" {
 				doc.Decisions.WithoutProvenance++

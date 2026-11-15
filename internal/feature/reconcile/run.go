@@ -258,9 +258,10 @@ func (s *Service) reconcileNow(
 	// objective has earned — and then the loop enforces those bounds through
 	// the decide step it has always used.
 	def := featureloop.SelectAgent(s.domReg, obj, coreagent.Definition{})
-	// Scaffolding (Phase 40 step 2): the objective's template is not looked
-	// up yet, so no template limits reach the bounds.
-	def.Authority = effectiveAuthority(def, objective.Template{}, level)
+	// The template's action limits narrow the agent's (Phase 40 step 2). No
+	// template, or one no pack declares any more, adds none.
+	tmpl, _ := featureloop.FindTemplate(s.domReg, obj.TemplateID)
+	def.Authority = effectiveAuthority(def, tmpl, level)
 
 	st.Phase = reconcile.PhaseReconciling
 	st.LastTrigger = trigger

@@ -183,6 +183,12 @@ const (
 	// (verifier_ran, verifier_never_ran, no_verifier, reserved_verifier). One
 	// row per run that ended on its own; a stopped run has its stop row.
 	ToolEventRunEnd = "run_end"
+	// ToolEventRefusal (Phase 40 step 2) records a plan the decide step
+	// refused because an action was outside its bounds' action limits, at a
+	// rung where a violation is refused rather than escalated. It carries
+	// BoundsViolation and no checkpoint: nobody was asked, and none of the
+	// plan ran. EscalationReason names each violation.
+	ToolEventRefusal = "refusal"
 )
 
 // ResolvedCheckpointFilter narrows the resolved-checkpoint listing. Empty

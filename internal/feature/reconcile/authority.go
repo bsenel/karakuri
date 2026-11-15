@@ -1,6 +1,8 @@
 package reconcile
 
 import (
+	"slices"
+
 	"github.com/bsenel/karakuri/internal/core/agent"
 	"github.com/bsenel/karakuri/internal/core/objective"
 )
@@ -20,11 +22,17 @@ import (
 // something through.
 //
 // tmpl is the template the objective was built from, or the zero template.
-// Its action limits are meant to narrow the definition's (Phase 40 step 2);
-// this scaffolding does not read them yet.
+// Its action limits are added beside the definition's, and every limit on an
+// action must hold, so a template narrows the agent's authority and never
+// widens it (Phase 40 step 2). At the rungs that act, a plan outside them is
+// refused rather than escalated; at the rungs that ask, it escalates as step 1
+// made it, so the person reviewing a proposal still sees it.
 func effectiveAuthority(def agent.Definition, tmpl objective.Template, level objective.AutonomyLevel) agent.AuthorityBounds {
-	_ = tmpl
 	bounds := def.Authority
+	// A fresh slice: appending to the definition's own would write the
+	// template's limits into its backing array.
+	bounds.ActionLimits = slices.Concat(def.Authority.ActionLimits, tmpl.ActionLimits)
+	bounds.RefuseOutsideLimits = false
 
 	switch level {
 	case objective.AutonomySense:
@@ -55,6 +63,11 @@ func effectiveAuthority(def agent.Definition, tmpl objective.Template, level obj
 		// well for a week would be overruling the wrong person. What the
 		// two levels differ in is how loudly the result is reported, which
 		// is a reporting decision and lives with the digest.
+		//
+		// What the supervisor does add is that a plan outside its action
+		// limits is refused: an escalation would hand a mechanical check back
+		// to a person, at the rungs that exist so nobody has to be asked.
+		bounds.RefuseOutsideLimits = true
 
 	default:
 		// An unrecognised level is a typo or a hand-edited row. Fail toward

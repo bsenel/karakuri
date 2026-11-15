@@ -14,6 +14,27 @@ import (
 	"github.com/bsenel/karakuri/internal/platform/storage"
 )
 
+// FindTemplate looks a template up by ID in every registered pack, since a
+// cross-domain objective's template may live outside its primary domain. ok is
+// false for an empty ID, a nil registry, or a template no pack declares.
+//
+// Exported for the same reason as SelectAgent: the supervisor reads the
+// template's action limits into the bounds before the loop starts, and the
+// loop reads its risk class, and both must find the same template.
+func FindTemplate(domReg *domain.Registry, id string) (objective.Template, bool) {
+	if id == "" || domReg == nil {
+		return objective.Template{}, false
+	}
+	for _, pack := range domReg.List() {
+		for _, tmpl := range pack.ObjectiveTemplates() {
+			if tmpl.ID == id {
+				return tmpl, true
+			}
+		}
+	}
+	return objective.Template{}, false
+}
+
 // SelectAgent picks the agent definition an objective runs under.
 //
 // For a cross-domain objective it walks the declared domains in order and
