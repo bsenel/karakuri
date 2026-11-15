@@ -45,7 +45,7 @@ Part 6: wrote p6a (OWASP titles mapped, retention checked; Art. 113 unread, NIST
 ### Part 7
 
 <!-- w7:start -->
-Part 7: completeness audit written in p7a; verdict, fit, ranking and p7b not yet written.
+Part 7: wrote p7a (audit, verdict, fit by segment, ranking of 16 candidates: none passes) and p7b; not reached: new-URL count for p3 and p4a sources, and whether earlier proposed phases were cut in review.
 <!-- w7:end -->
 
 ### Part 8
@@ -80,7 +80,16 @@ Roadmap on main (`grep '^## Phase' docs/roadmap.md`, `git log -20 origin/main`):
 ### Comparison (part 7)
 
 <!-- p7b:start -->
-Part 7 status: in progress
+Part 7 status: complete
+
+Against all earlier reports, mainly 2026-11-08. Not restated; see each part.
+
+- **Confirmed.** Rewind/undo is still the most-asked gap (p2 item 6), as 2026-11-08 found. `CanDelegate` is still unread by the decision (p6b F16), the 11-08 gap that became Phase 49. Bet 1 (cost reconciliation) holds, narrowed to per-key (p5).
+- **Contradicted or weakened.** 2026-11-08 passed rewind on three trackers; this cycle shows all three closed and two fixed or shipped (p2 item 6), so the demand is for files actually reverting, not for a picker. p5 marks I-HITL 'New: yes', but 2026-11-01 already read it and built a bet on it (discovery-2026-11-01.md:272, :287); its Bet 3 is that bet again. p4b moves Karakuri's 'stop mid-pass' from no to yes (Phase 37) and MCP client and server from unchecked to yes.
+- **Thin spots filled.** Regulated organisation first-hand: partly, by p1 (two ATRS records [E]), but neither is an agent with its own authority, so the 11-08 thin spot stands. Timeout second organisation: filled by p2. LangGraph and Codex windows: only the newest weeks (p3). Langfuse licence: p4a.
+- **Still thin.** SRE agent in an incident (sixth cycle); self-hosters; who merges gh-aw PRs; AI Act Art. 113 and 26(6) text (p6a, EUR-Lex empty again); Codex 05-01 to 10-28 and LangGraph 04-08 to 06-29 (p3); OpenAI, Google and ADK changelogs (p5); feasibility of 16 of 18 rows (p6b), including rewind for the third cycle.
+- **New.** CapLite (p5 B1), AskALCF (p5 B3), the MCP CIMD draft -03 entry (p5 A1), self-hosted Managed Agents and account-bound thinking blocks (p5 C1), IETF agent-authorisation drafts by title (p5 A4), the procenv inheritance finding (p6b F17), a Karakuri 'no' on MCP OAuth and per-run money budget (p4b).
+- **Earlier proposals.** From p1w: PRs #148, #158, #195, #203 and #223 all merged, proposing Phases 33, 35 to 38, 42 and 43, 45 and 46, and 49. Phases 37, 38 and 41 completed since 11-08; 39, 40 and 42 to 49 are still Planned; Phase 44 is in delivery. Whether any proposed phase was cut in review was not checked by p1w and not by this part.
 <!-- p7b:end -->
 
 ## Who the users are and what they are trying to do
@@ -426,7 +435,7 @@ Part 6 status: truncated, not reached: F1 to F15, F18
 ## Fit and bets
 
 <!-- p7a:start -->
-Part 7 status: in progress
+Part 7 status: complete (p3 and p4a URLs not counted in the new-URL check)
 
 ### 0. Completeness audit (part 7)
 
@@ -445,6 +454,52 @@ Observed, from each section's status line and headings, read 2026-11-15:
 | p6b | truncated: F1 to F15, F18 | present | 16 of 18: F1 to F15, F18. Assessed: F16, F17 |
 
 Consequence (rule of this part): every candidate whose feasibility row is F1 to F15 or F18 cannot PASS. Only F16 and F17 have a feasibility row, and F16 is already Phase 49 (Planned).
+
+### 1. Verdict: is there new evidence? (part 7)
+
+Observed: 22 lines carry 'New: yes' (p1: DWP, OPG; p2: items 1, 2, 3, 4, 5 timeout, 5 recap, 6; p3: Codex/Agents SDK newest weeks, Claude Code #27661 and CHANGELOG, LangGraph 11-05 to 11-14; p4a: Langfuse `ee/LICENSE`, Temporal activity pause, Rootly/PagerDuty changelogs; p5: B1, B2, B3, A1, A2, A3, C1). One is not new: B2 (arXiv 2610.35835, I-HITL) was read and made a bet on 2026-11-01 (discovery-2026-11-01.md:272, :287).
+
+Observed: of the primary URLs cited in p1, p2 and p5, eleven appear in no earlier discovery-*.md (Grep over the five earlier reports): the DWP and OPG ATRS records, litellm #49751, claude-code #109737, community.temporal.io t/19610 and t/19715, autogen #6995, arXiv 2611.17115 (CapLite), arXiv 2611.15700 (AskALCF), the usage-cost-analytics-api page, the message-threads page. claude-code #52209 and opencode #31338 are new as URLs only; 2026-11-08 cited both by number. Already cited before: I-HITL, the MCP draft changelog, A2A releases, the API release notes page, the OWASP PDF, gemini-cli #10223, crewAI #6043, langgraph #5672, datatracker, the OTel GenAI repository. p3 and p4a URLs were not counted (time).
+
+Verdict: new evidence exists and bears weight on two candidates only: the timeout candidate gains a second organisation (litellm #49751 [Q], p2) and the authority-argument bet gains a primary paper whose method was read (CapLite, p5 B1). Neither can PASS, because p6b did not assess them (F2, F8). **No candidate passes this cycle; part 8 should propose no phase.** The Phase 46 amendment below is for a human to weigh, not a phase.
+
+### 2. Fit by segment (part 7)
+
+| Segment | Rating | Supported by | Why they would NOT want Karakuri |
+|---|---|---|---|
+| Teams running standing coding agents | STRONG | p4b rows cadence, earned autonomy, digests, stop mid-pass, durable resume (Karakuri O yes); p2 rewind and timeout asks | p4b: no per-run money budget (Codex, Claude Code C yes); no MCP OAuth; rewind unchecked; Claude Code and Codex already sit where they work (p3) |
+| Platform and SRE teams | WEAK | p4b incident row (Karakuri O partial, reads PagerDuty only) | Rootly and PagerDuty claim paging, OAuth MCP and commander review (p4a, C); p1 still has no SRE speaking for themselves |
+| Regulated organisations | WEAK | p6a retention floor 183 days (config/default.yaml:243-251, O); p4b audit export; p1 ATRS records ask for "no decision", a named owner, review first [E] | p1: neither ATRS tool is an agent with its own authority, so the demand for what Karakuri adds is unproven; Art. 26(6) text unread (p6a); OWASP ASI04, ASI06 to ASI10 have no Karakuri evidence; F17: spawned CLIs inherit the server environment |
+| Enterprises | WEAK | p4b audit, checkpoints, self-host | p1 not attempted; no buyer questionnaire read (p6a); no MCP OAuth (p4b) |
+| Self-hosters | WEAK | p4b Apache 2.0 (11-08); Temporal MIT, Restate BYOC compete | p1 not attempted (sixth cycle thin); Anthropic now ships self-hosted Managed Agents (p5 C1 [Q]) |
+| Product teams | IRRELEVANT | nothing this cycle | p1 not attempted; no source shows a product team asking for standing objectives |
+
+Inferred: the only STRONG fit stays the one Karakuri already builds for. Nothing this cycle moves another segment to STRONG.
+
+### 3. Ranking (part 7)
+
+Feasibility is p6b's row. 'Carry' means carry to next cycle.
+
+| # | Candidate | Kind and sources (grade, part) | Planned phase on main | Feasibility (p6b) | Expected value (Inferred) | Verdict |
+|---|---|---|---|---|---|---|
+| 1 | Rewind/undo reverts files (F1, F10) | DEMAND: claude-code #52209, opencode #31338, gemini-cli #10223 [Q] (p2; three orgs since 11-08) | Phase 44 step 2 salvage branch, partly; Phase 37 'stopped, not undone' | Not assessed | High: three orgs, the most-asked gap; but trackers closed after shipping, and satisfaction is mixed (p2 item 6) | FAIL: evidence incomplete (p6b). Carry; third cycle without a sized slice |
+| 2 | Timeout bounds the whole call, retries included (F2) | DEMAND: 2026-11-08 tracker + litellm #49751 [Q] (p2) | none matched by title | Not assessed | Medium: two orgs now; small, local fix likely in `internal/platform/llm` (unchecked) | FAIL: evidence incomplete (p6b). Carry; first in line if sized |
+| 3 | Authority arguments come from the request (F8, Bet 2) | FRONTIER BET: CapLite arXiv 2611.17115, method and results read [E]/[Q] (p5 B1) | Phase 46 (approval buys one action) partly; Phase 42 is call arguments for MCP | Not assessed | Medium-high: maps onto `TrustThirdParty` (ADR 021); one preprint, 21-point utility cost is the paper's claim | FAIL: evidence incomplete (p6b). Amendment to Phase 46 for the human |
+| 4 | A checkpoint the run cannot resolve (F9, Bet 3) | FRONTIER BET: I-HITL arXiv 2610.35835 [Q] (p5 B2); same paper as 2026-11-01 Bet 2 | none matched; Phase 40 exposes MCP tools to delegated agents | Not assessed | Medium: two-hour check could close it | FAIL: evidence incomplete (p6b); not new evidence |
+| 5 | Provider cost reconciliation (F7, F13) | FRONTIER BET: usage-cost-analytics-api [Q] (p5 Bet 1) | none matched | Not assessed | Low-medium: works per key, not per objective (p5) | FAIL: evidence incomplete (p6b). Carry |
+| 6 | One recap of what ran unattended (F3) | DEMAND, weak: 11-08 tracker + claude-code #109737 [Q] (p2), a bug, not a request | digests exist (p4b `digest/digest.go:65`) | Not assessed | Low: Karakuri already has digests | FAIL: weak demand, evidence incomplete (p6b) |
+| 7 | Re-validate authority at execution after a wait (F4) | one source: Temporal t/19610 [Q] (p2) | Phase 46 partly | Not assessed | Low | FAIL: one organisation |
+| 8 | Durable state across a cancelled run | one org this pass: langgraph #5672 [Q] (p2) | Phase 37 Completed; Phase 44 step 2 | none | Low | FAIL: one organisation |
+| 9 | Memory write guards (F5) | crewAI #6043 [Q] (p2), promotion-inflated | none | Not assessed | Low | FAIL: one organisation |
+| 10 | MCP output encoding (F6) | autogen #6995 [Q] (p2) | none (Phase 42 is arguments) | Not assessed | Low | FAIL: one organisation |
+| 11 | MCP OAuth, CIMD draft -03 | FRONTIER: MCP draft changelog [Q] (p5 A1); Rootly, PagerDuty claim OAuth (p4a, C) | none matched | no row | Medium: p4b shows Karakuri 'no' | FAIL: no feasibility row. Carry |
+| 12 | Per-run money budget | FRONTIER: Codex `RunBudget`, Claude Code `--max-budget-usd` (p3, C) | none matched | no row | Medium | FAIL: no feasibility row; vendor claims only. Carry |
+| 13 | Spawned CLIs inherit the whole server env (F17) | code finding (p6b, O procenv.go:44-68); no external primary source | none found | Sized: allow-list in procenv.go + test | Medium for regulated buyers | FAIL as a phase (no primary source). Inferred: fits the tech-backlog stream, not discovery |
+| 14 | `CanDelegate` is never read (F16) | code finding (p6b, O) | Phase 49, Planned | already planned | n/a | FAIL: covered by Phase 49 |
+| 15 | Read-access audit, MCP elicitation, blob provenance, tool-set pinning (F11, F12, F14, F15) | carried from 11-08; no new source this cycle | none matched | Not assessed | unchanged | FAIL: no new evidence, not assessed. Carry |
+| 16 | Eval control set and null arm (AskALCF) | FRONTIER: arXiv 2611.15700, method read, results only in summary (p5 B3) | Phase 30 (eval set) | no row | Low-medium | FAIL: results unread; amendment idea for the eval set |
+
+Passed: none. Amendment for the human: Phase 46 could take CapLite's check (authority argument values must come from the request or an approved checkpoint) once F8 is sized.
 <!-- p7a:end -->
 
 ## Proposed phases
