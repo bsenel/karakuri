@@ -9,7 +9,7 @@ This report is written in eight parts, each writing only between its own markers
 ### Part 1
 
 <!-- w1:start -->
-Part 1: bootstrap done (branch, skeleton, draft PR #249); p1w written; p1 and s1 in progress.
+Part 1: bootstrap done (branch, skeleton, draft PR #249); p1w complete; p1 truncated (only thin spot 2, ATRS records, filled; spots 1, 3 and 4 not reached); s1 complete.
 <!-- w1:end -->
 
 ### Part 2
@@ -79,7 +79,34 @@ Roadmap on main (`grep '^## Phase' docs/roadmap.md`, `git log -20 origin/main`):
 ## Who the users are and what they are trying to do
 
 <!-- p1:start -->
-Part 1 status: in progress
+Part 1 status: truncated, not reached: thin spot 1 (SRE postmortem, not searched this cycle), thin spot 3 (self-hosters, enterprises), thin spot 4 (who merges gh-aw PRs)
+
+Written by part 1 on 2026-11-15. Session limit 600 seconds; the bootstrap and p1w took most of it. Both pages below were read through a model-written extract, so nothing here is quoted as verbatim; everything is [E].
+
+**Thin spot 2: regulated organisations (UK public sector).** Found from https://www.gov.uk/algorithmic-transparency-records (read 2026-11-15).
+- DWP Conversational Platform. Job: route and signpost phone callers. Observed [E]: the record says the tool takes the action the DWP digital team taught it and makes no decision itself; a caller can ask to be routed to a human; the record describes no human review of outputs; published 16 December 2025. https://www.gov.uk/algorithmic-transparency-records/dwp-conversational-platform (read 2026-11-15). New: yes.
+- Office of the Public Guardian Investigations Assistant. Job: draft categorisations and flag items for investigators. Observed [E]: the record says the tool makes no decision, all decisions stay with OPG investigators, and investigators review all AI outputs before anything is progressed or shared; published 7 August 2026. https://www.gov.uk/algorithmic-transparency-records/office-of-public-guardian-investigations-assistant (read 2026-11-15). New: yes.
+- Inferred: DWP's tool acts (it routes a call) but only along taught paths, so it is a scripted router, not an agent choosing its own actions. OPG's is an assistant whose every output a human reviews. Neither is an agent acting with its own authority. The gap stays open, though both records show the shape regulated buyers write down: "no decision", a named human owner, review before anything is progressed.
+
+**Thin spot 1: SRE postmortem.** Not searched this cycle (time). Still no postmortem by the team that ran an agent in an incident.
+
+### Segment table
+
+| Segment | Added this cycle | Still thin? |
+|---|---|---|
+| Regulated organisations | DWP and OPG ATRS records [E]: a taught router and a human-reviewed assistant | Yes: still no agent with its own authority |
+| Platform and SRE teams | Nothing | Yes |
+| Self-hosters | Not attempted | Yes |
+| Product teams, enterprises | Not attempted | Yes |
+| Teams running standing agents | Not attempted | Yes: who merges gh-aw PRs |
+
+### Still thin (part 1)
+
+- SRE postmortem: search engineering blogs (incident.io, PagerDuty, Datadog customer posts) for "postmortem" plus "AI agent" 2025 to 2026; Replit July 2025 post (replit.com/blog).
+- Self-hosters: GitHub Discussions of an agent framework, e.g. https://github.com/langchain-ai/langgraph/discussions or https://github.com/n8n-io/n8n community forum (https://community.n8n.io).
+- Enterprises: an engineering blog on agent permissions and audit (none chosen yet).
+- gh-aw merges: closed bot PRs at https://github.com/githubnext/gh-aw/pulls?q=is%3Apr+is%3Aclosed.
+- Regulated: read the verbatim text of both ATRS records (fetch returned an extract) and look for an ATRS record whose tool acts without review.
 <!-- p1:end -->
 
 ## What they ask for and complain about
@@ -134,7 +161,14 @@ Part 1 status: in progress
 ### Part 1
 
 <!-- s1:start -->
-Part 1 status: in progress
+Part 1 status: complete
+
+| URL | Read | Primary or secondary | Full text or extract | Grade |
+|---|---|---|---|---|
+| https://www.gov.uk/algorithmic-transparency-records | 2026-11-15 | Primary (index) | Extract | [E] |
+| https://www.gov.uk/algorithmic-transparency-records/dwp-conversational-platform | 2026-11-15 | Primary | Extract | [E] |
+| https://www.gov.uk/algorithmic-transparency-records/office-of-public-guardian-investigations-assistant | 2026-11-15 | Primary | Extract | [E] |
+| Local: docs/research/discovery-2026-10-04.md to -11-08.md, docs/roadmap.md, `git log`, `gh pr list` | 2026-11-15 | Primary (repository) | Headings and grep | [E] |
 <!-- s1:end -->
 
 ### Part 2
