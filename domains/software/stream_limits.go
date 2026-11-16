@@ -116,25 +116,34 @@ func withBase(tools ...string) []string {
 	return append(append([]string{}, streamBaseTools...), tools...)
 }
 
+// Each stream's own branches, as path.Match patterns. The limits hold a coding
+// action to them, and the git observation reads them to find a stream's branch
+// that has no pull request (Phase 40 step 6). Delivery's are a phase's groups,
+// karakuri/phase-<n>-..., and a backlog entry's branch, karakuri/eb-<id>-....
+var (
+	discoveryBranches = []string{"karakuri/discovery-*"}
+	backlogBranches   = []string{"karakuri/tech-backlog-*"}
+	uxBranches        = []string{"karakuri/ux-*"}
+	deliveryBranches  = []string{"karakuri/phase-*", "karakuri/eb-*"}
+)
+
 func discoveryLimits() []agent.ActionLimit {
-	return streamLimits(exactly(withBase("WebSearch", "WebFetch")), []string{"karakuri/discovery-*"})
+	return streamLimits(exactly(withBase("WebSearch", "WebFetch")), discoveryBranches)
 }
 
 func backlogLimits() []agent.ActionLimit {
 	tools := exactly(withBase("Bash(tail:*)", "Bash(wc:*)", "Bash(sort:*)", "Bash(uniq:*)", "Bash(head:*)"))
-	return streamLimits(append(tools, krkToolPatterns()...), []string{"karakuri/tech-backlog-*"})
+	return streamLimits(append(tools, krkToolPatterns()...), backlogBranches)
 }
 
 func uxLimits() []agent.ActionLimit {
 	return streamLimits(exactly(withBase("Bash(gh pr checks:*)", "Bash(gh run view:*)", "Bash(go:*)", "Bash(gofmt:*)", "Bash(sed:*)")),
-		[]string{"karakuri/ux-*"})
+		uxBranches)
 }
 
-// deliveryLimits: a phase's groups are karakuri/phase-<n>-..., a backlog
-// entry's branch karakuri/eb-<id>-....
 func deliveryLimits() []agent.ActionLimit {
 	return streamLimits(exactly(withBase(
 		"Bash(gh pr comment:*)", "Bash(gh pr ready:*)", "Bash(gh pr checks:*)", "Bash(gh run view:*)",
 		"Bash(go:*)", "Bash(gofmt:*)", "Bash(scripts/check_langchaingo_imports.sh:*)", "Bash(sed:*)")),
-		[]string{"karakuri/phase-*", "karakuri/eb-*"})
+		deliveryBranches)
 }
