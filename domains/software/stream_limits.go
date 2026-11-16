@@ -111,6 +111,21 @@ func branchConstraint(branch, base string) objective.Constraint {
 	}
 }
 
+// branchesWithoutPRConstraint tells every stream's planner to open its own
+// branches that the git observation lists without a pull request before any
+// new work, so a pass that pushed and then died does not strand its branch
+// (Phase 40 step 6). The action it names is the one branchConstraint already
+// holds to the stream's branches, so the limits admit it. One constraint for
+// all four streams: the rule does not depend on which stream reads it.
+var branchesWithoutPRConstraint = objective.Constraint{
+	ID: "branches-without-pr",
+	Description: "The git observation's branches_without_pr lists branches ahead of main with no open pull request, each with its stream. " +
+		"The plan opens a pull request for each branch of this stream it lists, first, before any other new work: " +
+		"one software.act.create_pr action with params.branch set to the listed branch and params.base_branch set as the action limits require. " +
+		"When branches_without_pr_error is set instead, the pass reports that it could not see the branches and does not treat the list as empty.",
+	Hard: true,
+}
+
 // withBase is the base tools and a stream's own, in a fresh slice.
 func withBase(tools ...string) []string {
 	return append(append([]string{}, streamBaseTools...), tools...)
