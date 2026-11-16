@@ -247,6 +247,7 @@ func stepDecide(ctx context.Context, sc *stepContext, p plan, mods *corecheckpoi
 		cpID := ""
 		if err == nil {
 			cpID = cp.ID
+			sc.svc.supersedeOpenCheckpoints(ctx, cp)
 		}
 
 		// Update state

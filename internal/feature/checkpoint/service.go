@@ -190,6 +190,11 @@ func (s *Service) record(ctx context.Context, id string, d corecheckpoint.Decisi
 		if prior.Status == corecheckpoint.StatusResolved {
 			return fmt.Errorf("checkpoint %q is already resolved", id)
 		}
+		// A superseded checkpoint showed a plan nobody will run any more; a
+		// decision on it authorises nothing (Phase 40 step 5).
+		if prior.Status == corecheckpoint.StatusSuperseded {
+			return fmt.Errorf("checkpoint %q was superseded by a newer plan", id)
+		}
 		if err := corecheckpoint.ValidateChoice(d.Choice, prior.Options); err != nil {
 			return err
 		}
@@ -235,6 +240,39 @@ func (s *Service) record(ctx context.Context, id string, d corecheckpoint.Decisi
 		Success:          success,
 	})
 	return nil
+}
+
+// Supersede closes the pending checkpoint id because newer was raised for the
+// same objective while it was open (Phase 40 step 5). It stores id as
+// superseded with the time it was closed, and writes one supersession audit
+// row naming both checkpoints. A checkpoint that is no longer pending is left
+// as it is: it was decided, or superseded already.
+func (s *Service) Supersede(ctx context.Context, id, newer string) error {
+	cp, err := s.store.GetCheckpoint(ctx, id)
+	if err != nil {
+		return err
+	}
+	if cp.Status != corecheckpoint.StatusPending {
+		return nil
+	}
+	now := time.Now().UTC()
+	cp.Status = corecheckpoint.StatusSuperseded
+	cp.ResolvedAt = &now
+	if err := s.store.SaveCheckpoint(ctx, cp); err != nil {
+		return err
+	}
+	pj, _ := json.Marshal(map[string]any{
+		"checkpoint_id": id,
+		"superseded_by": newer,
+		"plan_id":       cp.PlanID,
+	})
+	return s.store.SaveToolEvent(ctx, storage.ToolEvent{
+		ID:          fmt.Sprintf("audit-%d", now.UnixNano()),
+		ObjectiveID: string(cp.ObjectiveID),
+		Kind:        storage.ToolEventSupersession,
+		PayloadJSON: string(pj),
+		Success:     true,
+	})
 }
 
 // ExpireDue rejects, as system:timeout, every pending checkpoint whose

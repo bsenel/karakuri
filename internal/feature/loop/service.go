@@ -458,6 +458,45 @@ func (s *serviceImpl) ResumeCheckpoint(_ context.Context, checkpointID string, d
 	return true, nil
 }
 
+// supersedeOpenCheckpoints closes, as superseded by raised, every other
+// checkpoint still pending for raised's objective (Phase 40 step 5). A
+// re-plan reaches here with one open when a crash fell between creating it and
+// storing the paused row: the replay planned again, and the older plan's
+// checkpoint would otherwise stay approvable with nobody waiting on it.
+// Checkpoints carry no loop ID, so the scope is the objective. One a loop in
+// this process is waiting at is left open, so that loop is not wedged.
+// Failures are logged, not returned: the new checkpoint stands either way.
+func (s *serviceImpl) supersedeOpenCheckpoints(ctx context.Context, raised corecheckpoint.Checkpoint) {
+	pending, err := s.store.ListPendingCheckpoints(ctx, raised.TwinID)
+	if err != nil {
+		slog.Warn("list pending checkpoints to supersede", "checkpoint_id", raised.ID, "error", err)
+		return
+	}
+	for _, cp := range pending {
+		if cp.ID == raised.ID || cp.ObjectiveID != raised.ObjectiveID || s.waitedOn(cp.ID) {
+			continue
+		}
+		if err := s.cpSvc.Supersede(ctx, cp.ID, raised.ID); err != nil {
+			slog.Warn("supersede checkpoint", "checkpoint_id", cp.ID, "superseded_by", raised.ID, "error", err)
+		}
+	}
+}
+
+// waitedOn reports whether a loop in this process is paused at checkpointID.
+func (s *serviceImpl) waitedOn(checkpointID string) bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for _, state := range s.states {
+		state.mu.RLock()
+		waiting := state.status.Paused && state.result.CheckpointID != nil && *state.result.CheckpointID == checkpointID
+		state.mu.RUnlock()
+		if waiting {
+			return true
+		}
+	}
+	return false
+}
+
 // deliver hands a decision to a waiting runner. The channel is buffered to one
 // and the send is non-blocking, so a decision arriving for a loop that is not
 // at a checkpoint is refused rather than queued for the next escalation.

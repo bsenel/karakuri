@@ -69,8 +69,12 @@ func TestSupersededCheckpointRefusesEveryDecision(t *testing.T) {
 		name string
 		call func(*Service, string, corecheckpoint.Decision) error
 	}{
-		{"Resolve", func(s *Service, id string, d corecheckpoint.Decision) error { return s.Resolve(context.Background(), id, d) }},
-		{"Record", func(s *Service, id string, d corecheckpoint.Decision) error { return s.Record(context.Background(), id, d) }},
+		{"Resolve", func(s *Service, id string, d corecheckpoint.Decision) error {
+			return s.Resolve(context.Background(), id, d)
+		}},
+		{"Record", func(s *Service, id string, d corecheckpoint.Decision) error {
+			return s.Record(context.Background(), id, d)
+		}},
 	}
 	for _, door := range doors {
 		for _, choice := range choices {
