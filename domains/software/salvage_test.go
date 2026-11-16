@@ -39,7 +39,36 @@ type funcCLI struct {
 func (*funcCLI) Name() string { return "func" }
 func (*funcCLI) Active() bool { return true }
 func (c *funcCLI) Delegate(_ context.Context, in cliagent.DelegateInput) (cliagent.DelegateOutput, error) {
-	return cliagent.DelegateOutput{Summary: "ran", RawOutput: "ran"}, c.run(c.t, in.WorktreePath)
+	var err error
+	withEnv(c.t, in.Env, func() { err = c.run(c.t, in.WorktreePath) })
+	return cliagent.DelegateOutput{Summary: "ran", RawOutput: "ran"}, err
+}
+
+// withEnv runs fn with env set on this process and restores it after, as the
+// subprocess adapter merges DelegateInput.Env onto the agent's environment, so
+// the git commands a scripted run starts see what a real agent's would.
+func withEnv(t *testing.T, env map[string]string, fn func()) {
+	t.Helper()
+	var restore []func()
+	defer func() {
+		for _, r := range restore {
+			r()
+		}
+	}()
+	for k, v := range env {
+		old, had := os.LookupEnv(k)
+		if err := os.Setenv(k, v); err != nil {
+			t.Fatal(err)
+		}
+		restore = append(restore, func() {
+			if had {
+				_ = os.Setenv(k, old)
+			} else {
+				_ = os.Unsetenv(k)
+			}
+		})
+	}
+	fn()
 }
 func (*funcCLI) Stream(context.Context, cliagent.DelegateInput) (<-chan cliagent.DelegateChunk, error) {
 	ch := make(chan cliagent.DelegateChunk)

@@ -2,12 +2,15 @@ package software
 
 import (
 	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
+
+	gitlib "github.com/go-git/go-git/v5"
 
 	"github.com/bsenel/karakuri/internal/core/environment"
 )
@@ -453,7 +456,8 @@ func TestDelegatedActionFailsForAnUndeclaredBranchItDeleted(t *testing.T) {
 //     ref a push sends (create, update and delete), and
 //   - when the hook was skipped (--no-verify), the worktree's own HEAD reflog
 //     (`git -C <worktree> log -g --format=%H HEAD`, kept per worktree): the
-//     action committed or checked out that commit here.
+//     action made that commit here (a checkout or reset onto it is not
+//     making it; see the third fix below).
 //
 // A ref moved to a commit neither names is somebody else's.
 
@@ -513,6 +517,13 @@ func newSharedWorktreeFixture(t *testing.T) sharedWorktreeFixture {
 // action that declared its item branch.
 func (f sharedWorktreeFixture) checkRun(t *testing.T, run func(t *testing.T)) *environment.BoundsViolation {
 	t.Helper()
+	return f.checkRunDeclaring(t, salvageItemBranch, run)
+}
+
+// checkRunDeclaring is checkRun for an action that declared branch. The run
+// sees the environment installPushLog hands the agent, as a delegated run does.
+func (f sharedWorktreeFixture) checkRunDeclaring(t *testing.T, branch string, run func(t *testing.T)) *environment.BoundsViolation {
+	t.Helper()
 	ctx := context.Background()
 	log := installPushLog(ctx, f.action)
 	t.Cleanup(func() {
@@ -521,8 +532,8 @@ func (f sharedWorktreeFixture) checkRun(t *testing.T, run func(t *testing.T)) *e
 		}
 	})
 	before, beforeErr := readRemoteRefs(ctx, f.action)
-	run(t)
-	violation, err := checkPushedRefs(ctx, f.action, declaredRefs(salvageItemBranch, f.action), before, beforeErr, log)
+	withEnv(t, log.env(nil), func() { run(t) })
+	violation, err := checkPushedRefs(ctx, f.action, declaredRefs(branch, f.action), before, beforeErr, log)
 	if err != nil {
 		t.Fatalf("checkPushedRefs: %v; want a comparison, not an error", err)
 	}
@@ -648,11 +659,14 @@ func TestPushLogRecordsEveryPushedRef(t *testing.T) {
 		}
 	})
 
-	createdSHA := commitIn(t, f.action, "created.txt")
-	gitIn(t, f.action, "push", "origin", "HEAD:refs/heads/"+created)
-	updatedSHA := commitIn(t, f.action, "updated.txt")
-	gitIn(t, f.action, "push", "origin", "HEAD:refs/heads/"+pushedRefsOther)
-	gitIn(t, f.action, "push", "origin", "--delete", pushedRefsMergedHead)
+	var createdSHA, updatedSHA string
+	withEnv(t, log.env(nil), func() {
+		createdSHA = commitIn(t, f.action, "created.txt")
+		gitIn(t, f.action, "push", "origin", "HEAD:refs/heads/"+created)
+		updatedSHA = commitIn(t, f.action, "updated.txt")
+		gitIn(t, f.action, "push", "origin", "HEAD:refs/heads/"+pushedRefsOther)
+		gitIn(t, f.action, "push", "origin", "--delete", pushedRefsMergedHead)
+	})
 
 	pushed, err := log.pushed()
 	if err != nil {
@@ -678,5 +692,146 @@ func TestPushLogRecordsEveryPushedRef(t *testing.T) {
 	}
 	if !deleted[headsPrefix+pushedRefsMergedHead] || len(deleted) != 1 {
 		t.Errorf("deleted() = %v, want only %s: recording creates and updates must not make them read as deletions", deleted, pushedRefsMergedHead)
+	}
+}
+
+// Phase 40 step 3, third fix. At f56f843 installPushLog ran `git config
+// extensions.worktreeConfig true`, which lands in the SHARED config of the
+// deployment's repository (every action worktree is a `git worktree add` of
+// it), and go-git then refused to open that repository, so the server's
+// worktree manager broke after the first delegated run. The hook reaches the
+// agent through its process environment (GIT_CONFIG_COUNT/KEY/VALUE) instead,
+// and no git config is written in any scope.
+
+// gitConfigUnset fails the test unless `git -C dir config --get key` exits 1.
+func gitConfigUnset(t *testing.T, dir, key, when string) {
+	t.Helper()
+	out, err := exec.Command("git", "-C", dir, "config", "--get", key).CombinedOutput()
+	var exit *exec.ExitError
+	if !errors.As(err, &exit) || exit.ExitCode() != 1 {
+		t.Errorf("%s: git -C %s config --get %s = %q (err %v), want exit 1 (unset): the push log must write no git config in any scope",
+			when, dir, key, strings.TrimSpace(string(out)), err)
+	}
+}
+
+// (a) Installing and removing the push log leaves every config of the
+// deployment's repository untouched, and go-git still opens it.
+func TestPushLogWritesNoSharedGitConfig(t *testing.T) {
+	f := newSharedWorktreeFixture(t)
+	ctx := context.Background()
+	log := installPushLog(ctx, f.action)
+	if len(log.env(nil)) == 0 {
+		t.Errorf("installPushLog handed the agent no environment (err %v); want GIT_CONFIG_COUNT/KEY/VALUE naming the hook", log.err)
+	}
+	check := func(when string) {
+		t.Helper()
+		gitConfigUnset(t, f.deployment, "extensions.worktreeConfig", when)
+		for _, dir := range []string{f.deployment, f.sibling, f.action} {
+			gitConfigUnset(t, dir, "core.hooksPath", when)
+		}
+		repo, err := gitlib.PlainOpen(f.deployment)
+		if err != nil {
+			t.Errorf("%s: go-git cannot open the deployment repository: %v; the server's worktree manager opens it this way", when, err)
+			return
+		}
+		if _, err := repo.Head(); err != nil {
+			t.Errorf("%s: the deployment repository's HEAD does not resolve through go-git: %v", when, err)
+		}
+	}
+	check("after installPushLog")
+	if err := log.remove(ctx); err != nil {
+		t.Fatalf("remove: %v", err)
+	}
+	check("after remove")
+}
+
+// (b) The hook reaches the agent's process only: a push from the action's
+// worktree with the environment installPushLog returns is logged, a push from
+// the sibling worktree (another stream's process) is not.
+func TestPushLogLogsOnlyTheAgentsPushes(t *testing.T) {
+	const mine, theirs = "karakuri/ux-mine", "karakuri/ux-theirs"
+	f := newSharedWorktreeFixture(t)
+	ctx := context.Background()
+	log := installPushLog(ctx, f.action)
+	t.Cleanup(func() {
+		if err := log.remove(ctx); err != nil {
+			t.Errorf("removing the push log: %v", err)
+		}
+	})
+	var mineSHA string
+	withEnv(t, log.env(nil), func() {
+		mineSHA = commitIn(t, f.action, "mine.txt")
+		gitIn(t, f.action, "push", "origin", "HEAD:refs/heads/"+mine)
+	})
+	commitIn(t, f.sibling, "theirs.txt")
+	gitIn(t, f.sibling, "push", "origin", "HEAD:refs/heads/"+theirs)
+
+	pushed, err := log.pushed()
+	if err != nil {
+		t.Fatalf("pushed: %v", err)
+	}
+	if got := pushed[headsPrefix+mine]; got != mineSHA {
+		t.Errorf("pushed()[%s] = %q, want %q: the agent's push from its worktree, with the environment installPushLog returned, must run the hook", mine, got, mineSHA)
+	}
+	if _, ok := pushed[headsPrefix+theirs]; ok {
+		t.Errorf("pushed() = %v names %s, pushed from the sibling worktree: the hook must reach the agent's process only", pushed, theirs)
+	}
+}
+
+// (c) The action fetches after the owner merged and branches from origin/main
+// (or resets onto it): its HEAD reflog then names the owner's merge, but as a
+// checkout or reset, not a commit the worktree made, so main is not its doing.
+func TestPushedRefsCheckoutOfTheOwnersMergeIsNotTheActions(t *testing.T) {
+	const branch = "karakuri/phase-40-step-03-next-group"
+	cases := []struct {
+		name string
+		move [][]string
+	}{
+		{name: "checkout -b from origin/main", move: [][]string{{"checkout", "-b", branch, "origin/main"}}},
+		{name: "reset --hard onto origin/main", move: [][]string{{"checkout", "-b", branch}, {"reset", "--hard", "origin/main"}}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newSharedWorktreeFixture(t)
+			var mergeSHA string
+			violation := f.checkRunDeclaring(t, branch, func(t *testing.T) {
+				mergeSHA = f.ownerMerges(t)
+				gitIn(t, f.action, "fetch", "origin")
+				for _, args := range tc.move {
+					gitIn(t, f.action, args...)
+				}
+				gitIn(t, f.action, "push", "origin", "HEAD:refs/heads/"+branch)
+			})
+			if reflog := gitIn(t, f.action, "log", "-g", "--format=%H", "HEAD"); !strings.Contains(reflog, mergeSHA) {
+				t.Fatalf("fixture: the action's HEAD reflog does not name the owner's merge %s:\n%s", mergeSHA, reflog)
+			}
+			if violation != nil {
+				t.Errorf("BoundsViolation = %+v, want none: main moved to the owner's merge %s, which the action only checked out; the worktree did not make that commit",
+					violation, mergeSHA)
+			}
+		})
+	}
+}
+
+// (d) A commit the action made on a branch it did not declare, pushed with
+// --no-verify so the hook never ran, is still its violation: the commit is in
+// its HEAD reflog as "commit".
+func TestPushedRefsNoVerifyCommitOnAnUndeclaredBranchIsAViolation(t *testing.T) {
+	const notMine = "karakuri/ux-not-mine"
+	f := newSharedWorktreeFixture(t)
+	var ranSHA string
+	violation := f.checkRun(t, func(t *testing.T) {
+		gitIn(t, f.action, "checkout", "-b", notMine)
+		ranSHA = commitIn(t, f.action, "undeclared.txt")
+		gitIn(t, f.action, "push", "--no-verify", "origin", notMine)
+	})
+	if violation == nil {
+		t.Fatalf("no BoundsViolation for the action's commit %s on undeclared %s pushed with --no-verify; want one from its HEAD reflog", ranSHA, notMine)
+	}
+	if want := []string{headsPrefix + notMine}; !slices.Equal(violation.Refs, want) {
+		t.Errorf("BoundsViolation.Refs = %v, want exactly %v", violation.Refs, want)
+	}
+	if !strings.Contains(violation.Reason, notMine) || !strings.Contains(violation.Reason, ranSHA) {
+		t.Errorf("Reason = %q, want it to name %s and the action's commit %s", violation.Reason, notMine, ranSHA)
 	}
 }
