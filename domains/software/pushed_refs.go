@@ -10,6 +10,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"sort"
@@ -31,11 +32,12 @@ func readRemoteRefs(ctx context.Context, worktree string) (map[string]string, er
 
 // checkPushedRefs reads origin's refs after a run and compares them with
 // before, the read taken before it (nil when that read failed with
-// beforeErr). It returns the bounds violation, typed so the loop and reconcile
-// never read it out of Error's text, or nil when every ref that moved was
-// declared and kept its previous tip, and an error when the comparison could
-// not be made, which the caller must not treat as a pass.
-func checkPushedRefs(ctx context.Context, worktree string, declared map[string]bool, before map[string]string, beforeErr error) (*environment.BoundsViolation, error) {
+// beforeErr). log is the pre-push log installed for the run. It returns the
+// bounds violation, typed so the loop and reconcile never read it out of
+// Error's text, or nil when every ref the action moved was declared and kept
+// its previous tip, and an error when the comparison could not be made, which
+// the caller must not treat as a pass.
+func checkPushedRefs(ctx context.Context, worktree string, declared map[string]bool, before map[string]string, beforeErr error, log *pushLog) (*environment.BoundsViolation, error) {
 	if beforeErr != nil {
 		return nil, fmt.Errorf("what the run pushed could not be checked: %w", beforeErr)
 	}
@@ -43,9 +45,10 @@ func checkPushedRefs(ctx context.Context, worktree string, declared map[string]b
 	if err != nil {
 		return nil, fmt.Errorf("what the run pushed could not be checked: %w", err)
 	}
+	deleted, deletedErr := log.deleted()
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), salvageTimeout)
 	defer cancel()
-	violations, refs, err := pushedRefsViolations(ctx, worktree, declared, before, after)
+	violations, refs, err := pushedRefsViolations(ctx, worktree, declared, before, after, deleted, deletedErr)
 	if err != nil {
 		return nil, fmt.Errorf("what the run pushed could not be checked: %w", err)
 	}
@@ -91,11 +94,16 @@ func declaredRefs(branch, worktree string) map[string]bool {
 }
 
 // pushedRefsViolations compares origin's refs before and after a run and
-// returns one line per bounds violation: an undeclared ref that was created,
-// moved or deleted, or a declared ref that no longer contains its previous
-// tip, and the refs those lines name. An error means the comparison could not
-// be made, which is not a pass.
-func pushedRefsViolations(ctx context.Context, worktree string, declared map[string]bool, before, after map[string]string) ([]string, []string, error) {
+// returns one line per bounds violation, and the refs those lines name: a
+// declared ref that no longer contains its previous tip, or an undeclared ref
+// the action moved. Other actors move refs on origin during a run (the owner
+// merges, other streams and dependabot push), so an undeclared ref counts only
+// when the action could have moved it: created or updated to a commit the
+// worktree holds that no ref origin had before already reached, or deleted by
+// a push its pre-push hook logged (deleted; deletedErr when the log could not
+// be kept or read). An error means the comparison could not be made, which is
+// not a pass.
+func pushedRefsViolations(ctx context.Context, worktree string, declared map[string]bool, before, after map[string]string, deleted map[string]bool, deletedErr error) ([]string, []string, error) {
 	names := map[string]bool{}
 	for ref := range before {
 		names[ref] = true
@@ -133,6 +141,23 @@ func pushedRefsViolations(ctx context.Context, worktree string, declared map[str
 			refs = append(refs, ref)
 			continue
 		}
+		if now == "" {
+			if deletedErr != nil {
+				return nil, nil, fmt.Errorf("%s was deleted and whether the action's push deleted it is not known: %w",
+					strings.TrimPrefix(ref, headsPrefix), deletedErr)
+			}
+			if !deleted[ref] {
+				continue
+			}
+		} else {
+			made, err := madeByAction(ctx, worktree, now, before)
+			if err != nil {
+				return nil, nil, err
+			}
+			if !made {
+				continue
+			}
+		}
 		violations = append(violations, refMove(ref, old, now)+", outside the action's declared refs")
 		refs = append(refs, ref)
 	}
@@ -157,6 +182,168 @@ func containsTip(ctx context.Context, worktree, ref, old, now string) (bool, err
 		return false, nil
 	}
 	return false, fmt.Errorf("checking that %s keeps %s: %w", ref, old, err)
+}
+
+// madeByAction reports whether the action could have moved an undeclared ref
+// to now: the worktree holds commit now, and no ref origin had before the run
+// already reached it. The after read brings in no objects and nothing fetches
+// an undeclared ref, so a commit another actor pushed is one the worktree
+// lacks. A before tip the worktree lacks is skipped (--ignore-missing).
+func madeByAction(ctx context.Context, worktree, now string, before map[string]string) (bool, error) {
+	dir := filepath.Clean(worktree)
+	if _, err := gitOutput(ctx, dir, nil, "cat-file", "-e", now+"^{commit}"); err != nil {
+		var exit *exec.ExitError
+		if errors.As(err, &exit) && ctx.Err() == nil {
+			return false, nil
+		}
+		return false, fmt.Errorf("checking whether the worktree holds %s: %w", now, err)
+	}
+	tips := map[string]bool{}
+	for _, sha := range before {
+		tips[sha] = true
+	}
+	args := []string{"rev-list", "-n", "1", "--ignore-missing", now}
+	if len(tips) > 0 {
+		args = append(args, "--not")
+		for sha := range tips {
+			args = append(args, sha)
+		}
+		sort.Strings(args[len(args)-len(tips):])
+	}
+	out, err := gitOutput(ctx, dir, nil, args...)
+	if err != nil {
+		return false, fmt.Errorf("checking whether origin already reached %s: %w", now, err)
+	}
+	return out != "", nil
+}
+
+// pushLog is a pre-push hook installed for one delegated run's worktree,
+// which appends each line git hands it (<local ref> <local sha> <remote ref>
+// <remote sha>) to a log. A ref ls-remote shows deleted is the action's only
+// when this log names it: a deletion leaves no commit to recognise. Best
+// effort: a push with --no-verify skips the hook. The hook and its log live in
+// a directory outside the worktree, so the run leaves nothing to commit.
+type pushLog struct {
+	worktree     string
+	dir          string // holds the hooks and the log; removed with the hook
+	hadHooksPath bool   // the worktree's own core.hooksPath before the run
+	hooksPath    string
+	err          error // why the log could not be kept, when it could not
+}
+
+// pushLogFile is the log's name inside pushLog.dir.
+const pushLogFile = "pushes.log"
+
+// installPushLog points the worktree's own core.hooksPath at a fresh
+// directory holding the logging pre-push hook. The setting is per worktree
+// (extensions.worktreeConfig, which is enabled and left on, since a sibling
+// run may rely on it), so the clone's other worktrees keep their hooks; and it
+// is git configuration, not environment, so every push from the worktree runs
+// the hook whoever starts it. The hooks the worktree had are linked in, and
+// the hook runs the previous pre-push after logging. A failure to install is
+// recorded on the log and surfaces only when a deletion needs it.
+func installPushLog(ctx context.Context, worktree string) *pushLog {
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), salvageTimeout)
+	defer cancel()
+	l := &pushLog{worktree: filepath.Clean(worktree)}
+	if err := l.install(ctx); err != nil {
+		l.err = fmt.Errorf("the pre-push log could not be installed: %w", err)
+	}
+	return l
+}
+
+func (l *pushLog) install(ctx context.Context) error {
+	previous, err := gitOutput(ctx, l.worktree, nil, "rev-parse", "--path-format=absolute", "--git-path", "hooks")
+	if err != nil {
+		return err
+	}
+	if _, err := gitOutput(ctx, l.worktree, nil, "config", "extensions.worktreeConfig", "true"); err != nil {
+		return err
+	}
+	if path, err := gitOutput(ctx, l.worktree, nil, "config", "--worktree", "--get", "core.hooksPath"); err == nil {
+		l.hadHooksPath, l.hooksPath = true, path
+	}
+	dir, err := os.MkdirTemp("", "karakuri-push-log-")
+	if err != nil {
+		return err
+	}
+	l.dir = dir
+	if entries, err := os.ReadDir(previous); err == nil {
+		for _, e := range entries {
+			if name := e.Name(); name != "pre-push" && !strings.HasSuffix(name, ".sample") {
+				if err := os.Symlink(filepath.Join(previous, name), filepath.Join(dir, name)); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	script := "#!/bin/sh\n" +
+		"# Installed by Karakuri for one delegated run: logs what each push sends.\n" +
+		"input=$(cat)\n" +
+		"printf '%s\\n' \"$input\" >> " + shellQuote(filepath.Join(dir, pushLogFile)) + "\n" +
+		"prev=" + shellQuote(filepath.Join(previous, "pre-push")) + "\n" +
+		"if [ -x \"$prev\" ]; then printf '%s\\n' \"$input\" | \"$prev\" \"$@\"; fi\n"
+	// #nosec G306 -- git runs a hook only when it is executable; the file sits in a 0o700 directory of the server's own and holds no secret
+	if err := os.WriteFile(filepath.Join(dir, "pre-push"), []byte(script), 0o700); err != nil {
+		return err
+	}
+	_, err = gitOutput(ctx, l.worktree, nil, "config", "--worktree", "core.hooksPath", dir)
+	return err
+}
+
+// deleted names the refs the log shows a push deleting (an all-zero local
+// SHA). A log never written is a run that pushed nothing.
+func (l *pushLog) deleted() (map[string]bool, error) {
+	if l == nil {
+		return nil, errors.New("no pre-push log was installed")
+	}
+	if l.err != nil {
+		return nil, l.err
+	}
+	data, err := os.ReadFile(filepath.Join(l.dir, pushLogFile))
+	if errors.Is(err, os.ErrNotExist) {
+		return map[string]bool{}, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("reading the pre-push log: %w", err)
+	}
+	deleted := map[string]bool{}
+	for _, line := range strings.Split(string(data), "\n") {
+		if f := strings.Fields(line); len(f) == 4 && strings.Trim(f[1], "0") == "" {
+			deleted[f[2]] = true
+		}
+	}
+	return deleted, nil
+}
+
+// remove restores the worktree's core.hooksPath and deletes the hook and its
+// log. It runs outside the action's cancellation, which may be why it ended.
+func (l *pushLog) remove(ctx context.Context) error {
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), salvageTimeout)
+	defer cancel()
+	if l.dir == "" {
+		return nil
+	}
+	var err error
+	if l.hadHooksPath {
+		_, err = gitOutput(ctx, l.worktree, nil, "config", "--worktree", "core.hooksPath", l.hooksPath)
+	} else {
+		_, err = gitOutput(ctx, l.worktree, nil, "config", "--worktree", "--unset", "core.hooksPath")
+		// Exit 5: install failed before it set the key, so nothing to unset.
+		var exit *exec.ExitError
+		if errors.As(err, &exit) && exit.ExitCode() == 5 {
+			err = nil
+		}
+	}
+	if err != nil {
+		err = fmt.Errorf("restoring the worktree's core.hooksPath: %w", err)
+	}
+	return errors.Join(err, os.RemoveAll(l.dir))
+}
+
+// shellQuote quotes s for a POSIX shell.
+func shellQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
 // refMove names a ref and its old and new SHA in the words an operator reads.

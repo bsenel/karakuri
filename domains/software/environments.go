@@ -905,8 +905,12 @@ func (e *cliEnv) Act(ctx context.Context, a environment.Action) (environment.Act
 		}
 	}
 
+	// A deletion leaves no commit to tell whose it was, so the worktree's own
+	// pushes are logged by a pre-push hook for the check, then removed.
+	pushes := installPushLog(ctx, worktree)
 	out, err := e.cli.Delegate(ctx, in)
-	pushed, pushedErr := checkPushedRefs(ctx, worktree, declared, refsBefore, refsBeforeErr)
+	pushed, pushedErr := checkPushedRefs(ctx, worktree, declared, refsBefore, refsBeforeErr, pushes)
+	logErr := pushes.remove(ctx)
 	// What a Karakuri tool returned can be a stranger's prose (an audit row
 	// holds pull-request titles), and the agent wrote everything after it
 	// having read that. Decided from the calls the run made, not from what was
@@ -941,6 +945,9 @@ func (e *cliEnv) Act(ctx context.Context, a environment.Action) (environment.Act
 		if pushedErr != nil {
 			delta["pushed_refs_error"] = scrub(pushedErr.Error())
 		}
+		if logErr != nil {
+			delta["push_log_error"] = scrub(logErr.Error())
+		}
 		msg := err.Error()
 		if pushed != nil {
 			msg = pushed.Reason + "; the run itself failed: " + msg
@@ -956,6 +963,9 @@ func (e *cliEnv) Act(ctx context.Context, a environment.Action) (environment.Act
 	}
 	if credential != nil {
 		delta["delegation_credential"] = credential
+	}
+	if logErr != nil {
+		delta["push_log_error"] = scrub(logErr.Error())
 	}
 	// A push that could not be checked fails the action but is not a
 	// violation: only a ref seen to move outside its bounds blocks the stream.
