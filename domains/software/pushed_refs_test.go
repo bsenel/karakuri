@@ -3,6 +3,7 @@ package software
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -153,11 +154,23 @@ func TestDelegatedActionFailsWhenItPushedOutsideItsDeclaredRefs(t *testing.T) {
 				if !res.Success {
 					t.Fatalf("a run that stayed inside its declared refs failed: %q (delta %v)", res.Error, res.StateDelta)
 				}
+				if res.BoundsViolation != nil {
+					t.Errorf("BoundsViolation = %+v, want none for a run inside its declared refs", res.BoundsViolation)
+				}
 				return
 			}
 			if res.Success {
 				t.Fatalf("a run that moved %s passed; want a failed result with a bounds violation (origin now %v)",
 					tc.want.ref, f.originRefs(t))
+			}
+			// The loop records the violation, and reconcile blocks the stream,
+			// on this typed field, never on Error's text.
+			if res.BoundsViolation == nil {
+				t.Fatalf("a run that moved %s carried no BoundsViolation, so the loop records none and the stream is not blocked (Error %q)",
+					tc.want.ref, res.Error)
+			}
+			if !slices.Contains(res.BoundsViolation.Refs, "refs/heads/"+tc.want.ref) {
+				t.Errorf("BoundsViolation.Refs = %v, want it to name refs/heads/%s", res.BoundsViolation.Refs, tc.want.ref)
 			}
 			if !strings.Contains(strings.ToLower(res.Error), "bounds violation") {
 				t.Errorf("Error = %q, want it to name a bounds violation", res.Error)
@@ -193,6 +206,9 @@ func TestDelegatedActionSalvageIsNotABoundsViolation(t *testing.T) {
 	if res.Success {
 		t.Fatal("a failed run must stay a failed result")
 	}
+	if res.BoundsViolation != nil {
+		t.Errorf("BoundsViolation = %+v, want none for the pack's own salvage push", res.BoundsViolation)
+	}
 	if res.Error != errExit1.Error() {
 		t.Errorf("Error = %q, want the delegate's own %q and no bounds violation for the salvage push", res.Error, errExit1.Error())
 	}
@@ -220,5 +236,9 @@ func TestDelegatedActionWithAnUnreadableRemoteIsNotAPass(t *testing.T) {
 	}
 	if strings.TrimSpace(res.Error) == "" {
 		t.Error("Error is empty, want the reason origin's refs could not be read")
+	}
+	// Not known is not a violation: only a ref seen to move blocks the stream.
+	if res.BoundsViolation != nil {
+		t.Errorf("BoundsViolation = %+v, want none when origin could not be read", res.BoundsViolation)
 	}
 }
