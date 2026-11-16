@@ -43,6 +43,11 @@ type Checkpoint struct {
 	// escalation. Populated by the loop runner so reviewers can judge what
 	// they are approving without leaving the checkpoint response.
 	Actions []Action `json:"actions,omitempty"`
+	// PlanID names the plan this checkpoint was raised for, so an approval
+	// can be held to the plan it was shown (Phase 40 step 5). Set by the loop
+	// runner when it escalates; empty on checkpoints that approve no plan.
+	// Kept off JSON until the API shape is decided.
+	PlanID string `json:"-"`
 	// AuditEventID links the checkpoint to the kind=escalation row in the
 	// audit log that captured the full escalation payload. Empty when the
 	// audit write failed; reviewers can still resolve.
