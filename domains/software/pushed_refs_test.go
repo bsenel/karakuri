@@ -1,12 +1,15 @@
 package software
 
 import (
+	"context"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/bsenel/karakuri/internal/core/environment"
 )
 
 // Phase 40 step 3, slice A: what was pushed is checked, not assumed. The tool
@@ -434,5 +437,246 @@ func TestDelegatedActionFailsForAnUndeclaredBranchItDeleted(t *testing.T) {
 				t.Errorf("worktree status = %q after the check, want clean: the push log must live outside the worktree", status)
 			}
 		})
+	}
+}
+
+// Phase 40 step 3, review of ecfae91: an action's worktree is made with `git
+// worktree add` from the deployment's main repository, so every worktree of
+// that repository shares ONE object store. A fetch by anyone sharing it during
+// the run (the action's own `git fetch` or `git pull --rebase` before it
+// pushes, another stream's worktree, the operator's `git fetch origin`) brings
+// the owner's merge commit into the store, and "the worktree holds the commit"
+// stops meaning "the action made it". A create or update of an undeclared ref
+// is the action's only from evidence local to THIS worktree:
+//
+//   - the pre-push log installed for the worktree, which records every remote
+//     ref a push sends (create, update and delete), and
+//   - when the hook was skipped (--no-verify), the worktree's own HEAD reflog
+//     (`git -C <worktree> log -g --format=%H HEAD`, kept per worktree): the
+//     action committed or checked out that commit here.
+//
+// A ref moved to a commit neither names is somebody else's.
+
+// sharedWorktreeSibling is the branch of the deployment repository's second
+// worktree, standing for another stream's pass.
+const sharedWorktreeSibling = "karakuri/ux-2026-11-16-sibling"
+
+// sharedWorktreeFixture is the layout a deployment has: a bare origin, the
+// deployment's main repository cloned from it, the action's worktree added
+// from that repository on the item branch, and a sibling worktree of the same
+// repository. All three checkouts share one object store. owner is a separate
+// clone of origin, standing for the owner merging on GitHub.
+type sharedWorktreeFixture struct {
+	origin     string
+	deployment string
+	action     string
+	sibling    string
+	owner      string
+}
+
+func newSharedWorktreeFixture(t *testing.T) sharedWorktreeFixture {
+	t.Helper()
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not installed")
+	}
+	isolateGit(t)
+	root := t.TempDir()
+	f := sharedWorktreeFixture{
+		origin:     filepath.Join(root, "origin.git"),
+		deployment: filepath.Join(root, "deployment"),
+		action:     filepath.Join(root, "worktrees", salvageObjectiveID, salvageTaskID),
+		sibling:    filepath.Join(root, "worktrees", salvageObjectiveID, "sibling"),
+		owner:      filepath.Join(root, "owner"),
+	}
+	gitIn(t, root, "init", "--bare", "-b", "main", f.origin)
+	gitIn(t, root, "clone", f.origin, f.deployment)
+	writeFile(t, filepath.Join(f.deployment, "tracked.txt"), "original\n")
+	gitIn(t, f.deployment, "add", ".")
+	gitIn(t, f.deployment, "commit", "-m", "base")
+	gitIn(t, f.deployment, "push", "origin", "HEAD:refs/heads/main")
+	gitIn(t, f.deployment, "push", "origin", "HEAD:refs/heads/"+pushedRefsOther)
+	gitIn(t, f.deployment, "push", "origin", "HEAD:refs/heads/"+pushedRefsMergedHead)
+
+	if err := os.MkdirAll(filepath.Dir(f.action), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	gitIn(t, f.deployment, "worktree", "add", "-b", salvageItemBranch, f.action, "main")
+	commitIn(t, f.action, "item.txt")
+	gitIn(t, f.action, "push", "origin", "HEAD:refs/heads/"+salvageItemBranch)
+	gitIn(t, f.deployment, "worktree", "add", "-b", sharedWorktreeSibling, f.sibling, "main")
+	gitIn(t, root, "clone", f.origin, f.owner)
+	return f
+}
+
+// checkRun installs the push log on the action's worktree, reads origin's
+// refs, runs the scenario and returns what checkPushedRefs reports for an
+// action that declared its item branch.
+func (f sharedWorktreeFixture) checkRun(t *testing.T, run func(t *testing.T)) *environment.BoundsViolation {
+	t.Helper()
+	ctx := context.Background()
+	log := installPushLog(ctx, f.action)
+	t.Cleanup(func() {
+		if err := log.remove(ctx); err != nil {
+			t.Errorf("removing the push log: %v", err)
+		}
+	})
+	before, beforeErr := readRemoteRefs(ctx, f.action)
+	run(t)
+	violation, err := checkPushedRefs(ctx, f.action, declaredRefs(salvageItemBranch, f.action), before, beforeErr, log)
+	if err != nil {
+		t.Fatalf("checkPushedRefs: %v; want a comparison, not an error", err)
+	}
+	return violation
+}
+
+// ownerMerges stands for the owner merging a pull request on GitHub: a new
+// commit lands on origin's main from outside the deployment. It returns it.
+func (f sharedWorktreeFixture) ownerMerges(t *testing.T) string {
+	t.Helper()
+	sha := commitIn(t, f.owner, "merged.txt")
+	gitIn(t, f.owner, "push", "origin", "HEAD:refs/heads/main")
+	return sha
+}
+
+// (a) The owner's merge commit fetched into the shared object store by
+// anyone, the action included, is not the action's: main moved, but nothing
+// local to the action's worktree names that commit.
+func TestPushedRefsSharedWorktreeFetchIsNotTheActionsPush(t *testing.T) {
+	cases := []struct {
+		name    string
+		fetchIn func(f sharedWorktreeFixture) []string
+	}{
+		{
+			name:    "another stream's worktree and the action both fetch",
+			fetchIn: func(f sharedWorktreeFixture) []string { return []string{f.sibling, f.action} },
+		},
+		{
+			name:    "the operator fetches in the deployment checkout",
+			fetchIn: func(f sharedWorktreeFixture) []string { return []string{f.deployment} },
+		},
+		{
+			name:    "only the action fetches before it pushes",
+			fetchIn: func(f sharedWorktreeFixture) []string { return []string{f.action} },
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newSharedWorktreeFixture(t)
+			var mergeSHA string
+			violation := f.checkRun(t, func(t *testing.T) {
+				mergeSHA = f.ownerMerges(t)
+				for _, dir := range tc.fetchIn(f) {
+					gitIn(t, dir, "fetch", "origin")
+				}
+				commitIn(t, f.action, "step.txt")
+				gitIn(t, f.action, "push", "origin", "HEAD:refs/heads/"+salvageItemBranch)
+			})
+			// The fixture must reproduce the defect: the owner's commit is now in
+			// the object store the action's worktree reads.
+			if err := exec.Command("git", "-C", f.action, "cat-file", "-e", mergeSHA+"^{commit}").Run(); err != nil {
+				t.Fatalf("fixture: the action's worktree does not hold the owner's merge %s through the shared object store: %v", mergeSHA, err)
+			}
+			if violation != nil {
+				t.Errorf("BoundsViolation = %+v, want none: main moved to the owner's merge %s, which reached the shared object store by a fetch; neither this worktree's push log nor its HEAD reflog names it, so blocking the stream for it stops it for something it did not do",
+					violation, mergeSHA)
+			}
+		})
+	}
+}
+
+// (b) and (c) A commit the action made in its own worktree and pushed to an
+// undeclared branch is a violation, with or without the pre-push hook, and
+// the owner's merge fetched into the shared store in the same run is not
+// named beside it.
+func TestPushedRefsSharedWorktreeUndeclaredPushIsAViolation(t *testing.T) {
+	const notMine = "karakuri/ux-not-mine"
+	cases := []struct {
+		name     string
+		noVerify bool // the push skips the pre-push hook; the HEAD reflog is the evidence
+		owner    bool // the owner merges and the sibling worktree fetches during the run
+	}{
+		{name: "normal push"},
+		{name: "normal push while the owner's merge is fetched", owner: true},
+		{name: "push with --no-verify", noVerify: true},
+		{name: "push with --no-verify while the owner's merge is fetched", noVerify: true, owner: true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newSharedWorktreeFixture(t)
+			var ranSHA string
+			violation := f.checkRun(t, func(t *testing.T) {
+				if tc.owner {
+					f.ownerMerges(t)
+					gitIn(t, f.sibling, "fetch", "origin")
+				}
+				ranSHA = commitIn(t, f.action, "elsewhere.txt")
+				args := []string{"push"}
+				if tc.noVerify {
+					args = append(args, "--no-verify")
+				}
+				gitIn(t, f.action, append(args, "origin", "HEAD:refs/heads/"+notMine)...)
+			})
+			how := "through the pre-push log"
+			if tc.noVerify {
+				how = "through the worktree's HEAD reflog, since --no-verify skipped the hook"
+			}
+			if violation == nil {
+				t.Fatalf("no BoundsViolation for a commit %s the action made in its worktree and pushed to undeclared %s; want one, found %s",
+					ranSHA, notMine, how)
+			}
+			if want := []string{headsPrefix + notMine}; !slices.Equal(violation.Refs, want) {
+				t.Errorf("BoundsViolation.Refs = %v, want exactly %v: the ref the action pushed, not main, which the owner moved", violation.Refs, want)
+			}
+			if !strings.Contains(violation.Reason, notMine) || !strings.Contains(violation.Reason, ranSHA) {
+				t.Errorf("Reason = %q, want it to name %s and the action's commit %s", violation.Reason, notMine, ranSHA)
+			}
+		})
+	}
+}
+
+// (d) The pre-push log records every remote ref a push sends, not only
+// deletions: a create and an update name the ref and the SHA sent, a deletion
+// names the ref with "".
+func TestPushLogRecordsEveryPushedRef(t *testing.T) {
+	const created = "karakuri/ux-not-mine"
+	f := newSharedWorktreeFixture(t)
+	ctx := context.Background()
+	log := installPushLog(ctx, f.action)
+	t.Cleanup(func() {
+		if err := log.remove(ctx); err != nil {
+			t.Errorf("removing the push log: %v", err)
+		}
+	})
+
+	createdSHA := commitIn(t, f.action, "created.txt")
+	gitIn(t, f.action, "push", "origin", "HEAD:refs/heads/"+created)
+	updatedSHA := commitIn(t, f.action, "updated.txt")
+	gitIn(t, f.action, "push", "origin", "HEAD:refs/heads/"+pushedRefsOther)
+	gitIn(t, f.action, "push", "origin", "--delete", pushedRefsMergedHead)
+
+	pushed, err := log.pushed()
+	if err != nil {
+		t.Fatalf("pushed: %v; want the log of what the worktree's pushes sent", err)
+	}
+	want := map[string]string{
+		headsPrefix + created:              createdSHA,
+		headsPrefix + pushedRefsOther:      updatedSHA,
+		headsPrefix + pushedRefsMergedHead: "",
+	}
+	for ref, sha := range want {
+		got, ok := pushed[ref]
+		switch {
+		case !ok:
+			t.Errorf("pushed() = %v, want it to name %s: the log must record every ref a push sends, so a create or update is attributed from this worktree's own pushes, not from the shared object store", pushed, ref)
+		case got != sha:
+			t.Errorf("pushed()[%s] = %q, want %q (the SHA the push sent; empty for a deletion)", ref, got, sha)
+		}
+	}
+	deleted, err := log.deleted()
+	if err != nil {
+		t.Fatalf("deleted: %v", err)
+	}
+	if !deleted[headsPrefix+pushedRefsMergedHead] || len(deleted) != 1 {
+		t.Errorf("deleted() = %v, want only %s: recording creates and updates must not make them read as deletions", deleted, pushedRefsMergedHead)
 	}
 }

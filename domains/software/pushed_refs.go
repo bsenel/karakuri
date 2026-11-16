@@ -316,6 +316,13 @@ func (l *pushLog) deleted() (map[string]bool, error) {
 	return deleted, nil
 }
 
+// pushed maps every remote ref the log shows a push sending (created,
+// updated or deleted) to the SHA it was sent, "" for a deletion. Stub: the
+// code slice of Phase 40 step 3 fills it in.
+func (l *pushLog) pushed() (map[string]string, error) {
+	return nil, nil
+}
+
 // remove restores the worktree's core.hooksPath and deletes the hook and its
 // log. It runs outside the action's cancellation, which may be why it ended.
 func (l *pushLog) remove(ctx context.Context) error {
