@@ -57,6 +57,9 @@ type CreateOptions struct {
 	Confidence   float64
 	Actions      []corecheckpoint.Action
 	AuditEventID string
+	// PlanID names the plan Actions show; empty when the checkpoint approves
+	// no plan (budget pauses, manual checkpoints).
+	PlanID string
 	// WorldState is what the planner saw when it escalated; nil when the
 	// caller has none (budget pauses, manual checkpoints).
 	WorldState *loop.WorldState
@@ -85,6 +88,7 @@ func (s *Service) Create(
 		Confidence:   opts.Confidence,
 		Actions:      opts.Actions,
 		AuditEventID: opts.AuditEventID,
+		PlanID:       opts.PlanID,
 		WorldState:   opts.WorldState,
 		ExpiresAt:    opts.ExpiresAt,
 		Status:       corecheckpoint.StatusPending,

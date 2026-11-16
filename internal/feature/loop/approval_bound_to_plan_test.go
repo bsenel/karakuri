@@ -346,3 +346,92 @@ func TestApprovalBoundCheckpointNamesThePlanItWasRaisedFor(t *testing.T) {
 		t.Errorf("the restored loop waits on checkpoint %v, want %s", cpID, r.cp.ID)
 	}
 }
+
+// (4) A reject after the restart keeps today's behaviour: the replay reads it
+// at its first decide, runs no action, raises no second checkpoint, and ends
+// the loop.
+func TestApprovalBoundRejectAfterRestartRunsNothing(t *testing.T) {
+	r := restartAtCheckpoint(t)
+	ctx := context.Background()
+
+	reject := corecheckpoint.Decision{Choice: corecheckpoint.ChoiceReject, Approver: "user:ada", Note: "no"}
+	if err := r.next.cpSvc.Resolve(ctx, r.cp.ID, reject); err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+	waitStoredCompleted(t, r.next.store, r.loopID)
+
+	if ran := r.env.actions(); len(ran) != 0 {
+		t.Errorf("%d action(s) ran after a reject, want none: %+v", len(ran), ran)
+	}
+	all := checkpointsFor(t, r.next.store, r.obj)
+	if len(all) != 1 || all[0].ID != r.cp.ID {
+		t.Errorf("checkpoints for the objective = %v, want only %s", checkpointIDs(all), r.cp.ID)
+	}
+}
+
+// (5) A modify after the restart keeps today's behaviour: the replay reasons
+// again and revises the plan it makes, and a revised plan still outside the
+// bounds is shown on a new checkpoint that names its own plan. Nothing runs
+// until that one is answered.
+func TestApprovalBoundModifyAfterRestartReplansAndAsksAgain(t *testing.T) {
+	r := restartAtCheckpoint(t)
+	ctx := context.Background()
+
+	modify := corecheckpoint.Decision{Choice: corecheckpoint.ChoiceModify, Approver: "user:ada", Note: "narrower"}
+	if err := r.next.cpSvc.Resolve(ctx, r.cp.ID, modify); err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+
+	var second corecheckpoint.Checkpoint
+	deadline := time.Now().Add(stopBound)
+	for second.ID == "" {
+		for _, cp := range pendingFor(t, r.next.store, r.obj) {
+			if cp.ID != r.cp.ID {
+				second = cp
+			}
+		}
+		if second.ID == "" && time.Now().After(deadline) {
+			t.Fatalf("no checkpoint was raised for the modified plan within %s", stopBound)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	if n := r.provider.count(); n == 0 {
+		t.Error("the modify ran no reason step; a modify revises the plan the replay makes")
+	}
+	if second.PlanID == "" || second.PlanID == r.cp.PlanID {
+		t.Errorf("the modified plan's checkpoint names plan %q, want one of its own (the first was %q)", second.PlanID, r.cp.PlanID)
+	}
+	if ran := r.env.actions(); len(ran) != 0 {
+		t.Errorf("%d action(s) ran before the modified plan was answered, want none: %+v", len(ran), ran)
+	}
+}
+
+// (6) A checkpoint that recorded no plan, as one written before checkpoints
+// named theirs, has nothing to hold an approval to: the approval falls back
+// to the replay, whose re-derived plan is what runs.
+func TestApprovalBoundCheckpointWithoutAPlanFallsBackToReplay(t *testing.T) {
+	r := restartAtCheckpoint(t)
+	ctx := context.Background()
+
+	old := r.cp
+	old.PlanID = ""
+	if err := r.next.store.SaveCheckpoint(ctx, old); err != nil {
+		t.Fatalf("save checkpoint without a plan: %v", err)
+	}
+
+	approve := corecheckpoint.Decision{Choice: corecheckpoint.ChoiceApprove, Approver: "user:ada"}
+	if err := r.next.cpSvc.Resolve(ctx, r.cp.ID, approve); err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+	waitStoredCompleted(t, r.next.store, r.loopID)
+
+	ran := r.env.actions()
+	if len(ran) != 1 || ran[0].capability != "test.act.other" || ran[0].reasonsBefore == 0 {
+		t.Errorf("actions run = %+v, want the replay's one test.act.other after a reason step", ran)
+	}
+	all := checkpointsFor(t, r.next.store, r.obj)
+	if len(all) != 1 || all[0].ID != r.cp.ID {
+		t.Errorf("checkpoints for the objective = %v, want only %s", checkpointIDs(all), r.cp.ID)
+	}
+}

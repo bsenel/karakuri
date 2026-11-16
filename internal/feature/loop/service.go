@@ -66,6 +66,11 @@ type loopState struct {
 	// at the replay's first decide so that checkpoint, and not a new one, is
 	// the one the runner reads the decision for.
 	answered bool
+	// approved is the plan a restored loop's checkpoint showed, set when that
+	// checkpoint is approved after the restart. The runner takes it at its
+	// first iteration and acts on it without observing or reasoning, so the
+	// approval runs the plan it was given for (Phase 40 step 5).
+	approved *approvedPlan
 	runErr   string // the text of the error the run ended with, persisted for reconcile
 	// ended is set when finalizeLoop takes the run's own ending, and stoppedBy
 	// and stopReason when Stop takes it instead (Phase 37 step 3). Whichever
@@ -164,6 +169,47 @@ func (ls *loopState) takeAnswered() bool {
 	answered := ls.answered
 	ls.answered = false
 	return answered
+}
+
+// approvedPlan is a plan a checkpoint showed, with the world state it was
+// made from.
+type approvedPlan struct {
+	plan     plan
+	observed loop.WorldState
+}
+
+// takeApproved returns the approved plan the runner is still owed, if any,
+// and clears it: one approval runs its plan once.
+func (ls *loopState) takeApproved() *approvedPlan {
+	ls.mu.Lock()
+	defer ls.mu.Unlock()
+	approved := ls.approved
+	ls.approved = nil
+	return approved
+}
+
+// planShownAt reads back the plan checkpoint cpID showed. It reports false
+// when the checkpoint cannot be read or recorded no plan: a row written before
+// checkpoints named their plan, or one that approves none (a budget pause).
+func (s *serviceImpl) planShownAt(ctx context.Context, cpID string) (approvedPlan, bool) {
+	cp, err := s.store.GetCheckpoint(ctx, cpID)
+	if err != nil || cp.PlanID == "" {
+		return approvedPlan{}, false
+	}
+	p := plan{Confidence: cp.Confidence}
+	for _, a := range cp.Actions {
+		p.Actions = append(p.Actions, plannedAction{
+			CapabilityID: a.CapabilityID,
+			Params:       a.Params,
+			Reason:       a.Reason,
+			EnvID:        a.EnvID,
+		})
+	}
+	approved := approvedPlan{plan: p}
+	if cp.WorldState != nil {
+		approved.observed = *cp.WorldState
+	}
+	return approved, true
 }
 
 type serviceImpl struct {
@@ -544,10 +590,15 @@ const maxResumeConcurrency = 4
 // asking the same question. The thirteen abandoned loops in a long-lived
 // deployment now cost nothing at boot instead of a reason step each.
 //
-// The operator's decision is put back on the channel before the runner starts,
-// so the replayed loop consumes it at its own first escalation. That keeps the
-// approval count at one: resolve the checkpoint, and the loop proceeds through
-// the plan it re-derives rather than stopping to ask again.
+// An approval runs the plan the checkpoint showed (Phase 40 step 5): the
+// runner's first iteration acts on the checkpoint's Actions without observing
+// or reasoning, so what runs is what the reviewer approved and not a plan
+// re-derived from a world that has since moved. Later iterations plan as usual.
+//
+// A reject or a modify, and an approval of a checkpoint that recorded no plan
+// (a row written before checkpoints named theirs), is put back on the channel
+// before the runner starts, so the replayed loop reads it at its own first
+// decide rather than raising a second checkpoint for the same question.
 //
 // Without any of this a server restart leaves every paused loop permanently
 // dead: Resume() pushes into the channel buffer but no goroutine reads it
@@ -616,12 +667,35 @@ func (s *serviceImpl) ResumeStoredLoops(ctx context.Context) error {
 					}
 					decision = d
 				}
-				// Hand it back so the replayed runner consumes it at its
-				// first escalation instead of asking a second time.
 				ls.mu.Lock()
-				ls.answered = true
+				cpID := ""
+				if ls.result.CheckpointID != nil {
+					cpID = *ls.result.CheckpointID
+				}
 				ls.mu.Unlock()
-				ls.decisionCh <- decision
+				approved, recorded := approvedPlan{}, false
+				if decision.Choice == corecheckpoint.ChoiceApprove {
+					approved, recorded = s.planShownAt(loopCtx, cpID)
+				}
+				ls.mu.Lock()
+				if recorded {
+					// The runner acts on the plan the checkpoint showed and
+					// reads no decision, so none is handed back.
+					ls.approved = &approved
+				} else {
+					// A reject or a modify, or an approval of a checkpoint
+					// that recorded no plan (a row written before checkpoints
+					// named theirs): hand the decision back so the replayed
+					// runner reads it at its first decide instead of asking a
+					// second time. A modify so revises the replay's plan and
+					// not the one shown; the revised plan is shown again on a
+					// checkpoint of its own before anything runs.
+					ls.answered = true
+				}
+				ls.mu.Unlock()
+				if !recorded {
+					ls.decisionCh <- decision
+				}
 				sem <- struct{}{}
 				defer func() { <-sem }()
 				s.runLoop(loopCtx, loopID, request)
