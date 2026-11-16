@@ -17,6 +17,10 @@ type Status string
 const (
 	StatusPending  Status = "pending"
 	StatusResolved Status = "resolved"
+	// StatusSuperseded is a checkpoint closed because a newer plan was raised
+	// for the same objective while it was open (Phase 40 step 5). A decision
+	// on it authorises nothing.
+	StatusSuperseded Status = "superseded"
 )
 
 // Action is the planner draft a reviewer sees on a pending checkpoint.
