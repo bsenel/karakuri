@@ -40,34 +40,23 @@ func (*funcCLI) Name() string { return "func" }
 func (*funcCLI) Active() bool { return true }
 func (c *funcCLI) Delegate(_ context.Context, in cliagent.DelegateInput) (cliagent.DelegateOutput, error) {
 	var err error
-	withEnv(c.t, in.Env, func() { err = c.run(c.t, in.WorktreePath) })
+	withEnv(in.WorktreePath, in.Env, func() { err = c.run(c.t, in.WorktreePath) })
 	return cliagent.DelegateOutput{Summary: "ran", RawOutput: "ran"}, err
 }
 
-// withEnv runs fn with env set on this process and restores it after, as the
-// subprocess adapter merges DelegateInput.Env onto the agent's environment, so
-// the git commands a scripted run starts see what a real agent's would.
-func withEnv(t *testing.T, env map[string]string, fn func()) {
-	t.Helper()
-	var restore []func()
-	defer func() {
-		for _, r := range restore {
-			r()
-		}
-	}()
-	for k, v := range env {
-		old, had := os.LookupEnv(k)
-		if err := os.Setenv(k, v); err != nil {
-			t.Fatal(err)
-		}
-		restore = append(restore, func() {
-			if had {
-				_ = os.Setenv(k, old)
-			} else {
-				_ = os.Unsetenv(k)
-			}
-		})
-	}
+// agentRun is the scripted agent's process while a run lasts: gitIn in its
+// worktree adds env, as the agent's own git commands inherit what the
+// subprocess adapter merges from DelegateInput.Env; gitIn anywhere else
+// stands for another actor's process, which does not.
+var agentRun struct {
+	dir string
+	env map[string]string
+}
+
+// withEnv runs fn as the agent in dir with env.
+func withEnv(dir string, env map[string]string, fn func()) {
+	agentRun.dir, agentRun.env = filepath.Clean(dir), env
+	defer func() { agentRun.dir, agentRun.env = "", nil }()
 	fn()
 }
 func (*funcCLI) Stream(context.Context, cliagent.DelegateInput) (<-chan cliagent.DelegateChunk, error) {
@@ -106,6 +95,12 @@ func gitIn(t *testing.T, dir string, args ...string) string {
 	t.Helper()
 	cmd := exec.Command("git", args...)
 	cmd.Dir = dir
+	if len(agentRun.env) > 0 && filepath.Clean(dir) == agentRun.dir {
+		cmd.Env = os.Environ()
+		for k, v := range agentRun.env {
+			cmd.Env = append(cmd.Env, k+"="+v)
+		}
+	}
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("git %s in %s: %v\n%s", strings.Join(args, " "), dir, err, out)

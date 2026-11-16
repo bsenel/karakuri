@@ -905,12 +905,24 @@ func (e *cliEnv) Act(ctx context.Context, a environment.Action) (environment.Act
 		}
 	}
 
-	// A deletion leaves no commit to tell whose it was, so the worktree's own
-	// pushes are logged by a pre-push hook for the check, then removed.
+	// A deletion leaves no commit to tell whose it was, so the agent's own
+	// pushes are logged by a pre-push hook for the check, then removed. The
+	// hook reaches the agent through its environment, never git config, which
+	// the deployment's repository shares with every worktree and go-git.
 	pushes := installPushLog(ctx, worktree)
+	if hook := pushes.env(in.Env); len(hook) > 0 {
+		env := make(map[string]string, len(in.Env)+len(hook))
+		for k, v := range in.Env {
+			env[k] = v
+		}
+		for k, v := range hook {
+			env[k] = v
+		}
+		in.Env = env
+	}
 	out, err := e.cli.Delegate(ctx, in)
 	pushed, pushedErr := checkPushedRefs(ctx, worktree, declared, refsBefore, refsBeforeErr, pushes)
-	logErr := pushes.remove(ctx)
+	logErr := pushes.remove()
 	// What a Karakuri tool returned can be a stranger's prose (an audit row
 	// holds pull-request titles), and the agent wrote everything after it
 	// having read that. Decided from the calls the run made, not from what was

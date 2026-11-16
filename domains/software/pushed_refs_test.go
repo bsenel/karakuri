@@ -527,12 +527,12 @@ func (f sharedWorktreeFixture) checkRunDeclaring(t *testing.T, branch string, ru
 	ctx := context.Background()
 	log := installPushLog(ctx, f.action)
 	t.Cleanup(func() {
-		if err := log.remove(ctx); err != nil {
+		if err := log.remove(); err != nil {
 			t.Errorf("removing the push log: %v", err)
 		}
 	})
 	before, beforeErr := readRemoteRefs(ctx, f.action)
-	withEnv(t, log.env(nil), func() { run(t) })
+	withEnv(f.action, log.env(nil), func() { run(t) })
 	violation, err := checkPushedRefs(ctx, f.action, declaredRefs(branch, f.action), before, beforeErr, log)
 	if err != nil {
 		t.Fatalf("checkPushedRefs: %v; want a comparison, not an error", err)
@@ -654,13 +654,13 @@ func TestPushLogRecordsEveryPushedRef(t *testing.T) {
 	ctx := context.Background()
 	log := installPushLog(ctx, f.action)
 	t.Cleanup(func() {
-		if err := log.remove(ctx); err != nil {
+		if err := log.remove(); err != nil {
 			t.Errorf("removing the push log: %v", err)
 		}
 	})
 
 	var createdSHA, updatedSHA string
-	withEnv(t, log.env(nil), func() {
+	withEnv(f.action, log.env(nil), func() {
 		createdSHA = commitIn(t, f.action, "created.txt")
 		gitIn(t, f.action, "push", "origin", "HEAD:refs/heads/"+created)
 		updatedSHA = commitIn(t, f.action, "updated.txt")
@@ -739,7 +739,7 @@ func TestPushLogWritesNoSharedGitConfig(t *testing.T) {
 		}
 	}
 	check("after installPushLog")
-	if err := log.remove(ctx); err != nil {
+	if err := log.remove(); err != nil {
 		t.Fatalf("remove: %v", err)
 	}
 	check("after remove")
@@ -754,12 +754,12 @@ func TestPushLogLogsOnlyTheAgentsPushes(t *testing.T) {
 	ctx := context.Background()
 	log := installPushLog(ctx, f.action)
 	t.Cleanup(func() {
-		if err := log.remove(ctx); err != nil {
+		if err := log.remove(); err != nil {
 			t.Errorf("removing the push log: %v", err)
 		}
 	})
 	var mineSHA string
-	withEnv(t, log.env(nil), func() {
+	withEnv(f.action, log.env(nil), func() {
 		mineSHA = commitIn(t, f.action, "mine.txt")
 		gitIn(t, f.action, "push", "origin", "HEAD:refs/heads/"+mine)
 	})

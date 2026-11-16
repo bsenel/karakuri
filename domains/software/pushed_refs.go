@@ -13,8 +13,10 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/bsenel/karakuri/internal/core/environment"
@@ -188,10 +190,11 @@ func containsTip(ctx context.Context, worktree, ref, old, now string) (bool, err
 // madeByAction reports whether the action moved an undeclared ref to now, on
 // evidence local to its worktree: the pre-push log shows a push from it
 // sending now to ref, or, for a push that skipped the hook with --no-verify,
-// now is in an entry the run added to the worktree's own HEAD reflog (kept per
-// worktree, unlike the object store; entries from before the run name the
+// now is a commit the run made in the worktree, by its own HEAD reflog (kept
+// per worktree, unlike the object store; entries from before the run name the
 // commit the worktree was made at, which other actors tag and branch from). A
-// commit neither names is somebody else's. A log that could not be kept or
+// commit the run only checked out or reset onto, such as the owner's merge on
+// origin/main, is not one it made. A commit neither names is somebody else's. A log that could not be kept or
 // read leaves the reflog to decide; a reflog that cannot be read is an error,
 // never an empty one (AGENTS.md rule 10).
 func madeByAction(ctx context.Context, log *pushLog, ref, now string) (bool, error) {
@@ -212,32 +215,31 @@ func madeByAction(ctx context.Context, log *pushLog, ref, now string) (bool, err
 // deleted. A ref ls-remote shows deleted is the action's only when this log
 // names it, since a deletion leaves no commit to recognise; a create or update
 // is the action's when this log names the SHA sent, or the worktree's HEAD
-// reflog holds it. Best effort: a push with --no-verify skips the hook, which
-// is why the reflog is the fallback. The hook and its log live in
+// reflog shows the run made it. Best effort: a push with --no-verify skips the
+// hook, which is why the reflog is the fallback. The hook and its log live in
 // a directory outside the worktree, so the run leaves nothing to commit.
 type pushLog struct {
 	worktree     string
 	dir          string // holds the hooks and the log; removed with the hook
-	hadHooksPath bool   // the worktree's own core.hooksPath before the run
-	hooksPath    string
-	err          error // why the log could not be kept, when it could not
-	reflogBefore int   // entries in the worktree's HEAD reflog before the run
-	reflogErr    error // why reflogBefore could not be read, when it could not
+	err          error  // why the log could not be kept, when it could not
+	reflogBefore int    // entries in the worktree's HEAD reflog before the run
+	reflogErr    error  // why reflogBefore could not be read, when it could not
 }
 
 // pushLogFile is the log's name inside pushLog.dir.
 const pushLogFile = "pushes.log"
 
-// installPushLog points the worktree's own core.hooksPath at a fresh
-// directory holding the logging pre-push hook. The setting is per worktree
-// (extensions.worktreeConfig, which is enabled and left on, since a sibling
-// run may rely on it), so the clone's other worktrees keep their hooks; and it
-// is git configuration, not environment, so every push from the worktree runs
-// the hook whoever starts it. The hooks the worktree had are linked in, and
-// the hook runs the previous pre-push after logging. It also counts the
-// worktree's HEAD reflog, so reflogSince names only what the run added. A
-// failure to install or count is recorded on the log and surfaces only when a
-// ref's attribution needs it.
+// installPushLog makes a fresh directory holding the logging pre-push hook,
+// which env hands to the agent's process as core.hooksPath through git's
+// environment configuration. No git configuration is written in any scope:
+// the worktree is a `git worktree add` of the deployment's repository, whose
+// config every worktree and the server's go-git share, and go-git refuses a
+// repository with extensions.worktreeConfig set. So only the pushes the agent
+// runs, which inherit its environment, run the hook; a sibling worktree's do
+// not. The hooks the worktree had are linked in, and the hook runs the
+// previous pre-push after logging. It also counts the worktree's HEAD reflog,
+// so reflogSince names only what the run added. A failure to install or count
+// is recorded on the log and surfaces only when a ref's attribution needs it.
 func installPushLog(ctx context.Context, worktree string) *pushLog {
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), salvageTimeout)
 	defer cancel()
@@ -257,12 +259,6 @@ func (l *pushLog) install(ctx context.Context) error {
 	previous, err := gitOutput(ctx, l.worktree, nil, "rev-parse", "--path-format=absolute", "--git-path", "hooks")
 	if err != nil {
 		return err
-	}
-	if _, err := gitOutput(ctx, l.worktree, nil, "config", "extensions.worktreeConfig", "true"); err != nil {
-		return err
-	}
-	if path, err := gitOutput(ctx, l.worktree, nil, "config", "--worktree", "--get", "core.hooksPath"); err == nil {
-		l.hadHooksPath, l.hooksPath = true, path
 	}
 	dir, err := os.MkdirTemp("", "karakuri-push-log-")
 	if err != nil {
@@ -285,11 +281,37 @@ func (l *pushLog) install(ctx context.Context) error {
 		"prev=" + shellQuote(filepath.Join(previous, "pre-push")) + "\n" +
 		"if [ -x \"$prev\" ]; then printf '%s\\n' \"$input\" | \"$prev\" \"$@\"; fi\n"
 	// #nosec G306 -- git runs a hook only when it is executable; the file sits in a 0o700 directory of the server's own and holds no secret
-	if err := os.WriteFile(filepath.Join(dir, "pre-push"), []byte(script), 0o700); err != nil {
-		return err
+	return os.WriteFile(filepath.Join(dir, "pre-push"), []byte(script), 0o700)
+}
+
+// env is what the agent's process needs on top of base, the delegation's own
+// environment, to run the hook: one more git environment config entry,
+// core.hooksPath, after any GIT_CONFIG_KEY_<i>/VALUE_<i> already given, read
+// from base, else the server's environment. None when the log could not be
+// installed, and none, with the reason on l.err, when the count already set is
+// not one.
+func (l *pushLog) env(base map[string]string) map[string]string {
+	if l == nil || l.err != nil || l.dir == "" {
+		return nil
 	}
-	_, err = gitOutput(ctx, l.worktree, nil, "config", "--worktree", "core.hooksPath", dir)
-	return err
+	count, ok := base["GIT_CONFIG_COUNT"]
+	if !ok {
+		count = os.Getenv("GIT_CONFIG_COUNT")
+	}
+	n := 0
+	if count != "" {
+		parsed, err := strconv.Atoi(count)
+		if err != nil || parsed < 0 {
+			l.err = fmt.Errorf("the pre-push log could not be handed to the agent: GIT_CONFIG_COUNT %q is not a count", count)
+			return nil
+		}
+		n = parsed
+	}
+	return map[string]string{
+		"GIT_CONFIG_COUNT":                    strconv.Itoa(n + 1),
+		"GIT_CONFIG_KEY_" + strconv.Itoa(n):   "core.hooksPath",
+		"GIT_CONFIG_VALUE_" + strconv.Itoa(n): l.dir,
+	}
 }
 
 // deleted names the refs the log shows a push deleting (an all-zero local
@@ -353,21 +375,46 @@ func (l *pushLog) lines() ([][]string, error) {
 	return lines, nil
 }
 
-// reflog lists the commits in the worktree's own HEAD reflog, newest first.
-// A linked worktree keeps its HEAD reflog in its own git directory, so other
-// worktrees' commits, checkouts and fetches never appear in it.
+// reflog lists the entries in the worktree's own HEAD reflog, newest first,
+// each "<sha> <subject>". A linked worktree keeps its HEAD reflog in its own
+// git directory, so other worktrees' commits, checkouts and fetches never
+// appear in it.
 func (l *pushLog) reflog(ctx context.Context) ([]string, error) {
-	out, err := gitOutput(ctx, l.worktree, nil, "log", "-g", "--format=%H", "HEAD")
+	out, err := gitOutput(ctx, l.worktree, nil, "log", "-g", "--format=%H %gs", "HEAD")
 	if err != nil {
 		return nil, fmt.Errorf("reading the worktree's HEAD reflog: %w", err)
 	}
-	return strings.Fields(out), nil
+	var entries []string
+	for _, line := range strings.Split(out, "\n") {
+		if line = strings.TrimSpace(line); line != "" {
+			entries = append(entries, line)
+		}
+	}
+	return entries, nil
 }
 
-// reflogSince lists the commits the run added to the worktree's HEAD reflog:
-// what it committed, rebased onto or checked out. A reflog that cannot be
-// read, or that holds fewer entries than before the run (expired or rewritten
-// meanwhile), is an error, never an empty list.
+// rebaseStep is a reflog subject for a rebase step that writes a commit, as
+// opposed to "rebase (start)" and "rebase (finish)", which only move HEAD.
+var rebaseStep = regexp.MustCompile(`^(rebase|pull --rebase)( -i)? \((pick|reword|edit|squash|fixup)\)`)
+
+// madeHere reports whether a HEAD reflog subject records the worktree creating
+// its commit: a commit (amend, merge or initial included), a cherry-pick, a
+// revert, a rebase step that writes a commit, or a merge git made. A checkout,
+// reset, branch, fast-forward or the start and finish of a rebase only moved
+// HEAD to a commit that may be anyone's.
+func madeHere(subject string) bool {
+	for _, prefix := range []string{"commit", "cherry-pick", "revert"} {
+		if strings.HasPrefix(subject, prefix) {
+			return true
+		}
+	}
+	return strings.Contains(subject, "Merge made by") || rebaseStep.MatchString(subject)
+}
+
+// reflogSince lists the commits the run made in the worktree, by the entries
+// it added to the worktree's HEAD reflog whose subject madeHere accepts. A
+// reflog that cannot be read, or that holds fewer entries than before the run
+// (expired or rewritten meanwhile), is an error, never an empty list.
 func (l *pushLog) reflogSince(ctx context.Context) ([]string, error) {
 	if l == nil {
 		return nil, errors.New("no pre-push log was installed")
@@ -383,32 +430,25 @@ func (l *pushLog) reflogSince(ctx context.Context) ([]string, error) {
 	if added < 0 {
 		return nil, fmt.Errorf("the worktree's HEAD reflog holds %d entries, fewer than the %d it held before the run", len(entries), l.reflogBefore)
 	}
-	return entries[:added], nil
+	var made []string
+	for _, entry := range entries[:added] {
+		if sha, subject, _ := strings.Cut(entry, " "); madeHere(subject) {
+			made = append(made, sha)
+		}
+	}
+	return made, nil
 }
 
-// remove restores the worktree's core.hooksPath and deletes the hook and its
-// log. It runs outside the action's cancellation, which may be why it ended.
-func (l *pushLog) remove(ctx context.Context) error {
-	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), salvageTimeout)
-	defer cancel()
+// remove deletes the hook and its log. Nothing else was changed: the hook
+// reached the agent through its environment, which ended with its process.
+func (l *pushLog) remove() error {
 	if l.dir == "" {
 		return nil
 	}
-	var err error
-	if l.hadHooksPath {
-		_, err = gitOutput(ctx, l.worktree, nil, "config", "--worktree", "core.hooksPath", l.hooksPath)
-	} else {
-		_, err = gitOutput(ctx, l.worktree, nil, "config", "--worktree", "--unset", "core.hooksPath")
-		// Exit 5: install failed before it set the key, so nothing to unset.
-		var exit *exec.ExitError
-		if errors.As(err, &exit) && exit.ExitCode() == 5 {
-			err = nil
-		}
+	if err := os.RemoveAll(l.dir); err != nil {
+		return fmt.Errorf("removing the pre-push log: %w", err)
 	}
-	if err != nil {
-		err = fmt.Errorf("restoring the worktree's core.hooksPath: %w", err)
-	}
-	return errors.Join(err, os.RemoveAll(l.dir))
+	return nil
 }
 
 // shellQuote quotes s for a POSIX shell.

@@ -38,6 +38,17 @@ func (c *recordingCLI) Name() string {
 }
 func (*recordingCLI) Active() bool { return true }
 func (c *recordingCLI) Delegate(_ context.Context, in cliagent.DelegateInput) (cliagent.DelegateOutput, error) {
+	// The push-log hook's directory is fresh for every run, so it is recorded
+	// by what it is, letting two runs' inputs be compared whole.
+	if len(in.Env) > 0 {
+		env := maps.Clone(in.Env)
+		for k, v := range env {
+			if v == "core.hooksPath" && strings.HasPrefix(k, "GIT_CONFIG_KEY_") {
+				env["GIT_CONFIG_VALUE_"+strings.TrimPrefix(k, "GIT_CONFIG_KEY_")] = "<push log dir>"
+			}
+		}
+		in.Env = env
+	}
 	c.calls = append(c.calls, in)
 	if c.err != nil {
 		return cliagent.DelegateOutput{}, c.err
