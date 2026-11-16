@@ -28,3 +28,17 @@ func TestObjectiveStandingHelpSaysWhatEmptyMeans(t *testing.T) {
 		}
 	}
 }
+
+// A second pause does not overwrite the first reason, and an empty one is
+// stored as nothing; the --reason usage has to say both.
+func TestObjectivePauseHelpSaysWhatEmptyReasonMeans(t *testing.T) {
+	cmd := objectivePauseCmd()
+	requireExample(t, cmd)
+
+	usage := cmd.Flags().Lookup("reason").Usage
+	for _, want := range []string{"empty = no reason recorded", "keeps its first reason"} {
+		if !strings.Contains(usage, want) {
+			t.Errorf("--reason usage %q does not mention %q", usage, want)
+		}
+	}
+}

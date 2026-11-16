@@ -274,7 +274,7 @@ nobody can decide to restart.`,
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&reason, "reason", "", "Why it is being stopped, recorded on the control loop")
+	cmd.Flags().StringVar(&reason, "reason", "", "Why it is being stopped, recorded on the control loop (empty = no reason recorded; an objective already paused keeps its first reason)")
 	return cmd
 }
 
