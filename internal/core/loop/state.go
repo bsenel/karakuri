@@ -63,4 +63,8 @@ const (
 	// RunStopped is a run somebody stopped from outside. It is not an error:
 	// nothing in the run failed.
 	RunStopped RunOutcome = "stopped"
+	// RunInterruptedByRestart is a standing objective's loop that the process
+	// died under, ended at boot rather than replayed (Phase 40 step 4). It is
+	// not an error: reconcile re-runs the pass it cut off.
+	RunInterruptedByRestart RunOutcome = "interrupted_by_restart"
 )

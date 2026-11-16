@@ -78,13 +78,23 @@ func (s *Service) pass(ctx context.Context, id objective.ObjectiveID, forced rec
 
 	// A loop this objective left running, because a previous pass escalated
 	// and let go rather than sit on a human for a day.
-	var settledConverged bool
+	var settledConverged, rerun bool
 	if st.ActiveLoopID != "" {
-		done, converged, err := s.settleActiveLoop(ctx, &st, obj, decl)
+		var done, converged bool
+		var err error
+		done, converged, rerun, err = s.settleActiveLoop(ctx, &st, obj, decl)
 		if err != nil {
 			return err
 		}
 		settledConverged = converged
+		if rerun && forced == "" {
+			// The pass a restart cut off runs again now, under the trigger
+			// it ran under, rather than waiting out the cadence.
+			forced = st.LastTrigger
+			if forced == "" {
+				forced = reconcile.TriggerSchedule
+			}
+		}
 		if !done {
 			// Still with the human, or still running. Come back later; do
 			// not start a second loop on the same objective.
@@ -94,6 +104,7 @@ func (s *Service) pass(ctx context.Context, id objective.ObjectiveID, forced rec
 			// checkpoint nobody answers for a week is a claim, a lease and
 			// a concurrency slot burned every thirty seconds for a week.
 			s.reschedule(&st, cadence, now.Add(s.cfg.LeaseTTL))
+			s.recheckHeldLoop(&st, now)
 			return s.store.SaveReconcileState(ctx, st)
 		}
 	}
@@ -194,7 +205,9 @@ func (s *Service) pass(ctx context.Context, id objective.ObjectiveID, forced rec
 	if err != nil {
 		return fmt.Errorf("cadence: %w", err)
 	}
-	if !allowed {
+	// A re-run of the pass a restart cut off is that pass finishing, and the
+	// floor was already measured from it, so the floor does not hold it back.
+	if !allowed && !rerun {
 		st.NextDueAt = nilOrTime(deferUntil)
 		st.NextReconcileAt = nilOrTime(deferUntil)
 		st.Phase = reconcile.PhaseIdle
@@ -558,21 +571,30 @@ func (s *Service) awaitLoop(ctx context.Context, loopID string, objID objective.
 // supervisor was away converged against the world as it stands now. Its
 // baseline has to move with it, and only the caller holds the fresh
 // fingerprint to move it to.
-func (s *Service) settleActiveLoop(ctx context.Context, st *reconcile.State, obj objective.Objective, decl objective.Autonomy) (done, converged bool, err error) {
+func (s *Service) settleActiveLoop(ctx context.Context, st *reconcile.State, obj objective.Objective, decl objective.Autonomy) (done, converged, rerun bool, err error) {
 	ls, err := s.store.GetLoopState(ctx, st.ActiveLoopID)
 	if err != nil {
 		// The row is gone — a pruned database, or a loop that never
 		// persisted. Nothing to wait for.
 		st.ActiveLoopID = ""
-		return true, false, nil
+		return true, false, false, nil
 	}
 	if !ls.Completed {
 		if ls.Paused {
 			st.Phase = reconcile.PhaseWaiting
-			return false, false, nil
+			return false, false, false, nil
 		}
 		st.Phase = reconcile.PhaseReconciling
-		return false, false, nil
+		return false, false, false, nil
+	}
+
+	// A restart ended it at boot (Phase 40 step 4). The pass it belonged to
+	// never finished, so nothing about it is a clean run, a rejection or a
+	// failure; the stream is free, and the caller runs that pass again.
+	if ls.Outcome == coreloop.RunInterruptedByRestart {
+		st.ActiveLoopID = ""
+		st.Phase = reconcile.PhaseIdle
+		return true, false, true, nil
 	}
 
 	// The human answered and the loop ran on to its end. What they answered
@@ -594,7 +616,7 @@ func (s *Service) settleActiveLoop(ctx context.Context, st *reconcile.State, obj
 	if rejected {
 		s.applyDemotion(ctx, st, obj, decl, "checkpoint_rejected")
 		st.CleanRuns = 0
-		return true, false, s.store.SaveReconcileState(ctx, *st)
+		return true, false, false, s.store.SaveReconcileState(ctx, *st)
 	}
 
 	if metRequired(ls) {
@@ -602,9 +624,9 @@ func (s *Service) settleActiveLoop(ctx context.Context, st *reconcile.State, obj
 		st.ScoreStreak = 0
 		s.applyCleanRun(ctx, st, obj, decl)
 		_ = s.store.UpdateObjectiveStatus(ctx, obj.ID, objective.StatusConverged)
-		return true, true, s.store.SaveReconcileState(ctx, *st)
+		return true, true, false, s.store.SaveReconcileState(ctx, *st)
 	}
-	return true, false, s.store.SaveReconcileState(ctx, *st)
+	return true, false, false, s.store.SaveReconcileState(ctx, *st)
 }
 
 // finish records the pass, moves the counters, and re-arms the schedule. It is
@@ -745,7 +767,22 @@ func (s *Service) finish(
 		retryAt = outcome.DeferredUntil
 	}
 	s.reschedule(st, cadence, retryAt)
+	s.recheckHeldLoop(st, now)
 	return s.store.SaveReconcileState(ctx, *st)
+}
+
+// recheckHeldLoop brings the next pass forward to one lease from now while the
+// stream holds a loop it let go of. That pass only reads the loop's row, so it
+// costs no tokens, and it is how a loop a restart ended (Phase 40 step 4) has
+// its pass re-run within minutes instead of at the next cadence.
+func (s *Service) recheckHeldLoop(st *reconcile.State, now time.Time) {
+	if st.ActiveLoopID == "" {
+		return
+	}
+	at := now.Add(s.cfg.LeaseTTL)
+	if st.NextDueAt == nil || at.Before(*st.NextDueAt) {
+		st.NextDueAt = &at
+	}
 }
 
 // trip is the circuit breaker and the stall detector, which are the same
