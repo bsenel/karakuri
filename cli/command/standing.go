@@ -134,20 +134,20 @@ daily ceiling clears itself at UTC midnight.`,
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&sense, "sense", "", "How often to check cheaply for drift, e.g. 15m (no model call)")
-	cmd.Flags().StringVar(&every, "every", "", "Reconcile unconditionally on this interval, e.g. 1h")
+	cmd.Flags().StringVar(&sense, "sense", "", "How often to check cheaply for drift, e.g. 15m (no model call); empty = never sense, only the schedule and --resync drive it")
+	cmd.Flags().StringVar(&every, "every", "", "Reconcile unconditionally on this interval, e.g. 1h; not with --cron or --daily-at")
 	cmd.Flags().StringVar(&cronExpr, "cron", "", "Reconcile on a five-field cron expression, evaluated in --timezone")
 	cmd.Flags().StringVar(&dailyAt, "daily-at", "", "Reconcile daily at HH:MM in --timezone")
 	cmd.Flags().StringVar(&timezone, "timezone", "", "IANA timezone for --cron and --daily-at (default UTC)")
-	cmd.Flags().StringVar(&resync, "resync", "", "Reconcile at least this often even with no drift, e.g. 24h")
-	cmd.Flags().StringVar(&minInterval, "min-interval", "", "Floor between reconciles whatever asked for one, e.g. 10m")
+	cmd.Flags().StringVar(&resync, "resync", "", "Reconcile at least this often even with no drift, e.g. 24h; empty = only drift or the schedule triggers one")
+	cmd.Flags().StringVar(&minInterval, "min-interval", "", "Floor between reconciles whatever asked for one, e.g. 10m; empty = no floor")
 	cmd.Flags().StringSliceVar(&quiet, "quiet", nil, "Blackout windows as HH:MM-HH:MM; work is deferred to the opening, never dropped")
 	cmd.Flags().StringVar(&autonomy, "autonomy", "", "Starting level: sense|propose|act_with_notice|act (default propose)")
 	cmd.Flags().StringVar(&ceiling, "ceiling", "", "Highest level it may ever earn (default: its starting level)")
 	cmd.Flags().IntVar(&promoteAfter, "promote-after", 0, "Consecutive clean reconciles that earn one rung (0 = never promote)")
 	cmd.Flags().BoolVar(&demoteOnFailure, "demote-on-failure", false, "Also demote on a failed reconcile, not only on a rejected checkpoint")
-	cmd.Flags().Float64Var(&budgetDaily, "budget-daily", 0, "Most this objective may spend per UTC day, separately from its twin's allowance (0 = no ceiling of its own)")
-	cmd.Flags().Float64Var(&budgetPerReconcile, "budget-per-reconcile", 0, "Most one reconcile pass may spend (0 = uncapped). Bounds one bad pass; --budget-daily bounds the month")
+	cmd.Flags().Float64Var(&budgetDaily, "budget-daily", 0, "Most this objective may spend per UTC day, in the units krk cost report totals, e.g. 5.00, separately from its twin's allowance (0 = no ceiling of its own)")
+	cmd.Flags().Float64Var(&budgetPerReconcile, "budget-per-reconcile", 0, "Most one reconcile pass may spend, same units, e.g. 1.00 (0 = uncapped). Bounds one bad pass; --budget-daily bounds the day")
 	return cmd
 }
 
@@ -274,7 +274,7 @@ nobody can decide to restart.`,
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&reason, "reason", "", "Why it is being stopped, recorded on the control loop")
+	cmd.Flags().StringVar(&reason, "reason", "", "Why it is being stopped, recorded on the control loop (empty = no reason recorded; an objective already paused keeps its first reason)")
 	return cmd
 }
 

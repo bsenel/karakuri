@@ -93,6 +93,12 @@ func TestStopAllServerErrorIsAnError(t *testing.T) {
 	if !strings.Contains(err.Error(), "database is locked") {
 		t.Errorf("error %q does not carry the server's body", err)
 	}
+	// It reads as a sentence that says what to do next, not a bare status line.
+	for _, want := range []string{"stop-all did not finish", "(HTTP 500)", "run `krk stop-all` again"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q does not say %q", err, want)
+		}
+	}
 }
 
 // stop-all takes no argument: a stray one (a loop ID meant for krk loop stop)

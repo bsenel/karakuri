@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // vi.mock is hoisted above the imports, so the stub has to be created inside
@@ -67,10 +67,30 @@ describe('RolesPage', () => {
     fail(new APIError(500, '{"message":"role store is unavailable"}'));
     await waitFor(() =>
       expect(screen.getByRole('alert')).toHaveTextContent(
-        'Could not load roles: role store is unavailable. Check that the server is running, then reload.',
+        'Could not load roles: role store is unavailable. Check that the server is running, then retry.',
       ),
     );
     expect(screen.queryByRole('status')).not.toBeInTheDocument();
+  });
+
+  it('offers a Retry that loads the roles again after a failure', async () => {
+    let failed = false;
+    get.mockImplementation((path: string) => {
+      if (path === '/auth/roles') {
+        if (!failed) {
+          failed = true;
+          return Promise.reject(new APIError(500, '{"message":"role store is unavailable"}'));
+        }
+        return Promise.resolve([{ name: 'viewer', policies: [{ effect: 'allow', actions: ['twin:read'] }] }]);
+      }
+      return Promise.resolve([]);
+    });
+
+    render(<RolesPage />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Retry' }));
+
+    expect(await screen.findByText('twin:read')).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
   it('says so when no roles are defined, rather than drawing an empty grid', async () => {

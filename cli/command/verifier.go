@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/http"
 	"strings"
 	"text/tabwriter"
 
@@ -37,9 +38,14 @@ func verifierListCmd() *cobra.Command {
 			if domain != "" {
 				path += "?domain=" + domain
 			}
-			data, _, err := api.Get(path)
+			data, status, err := api.Get(path)
 			if err != nil {
 				return err
+			}
+			// A refusal's body is not a capability list: parsed as one it came
+			// out as "invalid character ..." and hid the server's reason.
+			if status >= http.StatusBadRequest {
+				return fmt.Errorf("list verifiers: %s\nCheck --domain against `krk domain list`, or drop it to list every domain's verifiers", refusal(data, status))
 			}
 			verifiers, err := readVerifiers(data)
 			if err != nil {

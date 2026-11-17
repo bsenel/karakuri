@@ -34,7 +34,7 @@ resumes it, one objective at a time, with krk objective resume <objective-id>.`,
 			}
 			// A refusal must not read as "nothing was running": its body is the error.
 			if status >= http.StatusBadRequest {
-				return fmt.Errorf("stop-all: HTTP %d: %s", status, strings.TrimSpace(string(data)))
+				return fmt.Errorf("stop-all did not finish: %s (HTTP %d)\nSome runs may already be stopped; run `krk stop-all` again to reach the rest, and check a loop with `krk loop status <loop-id>`", strings.TrimSpace(string(data)), status)
 			}
 			client.PrintOutput(data, output)
 			return nil
