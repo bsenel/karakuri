@@ -108,6 +108,15 @@ func (s *Service) pass(ctx context.Context, id objective.ObjectiveID, forced rec
 			s.recheckHeldLoop(&st, now)
 			return s.store.SaveReconcileState(ctx, st)
 		}
+		// This tick only came early because recheckHeldLoop brought it
+		// forward to read the loop's row. Treating it as a sense would start
+		// a drift pass minutes after every pass a stream runs, so an
+		// objective that declares no sense interval goes back to its slot.
+		if !rerun && forced == "" && st.NextReconcileAt != nil && now.Before(*st.NextReconcileAt) && cadence.SenseInterval() == 0 {
+			s.reschedule(&st, cadence, time.Time{})
+			st.Phase = reconcile.PhaseIdle
+			return s.store.SaveReconcileState(ctx, st)
+		}
 	}
 
 	started := s.now()
