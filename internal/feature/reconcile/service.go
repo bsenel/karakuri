@@ -81,6 +81,11 @@ type Config struct {
 	// ceiling that pass holds one of MaxConcurrent slots for the life of the
 	// process, and four of them stop the supervisor dead.
 	MaxLoopWait time.Duration
+
+	// QuotaProbeBackoff is how long the deployment waits before probing the
+	// quota again when a probe found it still out and the provider gave no
+	// return time (Phase 40 step 9).
+	QuotaProbeBackoff time.Duration
 }
 
 func (c Config) withDefaults() Config {
