@@ -17,6 +17,10 @@ type Status string
 const (
 	StatusPending  Status = "pending"
 	StatusResolved Status = "resolved"
+	// StatusSuperseded is a checkpoint closed because a newer plan was raised
+	// for the same objective while it was open (Phase 40 step 5). A decision
+	// on it authorises nothing.
+	StatusSuperseded Status = "superseded"
 )
 
 // Action is the planner draft a reviewer sees on a pending checkpoint.
@@ -43,6 +47,11 @@ type Checkpoint struct {
 	// escalation. Populated by the loop runner so reviewers can judge what
 	// they are approving without leaving the checkpoint response.
 	Actions []Action `json:"actions,omitempty"`
+	// PlanID names the plan this checkpoint was raised for, so an approval
+	// can be held to the plan it was shown (Phase 40 step 5). Set by the loop
+	// runner when it escalates; empty on checkpoints that approve no plan.
+	// Kept off JSON until the API shape is decided.
+	PlanID string `json:"-"`
 	// AuditEventID links the checkpoint to the kind=escalation row in the
 	// audit log that captured the full escalation payload. Empty when the
 	// audit write failed; reviewers can still resolve.

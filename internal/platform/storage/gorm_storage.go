@@ -464,6 +464,7 @@ func (s *GORMStorage) SaveCheckpoint(ctx context.Context, c checkpoint.Checkpoin
 		Confidence:   c.Confidence,
 		ActionsJSON:  string(actsJ),
 		AuditEventID: c.AuditEventID,
+		PlanID:       c.PlanID,
 		Status:       string(c.Status), DecisionJSON: decJ, ResolvedAt: c.ResolvedAt,
 		WorldStateJSON: wsJ,
 		// Passed through rather than always stamped. GORM's autoCreateTime
@@ -574,6 +575,7 @@ func checkpointFromModel(m schema.CheckpointModel) checkpoint.Checkpoint {
 		Confidence:   m.Confidence,
 		Actions:      acts,
 		AuditEventID: m.AuditEventID,
+		PlanID:       m.PlanID,
 		Status:       checkpoint.Status(m.Status), Decision: dec,
 		WorldState: ws,
 		CreatedAt:  m.CreatedAt, ResolvedAt: m.ResolvedAt,

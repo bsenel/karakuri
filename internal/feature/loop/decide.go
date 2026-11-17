@@ -2,6 +2,8 @@ package loop
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"time"
@@ -14,6 +16,14 @@ import (
 	featurecp "github.com/bsenel/karakuri/internal/feature/checkpoint"
 	"github.com/bsenel/karakuri/internal/platform/storage"
 )
+
+// planID names the plan a checkpoint shows by the digest of its actions, so
+// the name says which actions an approval of it covers (Phase 40 step 5).
+func planID(actions []corecheckpoint.Action) string {
+	raw, _ := json.Marshal(actions)
+	sum := sha256.Sum256(raw)
+	return "sha256:" + hex.EncodeToString(sum[:])
+}
 
 // biasConfidenceFromHistory adjusts plan confidence based on procedural memory success rates.
 // Returns the adjusted confidence and a map of capability IDs with historical data.
@@ -216,6 +226,7 @@ func stepDecide(ctx context.Context, sc *stepContext, p plan, mods *corecheckpoi
 			Capability:   capability.CapabilityID(primaryCap),
 			Confidence:   p.Confidence,
 			Actions:      actions,
+			PlanID:       planID(actions),
 			AuditEventID: auditID,
 			ExpiresAt:    sc.svc.checkpointExpiry(),
 		}
@@ -236,6 +247,7 @@ func stepDecide(ctx context.Context, sc *stepContext, p plan, mods *corecheckpoi
 		cpID := ""
 		if err == nil {
 			cpID = cp.ID
+			sc.svc.supersedeOpenCheckpoints(ctx, cp)
 		}
 
 		// Update state

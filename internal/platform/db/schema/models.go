@@ -121,6 +121,10 @@ type CheckpointModel struct {
 	// AuditEventID links the checkpoint to its kind=escalation audit row
 	// (Phase 13.5). Empty when the audit write failed at escalation time.
 	AuditEventID string `gorm:"column:audit_event_id;not null;default:''"`
+	// PlanID names the plan ActionsJSON shows, so an approval runs that plan
+	// (Phase 40 step 5). Empty for checkpoints that approve no plan and for
+	// rows written before the column existed.
+	PlanID string `gorm:"column:plan_id;not null;default:''"`
 	// WorldStateJSON serializes the loop.WorldState the planner saw when it
 	// escalated (Phase 30). Empty for budget pauses and older rows.
 	WorldStateJSON string     `gorm:"column:world_state_json;type:text;not null;default:''"`
