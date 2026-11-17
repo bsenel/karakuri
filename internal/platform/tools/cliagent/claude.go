@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 	"unicode/utf8"
 )
 
@@ -20,6 +21,9 @@ import (
 // AND we accumulate a final DelegateOutput at completion.
 type ClaudeCode struct {
 	bin string // path to claude binary; "claude" by default
+	// now is the clock a quota refusal's reset time is measured from; tests
+	// fix it. Nil means time.Now.
+	now func() time.Time
 }
 
 func NewClaudeCode(bin string) *ClaudeCode {
