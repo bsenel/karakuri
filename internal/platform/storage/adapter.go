@@ -189,6 +189,10 @@ const (
 	// BoundsViolation and no checkpoint: nobody was asked, and none of the
 	// plan ran. EscalationReason names each violation.
 	ToolEventRefusal = "refusal"
+	// ToolEventSupersession (Phase 40 step 5) records a checkpoint closed
+	// because a newer plan was raised for the same objective while it was
+	// open. The payload names both checkpoints.
+	ToolEventSupersession = "supersession"
 )
 
 // ResolvedCheckpointFilter narrows the resolved-checkpoint listing. Empty

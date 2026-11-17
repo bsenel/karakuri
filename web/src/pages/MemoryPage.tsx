@@ -83,7 +83,8 @@ export function MemoryPage() {
         <button className="primary" type="submit" disabled={loading}>Recall</button>
       </form>
 
-      {err && <p className="pill red" role="alert">{err}</p>}
+      {/* Names the request, as the other pages do: the server's text alone may not say what was asked. */}
+      {err && <p className="pill red" role="alert">Could not recall memories: {err}</p>}
 
       <h2>Results ({results.length})</h2>
       <table>

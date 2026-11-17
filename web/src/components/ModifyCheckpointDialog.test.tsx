@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 import { ModifyCheckpointDialog } from './ModifyCheckpointDialog';
@@ -35,6 +35,19 @@ describe('ModifyCheckpointDialog', () => {
     expect(screen.getByRole('textbox', { name: 'Constraints' })).toBeInTheDocument();
     expect(screen.getByRole('textbox', { name: 'Note' })).toBeInTheDocument();
     expect(screen.getByRole('spinbutton', { name: 'Confidence floor (optional)' })).toBeInTheDocument();
+  });
+
+  it('names the actions to remove as krk checkpoint resolve --remove-action does', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    render(<ModifyCheckpointDialog checkpoint={checkpoint()} onClose={vi.fn()} onSubmit={onSubmit} />);
+
+    const group = screen.getByRole('group', { name: 'Remove actions' });
+    fireEvent.click(within(group).getByRole('checkbox', { name: /git\.push/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Submit modification' }));
+
+    await waitFor(() =>
+      expect(onSubmit).toHaveBeenCalledWith('', expect.objectContaining({ removed_actions: ['git.push'] })),
+    );
   });
 
   it('closes on Escape and on nothing else', () => {

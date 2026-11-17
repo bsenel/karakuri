@@ -17,6 +17,18 @@ func TestNoOpMarkReadyIsUnsupported(t *testing.T) {
 	}
 }
 
+// With no forge nothing is known about main's protection, and a false would
+// read as "not protected" (AGENTS.md rule 10).
+func TestNoOpBranchProtectedIsUnsupported(t *testing.T) {
+	protected, err := NewNoOp().BranchProtected(context.Background(), "acme/api", "main")
+	if !errors.Is(err, ErrUnsupported) {
+		t.Fatalf("BranchProtected = %v, %v; want an error wrapping ErrUnsupported", protected, err)
+	}
+	if !strings.HasPrefix(err.Error(), "noop") {
+		t.Errorf("BranchProtected error %q does not name the adapter", err)
+	}
+}
+
 // With no forge there are no commits to compare, and an empty list would read
 // as "nothing delivered on this branch" (AGENTS.md rule 10).
 func TestNoOpCompareCommitsIsUnsupported(t *testing.T) {

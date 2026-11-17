@@ -29,13 +29,18 @@ objective stay and are shown by 'krk twin list' and 'krk objective list'.`,
   krk auto --domain software --kind person`,
 		RunE: func(_ *cobra.Command, _ []string) error {
 			// 1. Create a watcher twin
-			twinData, _, err := api.Post("/twins", map[string]string{
+			twinData, status, err := api.Post("/twins", map[string]string{
 				"name":   "watcher",
 				"kind":   kind,
 				"domain": domain,
 			})
 			if err != nil {
 				return fmt.Errorf("create twin: %w", err)
+			}
+			// A refusal's body is not a twin: parsed as one it came out as
+			// "invalid character ..." and hid the server's reason.
+			if status >= http.StatusBadRequest {
+				return fmt.Errorf("create twin: %s\nCheck --kind (person, team or organization) and --domain (see `krk domain list`)", refusal(twinData, status))
 			}
 			var twinResp struct {
 				ID string `json:"id"`
@@ -46,7 +51,7 @@ objective stay and are shown by 'krk twin list' and 'krk objective list'.`,
 			fmt.Printf("Watcher twin created: %s\n", twinResp.ID)
 
 			// 2. Create a watch objective
-			objData, _, err := api.Post("/objectives", map[string]any{
+			objData, status, err := api.Post("/objectives", map[string]any{
 				"title":       "Autonomous watch",
 				"description": "Continuous environment monitoring in watch mode",
 				"domain":      domain,
@@ -54,6 +59,9 @@ objective stay and are shown by 'krk twin list' and 'krk objective list'.`,
 			})
 			if err != nil {
 				return fmt.Errorf("create objective: %w", err)
+			}
+			if status >= http.StatusBadRequest {
+				return fmt.Errorf("create objective: %s\nThe watcher twin %s was created; check --domain (see `krk domain list`)", refusal(objData, status), twinResp.ID)
 			}
 			var objResp struct {
 				ID string `json:"id"`
@@ -64,13 +72,16 @@ objective stay and are shown by 'krk twin list' and 'krk objective list'.`,
 			fmt.Printf("Watch objective created: %s\n", objResp.ID)
 
 			// 3. Start the loop with watch_mode: true
-			loopData, _, err := api.Post("/loops", map[string]any{
+			loopData, status, err := api.Post("/loops", map[string]any{
 				"objective_id": objResp.ID,
 				"twin_id":      twinResp.ID,
 				"watch_mode":   true,
 			})
 			if err != nil {
 				return fmt.Errorf("start loop: %w", err)
+			}
+			if status >= http.StatusBadRequest {
+				return fmt.Errorf("start loop: %s\nThe twin %s and objective %s were created; `krk objective list` shows them", refusal(loopData, status), twinResp.ID, objResp.ID)
 			}
 			var loopResp struct {
 				LoopID string `json:"loop_id"`

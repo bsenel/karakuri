@@ -66,6 +66,10 @@ func (f *fakeForge) EditPRBody(_ context.Context, repo, prID, body string) error
 	return nil
 }
 
+func (f *fakeForge) BranchProtected(context.Context, string, string) (bool, error) {
+	return false, versioncontrol.ErrUnsupported
+}
+
 func (f *fakeForge) Name() string { return "fake_forge" }
 func (f *fakeForge) Active() bool { return true }
 

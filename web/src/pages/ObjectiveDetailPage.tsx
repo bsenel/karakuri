@@ -20,6 +20,8 @@ export function ObjectiveDetailPage() {
   const [err, setErr] = useState<string | null>(null);
   const [loopID, setLoopID] = useState<string | null>(null);
   const [stopping, setStopping] = useState(false);
+  // Why the last status poll failed; null once one answers again.
+  const [statusErr, setStatusErr] = useState<string | null>(null);
   const { can } = useAuth();
   const eventsBoxRef = useRef<HTMLDivElement>(null);
 
@@ -57,9 +59,13 @@ export function ObjectiveDetailPage() {
     const tick = async () => {
       try {
         const s = await api.get<LoopStatus>(`/loops/${loopID}/status`);
-        if (!cancelled) setStatus(s);
-      } catch {
-        // Loop may not exist yet; ignore.
+        if (!cancelled) {
+          setStatus(s);
+          setStatusErr(null);
+        }
+      } catch (e) {
+        // A poll that fails in silence leaves the run looking frozen.
+        if (!cancelled) setStatusErr(describe(e));
       }
     };
     void tick();
@@ -82,8 +88,10 @@ export function ObjectiveDetailPage() {
     try {
       const resp = await api.post<{ loop_id: string }>('/loops/', { objective_id: id });
       setLoopID(resp.loop_id);
+      setErr(null);
     } catch (e) {
-      setErr(describe(e));
+      // Say which request failed: the page also reads the objective.
+      setErr(`Could not start a loop: ${describe(e)}`);
     }
   };
 
@@ -130,6 +138,11 @@ export function ObjectiveDetailPage() {
           )}
         </span>
       </div>
+      {statusErr && (
+        <p className="pill red" role="alert">
+          Could not read the loop's status: {statusErr}. Trying again every 2 seconds.
+        </p>
+      )}
       {stopping && (
         <ReasonDialog
           title="Stop this loop"

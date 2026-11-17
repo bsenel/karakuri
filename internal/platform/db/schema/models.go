@@ -121,6 +121,10 @@ type CheckpointModel struct {
 	// AuditEventID links the checkpoint to its kind=escalation audit row
 	// (Phase 13.5). Empty when the audit write failed at escalation time.
 	AuditEventID string `gorm:"column:audit_event_id;not null;default:''"`
+	// PlanID names the plan ActionsJSON shows, so an approval runs that plan
+	// (Phase 40 step 5). Empty for checkpoints that approve no plan and for
+	// rows written before the column existed.
+	PlanID string `gorm:"column:plan_id;not null;default:''"`
 	// WorldStateJSON serializes the loop.WorldState the planner saw when it
 	// escalated (Phase 30). Empty for budget pauses and older rows.
 	WorldStateJSON string     `gorm:"column:world_state_json;type:text;not null;default:''"`
@@ -192,25 +196,28 @@ func (ToolEventModel) TableName() string { return "tool_events" }
 // decision channel, the live agent — are NOT persisted; they're rebuilt by
 // the runner when a loop resumes.
 type LoopStateModel struct {
-	LoopID       string    `gorm:"primaryKey;column:loop_id"`
-	ObjectiveID  string    `gorm:"column:objective_id;not null;index"`
-	TwinID       string    `gorm:"column:twin_id;not null;default:''"`
-	AgentID      string    `gorm:"column:agent_id;not null;default:''"`
-	Iteration    int       `gorm:"column:iteration;not null;default:0"`
-	Paused       bool      `gorm:"column:paused;not null;default:false"`
-	Completed    bool      `gorm:"column:completed;not null;default:false;index"`
-	LastStep     string    `gorm:"column:last_step;not null;default:''"`
-	Status       string    `gorm:"column:status;not null;default:''"`
-	CriteriaMet  float64   `gorm:"column:criteria_met;not null;default:0.0"`
-	CheckpointID string    `gorm:"column:checkpoint_id;not null;default:''"`
-	Outcome      string    `gorm:"column:outcome;not null;default:''"`
-	CriteriaJSON string    `gorm:"column:criteria_json;not null;default:'[]'"`
-	Error        string    `gorm:"column:error;not null;default:''"`
-	StoppedBy    string    `gorm:"column:stopped_by;not null;default:''"`
-	StopReason   string    `gorm:"column:stop_reason;not null;default:''"`
-	RequestJSON  string    `gorm:"column:request_json;not null;default:'{}'"`
-	CreatedAt    time.Time `gorm:"column:created_at;autoCreateTime"`
-	UpdatedAt    time.Time `gorm:"column:updated_at;autoUpdateTime"`
+	LoopID       string  `gorm:"primaryKey;column:loop_id"`
+	ObjectiveID  string  `gorm:"column:objective_id;not null;index"`
+	TwinID       string  `gorm:"column:twin_id;not null;default:''"`
+	AgentID      string  `gorm:"column:agent_id;not null;default:''"`
+	Iteration    int     `gorm:"column:iteration;not null;default:0"`
+	Paused       bool    `gorm:"column:paused;not null;default:false"`
+	Completed    bool    `gorm:"column:completed;not null;default:false;index"`
+	LastStep     string  `gorm:"column:last_step;not null;default:''"`
+	Status       string  `gorm:"column:status;not null;default:''"`
+	CriteriaMet  float64 `gorm:"column:criteria_met;not null;default:0.0"`
+	CheckpointID string  `gorm:"column:checkpoint_id;not null;default:''"`
+	Outcome      string  `gorm:"column:outcome;not null;default:''"`
+	CriteriaJSON string  `gorm:"column:criteria_json;not null;default:'[]'"`
+	Error        string  `gorm:"column:error;not null;default:''"`
+	StoppedBy    string  `gorm:"column:stopped_by;not null;default:''"`
+	StopReason   string  `gorm:"column:stop_reason;not null;default:''"`
+	// BoundsViolationJSON is the run's first bounds violation (Phase 40 step
+	// 3), empty when it had none.
+	BoundsViolationJSON string    `gorm:"column:bounds_violation_json;not null;default:''"`
+	RequestJSON         string    `gorm:"column:request_json;not null;default:'{}'"`
+	CreatedAt           time.Time `gorm:"column:created_at;autoCreateTime"`
+	UpdatedAt           time.Time `gorm:"column:updated_at;autoUpdateTime"`
 }
 
 func (LoopStateModel) TableName() string { return "loop_states" }
