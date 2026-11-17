@@ -67,7 +67,11 @@ func (c *ClaudeCode) Delegate(ctx context.Context, in DelegateInput) (DelegateOu
 		}
 	}
 	if runErr != nil {
-		return out, runErr
+		now := time.Now
+		if c.now != nil {
+			now = c.now
+		}
+		return out, classifyClaudeExit(runErr, now())
 	}
 	out.RawOutput = raw.String()
 	return out, nil
@@ -117,7 +121,7 @@ func (c *ClaudeCode) Stream(ctx context.Context, in DelegateInput) (<-chan Deleg
 			return
 		}
 		if exitCode != 0 {
-			ch <- DelegateChunk{Kind: "error", Err: fmt.Errorf("claude_code: exit %d (stderr: %s)", exitCode, stderr)}
+			ch <- DelegateChunk{Kind: "error", Err: &claudeExitError{code: exitCode, stderr: stderr}}
 		}
 		ch <- DelegateChunk{Kind: "done"}
 	}()

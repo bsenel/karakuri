@@ -186,9 +186,12 @@ func stepAct(ctx context.Context, sc *stepContext, p plan) []actionOutcome {
 			})
 			sc.state.endAction()
 			if err != nil {
-				result = environment.ActionResult{
-					Success: false,
-					Error:   err.Error(),
+				// What the environment reported beside its error stays: a
+				// coding agent refused for quota still names the salvage
+				// branch its edits went to (Phase 40 step 8).
+				result.Success = false
+				if result.Error == "" {
+					result.Error = err.Error()
 				}
 			}
 			errored = err != nil

@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"slices"
 	"sort"
@@ -13,6 +14,7 @@ import (
 	"github.com/bsenel/karakuri/config"
 	"github.com/bsenel/karakuri/internal/core/capability"
 	"github.com/bsenel/karakuri/internal/core/environment"
+	coreerrors "github.com/bsenel/karakuri/internal/core/errors"
 	"github.com/bsenel/karakuri/internal/platform/tools"
 	"github.com/bsenel/karakuri/internal/platform/tools/cliagent"
 	"github.com/bsenel/karakuri/internal/platform/tools/messaging"
@@ -916,7 +918,15 @@ func (e *cliEnv) Act(ctx context.Context, a environment.Action) (environment.Act
 			}
 			delta[k] = v
 		}
-		return environment.ActionResult{Success: false, Trust: trust, Error: scrub(err.Error()), StateDelta: delta}, nil
+		failed := environment.ActionResult{Success: false, Trust: trust, Error: scrub(err.Error()), StateDelta: delta}
+		// A quota refusal is not a failure of the work, and the loop's act
+		// step can only tell it apart by errors.Is, so it is returned as well
+		// as reported (Phase 40 step 8). The chain is kept; only the text is
+		// scrubbed of the delegation token.
+		if errors.Is(err, coreerrors.ErrProviderRateLimited) {
+			return failed, &scrubbedError{text: failed.Error, cause: err}
+		}
+		return failed, nil
 	}
 	delta := map[string]any{
 		"adapter":    e.cli.Name(),
@@ -949,6 +959,16 @@ func asString(m map[string]any, key string) string {
 	}
 	return ""
 }
+
+// scrubbedError carries an error whose text has had a secret taken out, with
+// the original still reachable by errors.Is and errors.As.
+type scrubbedError struct {
+	text  string
+	cause error
+}
+
+func (e *scrubbedError) Error() string { return e.text }
+func (e *scrubbedError) Unwrap() error { return e.cause }
 
 func noopObservation(id environment.EnvironmentID) environment.Observation {
 	return environment.Observation{
