@@ -164,9 +164,10 @@ type Service struct {
 	// found it (Phase 40 step 9), under the same lock as running. The quota is
 	// the deployment's, not one stream's: while it is out Tick starts no pass
 	// until quotaUntil, then one probe, by quotaProbe, and nothing beside it
-	// until that probe ends. Held in memory only: it does not survive a
-	// restart, so a restarted server learns the quota is out again from the
-	// first pass it starts, at the cost of one more refusal.
+	// until that probe ends. Held in memory only: a restart forgets it, so a
+	// restarted server learns the quota is out again from the first pass it
+	// starts, at the cost of one more refusal, until step 9a reads the stored
+	// deferral back instead.
 	quotaOut   bool
 	quotaUntil time.Time
 	quotaProbe objective.ObjectiveID
