@@ -72,6 +72,22 @@ func runEndOutcomes(t *testing.T, store storage.StorageAdapter, obj objective.Ob
 	return out
 }
 
+// waitRunEndOutcomes polls runEndOutcomes until loopID has a run_end row or
+// stopBound passes. finalizeLoop persists the completed loop row before it
+// writes run_end, so a test that saw the row completed can read run_end a
+// moment too early.
+func waitRunEndOutcomes(t *testing.T, store storage.StorageAdapter, obj objective.ObjectiveID, loopID string) []string {
+	t.Helper()
+	deadline := time.Now().Add(stopBound)
+	for {
+		got := runEndOutcomes(t, store, obj, loopID)
+		if len(got) > 0 || time.Now().After(deadline) {
+			return got
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
 // (a) A run whose plan its bounds refuse, at act_with_notice, ends with the
 // outcome refused_by_bounds in its stored row and its run_end row. It is not
 // errored: nothing failed, the bounds did what they were declared to do. And
@@ -100,7 +116,7 @@ func TestARunRefusedByItsBoundsEndsRefusedByBounds(t *testing.T) {
 	if st.Error != "" {
 		t.Errorf("stored error = %q; reconcile reads this field as the run's failure", st.Error)
 	}
-	got := runEndOutcomes(t, svc.store, req.Objective.ID, run.LoopID)
+	got := waitRunEndOutcomes(t, svc.store, req.Objective.ID, run.LoopID)
 	if len(got) != 1 || got[0] != string(coreloop.RunRefusedByBounds) {
 		t.Errorf("run_end rows for the refused run name %v, want one naming %q", got, coreloop.RunRefusedByBounds)
 	}
