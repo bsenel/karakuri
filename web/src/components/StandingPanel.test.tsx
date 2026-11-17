@@ -1,10 +1,10 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { get } = vi.hoisted(() => ({ get: vi.fn() }));
+const { get, post } = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn() }));
 vi.mock('@/api/client', async () => {
   const actual = await vi.importActual<typeof import('@/api/client')>('@/api/client');
-  return { ...actual, api: { get, post: vi.fn(), put: vi.fn(), del: vi.fn() } };
+  return { ...actual, api: { get, post, put: vi.fn(), del: vi.fn() } };
 });
 vi.mock('@/auth/AuthProvider', () => ({ useAuth: () => ({ can: () => true }) }));
 
@@ -115,6 +115,7 @@ describe('StandingPanel', () => {
   // function, which it runs as teardown, calling get() after each test.
   beforeEach(() => {
     get.mockReset();
+    post.mockReset();
   });
 
   it('shows the phase, the autonomy it has earned, and why it is stopped', async () => {
@@ -176,7 +177,51 @@ describe('StandingPanel', () => {
     get.mockRejectedValue(new APIError(500, 'database is down'));
 
     render(<StandingPanel objectiveID="obj-1" />);
-    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('database is down'));
+    // It names the request that failed and shows the server's message, not "Error: …".
+    await waitFor(() =>
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        "Could not read this objective's control loop: database is down",
+      ),
+    );
+    expect(screen.getByRole('alert')).not.toHaveTextContent('Error:');
+
+    get.mockResolvedValue({
+      state: {
+        objective_id: 'obj-1', phase: 'idle', paused: false,
+        criteria_met: 1, score_streak: 0, consecutive_failures: 0, clean_runs: 0,
+      },
+      history: [],
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Standing' })).toBeInTheDocument());
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    // An empty history says when the first pass comes rather than "Nothing yet".
+    expect(
+      screen.getByText('No passes yet. The first one runs when the objective is next due.'),
+    ).toBeInTheDocument();
+  });
+
+  it('keeps the panel and its controls when a reconcile fails, and says which action failed', async () => {
+    get.mockResolvedValue({
+      state: {
+        objective_id: 'obj-1', phase: 'idle', paused: false,
+        criteria_met: 1, score_streak: 0, consecutive_failures: 0, clean_runs: 0,
+      },
+      history: [],
+    });
+    post.mockRejectedValue(new APIError(503, '{"error":"reconciler is busy"}'));
+
+    render(<StandingPanel objectiveID="obj-1" />);
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Reconcile now' })).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: 'Reconcile now' }));
+
+    await waitFor(() =>
+      expect(screen.getByRole('alert')).toHaveTextContent('Could not reconcile this objective: reconciler is busy'),
+    );
+    expect(post).toHaveBeenCalledWith('/objectives/obj-1/reconcile', {});
+    // The panel is still there, so the operator can try again.
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Reconcile now' })).toBeEnabled());
+    expect(screen.getByRole('heading', { name: 'Standing' })).toBeInTheDocument();
   });
 
   it('labels the table of passes', async () => {

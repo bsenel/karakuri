@@ -41,7 +41,7 @@ describe('MemoryPage', () => {
 
     render(<MemoryPage />);
     recall();
-    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('API 500: boom'));
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('Could not recall memories: API 500: boom'));
     expect(screen.getByText(/The recall failed/)).toBeInTheDocument();
     expect(screen.queryByText(/run a recall query/)).not.toBeInTheDocument();
   });

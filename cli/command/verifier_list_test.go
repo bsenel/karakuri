@@ -244,3 +244,22 @@ func TestVerifierListHelp(t *testing.T) {
 		t.Errorf("--domain usage %q does not say where a domain ID comes from", flag.Usage)
 	}
 }
+
+// A refused capability list is the server's reason and what to check, not a
+// JSON parse error of its plain-text body.
+func TestVerifierListRefusalSaysWhatToCheck(t *testing.T) {
+	_, apiURL := startLoopStopServer(t, http.StatusInternalServerError, "list capabilities: database is locked")
+
+	printed, err := runKrkCapturingStdout(t, "--api-url", apiURL, "verifier", "list", "--domain", "software")
+	if err == nil {
+		t.Fatalf("krk verifier list on a 500 succeeded, want an error\n%s", printed)
+	}
+	for _, want := range []string{"list verifiers:", "database is locked", "HTTP 500", "krk domain list"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q does not contain %q", err, want)
+		}
+	}
+	if strings.Contains(err.Error(), "invalid character") {
+		t.Errorf("error %q is a JSON parse error, not the server's reason", err)
+	}
+}
