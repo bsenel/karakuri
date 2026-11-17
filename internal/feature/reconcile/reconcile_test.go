@@ -46,6 +46,8 @@ type fakeLoop struct {
 	rung        objective.AutonomyLevel
 	// criteria are the states the run's verify step settled.
 	criteria []objective.Criterion
+	// outcome is how the run ended, as the loop names it on its row.
+	outcome coreloop.RunOutcome
 }
 
 func (f *fakeLoop) Run(ctx context.Context, req coreloop.Request) (coreloop.Result, error) {
@@ -70,6 +72,7 @@ func (f *fakeLoop) Run(ctx context.Context, req coreloop.Request) (coreloop.Resu
 		CheckpointID: f.checkpoint,
 		Criteria:     f.criteria,
 		Error:        f.failure,
+		Outcome:      f.outcome,
 	}
 	if err := f.store.SaveLoopState(ctx, st); err != nil {
 		return coreloop.Result{}, err

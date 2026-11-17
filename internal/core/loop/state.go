@@ -67,4 +67,8 @@ const (
 	// died under, ended at boot rather than replayed (Phase 40 step 4). It is
 	// not an error: reconcile re-runs the pass it cut off.
 	RunInterruptedByRestart RunOutcome = "interrupted_by_restart"
+	// RunRefusedByBounds is a run whose plan fell outside its bounds' action
+	// limits at a rung that refuses rather than escalates (Phase 40 step 7).
+	// It is not an error: the bounds did what they were declared to do.
+	RunRefusedByBounds RunOutcome = "refused_by_bounds"
 )
