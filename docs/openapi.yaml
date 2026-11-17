@@ -6705,7 +6705,7 @@ components:
               endings:
                 additionalProperties:
                   type: integer
-                description: Passes that ended by name rather than as a result or a failure, keyed by the ending (refused_by_bounds, interrupted_by_restart). None of them is counted in failures.
+                description: Passes that ended by name rather than as a result or a failure, keyed by the ending (refused_by_bounds, interrupted_by_restart, waiting_for_quota). None of them is counted in failures.
                 nullable: true
                 type: object
               escalations:
