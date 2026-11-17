@@ -105,6 +105,10 @@ func (v *recordingVC) EditPRBody(context.Context, string, string, string) error 
 	return versioncontrol.ErrUnsupported
 }
 
+func (v *recordingVC) BranchProtected(context.Context, string, string) (bool, error) {
+	return false, versioncontrol.ErrUnsupported
+}
+
 // ── the acceptance test ──────────────────────────────────────────────────────
 
 // The write path, end to end, against a scratch repository.
@@ -325,10 +329,14 @@ func TestWritePathReportsWhyProvisioningFailed(t *testing.T) {
 
 // ── fixtures ─────────────────────────────────────────────────────────────────
 
-// scratchRepo returns a committed git repository in a temp dir.
+// scratchRepo returns a committed git repository in a temp dir, with a bare
+// origin that holds main. The pack reads origin's refs around a coding run
+// (Phase 40 step 3) and fails the action when it cannot, so a repository with
+// no origin is not one the write path runs against.
 func scratchRepo(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
+	origin := t.TempDir()
 	run := func(args ...string) {
 		t.Helper()
 		c := exec.Command("git", args...)
@@ -337,7 +345,9 @@ func scratchRepo(t *testing.T) string {
 			t.Fatalf("git %v: %v\n%s", args, err, out)
 		}
 	}
+	run("init", "--bare", "-b", "main", origin)
 	run("init", "-b", "main")
+	run("remote", "add", "origin", origin)
 	run("config", "user.email", "test@test.invalid")
 	run("config", "user.name", "Test")
 	if err := os.WriteFile(filepath.Join(dir, "README.md"), []byte("scratch"), 0o600); err != nil {
@@ -345,6 +355,7 @@ func scratchRepo(t *testing.T) string {
 	}
 	run("add", ".")
 	run("commit", "-m", "init")
+	run("push", "-q", "origin", "main")
 	return dir
 }
 

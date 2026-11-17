@@ -67,6 +67,10 @@ type loopState struct {
 	// the one the runner reads the decision for.
 	answered bool
 	runErr   string // the text of the error the run ended with, persisted for reconcile
+	// violation is the first bounds violation an action result of the run
+	// carried (Phase 40 step 3), persisted so reconcile blocks the stream on
+	// it.
+	violation *environment.BoundsViolation
 	// ended is set when finalizeLoop takes the run's own ending, and stoppedBy
 	// and stopReason when Stop takes it instead (Phase 37 step 3). Whichever
 	// is set first under mu is the ending; the other then changes nothing.
@@ -83,6 +87,16 @@ type loopState struct {
 	// persistMu holds a snapshot and its write together, so a runner's write
 	// read before a stop cannot land after the stop's and reopen the row.
 	persistMu sync.Mutex
+}
+
+// recordViolation keeps the run's first bounds violation; a later one adds
+// its own audit row but does not replace the reason the stream blocks on.
+func (ls *loopState) recordViolation(v *environment.BoundsViolation) {
+	ls.mu.Lock()
+	defer ls.mu.Unlock()
+	if ls.violation == nil {
+		ls.violation = v
+	}
 }
 
 // stopped reports whether a stop has taken this loop's ending.
@@ -485,6 +499,7 @@ func (s *serviceImpl) persistState(ctx context.Context, state *loopState, comple
 	outcome := state.outcome
 	criteria := state.criteria
 	runErr := state.runErr
+	violation := state.violation
 	stoppedBy, stopReason := state.stoppedBy, state.stopReason
 	state.mu.RUnlock()
 	if stoppedBy != "" {
@@ -514,6 +529,8 @@ func (s *serviceImpl) persistState(ctx context.Context, state *loopState, comple
 		StoppedBy:    stoppedBy,
 		StopReason:   stopReason,
 		RequestJSON:  string(reqJSON),
+
+		BoundsViolation: violation,
 	}
 	return s.store.SaveLoopState(ctx, persisted)
 }

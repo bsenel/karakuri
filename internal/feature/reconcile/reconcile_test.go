@@ -46,6 +46,8 @@ type fakeLoop struct {
 	rung        objective.AutonomyLevel
 	// criteria are the states the run's verify step settled.
 	criteria []objective.Criterion
+	// violation is the bounds violation an action of the run carried.
+	violation *environment.BoundsViolation
 }
 
 func (f *fakeLoop) Run(ctx context.Context, req coreloop.Request) (coreloop.Result, error) {
@@ -61,15 +63,16 @@ func (f *fakeLoop) Run(ctx context.Context, req coreloop.Request) (coreloop.Resu
 
 	id := newOutcomeID()
 	st := coreloop.State{
-		LoopID:       id,
-		ObjectiveID:  req.Objective.ID,
-		Completed:    !f.paused,
-		Paused:       f.paused,
-		Status:       f.status,
-		CriteriaMet:  f.criteriaMet,
-		CheckpointID: f.checkpoint,
-		Criteria:     f.criteria,
-		Error:        f.failure,
+		LoopID:          id,
+		ObjectiveID:     req.Objective.ID,
+		Completed:       !f.paused,
+		Paused:          f.paused,
+		Status:          f.status,
+		CriteriaMet:     f.criteriaMet,
+		CheckpointID:    f.checkpoint,
+		Criteria:        f.criteria,
+		Error:           f.failure,
+		BoundsViolation: f.violation,
 	}
 	if err := f.store.SaveLoopState(ctx, st); err != nil {
 		return coreloop.Result{}, err
