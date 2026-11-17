@@ -1,4 +1,5 @@
 import { useEffect, useId, useState } from 'react';
+import { describe } from '@/api/useApi';
 
 // ReasonDialog asks why before a stop, a pause or a stop-all goes out (Phase
 // 37 step 6). Confirm stays disabled until a reason is written: a stop nobody
@@ -32,7 +33,9 @@ export function ReasonDialog({ title, confirmLabel, onClose, onConfirm }: Reason
       await onConfirm(reason.trim());
       onClose();
     } catch (e) {
-      setErr(String(e));
+      // describe, not String: String gives "Error: API 403: {...}", and the
+      // server's message inside that body is the part that says why.
+      setErr(describe(e));
       setBusy(false);
     }
   };
