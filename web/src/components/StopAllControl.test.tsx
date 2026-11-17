@@ -99,6 +99,19 @@ describe('StopAllControl', () => {
     expect(screen.queryByRole('list', { name: 'Not reached' })).not.toBeInTheDocument();
   });
 
+  it('announces the summary in a status region once the dialog has closed', async () => {
+    post.mockResolvedValue({ loops_stopped: [{ loop_id: 'loop-a', found: 'running' }], objectives_paused: [], not_reached: [] });
+
+    render(<StopAllControl />);
+    // The region exists before the answer, so its later content is announced.
+    expect(screen.getByRole('status', { name: 'Stop-all result' })).toBeEmptyDOMElement();
+    stopAll('something is wrong everywhere');
+
+    await waitFor(() =>
+      expect(screen.getByRole('status', { name: 'Stop-all result' })).toHaveTextContent('loop-a'),
+    );
+  });
+
   it('keeps the dialog open with the reason and shows the error when the stop-all fails', async () => {
     post.mockRejectedValue(new Error('stop-all refused'));
 

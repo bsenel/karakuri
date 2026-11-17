@@ -35,7 +35,12 @@ export function StopAllControl() {
           onConfirm={stopAll}
         />
       )}
-      {result && <StopAllSummary result={result} onClose={() => setResult(null)} />}
+      {/* Mounted before the answer arrives, so a screen reader announces the
+          summary when it fills in; the dialog has closed by then and nothing
+          else tells somebody who cannot see the card that the stop happened. */}
+      <div role="status" aria-label="Stop-all result">
+        {result && <StopAllSummary result={result} onClose={() => setResult(null)} />}
+      </div>
     </>
   );
 }
