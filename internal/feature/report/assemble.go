@@ -16,6 +16,7 @@ import (
 
 	corecheckpoint "github.com/bsenel/karakuri/internal/core/checkpoint"
 	"github.com/bsenel/karakuri/internal/core/digest"
+	coreloop "github.com/bsenel/karakuri/internal/core/loop"
 	"github.com/bsenel/karakuri/internal/core/objective"
 	"github.com/bsenel/karakuri/internal/core/reconcile"
 	"github.com/bsenel/karakuri/internal/platform/storage"
@@ -121,11 +122,18 @@ func (s *Service) summarise(ctx context.Context, obj objective.Objective, since,
 			if o.Failed() {
 				sum.Failures++
 			}
-			if o.Ending != "" {
+			// A pass out of quota is filed as a deferral, and counted beside
+			// the named endings so it reads apart from failures (Phase 40
+			// step 8).
+			ending := o.Ending
+			if o.Deferred == waitingForQuotaOutcome {
+				ending = waitingForQuotaOutcome
+			}
+			if ending != "" {
 				if sum.Endings == nil {
 					sum.Endings = map[string]int{}
 				}
-				sum.Endings[o.Ending]++
+				sum.Endings[ending]++
 			}
 		}
 	}
@@ -392,3 +400,7 @@ func (s *Service) exhaustion(ctx context.Context, obj objective.Objective, since
 // a constant here rather than repeated as a literal, because a digest section
 // that silently matches nothing is exactly the failure this phase is closing.
 const budgetExhaustedOutcome = "budget_exhausted"
+
+// waitingForQuotaOutcome is the Deferred marker the supervisor writes for a
+// pass whose coding agent was out of quota, the loop's own name for it.
+const waitingForQuotaOutcome = string(coreloop.RunWaitingForQuota)

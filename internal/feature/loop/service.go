@@ -71,7 +71,14 @@ type loopState struct {
 	// that iteration and finalizeLoop names it refused_by_bounds: nothing
 	// failed, so it is not an error.
 	refused bool
-	runErr  string // the text of the error the run ended with, persisted for reconcile
+	// waitingForQuota is set when stepAct finds an action refused because its
+	// provider is out of quota (Phase 40 step 8), and retryAfter to how long
+	// the provider asked to wait, when it said. The runner ends the run at
+	// that iteration and finalizeLoop names it waiting_for_quota: a state,
+	// not an error, so reconcile defers rather than counts a failure.
+	waitingForQuota bool
+	retryAfter      time.Duration
+	runErr          string // the text of the error the run ended with, persisted for reconcile
 	// ended is set when finalizeLoop takes the run's own ending, and stoppedBy
 	// and stopReason when Stop takes it instead (Phase 37 step 3). Whichever
 	// is set first under mu is the ending; the other then changes nothing.
@@ -130,6 +137,29 @@ func (ls *loopState) startAction(a StopAction) {
 	ls.mu.Lock()
 	defer ls.mu.Unlock()
 	ls.acting = &a
+}
+
+// waitForQuota records that an action's provider refused it for quota, and how
+// long it asked to wait (zero when it did not say). A nil state records
+// nothing.
+func (ls *loopState) waitForQuota(retryAfter time.Duration) {
+	if ls == nil {
+		return
+	}
+	ls.mu.Lock()
+	defer ls.mu.Unlock()
+	ls.waitingForQuota = true
+	ls.retryAfter = retryAfter
+}
+
+// isWaitingForQuota reports whether waitForQuota was recorded.
+func (ls *loopState) isWaitingForQuota() bool {
+	if ls == nil {
+		return false
+	}
+	ls.mu.RLock()
+	defer ls.mu.RUnlock()
+	return ls.waitingForQuota
 }
 
 // endAction records that the action in flight has returned.
@@ -490,6 +520,7 @@ func (s *serviceImpl) persistState(ctx context.Context, state *loopState, comple
 	outcome := state.outcome
 	criteria := state.criteria
 	runErr := state.runErr
+	retryAfter := state.retryAfter
 	stoppedBy, stopReason := state.stoppedBy, state.stopReason
 	state.mu.RUnlock()
 	if stoppedBy != "" {
@@ -518,6 +549,7 @@ func (s *serviceImpl) persistState(ctx context.Context, state *loopState, comple
 		Error:        runErr,
 		StoppedBy:    stoppedBy,
 		StopReason:   stopReason,
+		RetryAfter:   retryAfter,
 		RequestJSON:  string(reqJSON),
 	}
 	return s.store.SaveLoopState(ctx, persisted)

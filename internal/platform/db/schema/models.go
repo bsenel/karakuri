@@ -208,6 +208,9 @@ type LoopStateModel struct {
 	Error        string    `gorm:"column:error;not null;default:''"`
 	StoppedBy    string    `gorm:"column:stopped_by;not null;default:''"`
 	StopReason   string    `gorm:"column:stop_reason;not null;default:''"`
+	// RetryAfterMS is how long the provider asked a run that ended
+	// waiting_for_quota to wait, in milliseconds; 0 when it did not say.
+	RetryAfterMS int64     `gorm:"column:retry_after_ms;not null;default:0"`
 	RequestJSON  string    `gorm:"column:request_json;not null;default:'{}'"`
 	CreatedAt    time.Time `gorm:"column:created_at;autoCreateTime"`
 	UpdatedAt    time.Time `gorm:"column:updated_at;autoUpdateTime"`

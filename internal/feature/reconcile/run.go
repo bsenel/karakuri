@@ -336,6 +336,29 @@ func (s *Service) reconcileNow(
 		// objective on the deployment to babysit one question.
 		st.ActiveLoopID = res.LoopID
 		st.Phase = reconcile.PhaseWaiting
+	case final.Outcome == coreloop.RunWaitingForQuota:
+		// A delegated coding agent's provider refused it for quota and the
+		// loop ended at once (Phase 40 step 8). Filed like a spent budget, and
+		// before the text match below, which the refusal's wording would also
+		// satisfy: nothing misbehaved, so the breaker never sees it. Until the
+		// reset when the provider named one; otherwise the cadence decides.
+		outcome.Deferred = outcomeWaitingForQuota
+		if final.RetryAfter > 0 {
+			outcome.DeferredUntil = outcome.EndedAt.Add(final.RetryAfter)
+		}
+		detail := final.Error
+		if detail == "" {
+			detail = "the delegated coding agent's provider is out of quota"
+		}
+		payload := map[string]any{
+			"reason":  outcomeWaitingForQuota,
+			"detail":  detail,
+			"loop_id": res.LoopID,
+		}
+		if !outcome.DeferredUntil.IsZero() {
+			payload["until"] = outcome.DeferredUntil
+		}
+		s.publish(ctx, event.TypeReconcileDeferred, obj, payload)
 	case final.Status == objective.StatusFailed && strings.Contains(final.Error, coreerrors.ErrProviderRateLimited.Error()):
 		// The model provider refused, twice, and the loop ended rather than
 		// plan from it (Phase 36). Filed like a spent budget: nothing here
@@ -376,6 +399,10 @@ func (s *Service) reconcileNow(
 // flight (Phase 37 step 1). Filed like provider_rate_limited, as a reason that
 // is not a failure.
 const outcomeStopped = "stopped"
+
+// outcomeWaitingForQuota is the reason a pass records when its loop ended because a
+// delegated coding agent was out of quota (Phase 40 step 8).
+const outcomeWaitingForQuota = string(coreloop.RunWaitingForQuota)
 
 // stopPrincipal is who the loop service records as having stopped a pass's
 // loop: the supervisor that carried the pause out. The person who paused is on

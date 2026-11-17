@@ -3,6 +3,7 @@ package loop
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"maps"
 	"strconv"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/bsenel/karakuri/internal/core/capability"
 	"github.com/bsenel/karakuri/internal/core/environment"
+	coreerrors "github.com/bsenel/karakuri/internal/core/errors"
 	"github.com/bsenel/karakuri/internal/core/event"
 	"github.com/bsenel/karakuri/internal/core/loop"
 	"github.com/bsenel/karakuri/internal/core/telemetry"
@@ -350,6 +352,20 @@ func stepAct(ctx context.Context, sc *stepContext, p plan) []actionOutcome {
 			Errored:      errored,
 			Err:          actErr,
 		})
+
+		// A provider out of quota refuses the rest of the plan as surely as
+		// this action: none of it runs, and the run ends waiting for the
+		// quota to return rather than spending its iterations on refusals
+		// (Phase 40 step 8). Any other error lets the plan go on, as before.
+		if errors.Is(actErr, coreerrors.ErrProviderRateLimited) {
+			var limit *coreerrors.ProviderRateLimitError
+			var retryAfter time.Duration
+			if errors.As(actErr, &limit) {
+				retryAfter = limit.RetryAfter
+			}
+			sc.state.waitForQuota(retryAfter)
+			break
+		}
 	}
 
 	// 3. Emit step completed

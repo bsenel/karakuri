@@ -378,6 +378,14 @@ func (s *serviceImpl) runLoop(ctx context.Context, loopID string, req loop.Reque
 			Timestamp: time.Now().UTC(),
 		})
 
+		// A provider out of quota ended the plan in act: nothing it did is
+		// verified or learned from, and no further iteration runs on it.
+		if state.isWaitingForQuota() {
+			span.End()
+			s.finalizeLoop(ctx, state, obj, iterations, false, nil)
+			return
+		}
+
 		// verify
 		state.mu.Lock()
 		state.status.Step = loop.StepVerify
@@ -555,6 +563,7 @@ func (s *serviceImpl) finalizeLoop(ctx context.Context, state *loopState, obj ob
 	}
 	state.ended = true
 	refused := state.refused
+	waitingForQuota := state.waitingForQuota
 	state.mu.Unlock()
 
 	finalStatus := objective.StatusCompleted
@@ -577,6 +586,10 @@ func (s *serviceImpl) finalizeLoop(ctx context.Context, state *loopState, obj ob
 		// The bounds did what they were declared to do; no error is stored,
 		// because reconcile reads that field as the run's failure.
 		outcome = loop.RunRefusedByBounds
+	case waitingForQuota:
+		// Out of quota is a state, not a fault: no error is stored, and
+		// reconcile defers the pass until the quota returns.
+		outcome = loop.RunWaitingForQuota
 	case criteriaMet:
 		outcome = loop.RunConverged
 	}
