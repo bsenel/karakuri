@@ -292,6 +292,8 @@ func (s *Service) Tick(ctx context.Context) {
 			return
 		}
 		ids = []objective.ObjectiveID{probe}
+	} else {
+		ids = afterThePassItWaitedFor(due, ids)
 	}
 	for _, id := range ids {
 		s.dispatch(ctx, id, "")
@@ -352,6 +354,39 @@ func (s *Service) byPriority(ctx context.Context, due []reconcile.State) []objec
 	}
 	sort.SliceStable(ids, func(i, j int) bool { return priority[ids[i]] > priority[ids[j]] })
 	return ids
+}
+
+// afterThePassItWaitedFor keeps the priority order from starving a fixed
+// cadence (Phase 40 step 9): an objective that was already due when the last
+// pass of one ahead of it in ids ended has waited for that pass, so it goes
+// ahead of that objective's next one. Without it a continuous stream, due again
+// right after every pass, would hold the slot for as long as it has work. It
+// waits for a running pass to end, never for the pipeline to drain. Among the
+// objectives that waited, and among the rest, ids keeps its order.
+//
+// Applied only outside the quota hold: the probe is the highest-priority
+// waiting stream, and a probe that found the quota back has ended a pass every
+// waiting stream waited for, so they keep their priority order.
+func afterThePassItWaitedFor(due []reconcile.State, ids []objective.ObjectiveID) []objective.ObjectiveID {
+	states := make(map[objective.ObjectiveID]reconcile.State, len(due))
+	for _, st := range due {
+		states[st.ObjectiveID] = st
+	}
+	var waited, rest []objective.ObjectiveID
+	// lastEnded is the latest end of a pass of any objective ahead in ids.
+	var lastEnded time.Time
+	for _, id := range ids {
+		st := states[id]
+		if st.NextDueAt != nil && !lastEnded.IsZero() && !st.NextDueAt.After(lastEnded) {
+			waited = append(waited, id)
+		} else {
+			rest = append(rest, id)
+		}
+		if st.LastReconciledAt != nil && st.LastReconciledAt.After(lastEnded) {
+			lastEnded = *st.LastReconciledAt
+		}
+	}
+	return append(waited, rest...)
 }
 
 // dispatch runs one objective's pass in the background, under both the
