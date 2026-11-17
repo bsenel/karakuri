@@ -119,6 +119,9 @@ func (c Config) withDefaults() Config {
 	if c.LoopPoll <= 0 {
 		c.LoopPoll = 2 * time.Second
 	}
+	if c.QuotaProbeBackoff <= 0 {
+		c.QuotaProbeBackoff = 15 * time.Minute
+	}
 	return c
 }
 
@@ -156,6 +159,17 @@ type Service struct {
 	// cancels holds the cancel function of each running pass, under the same
 	// lock as running, so a pause can stop the pass in flight (Phase 37).
 	cancels map[objective.ObjectiveID]context.CancelCauseFunc
+
+	// The deployment's coding-agent quota, as the last pass that ran a loop
+	// found it (Phase 40 step 9), under the same lock as running. The quota is
+	// the deployment's, not one stream's: while it is out Tick starts no pass
+	// until quotaUntil, then one probe, by quotaProbe, and nothing beside it
+	// until that probe ends. Held in memory only: it does not survive a
+	// restart, so a restarted server learns the quota is out again from the
+	// first pass it starts, at the cost of one more refusal.
+	quotaOut   bool
+	quotaUntil time.Time
+	quotaProbe objective.ObjectiveID
 
 	// sweeper expires unanswered checkpoints on the tick. Nil means expiry is
 	// off, which is what a deployment that configured no duration gets.
@@ -271,8 +285,54 @@ func (s *Service) Tick(ctx context.Context) {
 		slog.Warn("reconcile due query failed", "err", err)
 		return
 	}
-	for _, id := range s.byPriority(ctx, due) {
+	ids := s.byPriority(ctx, due)
+	if probe, held := s.quotaHold(now, ids); held {
+		if probe == "" {
+			return
+		}
+		ids = []objective.ObjectiveID{probe}
+	}
+	for _, id := range ids {
 		s.dispatch(ctx, id, "")
+	}
+}
+
+// quotaHold says whether the quota being out holds this tick's dispatch, and
+// which one objective, if any, may probe it: the first of ids, which byPriority
+// put first, once the return time has come and no earlier probe is still
+// running (Phase 40 step 9).
+func (s *Service) quotaHold(now time.Time, ids []objective.ObjectiveID) (objective.ObjectiveID, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if !s.quotaOut {
+		return "", false
+	}
+	if s.running[s.quotaProbe] || now.Before(s.quotaUntil) || len(ids) == 0 {
+		return "", true
+	}
+	s.quotaProbe = ids[0]
+	return s.quotaProbe, true
+}
+
+// noteQuota folds what a pass found about the quota into the deployment's
+// state. A loop that ended waiting_for_quota puts it out until the provider's
+// time, or for the declared backoff where it gave none; a loop that ran and
+// was not deferred brings it back. A pass that ran no loop, or one deferred
+// for another reason, says nothing about the coding agent's quota.
+func (s *Service) noteQuota(outcome reconcile.Outcome, now time.Time) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	switch {
+	case outcome.Deferred == outcomeWaitingForQuota:
+		until := outcome.DeferredUntil
+		if until.IsZero() {
+			until = now.Add(s.cfg.QuotaProbeBackoff)
+		}
+		s.quotaOut, s.quotaUntil = true, until
+		slog.Info("coding agent quota out; holding every stream", "objective", string(outcome.ObjectiveID), "until", until)
+	case outcome.LoopID != "" && outcome.Deferred == "" && s.quotaOut:
+		s.quotaOut, s.quotaUntil, s.quotaProbe = false, time.Time{}, ""
+		slog.Info("coding agent quota back; releasing the streams", "objective", string(outcome.ObjectiveID))
 	}
 }
 
