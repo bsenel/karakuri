@@ -15,7 +15,7 @@ func TestStreamTemplatesDeclareTheirOrder(t *testing.T) {
 	if discovery <= 0 {
 		t.Errorf("market discovery priority = %d, want above 0: 0 reads as no priority declared", discovery)
 	}
-	if !(delivery > ux && ux > backlog && backlog > discovery) {
+	if delivery <= ux || ux <= backlog || backlog <= discovery {
 		t.Errorf("priorities delivery=%d ux=%d backlog=%d discovery=%d, want delivery > ux > backlog > discovery",
 			delivery, ux, backlog, discovery)
 	}
