@@ -115,12 +115,13 @@ func TestTheDigestCountsTheNewEndingsApartFromFailures(t *testing.T) {
 	f.loops.failure = "the coding agent exited 1"
 	f.loops.outcome = coreloop.RunErrored
 	f.pass(t, obj.ID, reconcile.TriggerManual)
-	f.clock = f.clock.Add(time.Minute)
+	// Past the hourly cadence's floor, which holds back even a forced pass.
+	f.clock = f.clock.Add(2 * time.Hour)
 
 	// 2. Refused by its bounds.
 	refusedPass(f)
 	f.pass(t, obj.ID, reconcile.TriggerManual)
-	f.clock = f.clock.Add(time.Minute)
+	f.clock = f.clock.Add(2 * time.Hour)
 
 	// 3. Cut off by a restart: the pass's loop was approved and acting when
 	// the process died, and the loop service ended it at boot (step 4). The
