@@ -48,6 +48,8 @@ type fakeLoop struct {
 	criteria []objective.Criterion
 	// outcome is how the run ended, as the loop names it on its row.
 	outcome coreloop.RunOutcome
+	// retryAfter is how long the provider asked the run to wait, on its row.
+	retryAfter time.Duration
 }
 
 func (f *fakeLoop) Run(ctx context.Context, req coreloop.Request) (coreloop.Result, error) {
@@ -73,6 +75,7 @@ func (f *fakeLoop) Run(ctx context.Context, req coreloop.Request) (coreloop.Resu
 		Criteria:     f.criteria,
 		Error:        f.failure,
 		Outcome:      f.outcome,
+		RetryAfter:   f.retryAfter,
 	}
 	if err := f.store.SaveLoopState(ctx, st); err != nil {
 		return coreloop.Result{}, err
