@@ -121,6 +121,12 @@ func (s *Service) summarise(ctx context.Context, obj objective.Objective, since,
 			if o.Failed() {
 				sum.Failures++
 			}
+			if o.Ending != "" {
+				if sum.Endings == nil {
+					sum.Endings = map[string]int{}
+				}
+				sum.Endings[o.Ending]++
+			}
 		}
 	}
 

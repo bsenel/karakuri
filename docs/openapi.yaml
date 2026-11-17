@@ -6702,6 +6702,12 @@ components:
                 type: number
               drift_detected:
                 type: integer
+              endings:
+                additionalProperties:
+                  type: integer
+                description: Passes that ended by name rather than as a result or a failure, keyed by the ending (refused_by_bounds, interrupted_by_restart). None of them is counted in failures.
+                nullable: true
+                type: object
               escalations:
                 type: integer
               failures:
@@ -7549,6 +7555,9 @@ components:
           type: object
         ended_at:
           format: date-time
+          type: string
+        ending:
+          description: How the pass's loop ended when that is neither a result nor a failure, refused_by_bounds or interrupted_by_restart. Not counted by the circuit breaker.
           type: string
         error:
           type: string
