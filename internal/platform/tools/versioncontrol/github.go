@@ -464,10 +464,32 @@ func (g *GitHub) EditPRBody(ctx context.Context, repo, prID, body string) error 
 	return nil
 }
 
-// MergeState is a stub until phase 40 step 6a's slice B reads the pull
-// request's mergeable fields.
-func (g *GitHub) MergeState(_ context.Context, _, _ string) (string, error) {
-	return "", fmt.Errorf("github: merge state: not implemented")
+// MergeState reads a pull request's mergeable and mergeable_state. GitHub
+// computes mergeable in the background, so a null is "unknown" rather than
+// clean; a "dirty" state is a conflict even before mergeable is filled in.
+func (g *GitHub) MergeState(ctx context.Context, repo, prID string) (string, error) {
+	if repo == "" {
+		repo = g.repo
+	}
+	if repo == "" {
+		return "", fmt.Errorf("github: no repo configured")
+	}
+	var pr struct {
+		Mergeable      *bool  `json:"mergeable"`
+		MergeableState string `json:"mergeable_state"`
+	}
+	path := fmt.Sprintf("/repos/%s/pulls/%s", repo, url.PathEscape(prID))
+	if err := g.do(ctx, "GET", path, nil, &pr); err != nil {
+		return "", fmt.Errorf("github: merge state: %w", err)
+	}
+	switch {
+	case pr.MergeableState == "dirty", pr.Mergeable != nil && !*pr.Mergeable:
+		return "conflicting", nil
+	case pr.Mergeable != nil && *pr.Mergeable:
+		return "clean", nil
+	default:
+		return "unknown", nil
+	}
 }
 
 func (g *GitHub) do(ctx context.Context, method, path string, body any, out any) error {
