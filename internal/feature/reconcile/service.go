@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"sort"
 	"sync"
 	"time"
 
@@ -265,17 +266,34 @@ func (s *Service) Tick(ctx context.Context) {
 		slog.Warn("reconcile due query failed", "err", err)
 		return
 	}
-	for _, st := range due {
-		s.dispatch(ctx, st.ObjectiveID, "")
+	for _, id := range s.byPriority(ctx, due) {
+		s.dispatch(ctx, id, "")
 	}
+}
+
+// byPriority orders the due objectives the way slots are handed out: highest
+// priority first, and among equals the most overdue first, which is the order
+// ListDueReconcileStates returns them in (Phase 40 step 9). An objective that
+// cannot be read keeps its place among priority 0; its pass reports the error.
+func (s *Service) byPriority(ctx context.Context, due []reconcile.State) []objective.ObjectiveID {
+	ids := make([]objective.ObjectiveID, len(due))
+	priority := make(map[objective.ObjectiveID]int, len(due))
+	for i, st := range due {
+		ids[i] = st.ObjectiveID
+		if obj, err := s.store.GetObjective(ctx, st.ObjectiveID); err == nil {
+			priority[st.ObjectiveID] = obj.Priority
+		}
+	}
+	sort.SliceStable(ids, func(i, j int) bool { return priority[ids[i]] > priority[ids[j]] })
+	return ids
 }
 
 // dispatch runs one objective's pass in the background, under both the
 // concurrency bound and the this-replica guard.
 //
 // A slot that is not free means the objective is left due; the next tick picks
-// it up, and the ordering in ListDueReconcileStates means the most overdue
-// objectives are the ones that get the slots.
+// it up, and Tick dispatches in byPriority order, so the highest-priority and
+// then most overdue objectives are the ones that get the slots.
 func (s *Service) dispatch(ctx context.Context, id objective.ObjectiveID, forced reconcile.Trigger) {
 	s.mu.Lock()
 	if s.running[id] {
