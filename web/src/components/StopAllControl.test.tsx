@@ -13,6 +13,7 @@ vi.mock('@/api/client', async () => {
 });
 vi.mock('@/auth/AuthProvider', () => ({ useAuth: () => ({ can }) }));
 
+import { APIError } from '@/api/client';
 import { StopAllControl } from './StopAllControl';
 
 // Opens the control and confirms it with a reason.
@@ -111,6 +112,20 @@ describe('StopAllControl', () => {
     expect(within(dialog).getByRole('textbox', { name: 'Reason' })).toHaveValue('something is wrong everywhere');
     // Nothing is reported as stopped or paused when the call failed.
     expect(screen.queryByText(/nothing was stopped or paused/i)).not.toBeInTheDocument();
+  });
+
+  it("shows the server's reason for a refused stop-all, not the raw response", async () => {
+    post.mockRejectedValue(new APIError(403, '{"message":"you may not stop runs in org:acme"}'));
+
+    render(<StopAllControl />);
+    stopAll('something is wrong everywhere');
+
+    const dialog = screen.getByRole('dialog', { name: 'Stop every run' });
+    await waitFor(() =>
+      expect(within(dialog).getByRole('alert')).toHaveTextContent('you may not stop runs in org:acme'),
+    );
+    expect(within(dialog).getByRole('alert')).not.toHaveTextContent('API 403');
+    expect(within(dialog).getByRole('alert')).not.toHaveTextContent('{');
   });
 
   it('is offered to a principal who may stop loops or pause objectives', () => {
