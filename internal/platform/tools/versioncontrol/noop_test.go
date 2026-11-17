@@ -28,3 +28,12 @@ func TestNoOpCompareCommitsIsUnsupported(t *testing.T) {
 		t.Errorf("CompareCommits error %q does not name the adapter", err)
 	}
 }
+
+// With no forge nothing says whether a pull request can be merged, and an
+// empty state would read as nothing broken (AGENTS.md rule 10).
+func TestNoOpMergeStateIsUnsupported(t *testing.T) {
+	state, err := NewNoOp().MergeState(context.Background(), "acme/api", "244")
+	if !errors.Is(err, ErrUnsupported) {
+		t.Errorf("MergeState = %q, %v; want an error wrapping ErrUnsupported", state, err)
+	}
+}

@@ -55,3 +55,7 @@ func (n *NoOp) ListMergedPRs(_ context.Context, _ string, _ int) ([]PRSummary, e
 func (n *NoOp) EditPRBody(_ context.Context, _, _, _ string) error {
 	return fmt.Errorf("noop: edit pull request body: %w", ErrUnsupported)
 }
+
+func (n *NoOp) MergeState(_ context.Context, _, _ string) (string, error) {
+	return "", fmt.Errorf("noop: merge state: %w", ErrUnsupported)
+}

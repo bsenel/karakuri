@@ -493,3 +493,63 @@ func TestEditPRBodyPatchesThePullRequest(t *testing.T) {
 		t.Error("a 403 was read as success")
 	}
 }
+
+// GitHub's pull request read carries mergeable (true, false, or null while it
+// is still being computed) and mergeable_state, where "dirty" is a conflict.
+// A false or a dirty state is a conflict, a true is clean, and a null is not
+// yet known rather than clean.
+func TestMergeStateMapsGitHubsMergeableFields(t *testing.T) {
+	cases := []struct {
+		name string
+		body string
+		want string
+	}{
+		{"mergeable", `{"number":244,"mergeable":true,"mergeable_state":"clean"}`, "clean"},
+		{"not mergeable", `{"number":244,"mergeable":false,"mergeable_state":"dirty"}`, "conflicting"},
+		{"dirty without a verdict", `{"number":244,"mergeable":null,"mergeable_state":"dirty"}`, "conflicting"},
+		{"not computed yet", `{"number":244,"mergeable":null,"mergeable_state":"unknown"}`, "unknown"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			var method, path string
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				method, path = r.Method, r.URL.Path
+				_, _ = w.Write([]byte(c.body))
+			}))
+			defer srv.Close()
+			g := NewGitHub("t", "acme/api")
+			g.client = &http.Client{Transport: toServer{srv}}
+
+			got, err := g.MergeState(context.Background(), "", "244")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if method != "GET" || path != "/repos/acme/api/pulls/244" {
+				t.Errorf("sent %s %s, want GET /repos/acme/api/pulls/244", method, path)
+			}
+			if got != c.want {
+				t.Errorf("MergeState = %q, want %q", got, c.want)
+			}
+		})
+	}
+}
+
+// A pull request that could not be read has no merge state: the failed call is
+// an error, never a state the caller would act on.
+func TestMergeStateReturnsAnErrorOnAFailedCall(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`{"message":"Not Found"}`))
+	}))
+	defer srv.Close()
+	g := NewGitHub("t", "acme/api")
+	g.client = &http.Client{Transport: toServer{srv}}
+
+	got, err := g.MergeState(context.Background(), "", "244")
+	if err == nil {
+		t.Fatalf("a 404 was read as merge state %q", got)
+	}
+	if !strings.Contains(err.Error(), "404") {
+		t.Errorf("error does not carry the forge's status: %v", err)
+	}
+}

@@ -105,6 +105,10 @@ func (v *recordingVC) EditPRBody(context.Context, string, string, string) error 
 	return versioncontrol.ErrUnsupported
 }
 
+func (v *recordingVC) MergeState(context.Context, string, string) (string, error) {
+	return "", versioncontrol.ErrUnsupported
+}
+
 // ── the acceptance test ──────────────────────────────────────────────────────
 
 // The write path, end to end, against a scratch repository.

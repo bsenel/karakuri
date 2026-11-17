@@ -464,6 +464,12 @@ func (g *GitHub) EditPRBody(ctx context.Context, repo, prID, body string) error 
 	return nil
 }
 
+// MergeState is a stub until phase 40 step 6a's slice B reads the pull
+// request's mergeable fields.
+func (g *GitHub) MergeState(_ context.Context, _, _ string) (string, error) {
+	return "", fmt.Errorf("github: merge state: not implemented")
+}
+
 func (g *GitHub) do(ctx context.Context, method, path string, body any, out any) error {
 	var reader io.Reader
 	if body != nil {

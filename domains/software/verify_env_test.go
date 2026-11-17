@@ -158,6 +158,9 @@ func (w *windowVC) ListMergedPRs(context.Context, string, int) ([]versioncontrol
 func (w *windowVC) EditPRBody(context.Context, string, string, string) error {
 	return versioncontrol.ErrUnsupported
 }
+func (w *windowVC) MergeState(context.Context, string, string) (string, error) {
+	return "", versioncontrol.ErrUnsupported
+}
 
 // Every byte here is re-serialised into the reason prompt of every iteration of
 // every loop watching the repository. An unfiltered read pulled the adapter's
