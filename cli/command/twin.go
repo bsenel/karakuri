@@ -115,7 +115,8 @@ func twinListCmd() *cobra.Command {
 		Use:   "list",
 		Short: "List digital twins",
 		Example: `  krk twin list
-  krk twin list --kind person`,
+  krk twin list --kind person
+  krk twin list --domain software`,
 		RunE: func(c *cobra.Command, _ []string) error {
 			path := "/twins"
 			sep := "?"
@@ -134,7 +135,7 @@ func twinListCmd() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&kind, "kind", "", "Filter by kind: person|team|organization")
-	cmd.Flags().StringVar(&domain, "domain", "", "Filter by domain (see: krk domain list)")
+	cmd.Flags().StringVar(&kind, "kind", "", "Show only twins of this kind: person|team|organization (default: every kind)")
+	cmd.Flags().StringVar(&domain, "domain", "", "Show only twins working in this domain pack (see: krk domain list) (default: every domain)")
 	return cmd
 }
