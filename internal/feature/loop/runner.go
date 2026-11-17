@@ -353,6 +353,17 @@ func (s *serviceImpl) runLoop(ctx context.Context, loopID string, req loop.Reque
 			return
 		}
 
+		// The bounds refused the plan, here or in a modify's re-decide: the
+		// run ends at this iteration with nothing carried into act.
+		state.mu.RLock()
+		refused := state.refused
+		state.mu.RUnlock()
+		if refused {
+			span.End()
+			s.finalizeLoop(ctx, state, obj, iterations, false, nil)
+			return
+		}
+
 		// act
 		state.mu.Lock()
 		state.status.Step = loop.StepAct
@@ -543,6 +554,7 @@ func (s *serviceImpl) finalizeLoop(ctx context.Context, state *loopState, obj ob
 		return
 	}
 	state.ended = true
+	refused := state.refused
 	state.mu.Unlock()
 
 	finalStatus := objective.StatusCompleted
@@ -561,6 +573,10 @@ func (s *serviceImpl) finalizeLoop(ctx context.Context, state *loopState, obj ob
 	switch {
 	case runErr != nil:
 		outcome = loop.RunErrored
+	case refused:
+		// The bounds did what they were declared to do; no error is stored,
+		// because reconcile reads that field as the run's failure.
+		outcome = loop.RunRefusedByBounds
 	case criteriaMet:
 		outcome = loop.RunConverged
 	}

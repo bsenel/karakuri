@@ -66,7 +66,12 @@ type loopState struct {
 	// at the replay's first decide so that checkpoint, and not a new one, is
 	// the one the runner reads the decision for.
 	answered bool
-	runErr   string // the text of the error the run ended with, persisted for reconcile
+	// refused is set when stepDecide refuses the plan because the bounds'
+	// action limits refuse it (Phase 40 step 7). The runner ends the run at
+	// that iteration and finalizeLoop names it refused_by_bounds: nothing
+	// failed, so it is not an error.
+	refused bool
+	runErr  string // the text of the error the run ended with, persisted for reconcile
 	// ended is set when finalizeLoop takes the run's own ending, and stoppedBy
 	// and stopReason when Stop takes it instead (Phase 37 step 3). Whichever
 	// is set first under mu is the ending; the other then changes nothing.
@@ -675,6 +680,9 @@ func (s *serviceImpl) endedByRestart(ctx context.Context, st loop.State, req loo
 			"loop", st.LoopID, "objective", st.ObjectiveID, "err", err)
 		return true
 	}
+	// The audit log's record that the run ended, beside the loop row (Phase 40
+	// step 7): the same run_end row finalizeLoop writes for a run that ran.
+	s.recordRunEnd(ctx, st.LoopID, obj, st.Status, st.Outcome, objective.AllRequiredMet(st.Criteria), st.Criteria, nil)
 	slog.Info("ended a standing objective's loop interrupted by a restart; reconcile re-runs its pass",
 		"loop", st.LoopID, "objective", st.ObjectiveID)
 	return true
