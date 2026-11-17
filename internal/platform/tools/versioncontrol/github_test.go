@@ -553,3 +553,65 @@ func TestMergeStateReturnsAnErrorOnAFailedCall(t *testing.T) {
 		t.Errorf("error does not carry the forge's status: %v", err)
 	}
 }
+
+// Phase 40 step 3: whether a branch is protected is the branch's own
+// `protected` field, read with one GET of the branch.
+func TestBranchProtectedReadsTheBranchsProtectedField(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		body string
+		want bool
+	}{
+		{name: "protected", body: `{"name":"main","protected":true,"commit":{"sha":"abc"}}`, want: true},
+		{name: "not protected", body: `{"name":"main","protected":false,"commit":{"sha":"abc"}}`, want: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var method, path string
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				method, path = r.Method, r.URL.Path
+				_, _ = w.Write([]byte(tc.body))
+			}))
+			defer srv.Close()
+			g := NewGitHub("t", "acme/api")
+			g.client = &http.Client{Transport: toServer{srv}}
+
+			got, err := g.BranchProtected(context.Background(), "", "main")
+			if err != nil {
+				t.Fatalf("BranchProtected: %v", err)
+			}
+			if got != tc.want {
+				t.Errorf("BranchProtected = %v, want %v", got, tc.want)
+			}
+			if method != "GET" || path != "/repos/acme/api/branches/main" {
+				t.Errorf("sent %s %s, want GET /repos/acme/api/branches/main", method, path)
+			}
+		})
+	}
+}
+
+// A branch that cannot be read is an error, never a false that would read as
+// "not protected" or a true that would read as "protected".
+func TestBranchProtectedReturnsAnErrorOnAFailedRead(t *testing.T) {
+	for _, status := range []int{http.StatusNotFound, http.StatusInternalServerError} {
+		t.Run(http.StatusText(status), func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(status)
+				_, _ = w.Write([]byte(`{"message":"no","protected":true}`))
+			}))
+			defer srv.Close()
+			g := NewGitHub("t", "acme/api")
+			g.client = &http.Client{Transport: toServer{srv}}
+
+			got, err := g.BranchProtected(context.Background(), "", "main")
+			if err == nil {
+				t.Fatalf("a %d was read as success (protected = %v)", status, got)
+			}
+			if got {
+				t.Errorf("BranchProtected = true alongside the error %v", err)
+			}
+			if !strings.HasPrefix(err.Error(), "github") {
+				t.Errorf("error %q does not name the adapter", err)
+			}
+		})
+	}
+}

@@ -421,6 +421,21 @@ func (e *gitEnv) Observe(ctx context.Context, q environment.ObservationQuery) (e
 	// the observation window, and these must see every open one.
 	observeUnmergeablePRs(ctx, adapter, repo, state)
 	observeBranchesWithoutPR(ctx, adapter, repo, state)
+	// Whether main is protected, so the oversight view can show it (Phase 40
+	// step 3). This is detection, not prevention. A read that failed is "not
+	// known" whatever the bool says, never "protected" (AGENTS.md rule 10).
+	// "main" because nothing in the adapter or config names another base;
+	// create_pr defaults to it as well.
+	protected, err := adapter.BranchProtected(ctx, repo, "main")
+	switch {
+	case err != nil:
+		state["main_protection"] = "not known"
+		state["main_protection_error"] = err.Error()
+	case protected:
+		state["main_protection"] = "protected"
+	default:
+		state["main_protection"] = "not protected"
+	}
 	return environment.Observation{
 		EnvID: e.id, State: state, Version: stateVersion(state),
 		Timestamp: time.Now().UTC(), Trust: trust, Delivered: delivered,
@@ -838,6 +853,12 @@ func (e *cliEnv) Act(ctx context.Context, a environment.Action) (environment.Act
 				a.CapabilityID, e.cli.Name()),
 		}, nil
 	}
+	// Origin's refs are read before the run and again after it, so a push the
+	// agent made outside its declared refs is a failed action (Phase 40 step
+	// 3). An origin that cannot be read is never a pass: a run that succeeded
+	// fails for it, and one that failed keeps its own error and records why.
+	declared := declaredRefs(asString(a.Params, "branch"), worktree)
+	refsBefore, refsBeforeErr := readRemoteRefs(ctx, worktree)
 	// scrub keeps the delegation token out of anything the result carries.
 	scrub := func(s string) string { return s }
 	var credential map[string]any
@@ -891,7 +912,24 @@ func (e *cliEnv) Act(ctx context.Context, a environment.Action) (environment.Act
 		}
 	}
 
+	// A deletion leaves no commit to tell whose it was, so the agent's own
+	// pushes are logged by a pre-push hook for the check, then removed. The
+	// hook reaches the agent through its environment, never git config, which
+	// the deployment's repository shares with every worktree and go-git.
+	pushes := installPushLog(ctx, worktree)
+	if hook := pushes.env(in.Env); len(hook) > 0 {
+		env := make(map[string]string, len(in.Env)+len(hook))
+		for k, v := range in.Env {
+			env[k] = v
+		}
+		for k, v := range hook {
+			env[k] = v
+		}
+		in.Env = env
+	}
 	out, err := e.cli.Delegate(ctx, in)
+	pushed, pushedErr := checkPushedRefs(ctx, worktree, declared, refsBefore, refsBeforeErr, pushes)
+	logErr := pushes.remove()
 	// What a Karakuri tool returned can be a stranger's prose (an audit row
 	// holds pull-request titles), and the agent wrote everything after it
 	// having read that. Decided from the calls the run made, not from what was
@@ -923,7 +961,17 @@ func (e *cliEnv) Act(ctx context.Context, a environment.Action) (environment.Act
 			}
 			delta[k] = v
 		}
-		return environment.ActionResult{Success: false, Trust: trust, Error: scrub(err.Error()), StateDelta: delta}, nil
+		if pushedErr != nil {
+			delta["pushed_refs_error"] = scrub(pushedErr.Error())
+		}
+		if logErr != nil {
+			delta["push_log_error"] = scrub(logErr.Error())
+		}
+		msg := err.Error()
+		if pushed != nil {
+			msg = pushed.Reason + "; the run itself failed: " + msg
+		}
+		return environment.ActionResult{Success: false, Trust: trust, Error: scrub(msg), StateDelta: delta, BoundsViolation: pushed}, nil
 	}
 	delta := map[string]any{
 		"adapter":    e.cli.Name(),
@@ -934,6 +982,17 @@ func (e *cliEnv) Act(ctx context.Context, a environment.Action) (environment.Act
 	}
 	if credential != nil {
 		delta["delegation_credential"] = credential
+	}
+	if logErr != nil {
+		delta["push_log_error"] = scrub(logErr.Error())
+	}
+	// A push that could not be checked fails the action but is not a
+	// violation: only a ref seen to move outside its bounds blocks the stream.
+	if pushedErr != nil {
+		return environment.ActionResult{Success: false, Trust: trust, Error: scrub(pushedErr.Error()), StateDelta: delta, ArtifactSHAs: out.ArtifactSHAs}, nil
+	}
+	if pushed != nil {
+		return environment.ActionResult{Success: false, Trust: trust, Error: scrub(pushed.Reason), StateDelta: delta, ArtifactSHAs: out.ArtifactSHAs, BoundsViolation: pushed}, nil
 	}
 	return environment.ActionResult{Success: true, Trust: trust, StateDelta: delta, ArtifactSHAs: out.ArtifactSHAs}, nil
 }

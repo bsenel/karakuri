@@ -169,6 +169,10 @@ func (w *windowVC) MergeState(context.Context, string, string) (string, error) {
 	return "", versioncontrol.ErrUnsupported
 }
 
+func (w *windowVC) BranchProtected(context.Context, string, string) (bool, error) {
+	return false, versioncontrol.ErrUnsupported
+}
+
 // Every byte here is re-serialised into the reason prompt of every iteration of
 // every loop watching the repository. An unfiltered read pulled the adapter's
 // whole first page each time.

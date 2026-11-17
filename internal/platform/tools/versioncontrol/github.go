@@ -492,6 +492,25 @@ func (g *GitHub) MergeState(ctx context.Context, repo, prID string) (string, err
 	}
 }
 
+// BranchProtected reads the branch's own `protected` field with one GET of the
+// branch. A failed read is an error and false, never a guess either way.
+func (g *GitHub) BranchProtected(ctx context.Context, repo, branch string) (bool, error) {
+	if repo == "" {
+		repo = g.repo
+	}
+	if repo == "" {
+		return false, fmt.Errorf("github: no repo configured")
+	}
+	var raw struct {
+		Protected bool `json:"protected"`
+	}
+	path := fmt.Sprintf("/repos/%s/branches/%s", repo, refPath(branch))
+	if err := g.do(ctx, "GET", path, nil, &raw); err != nil {
+		return false, fmt.Errorf("github: branch protection: %w", err)
+	}
+	return raw.Protected, nil
+}
+
 func (g *GitHub) do(ctx context.Context, method, path string, body any, out any) error {
 	var reader io.Reader
 	if body != nil {

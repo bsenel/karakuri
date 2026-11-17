@@ -127,5 +127,9 @@ type VersionControlAdapter interface {
 	// yet. An adapter whose forge cannot say returns an error wrapping
 	// ErrUnsupported, never "" (AGENTS.md rule 10).
 	MergeState(ctx context.Context, repo, prID string) (string, error)
+	// BranchProtected reports whether the forge protects branch. An adapter
+	// whose forge cannot say returns an error wrapping ErrUnsupported, never a
+	// false, so a caller can tell "not protected" from "not known".
+	BranchProtected(ctx context.Context, repo, branch string) (bool, error)
 	Active() bool
 }

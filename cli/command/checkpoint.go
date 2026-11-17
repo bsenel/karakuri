@@ -2,6 +2,7 @@ package command
 
 import (
 	"fmt"
+	"net/http"
 
 	"github.com/bsenel/karakuri/cli/client"
 	"github.com/spf13/cobra"
@@ -84,9 +85,14 @@ func checkpointResolveCmd() *cobra.Command {
 				return err
 			}
 			body := buildResolveBody(c, decision, note, approver, removeActions, constraints, revisedConfidence)
-			data, _, err := api.Post("/checkpoints/"+args[0]+"/resolve", body)
+			data, status, err := api.Post("/checkpoints/"+args[0]+"/resolve", body)
 			if err != nil {
 				return err
+			}
+			// The server refuses in plain text, e.g. a checkpoint resolved
+			// twice; printed as output that came out as "null" and exit 0.
+			if status >= http.StatusBadRequest {
+				return fmt.Errorf("resolve checkpoint %s: %s\n`krk checkpoint list` shows the checkpoints still waiting for a decision", args[0], refusal(data, status))
 			}
 			client.PrintOutput(data, output)
 			return nil
