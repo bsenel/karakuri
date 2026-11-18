@@ -17,7 +17,9 @@ export function QuotaPage() {
     <RequirePermission action={Actions.quotaRead} what="quota usage and limits">
       <>
         <h1>Quota</h1>
-        <nav className="row" style={{ marginBottom: 16 }}>
+        {/* The page already sits under the main navigation; without a name a
+            screen reader lists two landmarks it cannot tell apart. */}
+        <nav className="row" style={{ marginBottom: 16 }} aria-label="Quota">
           <NavLink to="/quota" end className={({ isActive }) => (isActive ? 'active' : '')}>
             Usage
           </NavLink>

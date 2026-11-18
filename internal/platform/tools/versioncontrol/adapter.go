@@ -122,5 +122,9 @@ type VersionControlAdapter interface {
 	// EditPRBody replaces a pull request's description with body. An adapter
 	// whose forge cannot returns an error wrapping ErrUnsupported.
 	EditPRBody(ctx context.Context, repo, prID, body string) error
+	// BranchProtected reports whether the forge protects branch. An adapter
+	// whose forge cannot say returns an error wrapping ErrUnsupported, never a
+	// false, so a caller can tell "not protected" from "not known".
+	BranchProtected(ctx context.Context, repo, branch string) (bool, error)
 	Active() bool
 }

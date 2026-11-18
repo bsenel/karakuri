@@ -316,6 +316,36 @@ func stepAct(ctx context.Context, sc *stepContext, p plan) []actionOutcome {
 		row.PayloadJSON = string(payloadJSON)
 		_ = sc.svc.store.SaveToolEvent(ctx, row)
 
+		// f2. An action that did something outside its declared bounds, such
+		// as a push to a ref it never named (Phase 40 step 3), is one bounds
+		// row of step 2's refusal kind, and the run's state keeps the first
+		// such violation so reconcile can block the stream on it.
+		if v := result.BoundsViolation; v != nil {
+			violationPayload := map[string]any{
+				"capability": action.CapabilityID,
+				"env_id":     envAdapter,
+				"refs":       v.Refs,
+			}
+			violationRow := storage.ToolEvent{
+				ID:               fmt.Sprintf("audit-%d-%d", time.Now().UnixNano(), i),
+				ObjectiveID:      string(sc.obj.ID),
+				AgentID:          agentIDStr,
+				Capability:       action.CapabilityID,
+				Adapter:          envAdapter,
+				Success:          false,
+				Confidence:       p.Confidence,
+				Kind:             storage.ToolEventRefusal,
+				EscalationReason: v.Reason,
+				BoundsViolation:  true,
+				CreatedAt:        time.Now().UTC(),
+			}
+			sc.stampProvenance(&violationRow, p, violationPayload)
+			violationJSON, _ := json.Marshal(violationPayload)
+			violationRow.PayloadJSON = string(violationJSON)
+			_ = sc.svc.store.SaveToolEvent(ctx, violationRow)
+			sc.state.recordViolation(v)
+		}
+
 		// g. And what it cost. Attributed to the objective rather than the twin,
 		// because "which piece of work spent this" is the question a bill
 		// prompts — the twin is still the subject that pays, and its containers

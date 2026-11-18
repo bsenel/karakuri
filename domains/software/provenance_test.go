@@ -33,6 +33,12 @@ type vcStub struct {
 	compared   []versioncontrol.Commit
 	compareErr error
 	compares   []string
+
+	// protected is what BranchProtected returns, or protectedErr when that is
+	// set; protectionAsks records each call as "repo:branch".
+	protected      bool
+	protectedErr   error
+	protectionAsks []string
 }
 
 func (s *vcStub) Name() string { return "stub" }
@@ -99,6 +105,16 @@ func (s *vcStub) ListMergedPRs(context.Context, string, int) ([]versioncontrol.P
 
 func (s *vcStub) EditPRBody(context.Context, string, string, string) error {
 	return versioncontrol.ErrUnsupported
+}
+
+func (s *vcStub) BranchProtected(_ context.Context, repo, branch string) (bool, error) {
+	s.protectionAsks = append(s.protectionAsks, repo+":"+branch)
+	if s.protectedErr != nil {
+		// A forge that fails answers false with its error; the stub hands back
+		// true here so a caller that reads the bool despite the error is caught.
+		return true, s.protectedErr
+	}
+	return s.protected, nil
 }
 
 // A pull request title is typed by whoever opened it, which on a public
