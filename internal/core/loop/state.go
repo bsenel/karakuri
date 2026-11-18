@@ -3,6 +3,7 @@ package loop
 import (
 	"time"
 
+	"github.com/bsenel/karakuri/internal/core/environment"
 	"github.com/bsenel/karakuri/internal/core/objective"
 )
 
@@ -47,6 +48,10 @@ type State struct {
 	// when it ended waiting_for_quota and the provider said; zero otherwise.
 	// Reconcile reads it as the time the quota returns (Phase 40 step 8).
 	RetryAfter time.Duration `json:"retry_after,omitempty"`
+	// BoundsViolation is the first action result of the run that carried one
+	// (Phase 40 step 3), so the supervisor blocks the stream on a typed field
+	// rather than on Error's text.
+	BoundsViolation *environment.BoundsViolation `json:"bounds_violation,omitempty"`
 
 	// RequestJSON is the full marshalled Request as supplied to Run(); enough
 	// to reconstruct the loop's parameters on a cold start.

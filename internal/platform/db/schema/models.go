@@ -121,6 +121,10 @@ type CheckpointModel struct {
 	// AuditEventID links the checkpoint to its kind=escalation audit row
 	// (Phase 13.5). Empty when the audit write failed at escalation time.
 	AuditEventID string `gorm:"column:audit_event_id;not null;default:''"`
+	// PlanID names the plan ActionsJSON shows, so an approval runs that plan
+	// (Phase 40 step 5). Empty for checkpoints that approve no plan and for
+	// rows written before the column existed.
+	PlanID string `gorm:"column:plan_id;not null;default:''"`
 	// WorldStateJSON serializes the loop.WorldState the planner saw when it
 	// escalated (Phase 30). Empty for budget pauses and older rows.
 	WorldStateJSON string     `gorm:"column:world_state_json;type:text;not null;default:''"`
@@ -210,10 +214,13 @@ type LoopStateModel struct {
 	StopReason   string  `gorm:"column:stop_reason;not null;default:''"`
 	// RetryAfterMS is how long a provider that refused the run for quota asked
 	// it to wait, in milliseconds; 0 when it did not say (Phase 40 step 8).
-	RetryAfterMS int64     `gorm:"column:retry_after_ms;not null;default:0"`
-	RequestJSON  string    `gorm:"column:request_json;not null;default:'{}'"`
-	CreatedAt    time.Time `gorm:"column:created_at;autoCreateTime"`
-	UpdatedAt    time.Time `gorm:"column:updated_at;autoUpdateTime"`
+	RetryAfterMS int64 `gorm:"column:retry_after_ms;not null;default:0"`
+	// BoundsViolationJSON is the run's first bounds violation (Phase 40 step
+	// 3), empty when it had none.
+	BoundsViolationJSON string    `gorm:"column:bounds_violation_json;not null;default:''"`
+	RequestJSON         string    `gorm:"column:request_json;not null;default:'{}'"`
+	CreatedAt           time.Time `gorm:"column:created_at;autoCreateTime"`
+	UpdatedAt           time.Time `gorm:"column:updated_at;autoUpdateTime"`
 }
 
 func (LoopStateModel) TableName() string { return "loop_states" }

@@ -77,8 +77,27 @@ describe('ObjectiveDetailPage', () => {
     await waitFor(() => expect(screen.getByRole('heading', { name: 'Ship the docs' })).toBeInTheDocument());
     fireEvent.click(screen.getByRole('button', { name: 'Start loop' }));
 
-    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('API 500: boom'));
+    // The alert names the request that failed, not only the server's answer.
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('Could not start a loop: API 500: boom'));
     expect(screen.getByRole('heading', { name: 'Ship the docs' })).toBeInTheDocument();
+  });
+
+  it("says when the loop's status cannot be read, rather than leaving the run looking frozen", async () => {
+    get.mockImplementation((path: string) =>
+      path.startsWith('/loops/') ? Promise.reject(new Error('API 500: status down')) : Promise.resolve(objective),
+    );
+    post.mockResolvedValue({ loop_id: 'l1' });
+
+    renderPage();
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Ship the docs' })).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: 'Start loop' }));
+
+    await waitFor(() =>
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        "Could not read the loop's status: API 500: status down. Trying again every 2 seconds.",
+      ),
+    );
+    expect(get).toHaveBeenCalledWith('/loops/l1/status');
   });
 
   it('announces the run status once the loop reports it', async () => {

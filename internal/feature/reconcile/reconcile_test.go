@@ -55,6 +55,8 @@ type fakeLoop struct {
 	// gate, when set, holds every run until it is closed, so a test can see
 	// which pass holds a slot while it is held.
 	gate chan struct{}
+	// violation is the bounds violation an action of the run carried.
+	violation *environment.BoundsViolation
 }
 
 func (f *fakeLoop) Run(ctx context.Context, req coreloop.Request) (coreloop.Result, error) {
@@ -79,17 +81,18 @@ func (f *fakeLoop) Run(ctx context.Context, req coreloop.Request) (coreloop.Resu
 
 	id := newOutcomeID()
 	st := coreloop.State{
-		LoopID:       id,
-		ObjectiveID:  req.Objective.ID,
-		Completed:    !f.paused,
-		Paused:       f.paused,
-		Status:       f.status,
-		CriteriaMet:  f.criteriaMet,
-		CheckpointID: f.checkpoint,
-		Criteria:     f.criteria,
-		Error:        f.failure,
-		Outcome:      f.outcome,
-		RetryAfter:   f.retryAfter,
+		LoopID:          id,
+		ObjectiveID:     req.Objective.ID,
+		Completed:       !f.paused,
+		Paused:          f.paused,
+		Status:          f.status,
+		CriteriaMet:     f.criteriaMet,
+		CheckpointID:    f.checkpoint,
+		Criteria:        f.criteria,
+		Error:           f.failure,
+		Outcome:         f.outcome,
+		RetryAfter:      f.retryAfter,
+		BoundsViolation: f.violation,
 	}
 	if err := f.store.SaveLoopState(ctx, st); err != nil {
 		return coreloop.Result{}, err

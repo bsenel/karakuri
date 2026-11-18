@@ -9,6 +9,7 @@ import (
 	"time"
 
 	coreagent "github.com/bsenel/karakuri/internal/core/agent"
+	"github.com/bsenel/karakuri/internal/core/environment"
 	coreerrors "github.com/bsenel/karakuri/internal/core/errors"
 	"github.com/bsenel/karakuri/internal/core/event"
 	coreloop "github.com/bsenel/karakuri/internal/core/loop"
@@ -105,6 +106,15 @@ func (s *Service) pass(ctx context.Context, id objective.ObjectiveID, forced rec
 			// a concurrency slot burned every thirty seconds for a week.
 			s.reschedule(&st, cadence, now.Add(s.cfg.LeaseTTL))
 			s.recheckHeldLoop(&st, now)
+			return s.store.SaveReconcileState(ctx, st)
+		}
+		// This tick only came early because recheckHeldLoop brought it
+		// forward to read the loop's row. Treating it as a sense would start
+		// a drift pass minutes after every pass a stream runs, so an
+		// objective that declares no sense interval goes back to its slot.
+		if !rerun && forced == "" && st.NextReconcileAt != nil && now.Before(*st.NextReconcileAt) && cadence.SenseInterval() == 0 {
+			s.reschedule(&st, cadence, time.Time{})
+			st.Phase = reconcile.PhaseIdle
 			return s.store.SaveReconcileState(ctx, st)
 		}
 	}
@@ -387,6 +397,9 @@ func (s *Service) reconcileNow(
 	// whatever its row holds is not this pass's answer.
 	if !escalated && outcome.Deferred == "" {
 		outcome.Criteria = criterionPasses(final.Criteria, outcome.EndedAt)
+	}
+	if !escalated && final.BoundsViolation != nil {
+		s.block(ctx, st, obj, *final.BoundsViolation)
 	}
 	return s.finish(ctx, st, obj, cadence, outcome, &fp)
 }
@@ -810,9 +823,9 @@ func (s *Service) finish(
 		s.evaluateSustain(ctx, st, obj, outcome.EndedAt)
 	}
 
-	// A stopped pass is already paused by a person; the breaker must not
-	// replace their reason with its own.
-	if outcome.Deferred != outcomeStopped && s.trip(ctx, st, obj) {
+	// A stopped pass is already paused by a person, and a blocked one by a
+	// bounds violation; the breaker must not replace that reason with its own.
+	if !st.Paused && s.trip(ctx, st, obj) {
 		return s.store.SaveReconcileState(ctx, *st)
 	}
 
@@ -885,6 +898,30 @@ func (s *Service) trip(ctx context.Context, st *reconcile.State, obj objective.O
 		"summary": summary,
 	})
 	return true
+}
+
+// block takes a stream out of rotation after one of its actions did something
+// outside its declared bounds, such as a push to a ref it never named (Phase
+// 40 step 3). The objective moves to blocked and the pass's state to paused,
+// so no further pass starts until the owner resumes it through Resume. The
+// loop already wrote the bounds row when the action's result came back; this
+// writes none of its own.
+func (s *Service) block(ctx context.Context, st *reconcile.State, obj objective.Objective, v environment.BoundsViolation) {
+	pausedAt := s.now()
+	st.Paused = true
+	st.PausedReason = v.Reason
+	if st.PausedReason == "" {
+		st.PausedReason = "an action went outside its declared bounds"
+	}
+	st.PausedBy, st.PausedAt = "", &pausedAt
+	st.Phase = reconcile.PhasePaused
+	st.NextDueAt = nil
+	_ = s.store.UpdateObjectiveStatus(ctx, obj.ID, objective.StatusBlocked)
+	s.publish(ctx, event.TypeObjectiveSuspended, obj, map[string]any{
+		"reason":  "bounds_violation",
+		"summary": st.PausedReason,
+		"refs":    v.Refs,
+	})
 }
 
 // applyCleanRun counts a reconcile nobody objected to and promotes if the

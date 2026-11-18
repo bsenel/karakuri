@@ -5,7 +5,7 @@ import type { Checkpoint, CheckpointAction, CheckpointModifications } from '@/ap
 // ModifyCheckpointDialog collects the structured edits an operator
 // applies when resolving a checkpoint with decision="modify" (Phase 13.5):
 //
-//  - per-action drop checkboxes (RemovedActions)
+//  - per-action remove checkboxes (RemovedActions)
 //  - free-form constraints (one per line → AddedConstraints[])
 //  - operator-asserted confidence floor (RevisedConfidence)
 //  - free-text rationale (Decision.Note)
@@ -78,8 +78,10 @@ export function ModifyCheckpointDialog({ checkpoint, onClose, onSubmit }: Modify
 
         {actions.length > 0 && (
           <>
-            <h3 style={{ marginTop: 16 }}>Drop actions</h3>
-            <div className="col">
+            {/* Named as krk checkpoint resolve --remove-action names it, and tied
+                to the checkboxes so a screen reader hears what ticking one does. */}
+            <h3 id="modify-checkpoint-remove" style={{ marginTop: 16 }}>Remove actions</h3>
+            <div className="col" role="group" aria-labelledby="modify-checkpoint-remove">
               {actions.map((a, i) => (
                 <label key={i} className="row" style={{ alignItems: 'flex-start' }}>
                   <input

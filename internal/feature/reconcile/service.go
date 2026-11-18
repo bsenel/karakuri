@@ -745,6 +745,13 @@ func (s *Service) Resume(ctx context.Context, id objective.ObjectiveID, principa
 	if err := s.store.SaveReconcileState(ctx, st); err != nil {
 		return err
 	}
+	// A stream a bounds violation blocked (Phase 40 step 3) goes back to
+	// active only here, when its owner has looked.
+	if obj, err := s.store.GetObjective(ctx, id); err == nil && obj.Status == objective.StatusBlocked {
+		if err := s.store.UpdateObjectiveStatus(ctx, id, objective.StatusActive); err != nil {
+			return err
+		}
+	}
 	s.recordStop(ctx, id, "", principal, map[string]any{"control": "resume"})
 	return nil
 }
