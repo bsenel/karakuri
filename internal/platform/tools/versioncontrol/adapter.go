@@ -126,5 +126,9 @@ type VersionControlAdapter interface {
 	// whose forge cannot say returns an error wrapping ErrUnsupported, never a
 	// false, so a caller can tell "not protected" from "not known".
 	BranchProtected(ctx context.Context, repo, branch string) (bool, error)
+	// HasPullRequestForHead reports whether the forge has, or ever had, a pull
+	// request in any state whose head is branch. An adapter whose backend
+	// cannot say returns an error wrapping ErrUnsupported.
+	HasPullRequestForHead(ctx context.Context, repo, branch string) (bool, error)
 	Active() bool
 }
