@@ -113,6 +113,10 @@ func (v *recordingVC) BranchProtected(context.Context, string, string) (bool, er
 	return false, versioncontrol.ErrUnsupported
 }
 
+func (v *recordingVC) HasPullRequestForHead(context.Context, string, string) (bool, error) {
+	return false, versioncontrol.ErrUnsupported
+}
+
 // ── the acceptance test ──────────────────────────────────────────────────────
 
 // The write path, end to end, against a scratch repository.

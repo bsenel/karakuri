@@ -173,6 +173,10 @@ func (w *windowVC) BranchProtected(context.Context, string, string) (bool, error
 	return false, versioncontrol.ErrUnsupported
 }
 
+func (w *windowVC) HasPullRequestForHead(context.Context, string, string) (bool, error) {
+	return false, versioncontrol.ErrUnsupported
+}
+
 // Every byte here is re-serialised into the reason prompt of every iteration of
 // every loop watching the repository. An unfiltered read pulled the adapter's
 // whole first page each time.

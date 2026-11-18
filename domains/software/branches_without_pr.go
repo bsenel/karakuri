@@ -10,7 +10,7 @@ import (
 	"context"
 	"fmt"
 	"path"
-	"time"
+	"strings"
 
 	"github.com/bsenel/karakuri/internal/platform/tools/versioncontrol"
 )
@@ -45,9 +45,11 @@ func branchStream(branch string) string {
 }
 
 // observeBranchesWithoutPR writes branches_without_pr and its planner lines
-// into state. A forge that cannot list the branches or the open pull requests
-// leaves the list out and says why (AGENTS.md rule 10): an empty list would
-// tell the planner there is nothing to open.
+// into state. A branch counts as having a pull request when one in any state
+// names it, since compare main...head still counts a squash-merged branch as
+// ahead. A forge that cannot list the branches or say whether one had a pull
+// request leaves the list out and says why (AGENTS.md rule 10): an empty list
+// would tell the planner there is nothing to open.
 func observeBranchesWithoutPR(ctx context.Context, adapter versioncontrol.VersionControlAdapter, repo string, state map[string]any) {
 	blind := func(err error) {
 		state["branches_without_pr_error"] = err.Error()
@@ -61,23 +63,16 @@ func observeBranchesWithoutPR(ctx context.Context, adapter versioncontrol.Versio
 		blind(err)
 		return
 	}
-	// A zero since: the read bounded to the observation window drops an open
-	// pull request nobody touched lately, and its branch would be listed.
-	prs, err := adapter.ListPRs(ctx, repo, time.Time{})
-	if err != nil {
-		blind(err)
-		return
-	}
-	hasPR := make(map[string]bool, len(prs))
-	for _, pr := range prs {
-		hasPR[pr.HeadBranch] = true
-	}
-
 	listed := []map[string]any{}
 	lines := []string{}
 	for _, b := range branches {
+		// A salvage branch keeps a killed action's work for a human; it is no
+		// stream's work to open a pull request for.
+		if strings.Contains(b.Name, "-salvage") {
+			continue
+		}
 		stream := branchStream(b.Name)
-		if stream == "" || hasPR[b.Name] {
+		if stream == "" {
 			continue
 		}
 		ahead, err := adapter.CompareCommits(ctx, repo, "main", b.Name)
@@ -90,11 +85,19 @@ func observeBranchesWithoutPR(ctx context.Context, adapter versioncontrol.Versio
 		if len(ahead) == 0 {
 			continue
 		}
+		hadPR, err := adapter.HasPullRequestForHead(ctx, repo, b.Name)
+		if err != nil {
+			blind(err)
+			return
+		}
+		if hadPR {
+			continue
+		}
 		listed = append(listed, map[string]any{
 			"branch": b.Name, "sha": b.SHA, "stream": stream, "ahead": len(ahead),
 		})
 		lines = append(lines, fmt.Sprintf(
-			"Branch %s of stream %s is %d commit(s) ahead of main at %s and has no open pull request: open its pull request before any other work.",
+			"Branch %s of stream %s is %d commit(s) ahead of main at %s and has never had a pull request: open its pull request before any other work.",
 			b.Name, stream, len(ahead), shortSHA(b.SHA)))
 	}
 	state["branches_without_pr"] = listed
