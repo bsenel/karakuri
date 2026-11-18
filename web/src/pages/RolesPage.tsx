@@ -78,10 +78,16 @@ function Roles() {
 
   // Live regions: text that appears on its own is silent to a screen reader.
   if (roles.error) {
+    // A Retry beside the message, so the next step is a click rather than a
+    // reload that would also drop the reader's place in the app.
     return (
-      <p className="error" role="alert">
-        Could not load roles: {roles.error}. Check that the server is running, then reload.
-      </p>
+      <>
+        <h1>Roles</h1>
+        <p className="error" role="alert">
+          Could not load roles: {roles.error}. Check that the server is running, then retry.
+        </p>
+        <button onClick={() => { roles.reload(); catalog.reload(); }}>Retry</button>
+      </>
     );
   }
   if (roles.loading) return <p className="muted" role="status">Loading…</p>;

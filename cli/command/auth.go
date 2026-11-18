@@ -125,6 +125,8 @@ func authWhoamiCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "whoami",
 		Short: "Show the current principal, its roles and effective permissions",
+		Example: `  krk auth whoami
+  krk auth whoami --output json`,
 		RunE: func(_ *cobra.Command, _ []string) error {
 			data, _, err := api.Get("/auth/me")
 			if err != nil {
@@ -236,6 +238,8 @@ func authPoliciesCmd() *cobra.Command {
 	list := &cobra.Command{
 		Use:   "list",
 		Short: "List every policy, or the effective grants reaching one principal",
+		Example: `  krk auth policies list
+  krk auth policies list --principal alice`,
 		RunE: func(c *cobra.Command, _ []string) error {
 			path := "/auth/policies"
 			noun := "policies"
@@ -251,7 +255,7 @@ func authPoliciesCmd() *cobra.Command {
 			return nil
 		},
 	}
-	list.Flags().StringVar(&principal, "principal", "", "Show the grants that reach this principal, flattened across role inheritance")
+	list.Flags().StringVar(&principal, "principal", "", "Show the grants that reach this principal, flattened across role inheritance (default: list every policy)")
 	cmd.AddCommand(list)
 	return cmd
 }

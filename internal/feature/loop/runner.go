@@ -228,121 +228,140 @@ func (s *serviceImpl) runLoop(ctx context.Context, loopID string, req loop.Reque
 			telemetry.Attribute{Key: telemetry.GenAIAgentName, Value: agentName},
 		)
 
-		state.mu.Lock()
-		state.status.Iteration = iter
-		state.status.Step = loop.StepObserve
-		state.mu.Unlock()
-
-		// observe
-		ws := stepObserve(ictx, sc)
-		sc.observed = &ws
-		iterations = append(iterations, loop.Iteration{
-			Number:    iter,
-			Step:      loop.StepObserve,
-			Input:     nil,
-			Output:    ws,
-			Timestamp: time.Now().UTC(),
-		})
-
-		// reason
-		state.mu.Lock()
-		state.status.Step = loop.StepReason
-		state.mu.Unlock()
-
-		p := stepReason(ictx, sc, ws)
-		inputJSON, _ := json.Marshal(ws)
-		outputJSON, _ := json.Marshal(p)
-		iterations = append(iterations, loop.Iteration{
-			Number:    iter,
-			Step:      loop.StepReason,
-			Input:     string(inputJSON),
-			Output:    string(outputJSON),
-			Timestamp: time.Now().UTC(),
-		})
-
-		// No plan to decide on: the provider refused twice. End the run with
-		// its error rather than asking a human to approve an empty plan; the
-		// next pass is reconcile's decision, not the loop's.
-		if p.endReason != "" {
-			span.End()
-			s.finalizeLoop(ctx, state, obj, iterations, false, p.endErr)
-			return
-		}
-
-		// decide
-		state.mu.Lock()
-		state.status.Step = loop.StepDecide
-		state.mu.Unlock()
-
-		p, paused := stepDecide(ictx, sc, p, nil)
-		if paused {
+		var (
+			ws loop.WorldState
+			p  plan
+		)
+		if approved := state.takeApproved(); approved != nil {
+			// A loop restored at a checkpoint that has since been approved acts
+			// on the plan that checkpoint showed. Observing and reasoning again
+			// would put a plan nobody saw in front of an approval of another
+			// (Phase 40 step 5). Stored as no longer paused before the actions
+			// run, for the reason the approve path below gives (EB-009).
+			ws, p = approved.observed, approved.plan
 			state.mu.Lock()
-			state.status.Paused = true
-			state.mu.Unlock()
-
-			// Persist the paused state so a server restart picks up the loop
-			// in the right shape (Phase 11). The decision channel itself
-			// remains in-memory — a new Resume() call will recreate it.
-			s.persistState(ictx, state, false)
-
-			// Wait for resume signal. Phase 13.5: branch on Choice.
-			// Approve falls through with the draft. Reject finalizes
-			// the loop. Modify trims actions + runs a revise pass +
-			// re-enters stepDecide once; a second escalation
-			// auto-rejects to prevent ping-pong.
-			var decision corecheckpoint.Decision
-			select {
-			case <-ctx.Done():
-				span.End()
-				s.finalizeLoop(ctx, state, obj, iterations, false, ctx.Err())
-				return
-			case decision = <-state.decisionCh:
-			}
-
-			state.mu.Lock()
+			state.status.Iteration = iter
 			state.status.Paused = false
 			state.mu.Unlock()
-
-			switch decision.Choice {
-			case "reject":
-				s.recordCheckpointTerminal(ictx, state, "rejected_at_checkpoint", decision)
-				span.End()
-				s.finalizeLoop(ctx, state, obj, iterations, false, fmt.Errorf("rejected_at_checkpoint"))
-				return
-			case "modify":
-				revised, modPaused := s.applyModification(ictx, sc, p, decision)
-				p = revised
-				if modPaused {
-					// Re-approval required. Wait once more — the
-					// second escalation auto-rejects if it trips again.
-					s.persistState(ictx, state, false)
-					var second corecheckpoint.Decision
-					select {
-					case <-ctx.Done():
-						span.End()
-						s.finalizeLoop(ctx, state, obj, iterations, false, ctx.Err())
-						return
-					case second = <-state.decisionCh:
-					}
-					if second.Choice != "approve" {
-						s.recordCheckpointTerminal(ictx, state, "modify_loop_exceeded", second)
-						span.End()
-						s.finalizeLoop(ctx, state, obj, iterations, false, fmt.Errorf("modify_loop_exceeded"))
-						return
-					}
-					state.mu.Lock()
-					state.status.Paused = false
-					state.mu.Unlock()
-				}
-			}
-			// approve: fall through to act with the (possibly revised) plan.
-
-			// Stored before the actions run, which can take as long as a
-			// delegated coding action is allowed: a restart in between must
-			// find the decision taken, or ResumeStoredLoops waits for one that
-			// was already given and nothing is pending for anyone to answer
-			// (EB-009).
 			s.persistState(ictx, state, false)
+		} else {
+			state.mu.Lock()
+			state.status.Iteration = iter
+			state.status.Step = loop.StepObserve
+			state.mu.Unlock()
+
+			// observe
+			ws = stepObserve(ictx, sc)
+			sc.observed = &ws
+			iterations = append(iterations, loop.Iteration{
+				Number:    iter,
+				Step:      loop.StepObserve,
+				Input:     nil,
+				Output:    ws,
+				Timestamp: time.Now().UTC(),
+			})
+
+			// reason
+			state.mu.Lock()
+			state.status.Step = loop.StepReason
+			state.mu.Unlock()
+
+			p = stepReason(ictx, sc, ws)
+			inputJSON, _ := json.Marshal(ws)
+			outputJSON, _ := json.Marshal(p)
+			iterations = append(iterations, loop.Iteration{
+				Number:    iter,
+				Step:      loop.StepReason,
+				Input:     string(inputJSON),
+				Output:    string(outputJSON),
+				Timestamp: time.Now().UTC(),
+			})
+
+			// No plan to decide on: the provider refused twice. End the run with
+			// its error rather than asking a human to approve an empty plan; the
+			// next pass is reconcile's decision, not the loop's.
+			if p.endReason != "" {
+				span.End()
+				s.finalizeLoop(ctx, state, obj, iterations, false, p.endErr)
+				return
+			}
+
+			// decide
+			state.mu.Lock()
+			state.status.Step = loop.StepDecide
+			state.mu.Unlock()
+
+			var paused bool
+			p, paused = stepDecide(ictx, sc, p, nil)
+			if paused {
+				state.mu.Lock()
+				state.status.Paused = true
+				state.mu.Unlock()
+
+				// Persist the paused state so a server restart picks up the loop
+				// in the right shape (Phase 11). The decision channel itself
+				// remains in-memory — a new Resume() call will recreate it.
+				s.persistState(ictx, state, false)
+
+				// Wait for resume signal. Phase 13.5: branch on Choice.
+				// Approve falls through with the draft. Reject finalizes
+				// the loop. Modify trims actions + runs a revise pass +
+				// re-enters stepDecide once; a second escalation
+				// auto-rejects to prevent ping-pong.
+				var decision corecheckpoint.Decision
+				select {
+				case <-ctx.Done():
+					span.End()
+					s.finalizeLoop(ctx, state, obj, iterations, false, ctx.Err())
+					return
+				case decision = <-state.decisionCh:
+				}
+
+				state.mu.Lock()
+				state.status.Paused = false
+				state.mu.Unlock()
+
+				switch decision.Choice {
+				case "reject":
+					s.recordCheckpointTerminal(ictx, state, "rejected_at_checkpoint", decision)
+					span.End()
+					s.finalizeLoop(ctx, state, obj, iterations, false, fmt.Errorf("rejected_at_checkpoint"))
+					return
+				case "modify":
+					revised, modPaused := s.applyModification(ictx, sc, p, decision)
+					p = revised
+					if modPaused {
+						// Re-approval required. Wait once more — the
+						// second escalation auto-rejects if it trips again.
+						s.persistState(ictx, state, false)
+						var second corecheckpoint.Decision
+						select {
+						case <-ctx.Done():
+							span.End()
+							s.finalizeLoop(ctx, state, obj, iterations, false, ctx.Err())
+							return
+						case second = <-state.decisionCh:
+						}
+						if second.Choice != "approve" {
+							s.recordCheckpointTerminal(ictx, state, "modify_loop_exceeded", second)
+							span.End()
+							s.finalizeLoop(ctx, state, obj, iterations, false, fmt.Errorf("modify_loop_exceeded"))
+							return
+						}
+						state.mu.Lock()
+						state.status.Paused = false
+						state.mu.Unlock()
+					}
+				}
+				// approve: fall through to act with the (possibly revised) plan.
+
+				// Stored before the actions run, which can take as long as a
+				// delegated coding action is allowed: a restart in between must
+				// find the decision taken, or ResumeStoredLoops waits for one that
+				// was already given and nothing is pending for anyone to answer
+				// (EB-009).
+				s.persistState(ictx, state, false)
+			}
 		}
 
 		// A stop that arrived while the plan was being made or decided on

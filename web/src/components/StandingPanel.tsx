@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api, APIError } from '@/api/client';
+// Renamed: this file exports its own describe, for a reconcile outcome.
+import { describe as describeError } from '@/api/useApi';
 import { useAuth } from '@/auth/AuthProvider';
 import type { AutonomyLevel, Budget, ReconcileOutcome, ReconcileView } from '@/api/types';
 import { ReasonDialog } from './ReasonDialog';
@@ -24,6 +26,8 @@ export function StandingPanel({ objectiveID, budget }: { objectiveID: string; bu
   const [view, setView] = useState<ReconcileView | null>(null);
   const [standing, setStanding] = useState(true);
   const [err, setErr] = useState<string | null>(null);
+  // A failed reconcile or resume keeps the panel, so the controls stay usable.
+  const [actErr, setActErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [pausing, setPausing] = useState(false);
 
@@ -37,7 +41,7 @@ export function StandingPanel({ objectiveID, budget }: { objectiveID: string; bu
         setStanding(false);
         return;
       }
-      setErr(String(e));
+      setErr(describeError(e));
     }
   }, [objectiveID]);
 
@@ -55,11 +59,12 @@ export function StandingPanel({ objectiveID, budget }: { objectiveID: string; bu
 
   const act = async (path: string, body?: unknown) => {
     setBusy(true);
+    setActErr(null);
     try {
       await api.post(`/objectives/${objectiveID}/${path}`, body ?? {});
       await load();
     } catch (e) {
-      setErr(String(e));
+      setActErr(`Could not ${path} this objective: ${describeError(e)}`);
     } finally {
       setBusy(false);
     }
@@ -74,7 +79,14 @@ export function StandingPanel({ objectiveID, budget }: { objectiveID: string; bu
   };
 
   if (!standing) return null;
-  if (err) return <p className="pill red" role="alert">{err}</p>;
+  if (err) {
+    return (
+      <div className="row" style={{ marginTop: 16 }}>
+        <p className="pill red" role="alert">Could not read this objective's control loop: {err}</p>
+        <button onClick={() => void load()}>Retry</button>
+      </div>
+    );
+  }
   if (!view) return <p className="muted small" role="status">Loading control loop…</p>;
 
   const { state, history } = view;
@@ -127,6 +139,7 @@ export function StandingPanel({ objectiveID, budget }: { objectiveID: string; bu
             : <button onClick={() => setPausing(true)} disabled={busy}>Pause</button>
         )}
       </div>
+      {actErr && <p className="pill red" role="alert">{actErr}</p>}
       {pausing && (
         <ReasonDialog
           title="Pause this objective"
@@ -137,7 +150,9 @@ export function StandingPanel({ objectiveID, budget }: { objectiveID: string; bu
       )}
 
       <h4>Recent passes</h4>
-      {history.length === 0 && <p className="muted small">Nothing yet.</p>}
+      {history.length === 0 && (
+        <p className="muted small">No passes yet. The first one runs when the objective is next due.</p>
+      )}
       <table className="small" aria-label="Recent passes">
         <thead>
           <tr>
