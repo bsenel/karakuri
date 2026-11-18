@@ -679,6 +679,9 @@ func (s *serviceImpl) ResumeStoredLoops(ctx context.Context) error {
 		if err := json.Unmarshal([]byte(st.RequestJSON), &req); err != nil {
 			continue // skip un-resumable rows but keep going
 		}
+		if s.endedByRestart(ctx, st, req) {
+			continue
+		}
 		ls := &loopState{
 			id:         st.LoopID,
 			decisionCh: make(chan corecheckpoint.Decision, 1),
@@ -767,6 +770,44 @@ func (s *serviceImpl) ResumeStoredLoops(ctx context.Context) error {
 		}()
 	}
 	return nil
+}
+
+// endedByRestart ends a standing objective's stored loop that is not waiting
+// at a pending checkpoint, and reports whether it did. Replaying it would be a
+// second lifecycle beside reconcile's, which re-runs the pass the restart cut
+// off (Phase 40 step 4). A one-shot objective has no supervisor to do that,
+// and a pending checkpoint is a person's to answer, so both are left alone.
+//
+// When the row cannot be stored ended the loop is not replayed either: a
+// standing objective's pass is reconcile's to run, and the next boot tries
+// again.
+func (s *serviceImpl) endedByRestart(ctx context.Context, st loop.State, req loop.Request) bool {
+	obj := req.Objective
+	if stored, err := s.store.GetObjective(ctx, st.ObjectiveID); err == nil {
+		obj = stored
+	}
+	if !obj.IsStanding() {
+		return false
+	}
+	if st.Paused && st.CheckpointID != "" {
+		cp, err := s.store.GetCheckpoint(ctx, st.CheckpointID)
+		if err != nil || cp.Status == corecheckpoint.StatusPending {
+			return false
+		}
+	}
+	st.Completed = true
+	st.Paused = false
+	st.Status = objective.StatusStopped
+	st.Outcome = loop.RunInterruptedByRestart
+	st.Error = ""
+	if err := s.store.SaveLoopState(ctx, st); err != nil {
+		slog.Warn("could not store a standing objective's interrupted loop as ended",
+			"loop", st.LoopID, "objective", st.ObjectiveID, "err", err)
+		return true
+	}
+	slog.Info("ended a standing objective's loop interrupted by a restart; reconcile re-runs its pass",
+		"loop", st.LoopID, "objective", st.ObjectiveID)
+	return true
 }
 
 // Resumer is the optional capability bootstrap looks for at startup to revive
