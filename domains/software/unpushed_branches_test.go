@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -276,17 +277,12 @@ func TestGitObservationLeavesOutBranchesThatNeedNoPR(t *testing.T) {
 		}
 	}
 
-	// If the open pull requests were listed at all, they were read regardless
-	// of age. An observation that asks the forge per branch instead need not
-	// list them.
-	zero := false
-	for _, s := range forge.prsSinces {
-		if s.IsZero() {
-			zero = true
-		}
-	}
-	if len(forge.prsSinces) > 0 && !zero {
-		t.Errorf("ListPRs was only asked for a window (%v); an open pull request older than it is missed", forge.prsSinces)
+	// The old open pull request is found by asking the forge about its branch,
+	// not by a list bounded to the observation window, which would miss it.
+	// The git observation still lists open pull requests for the window for
+	// other fields, so ListPRs' since says nothing about this one.
+	if !slices.Contains(forge.headAsks, oldPR) {
+		t.Errorf("the forge was not asked whether %s ever had a pull request; asked about %q", oldPR, forge.headAsks)
 	}
 }
 

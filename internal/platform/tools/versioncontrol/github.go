@@ -483,10 +483,26 @@ func (g *GitHub) BranchProtected(ctx context.Context, repo, branch string) (bool
 	return raw.Protected, nil
 }
 
-// HasPullRequestForHead is a stub until Phase 40 step 6 reads
-// /pulls?state=all&head=owner:branch.
-func (g *GitHub) HasPullRequestForHead(_ context.Context, _, _ string) (bool, error) {
-	return false, fmt.Errorf("github: pull requests for head: %w", ErrUnsupported)
+// HasPullRequestForHead reports whether repo has, or ever had, a pull request
+// in any state whose head is branch. GitHub's head filter takes owner:branch;
+// a bare branch name is ignored and would list every pull request.
+func (g *GitHub) HasPullRequestForHead(ctx context.Context, repo, branch string) (bool, error) {
+	if repo == "" {
+		repo = g.repo
+	}
+	owner, _, ok := strings.Cut(repo, "/")
+	if !ok || owner == "" {
+		return false, fmt.Errorf("github: pull requests for head: repo %q is not owner/name", repo)
+	}
+	q := url.Values{}
+	q.Set("state", "all")
+	q.Set("head", owner+":"+branch)
+	q.Set("per_page", "1")
+	var raw []ghPull
+	if err := g.do(ctx, "GET", fmt.Sprintf("/repos/%s/pulls?%s", repo, q.Encode()), nil, &raw); err != nil {
+		return false, fmt.Errorf("github: pull requests for head: %w", err)
+	}
+	return len(raw) > 0, nil
 }
 
 func (g *GitHub) do(ctx context.Context, method, path string, body any, out any) error {
