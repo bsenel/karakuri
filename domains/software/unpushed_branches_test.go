@@ -24,6 +24,12 @@ import (
 // ListPRs drops an open pull request last updated before since, as GitHub's
 // adapter does. Only a zero since returns every open pull request, so an old
 // open pull request is missed by a read bounded to the observation window.
+//
+// HasPullRequestForHead answers from hadPR, a per-branch table of branches
+// with a pull request in any state (open, merged or closed unmerged); a branch
+// with an open pull request in prs answers true as well. headErr fails the
+// question for the branches it names, and prsErr fails every pull request
+// read, the list and the per-branch question alike.
 type branchForge struct {
 	vcStub
 	// ahead is what CompareCommits("main", branch) returns for each branch.
@@ -32,6 +38,31 @@ type branchForge struct {
 	prsErr     error
 	prsSinces  []time.Time
 	branchRead int
+
+	hadPR    map[string]bool
+	headErr  map[string]error
+	headAsks []string
+}
+
+func (f *branchForge) HasPullRequestForHead(_ context.Context, _, branch string) (bool, error) {
+	f.headAsks = append(f.headAsks, branch)
+	if f.prsErr != nil {
+		return false, f.prsErr
+	}
+	if err := f.headErr[branch]; err != nil {
+		// true with the error, so a caller that reads the bool despite the
+		// error leaves the branch out and is caught by the blind tests.
+		return true, err
+	}
+	if f.hadPR[branch] {
+		return true, nil
+	}
+	for _, pr := range f.prs {
+		if pr.HeadBranch == branch {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func (f *branchForge) ListPRs(_ context.Context, _ string, since time.Time) ([]versioncontrol.PRSummary, error) {
@@ -245,14 +276,16 @@ func TestGitObservationLeavesOutBranchesThatNeedNoPR(t *testing.T) {
 		}
 	}
 
-	// The open pull requests were read regardless of age.
+	// If the open pull requests were listed at all, they were read regardless
+	// of age. An observation that asks the forge per branch instead need not
+	// list them.
 	zero := false
 	for _, s := range forge.prsSinces {
 		if s.IsZero() {
 			zero = true
 		}
 	}
-	if !zero {
+	if len(forge.prsSinces) > 0 && !zero {
 		t.Errorf("ListPRs was only asked for a window (%v); an open pull request older than it is missed", forge.prsSinces)
 	}
 }

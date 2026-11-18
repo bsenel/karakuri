@@ -483,6 +483,12 @@ func (g *GitHub) BranchProtected(ctx context.Context, repo, branch string) (bool
 	return raw.Protected, nil
 }
 
+// HasPullRequestForHead is a stub until Phase 40 step 6 reads
+// /pulls?state=all&head=owner:branch.
+func (g *GitHub) HasPullRequestForHead(_ context.Context, _, _ string) (bool, error) {
+	return false, fmt.Errorf("github: pull requests for head: %w", ErrUnsupported)
+}
+
 func (g *GitHub) do(ctx context.Context, method, path string, body any, out any) error {
 	var reader io.Reader
 	if body != nil {
