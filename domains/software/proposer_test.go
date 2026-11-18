@@ -1,6 +1,8 @@
 package software
 
 import (
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -228,11 +230,8 @@ func TestAProposalActionThatPushedToAnotherStreamsBranchIsCaught(t *testing.T) {
 }
 
 // Step 3 for paths: an action that slipped past the decide step and pushed,
-// to its own branch, a file outside its declared paths fails after it ran.
-//
-// The step 3 check reads refs, not the files a push changed, so today this
-// passes the action. The paths criterion catches it later, after the pull
-// request opens; that fails the pass but does not stop the push.
+// to its own branch, a file outside its declared paths fails after it ran
+// (checkPushedPaths), not only later at the paths criterion.
 func TestAProposalActionThatPushedOutsideItsPathsIsCaught(t *testing.T) {
 	const branch = "karakuri/tech-backlog-2026-11-18"
 	f := newPushedRefsFixture(t)
@@ -250,5 +249,27 @@ func TestAProposalActionThatPushedOutsideItsPathsIsCaught(t *testing.T) {
 	}
 	if !strings.Contains(res.Error, "outside.go") {
 		t.Errorf("Error = %q, want it to name the path outside.go", res.Error)
+	}
+}
+
+// The check after the run passes an action whose push to its own branch
+// changed only its declared paths.
+func TestAProposalActionThatPushedInsideItsPathsPasses(t *testing.T) {
+	const branch = "karakuri/tech-backlog-2026-11-18"
+	f := newPushedRefsFixture(t)
+	action := salvageAction(f.worktree)
+	action.Params["branch"] = branch
+	// item.txt is the fixture's own commit on the worktree, ahead of main.
+	action.Params["paths"] = strs("item.txt", "docs/*")
+	res := actWith(t, f.worktree, action, func(t *testing.T, wt string) error {
+		if err := os.MkdirAll(filepath.Join(wt, "docs"), 0o750); err != nil {
+			t.Fatal(err)
+		}
+		commitIn(t, wt, "docs/roadmap.md")
+		gitIn(t, wt, "push", "origin", "HEAD:refs/heads/"+branch)
+		return nil
+	})
+	if !res.Success || res.BoundsViolation != nil {
+		t.Fatalf("an action that pushed only its declared paths failed: error %q, violation %+v", res.Error, res.BoundsViolation)
 	}
 }

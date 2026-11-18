@@ -63,10 +63,17 @@ ran. The guarantee no longer depends on permitting no action at all.
   template. A template that drops a limit widens what the proposer may do,
   so the limits are held by tests on the templates, not by a comment.
 - A path limit is new: steps 1 to 3 limit branches and tools, not the paths
-  a coding action writes. Until the decide step checks a declared path
-  parameter and the step 3 check reads the paths a push touched, the paths
-  rule is held by the `paths` criterion after the pull request opens, which
-  fails the pass but does not stop the write.
+  a coding action writes. Each coding action of the two streams now lists
+  the files it writes in `params.paths`, which the decide step holds to the
+  template's paths like any other limit, and after a delegated run a push
+  to the declared branch that changed any other file fails with a bounds
+  violation (`checkPushedPaths`). The `paths` criterion still checks the
+  pull request. Like the refs check, this detects after the push; branch
+  protection on the remote is what prevents.
+- The proposer does not list `software.act.create_pr`, because an agent
+  that holds it holds `software.act.mark_ready` too. Its coding agent opens
+  the pull request with `gh pr create`, and a planned `create_pr` is still
+  held to the template's main-only `base_branch` limit.
 
 ## Alternatives considered
 
