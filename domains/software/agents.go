@@ -7,6 +7,11 @@ import (
 	"github.com/bsenel/karakuri/internal/core/capability"
 )
 
+// AgentProposer runs the proposal streams, market_discovery and
+// engineering_backlog: a few autonomous actions, bounded by the templates'
+// limits rather than by permitting none (Phase 40 step 10, ADR 030).
+const AgentProposer agent.AgentID = "software.agent.proposer"
+
 func softwareAgentDefinitions() []agent.Definition {
 	mem := agent.MemoryConfig{
 		WorkingWindowSize: 20,
