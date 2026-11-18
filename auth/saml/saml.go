@@ -80,9 +80,10 @@ var (
 	// nothing to key a principal on.
 	ErrNoSubject = errors.New("saml: assertion has no subject NameID")
 
-	// ErrMalformedAssertion is returned when crewjam panics on a response.
-	// GO-2026-6909: a signed assertion missing an element crewjam assumes is
-	// present dereferences nil after the signature has been checked.
+	// ErrMalformedAssertion is returned when an assertion lacks an element it
+	// requires, such as its Subject, or when crewjam panics on a response.
+	// GO-2026-6909: before 0.6.3 a signed assertion missing an element crewjam
+	// assumes is present dereferenced nil after the signature had been checked.
 	ErrMalformedAssertion = errors.New("saml: malformed assertion")
 
 	// ErrForeignNameID is returned when a response carries a NameID outside the
@@ -342,6 +343,13 @@ func (p *Provider) ACSHandler(
 			var invalid *crewjam.InvalidResponseError
 			if errors.As(err, &invalid) && invalid.PrivateErr != nil {
 				err = invalid.PrivateErr
+			}
+			// crewjam 0.6.3 refuses an assertion missing a required element,
+			// a Subject among them, where 0.5.1 panicked on it. Either way it
+			// is the same malformed assertion to a host, so the contract keeps
+			// one error for it; the cause stays wrapped for the reason.
+			if errors.Is(err, crewjam.ErrMissingElement) {
+				err = fmt.Errorf("%w: %w", ErrMalformedAssertion, err)
 			}
 			fail(w, r, fmt.Errorf("saml: parse assertion: %w", err))
 			return
