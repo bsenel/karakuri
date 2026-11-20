@@ -30,6 +30,10 @@ providers:
     gemini: claude
     cursor: claude
     copilot: claude
+  # Tools the `claude` CLI fallback may use during a model call without asking
+  # (empty: none). Keep it read-only; a planner's prompt can carry third-party
+  # text. For a planner to read the pull requests it plans for:
+  # claude_cli_allowed_tools: ["Bash(gh pr list:*)", "Bash(gh pr view:*)", "Bash(gh pr checks:*)", "Bash(gh run list:*)", "Bash(gh run view:*)"]
 
 executor: local
 
