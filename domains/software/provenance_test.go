@@ -117,6 +117,10 @@ func (s *vcStub) BranchProtected(_ context.Context, repo, branch string) (bool, 
 	return s.protected, nil
 }
 
+func (s *vcStub) HasPullRequestForHead(context.Context, string, string) (bool, error) {
+	return false, versioncontrol.ErrUnsupported
+}
+
 // A pull request title is typed by whoever opened it, which on a public
 // repository is anybody. The observation that carries one says so.
 func TestGitObservationIsThirdPartyOnlyWhenItCarriesAPullRequest(t *testing.T) {

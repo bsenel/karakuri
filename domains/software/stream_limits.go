@@ -111,30 +111,54 @@ func branchConstraint(branch, base string) objective.Constraint {
 	}
 }
 
+// branchesWithoutPRConstraint tells every stream's planner to open its own
+// branches that the git observation lists without a pull request before any
+// new work, so a pass that pushed and then died does not strand its branch
+// (Phase 40 step 6). The action it names is the one branchConstraint already
+// holds to the stream's branches, so the limits admit it. One constraint for
+// all four streams: the rule does not depend on which stream reads it.
+var branchesWithoutPRConstraint = objective.Constraint{
+	ID: "branches-without-pr",
+	Description: "The git observation's branches_without_pr lists branches ahead of main with no open pull request, each with its stream. " +
+		"The plan opens a pull request for each branch of this stream it lists, first, before any other new work: " +
+		"one software.act.create_pr action with params.branch set to the listed branch and params.base_branch set as the action limits require. " +
+		"When branches_without_pr_error is set instead, the pass reports that it could not see the branches and does not treat the list as empty.",
+	Hard: true,
+}
+
 // withBase is the base tools and a stream's own, in a fresh slice.
 func withBase(tools ...string) []string {
 	return append(append([]string{}, streamBaseTools...), tools...)
 }
 
+// Each stream's own branches, as path.Match patterns. The limits hold a coding
+// action to them, and the git observation reads them to find a stream's branch
+// that has no pull request (Phase 40 step 6). Delivery's are a phase's groups,
+// karakuri/phase-<n>-..., and a backlog entry's branch, karakuri/eb-<id>-....
+var (
+	discoveryBranches = []string{"karakuri/discovery-*"}
+	backlogBranches   = []string{"karakuri/tech-backlog-*"}
+	uxBranches        = []string{"karakuri/ux-*"}
+	deliveryBranches  = []string{"karakuri/phase-*", "karakuri/eb-*"}
+)
+
 func discoveryLimits() []agent.ActionLimit {
-	return streamLimits(exactly(withBase("WebSearch", "WebFetch")), []string{"karakuri/discovery-*"})
+	return streamLimits(exactly(withBase("WebSearch", "WebFetch")), discoveryBranches)
 }
 
 func backlogLimits() []agent.ActionLimit {
 	tools := exactly(withBase("Bash(tail:*)", "Bash(wc:*)", "Bash(sort:*)", "Bash(uniq:*)", "Bash(head:*)"))
-	return streamLimits(append(tools, krkToolPatterns()...), []string{"karakuri/tech-backlog-*"})
+	return streamLimits(append(tools, krkToolPatterns()...), backlogBranches)
 }
 
 func uxLimits() []agent.ActionLimit {
 	return streamLimits(exactly(withBase("Bash(gh pr checks:*)", "Bash(gh run view:*)", "Bash(go:*)", "Bash(gofmt:*)", "Bash(sed:*)")),
-		[]string{"karakuri/ux-*"})
+		uxBranches)
 }
 
-// deliveryLimits: a phase's groups are karakuri/phase-<n>-..., a backlog
-// entry's branch karakuri/eb-<id>-....
 func deliveryLimits() []agent.ActionLimit {
 	return streamLimits(exactly(withBase(
 		"Bash(gh pr comment:*)", "Bash(gh pr ready:*)", "Bash(gh pr checks:*)", "Bash(gh run view:*)",
 		"Bash(go:*)", "Bash(gofmt:*)", "Bash(scripts/check_langchaingo_imports.sh:*)", "Bash(sed:*)")),
-		[]string{"karakuri/phase-*", "karakuri/eb-*"})
+		deliveryBranches)
 }
