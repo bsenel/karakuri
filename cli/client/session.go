@@ -110,6 +110,11 @@ func (c *Client) Login(id, password string) (Session, error) {
 	if err != nil {
 		return Session{}, err
 	}
+	// A 401 here means the ID or the password is wrong, not that a session
+	// expired; say which inputs to check instead of a bare "unauthorized".
+	if status == http.StatusUnauthorized {
+		return Session{}, fmt.Errorf("login failed: %s\nCheck the --id and the password piped to --password-stdin, e.g. `krk auth login --id %s --password-stdin < password.txt`; an account without a password signs in with --sso or --refresh-token", apiMessage(data, status), id)
+	}
 	if status != http.StatusOK {
 		return Session{}, fmt.Errorf("login failed: %s", apiMessage(data, status))
 	}
