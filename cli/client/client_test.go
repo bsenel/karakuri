@@ -87,3 +87,23 @@ func TestNotFoundNamesTheListCommandOfTheNoun(t *testing.T) {
 		}
 	}
 }
+
+// A rejected password used to print only "login failed: invalid credentials".
+// It has to name the inputs to check and the other ways in.
+func TestLoginRejectedSaysWhatToCheck(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "invalid credentials", http.StatusUnauthorized)
+	}))
+	defer srv.Close()
+
+	_, err := New(srv.URL).Login("alice", "wrong")
+	if err == nil {
+		t.Fatal("no error from a 401")
+	}
+	msg := err.Error()
+	for _, want := range []string{"login failed: ", "Check the --id and the password", "krk auth login --id alice --password-stdin", "--sso"} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("%q does not contain %q", msg, want)
+		}
+	}
+}

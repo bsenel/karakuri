@@ -69,7 +69,7 @@ Reading usage does not consume any of it.`,
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&twin, "twin", "", "twin ID, from 'krk twin list' (required)")
+	cmd.Flags().StringVar(&twin, "twin", "", "Twin ID, from 'krk twin list' (required)")
 	_ = cmd.MarkFlagRequired("twin")
 	return cmd
 }
@@ -98,8 +98,8 @@ capability's daily count.`,
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&twin, "twin", "", "twin ID, from 'krk twin list' (required)")
-	cmd.Flags().StringVar(&capability, "capability", "", "capability ID from 'krk domain capabilities'; resets only its daily count (default: the twin-wide tiers)")
+	cmd.Flags().StringVar(&twin, "twin", "", "Twin ID, from 'krk twin list' (required)")
+	cmd.Flags().StringVar(&capability, "capability", "", "Capability ID from 'krk domain capabilities'; resets only its daily count (default: the twin-wide tiers)")
 	_ = cmd.MarkFlagRequired("twin")
 	return cmd
 }

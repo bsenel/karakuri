@@ -68,13 +68,13 @@ on its own, which is what "we need double for launch week" actually means.`,
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&tier, "tier", "", "which limit: request, capability, llm-tokens or adapter (required)")
-	cmd.Flags().StringVar(&twin, "twin", "", "twin the limit applies to, for the twin tiers")
-	cmd.Flags().StringVar(&principal, "principal", "", "principal the limit applies to, for --tier request (default: you)")
-	cmd.Flags().IntVar(&cap, "cap", 0, "the new ceiling (required)")
-	cmd.Flags().DurationVar(&window, "window", 0, "new window, for rate tiers only")
-	cmd.Flags().StringVar(&until, "until", "", "when the raise should lapse, RFC3339 (default: permanent)")
-	cmd.Flags().StringVar(&reason, "reason", "", "why you need it (required)")
+	cmd.Flags().StringVar(&tier, "tier", "", "Which limit: request, capability, llm-tokens or adapter (required)")
+	cmd.Flags().StringVar(&twin, "twin", "", "Twin the limit applies to, for the twin tiers, by twin ID from 'krk twin list'")
+	cmd.Flags().StringVar(&principal, "principal", "", "Principal the limit applies to, for --tier request (default: you)")
+	cmd.Flags().IntVar(&cap, "cap", 0, "The new ceiling (required)")
+	cmd.Flags().DurationVar(&window, "window", 0, "New window, e.g. 1m or 24h, for rate tiers only")
+	cmd.Flags().StringVar(&until, "until", "", "When the raise should lapse, RFC3339 (default: permanent)")
+	cmd.Flags().StringVar(&reason, "reason", "", "Why you need it (required)")
 	_ = cmd.MarkFlagRequired("tier")
 	_ = cmd.MarkFlagRequired("cap")
 	_ = cmd.MarkFlagRequired("reason")
@@ -127,9 +127,9 @@ func quotaRequestsListCmd() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&status, "status", "", "pending, approved or rejected")
-	cmd.Flags().StringVar(&twin, "twin", "", "only requests about this twin")
-	cmd.Flags().BoolVar(&mine, "mine", false, "only requests you made")
+	cmd.Flags().StringVar(&status, "status", "", "Show only requests in this state: pending, approved or rejected (default: all)")
+	cmd.Flags().StringVar(&twin, "twin", "", "Show only requests about this twin, by twin ID from 'krk twin list'")
+	cmd.Flags().BoolVar(&mine, "mine", false, "Show only requests you made")
 	return cmd
 }
 

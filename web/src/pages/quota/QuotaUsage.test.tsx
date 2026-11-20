@@ -28,6 +28,21 @@ describe('QuotaUsage', () => {
     expect(screen.queryByRole('table')).not.toBeInTheDocument();
   });
 
+  it('says when the twins cannot be read, and retries', async () => {
+    get.mockRejectedValue(new APIError(403, '{"message":"twin:read is not granted"}'));
+
+    render(<QuotaUsage />);
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Could not load twins: twin:read is not granted',
+    );
+    expect(screen.queryByText(/Pick a twin/)).not.toBeInTheDocument();
+
+    get.mockResolvedValue(twins);
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    expect(await screen.findByRole('option', { name: 'Ann' })).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
   it("labels the table of a twin's tiers", async () => {
     get.mockImplementation((path: string) =>
       Promise.resolve(
