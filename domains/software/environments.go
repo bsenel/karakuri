@@ -133,6 +133,7 @@ func softwareEnvironmentFactories(reg *tools.Registry) []environment.Factory {
 					env.attachMCP, env.mcpURL = cliMCPOptions(opts)
 					env.timeoutSeconds = cliTimeoutSeconds(opts)
 					env.allowedTools = config.InstanceConfig{Options: opts}.OptStrings("allowed_tools")
+					env.model = config.InstanceConfig{Options: opts}.OptString("model")
 				}
 				return env, nil
 			},
@@ -693,6 +694,10 @@ type cliEnv struct {
 	// allowedTools is the instance's allowed_tools option: the tool list a
 	// delegation gets when its action names none.
 	allowedTools []string
+	// model is the instance's model option: the model every delegation runs,
+	// so coding agents can run a cheaper model than the planner. Empty leaves
+	// the CLI on its own default.
+	model string
 }
 
 // DelegationCredential is what one delegation carries to Karakuri's own MCP
@@ -802,6 +807,7 @@ func (e *cliEnv) Act(ctx context.Context, a environment.Action) (environment.Act
 		Prompt:         prompt,
 		WorktreePath:   worktree,
 		TimeoutSeconds: e.delegationTimeoutSeconds(),
+		Model:          e.model,
 	}
 	if files, ok := a.Params["files"].([]any); ok {
 		for _, f := range files {

@@ -407,6 +407,7 @@ tools:
   #         # attach_karakuri_mcp: true
   #         # karakuri_mcp_url: https://karakuri.example.com/api/v1/mcp
   #         # timeout_seconds: 1800  # how long one delegation may run (default 600)
+  #         # model: sonnet          # the model every delegation runs (default: the CLI's own)
   #         # allowed_tools: [Read, Edit, Write, Glob, Grep, "Bash(git:*)", "Bash(go:*)"]
   cli_agents:
     default: ""
