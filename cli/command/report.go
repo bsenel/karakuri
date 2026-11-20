@@ -149,7 +149,7 @@ tomorrow's would have looked like.`,
 		},
 	}
 	cmd.Flags().StringVar(&twinID, "twin", "", "Twin to report on (required)")
-	cmd.Flags().StringVar(&window, "window", "24h", "How far back to look")
+	cmd.Flags().StringVar(&window, "window", "24h", "How far back to look, e.g. 24h or 168h for a week")
 	_ = cmd.MarkFlagRequired("twin")
 	return cmd
 }
