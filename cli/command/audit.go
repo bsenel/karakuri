@@ -85,7 +85,7 @@ most recent entries across all kinds.`,
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&objectiveID, "objective", "", "Filter by objective ID")
+	cmd.Flags().StringVar(&objectiveID, "objective", "", "Show only this objective's entries, by objective ID from 'krk objective list'")
 	cmd.Flags().StringVar(&agentID, "agent", "", "Filter by agent ID")
 	cmd.Flags().StringVar(&kind, "kind", "", "Filter by event kind (execute|escalation|approval)")
 	cmd.Flags().StringVar(&provider, "provider", "", "Filter by the provider that drafted the plan")

@@ -133,6 +133,7 @@ func softwareEnvironmentFactories(reg *tools.Registry) []environment.Factory {
 					env.attachMCP, env.mcpURL = cliMCPOptions(opts)
 					env.timeoutSeconds = cliTimeoutSeconds(opts)
 					env.allowedTools = config.InstanceConfig{Options: opts}.OptStrings("allowed_tools")
+					env.model = config.InstanceConfig{Options: opts}.OptString("model")
 				}
 				return env, nil
 			},
@@ -414,6 +415,9 @@ func (e *gitEnv) Observe(ctx context.Context, q environment.ObservationQuery) (e
 		}
 		state["salvage_branches"] = branches
 	}
+	// A stream's branch ahead of main with no open pull request (Phase 40
+	// step 6), so its stream opens that pull request before new work.
+	observeBranchesWithoutPR(ctx, adapter, repo, state)
 	// Whether main is protected, so the oversight view can show it (Phase 40
 	// step 3). This is detection, not prevention. A read that failed is "not
 	// known" whatever the bool says, never "protected" (AGENTS.md rule 10).
@@ -690,6 +694,10 @@ type cliEnv struct {
 	// allowedTools is the instance's allowed_tools option: the tool list a
 	// delegation gets when its action names none.
 	allowedTools []string
+	// model is the instance's model option: the model every delegation runs,
+	// so coding agents can run a cheaper model than the planner. Empty leaves
+	// the CLI on its own default.
+	model string
 }
 
 // DelegationCredential is what one delegation carries to Karakuri's own MCP
@@ -799,6 +807,7 @@ func (e *cliEnv) Act(ctx context.Context, a environment.Action) (environment.Act
 		Prompt:         prompt,
 		WorktreePath:   worktree,
 		TimeoutSeconds: e.delegationTimeoutSeconds(),
+		Model:          e.model,
 	}
 	if files, ok := a.Params["files"].([]any); ok {
 		for _, f := range files {

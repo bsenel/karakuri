@@ -59,3 +59,7 @@ func (n *NoOp) EditPRBody(_ context.Context, _, _, _ string) error {
 func (n *NoOp) BranchProtected(_ context.Context, _, _ string) (bool, error) {
 	return false, fmt.Errorf("noop: branch protection: %w", ErrUnsupported)
 }
+
+func (n *NoOp) HasPullRequestForHead(_ context.Context, _, _ string) (bool, error) {
+	return false, fmt.Errorf("noop: pull requests for head: %w", ErrUnsupported)
+}
