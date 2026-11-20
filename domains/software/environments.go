@@ -416,6 +416,9 @@ func (e *gitEnv) Observe(ctx context.Context, q environment.ObservationQuery) (e
 		}
 		state["salvage_branches"] = branches
 	}
+	// A stream's branch ahead of main with no open pull request (Phase 40
+	// step 6), so its stream opens that pull request before new work.
+	observeBranchesWithoutPR(ctx, adapter, repo, state)
 	// Whether main is protected, so the oversight view can show it (Phase 40
 	// step 3). This is detection, not prevention. A read that failed is "not
 	// known" whatever the bool says, never "protected" (AGENTS.md rule 10).
