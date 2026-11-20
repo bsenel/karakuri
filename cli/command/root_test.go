@@ -17,7 +17,7 @@ func TestInvalidOutputFormat(t *testing.T) {
 	if err == nil {
 		t.Fatal("--output yaml: expected an error")
 	}
-	if want := `invalid --output "yaml": use json, pretty or quiet`; err.Error() != want {
+	if want := "invalid --output \"yaml\": use json, pretty or quiet, e.g. `krk twin list --output json` to feed a script, or drop --output for the readable default"; err.Error() != want {
 		t.Errorf("--output yaml: error %q, want %q", err, want)
 	}
 }
