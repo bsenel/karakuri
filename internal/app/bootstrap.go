@@ -85,7 +85,7 @@ func BootstrapServer(cfgPath string) (*Bootstrap, error) {
 	store := storage.NewGORMStorage(gormDB)
 
 	providers := llm.NewRegistry(cfg.Providers.Fallback)
-	claude, err := llm.NewClaudeProvider()
+	claude, err := llm.NewClaudeProvider(llm.WithCLIAllowedTools(cfg.Providers.ClaudeCLIAllowedTools))
 	if err != nil {
 		return nil, err
 	}
