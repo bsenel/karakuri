@@ -107,7 +107,18 @@ export function QuotaSettings() {
           edit here would not survive a restart, and the server refuses one.
         </p>
       )}
-      {error && <p className="error">{error}</p>}
+      {error && <p className="error" role="alert">{error}</p>}
+      {/* Without the stored tiers the page still reads as complete, but who
+          changed a limit and the reset button are silently missing. */}
+      {tiers.error && (
+        <div className="row">
+          <p className="error" role="alert">
+            Could not load the limits changed here: {tiers.error}. Who changed a limit, and
+            resetting it to configured, are hidden until they load.
+          </p>
+          <button onClick={tiers.reload}>Retry</button>
+        </div>
+      )}
 
       {quotaTiers.map((tier) => {
         const inForce = c[tier.key].cap;
