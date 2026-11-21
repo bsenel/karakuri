@@ -19,6 +19,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/bsenel/karakuri/internal/core/capability"
 	"github.com/bsenel/karakuri/internal/core/environment"
 )
 
@@ -61,6 +62,84 @@ func checkPushedRefs(ctx context.Context, worktree string, declared map[string]b
 		Reason: "bounds violation: " + strings.Join(violations, "; "),
 		Refs:   refs,
 	}, nil
+}
+
+// checkPushedPaths fails an action that declared params.paths, globs here, and
+// pushed to its declared branch a change to a file outside them (Phase 40 step
+// 10). The decide step held the declaration to the template's paths; this
+// holds the push to the declaration. What the run pushed is the branch's diff
+// from its tip before the run, or, for a branch the run created, from main as
+// origin had it before the run: a proposal stream's pull request opens only
+// against main. A rename counts both names. No globs, no branch or a branch
+// the run did not move is nothing to check; a diff that cannot be read is an
+// error, never a pass.
+func checkPushedPaths(ctx context.Context, worktree, branch string, globs []string, before map[string]string) (*environment.BoundsViolation, error) {
+	if len(globs) == 0 || branch == "" {
+		return nil, nil
+	}
+	after, err := readRemoteRefs(ctx, worktree)
+	if err != nil {
+		return nil, fmt.Errorf("what the run pushed could not be checked: %w", err)
+	}
+	ref := headsPrefix + branch
+	now := after[ref]
+	if now == "" || now == before[ref] {
+		return nil, nil
+	}
+	base, baseRef := before[ref], ref
+	if base == "" {
+		base, baseRef = before[headsPrefix+"main"], headsPrefix+"main"
+	}
+	if base == "" {
+		return nil, fmt.Errorf("what the run pushed to %s could not be checked: origin had neither that branch nor main before the run", branch)
+	}
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), salvageTimeout)
+	defer cancel()
+	dir := filepath.Clean(worktree)
+	// Fetched by ref, which origin always serves, when the worktree's
+	// repository does not hold the commit.
+	for sha, from := range map[string]string{base: baseRef, now: ref} {
+		if _, err := gitOutput(ctx, dir, nil, "cat-file", "-e", sha+"^{commit}"); err != nil {
+			if _, err := gitOutput(ctx, dir, nil, "fetch", "--no-tags", "origin", from); err != nil {
+				return nil, fmt.Errorf("what the run pushed to %s could not be checked: fetching %s: %w", branch, from, err)
+			}
+		}
+	}
+	out, err := gitOutput(ctx, dir, nil, "diff", "--name-only", "--no-renames", base+"..."+now)
+	if err != nil {
+		return nil, fmt.Errorf("what the run pushed to %s could not be checked: %w", branch, err)
+	}
+	var outside []string
+	for _, f := range strings.Split(out, "\n") {
+		if f = strings.TrimSpace(f); f != "" && !capability.TouchesAnyGlob([]string{f}, globs) {
+			outside = append(outside, f)
+		}
+	}
+	if len(outside) == 0 {
+		return nil, nil
+	}
+	return &environment.BoundsViolation{
+		Reason: fmt.Sprintf("bounds violation: %s pushed a change to %s, outside the action's declared paths [%s]",
+			branch, strings.Join(outside, ", "), strings.Join(globs, ", ")),
+		Refs: []string{ref},
+	}, nil
+}
+
+// joinViolations is one bounds violation holding both a and b, either of
+// which may be nil.
+func joinViolations(a, b *environment.BoundsViolation) *environment.BoundsViolation {
+	switch {
+	case a == nil:
+		return b
+	case b == nil:
+		return a
+	}
+	refs := append(append([]string{}, a.Refs...), b.Refs...)
+	sort.Strings(refs)
+	return &environment.BoundsViolation{
+		Reason: a.Reason + "; " + strings.TrimPrefix(b.Reason, "bounds violation: "),
+		Refs:   slices.Compact(refs),
+	}
 }
 
 // remoteRefs maps every branch and tag on the worktree's origin to its SHA. An
