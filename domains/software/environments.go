@@ -367,9 +367,9 @@ func (e *gitEnv) Observe(ctx context.Context, q environment.ObservationQuery) (e
 	} else {
 		state["commits"] = commits
 	}
-	prs, err := adapter.ListPRs(ctx, repo, since)
-	if err != nil {
-		state["prs_error"] = err.Error()
+	prs, prsErr := adapter.ListPRs(ctx, repo, since)
+	if prsErr != nil {
+		state["prs_error"] = prsErr.Error()
 	} else {
 		// Each entry carries its body's checklist, and the checklists are
 		// written out as lines too, so a plan sees which steps are already
@@ -421,6 +421,11 @@ func (e *gitEnv) Observe(ctx context.Context, q environment.ObservationQuery) (e
 	// A stream's branch ahead of main with no open pull request (Phase 40
 	// step 6), so its stream opens that pull request before new work.
 	observeBranchesWithoutPR(ctx, adapter, repo, state)
+	// The open stream pull requests whose head has no review (Phase 40 step 11),
+	// from the pull requests listed above rather than a second read of them.
+	if prsErr == nil {
+		observePRsWithoutReview(ctx, adapter, repo, prs, state)
+	}
 	// Whether main is protected, so the oversight view can show it (Phase 40
 	// step 3). This is detection, not prevention. A read that failed is "not
 	// known" whatever the bool says, never "protected" (AGENTS.md rule 10).

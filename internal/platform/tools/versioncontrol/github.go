@@ -398,9 +398,30 @@ func (g *GitHub) PostReview(ctx context.Context, repo, prID, body string, commen
 	return nil
 }
 
-// ReviewedCommits is not implemented yet (phase 40 step 11, TDD scaffold).
+// ReviewedCommits lists the commit id each review on a pull request was left
+// at, so a caller can tell whether the current head was ever reviewed. One page
+// of up to 100 reviews is read; a pull request with more has its older reviews
+// cut, which can only make a reviewed head look unreviewed, never the reverse.
+// A non-2xx answer is an error, since unreadable reviews are not "no reviews".
 func (g *GitHub) ReviewedCommits(ctx context.Context, repo, prID string) ([]string, error) {
-	return nil, fmt.Errorf("github: reviewed commits: not implemented")
+	if repo == "" {
+		repo = g.repo
+	}
+	if repo == "" {
+		return nil, fmt.Errorf("github: no repo configured")
+	}
+	var raw []struct {
+		CommitID string `json:"commit_id"`
+	}
+	path := fmt.Sprintf("/repos/%s/pulls/%s/reviews?per_page=100", repo, url.PathEscape(prID))
+	if err := g.do(ctx, "GET", path, nil, &raw); err != nil {
+		return nil, fmt.Errorf("github: reviewed commits: %w", err)
+	}
+	out := make([]string, 0, len(raw))
+	for _, r := range raw {
+		out = append(out, r.CommitID)
+	}
+	return out, nil
 }
 
 // CompareCommits reads the commits on head since base over one compare call,

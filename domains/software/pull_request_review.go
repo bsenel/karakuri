@@ -76,6 +76,10 @@ func reviewActionLimits() []agent.ActionLimit {
 
 func pullRequestReviewTemplate() objective.Template {
 	noMerge := objective.Constraint{ID: "no-merge", Description: "A human merges; this objective never merges a pull request or pushes to main", Hard: true, Expression: "no_merge"}
+	// Names the observation that wakes the pass, because a planner that is not
+	// told where the unreviewed pull requests are has nothing to review.
+	unreviewed := objective.Constraint{ID: "prs-without-review", Description: "Review the pull requests listed in the git observation's prs_without_review (their head has no review), one software.act.post_review each; " +
+		"when prs_without_review_error is set the list could not be read, so say that and review nothing rather than treat it as empty", Hard: true, Expression: "prs_without_review"}
 	return objective.Template{
 		ID:     pullRequestReviewTemplateID,
 		Title:  "Review a pull request by building and running it",
@@ -93,7 +97,7 @@ func pullRequestReviewTemplate() objective.Template {
 		SuccessCriteria: []objective.Criterion{
 			progress("states-ran", "The review says what it ran and what it did not, and lists what it cannot verify", 1.0),
 		},
-		Constraints:  []objective.Constraint{noMerge},
+		Constraints:  []objective.Constraint{noMerge, unreviewed},
 		ActionLimits: reviewActionLimits(),
 	}
 }
