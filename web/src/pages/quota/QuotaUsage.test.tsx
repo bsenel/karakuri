@@ -28,6 +28,21 @@ describe('QuotaUsage', () => {
     expect(screen.queryByRole('table')).not.toBeInTheDocument();
   });
 
+  it('says when the twins cannot be read, and retries', async () => {
+    get.mockRejectedValue(new APIError(403, '{"message":"twin:read is not granted"}'));
+
+    render(<QuotaUsage />);
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Could not load twins: twin:read is not granted',
+    );
+    expect(screen.queryByText(/Pick a twin/)).not.toBeInTheDocument();
+
+    get.mockResolvedValue(twins);
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    expect(await screen.findByRole('option', { name: 'Ann' })).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
   it("labels the table of a twin's tiers", async () => {
     get.mockImplementation((path: string) =>
       Promise.resolve(
@@ -58,6 +73,28 @@ describe('QuotaUsage', () => {
       expect(screen.getByRole('table', { name: 'Usage by tier' })).toBeInTheDocument(),
     );
     expect(screen.getByText('250,000')).toBeInTheDocument();
+  });
+
+  it('offers a retry when usage cannot be read', async () => {
+    get.mockImplementation((path: string) =>
+      path === '/twins'
+        ? Promise.resolve(twins)
+        : Promise.reject(new APIError(500, '{"message":"quota store unavailable"}')),
+    );
+
+    render(<QuotaUsage />);
+    await waitFor(() => expect(screen.getByRole('option', { name: 'Ann' })).toBeInTheDocument());
+    fireEvent.change(screen.getByRole('combobox', { name: 'Twin' }), {
+      target: { value: 'twin-1' },
+    });
+    await screen.findByText('quota store unavailable');
+
+    get.mockImplementation((path: string) =>
+      Promise.resolve(path === '/twins' ? twins : { twin_id: 'twin-1', tiers: {} }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+
+    expect(await screen.findByText('No tiers are counted for this twin.')).toBeInTheDocument();
   });
 
   it('announces a failure to read usage', async () => {

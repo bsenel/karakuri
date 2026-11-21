@@ -217,6 +217,22 @@ func TestAuditExportRefusalSaysHowToFixTheWindow(t *testing.T) {
 	}
 }
 
+// A JSON refusal reads as the server's sentence, and a server fault says what
+// to try, not just the status.
+func TestAuditExportJSONRefusalReadsAsASentence(t *testing.T) {
+	_, apiURL := startLoopStopServer(t, http.StatusBadRequest, `{"error":"to must be in the past","field":"to"}`)
+	_, err := runKrkCapturingStdout(t, "--api-url", apiURL, "audit", "export", "--from", exportFrom, "--to", exportTo)
+	if err == nil || !strings.HasPrefix(err.Error(), "audit export: to: to must be in the past (HTTP 400)\nGive --from and --to") {
+		t.Errorf("400 error = %v", err)
+	}
+
+	_, apiURL = startLoopStopServer(t, http.StatusInternalServerError, `{"error":"read audit log: timeout"}`)
+	_, err = runKrkCapturingStdout(t, "--api-url", apiURL, "audit", "export", "--from", exportFrom, "--to", exportTo)
+	if err == nil || !strings.HasPrefix(err.Error(), "audit export: read audit log: timeout (HTTP 500)\nThe server could not produce the export; try again") {
+		t.Errorf("500 error = %v", err)
+	}
+}
+
 // The subcommand takes nothing from the listing it hangs off.
 func TestAuditListingIsUnchangedByTheExportSubcommand(t *testing.T) {
 	srv, apiURL := startAuditServer(t)

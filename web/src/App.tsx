@@ -36,7 +36,9 @@ export default function App() {
 // who the user is.
 function Shell() {
   const { ready, identity, can } = useAuth();
-  if (!ready) return <div style={{ padding: 24 }} className="muted">Loading…</div>;
+  // role="status": without a live region a screen reader hears nothing
+  // while the session is checked, then the page or login form appears.
+  if (!ready) return <div style={{ padding: 24 }} className="muted" role="status">Loading…</div>;
   if (!identity) return <LoginModal />;
   return (
     <Routes>
@@ -63,7 +65,7 @@ function Shell() {
         <Route
           path="cost"
           element={
-            <Suspense fallback={<p className="muted">Loading…</p>}>
+            <Suspense fallback={<p className="muted" role="status">Loading…</p>}>
               <CostPage />
             </Suspense>
           }

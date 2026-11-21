@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"strings"
 
 	"github.com/spf13/cobra"
 )
@@ -85,8 +84,8 @@ most recent entries across all kinds.`,
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&objectiveID, "objective", "", "Filter by objective ID")
-	cmd.Flags().StringVar(&agentID, "agent", "", "Filter by agent ID")
+	cmd.Flags().StringVar(&objectiveID, "objective", "", "Show only this objective's entries, by objective ID from 'krk objective list'")
+	cmd.Flags().StringVar(&agentID, "agent", "", "Show only entries recorded by this agent, by its agent_id")
 	cmd.Flags().StringVar(&kind, "kind", "", "Filter by event kind (execute|escalation|approval)")
 	cmd.Flags().StringVar(&provider, "provider", "", "Filter by the provider that drafted the plan")
 	cmd.Flags().StringVar(&model, "model", "", "Filter by the model that drafted the plan")
@@ -121,10 +120,10 @@ window can be compared. The global --output format does not apply.`,
 			// A 400 is a refused window: a bound that is not RFC3339, or a
 			// window that has not ended yet.
 			if status == http.StatusBadRequest {
-				return fmt.Errorf("audit export: status %d: %s\nGive --from and --to as RFC3339 timestamps with --to in the past, e.g. --from 2026-09-01T00:00:00Z --to 2026-10-01T00:00:00Z", status, strings.TrimSpace(string(data)))
+				return fmt.Errorf("audit export: %s\nGive --from and --to as RFC3339 timestamps with --to in the past, e.g. --from 2026-09-01T00:00:00Z --to 2026-10-01T00:00:00Z", refusal(data, status))
 			}
 			if status < 200 || status > 299 {
-				return fmt.Errorf("audit export: status %d: %s", status, strings.TrimSpace(string(data)))
+				return fmt.Errorf("audit export: %s\nThe server could not produce the export; try again, or narrow the window with --from and --to", refusal(data, status))
 			}
 			if out != "" {
 				if err := os.WriteFile(out, data, 0o600); err != nil {

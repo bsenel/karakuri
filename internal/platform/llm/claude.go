@@ -25,7 +25,25 @@ type ClaudeProvider struct {
 	cli   *claudeCLI // non-nil when the CLI fallback is wired
 }
 
-func NewClaudeProvider() (*ClaudeProvider, error) {
+// ClaudeOption configures NewClaudeProvider.
+type ClaudeOption func(*claudeOptions)
+
+type claudeOptions struct {
+	cliAllowedTools []string
+}
+
+// WithCLIAllowedTools lets the `claude` CLI fallback use these tools during a
+// call without asking, e.g. read-only `Bash(gh pr view:*)` so a planner can
+// read the pull requests it plans for. The API path has no tools and ignores it.
+func WithCLIAllowedTools(tools []string) ClaudeOption {
+	return func(o *claudeOptions) { o.cliAllowedTools = tools }
+}
+
+func NewClaudeProvider(opts ...ClaudeOption) (*ClaudeProvider, error) {
+	var o claudeOptions
+	for _, opt := range opts {
+		opt(&o)
+	}
 	apiKey := os.Getenv("ANTHROPIC_API_KEY")
 	if apiKey != "" {
 		opts := []anthropic.Option{
@@ -49,7 +67,7 @@ func NewClaudeProvider() (*ClaudeProvider, error) {
 	}
 	// No API key — try the CLI fallback.
 	if path, err := exec.LookPath("claude"); err == nil {
-		return &ClaudeProvider{cli: newClaudeCLI(path)}, nil
+		return &ClaudeProvider{cli: newClaudeCLI(path, o.cliAllowedTools)}, nil
 	}
 	// Neither path wired; Available() will report false.
 	return &ClaudeProvider{}, nil

@@ -3,7 +3,6 @@ package command
 import (
 	"fmt"
 	"net/http"
-	"strings"
 
 	"github.com/bsenel/karakuri/cli/client"
 	"github.com/spf13/cobra"
@@ -34,7 +33,7 @@ resumes it, one objective at a time, with krk objective resume <objective-id>.`,
 			}
 			// A refusal must not read as "nothing was running": its body is the error.
 			if status >= http.StatusBadRequest {
-				return fmt.Errorf("stop-all did not finish: %s (HTTP %d)\nSome runs may already be stopped; run `krk stop-all` again to reach the rest, and check a loop with `krk loop status <loop-id>`", strings.TrimSpace(string(data)), status)
+				return fmt.Errorf("stop-all did not finish: %s\nSome runs may already be stopped; run `krk stop-all` again to reach the rest, and check a loop with `krk loop status <loop-id>`", refusal(data, status))
 			}
 			client.PrintOutput(data, output)
 			return nil
