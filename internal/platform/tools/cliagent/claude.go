@@ -24,6 +24,10 @@ type ClaudeCode struct {
 	// now is the clock a quota refusal's reset time is measured from; tests
 	// fix it. Nil means time.Now.
 	now func() time.Time
+	// configDir is the CLI's configuration directory, whose projects/ holds the
+	// session logs a quota's return time may be read from. Empty means the
+	// CLI's own default, ~/.claude.
+	configDir string
 }
 
 func NewClaudeCode(bin string) *ClaudeCode {
