@@ -323,6 +323,11 @@ reports:
   # same person. Short because a digest takes seconds.
   lease_ttl: 2m
 
+# Forge accounts that are this deployment's own (Phase 40 step 12a): those Karakuri posts with, and the owners whose pull request comments it amends for.
+own_authors:
+  karakuri: []
+  owners: []
+
 domains:
   - id: software
     enabled: true

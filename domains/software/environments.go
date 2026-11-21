@@ -293,6 +293,9 @@ type gitEnv struct {
 	// pull requests when a pull request changes one of their files (Phase 44
 	// step 5).
 	verifiers []verifierRule
+	// ownAuthors says whose pull request comments are the deployment's own
+	// (Phase 40 step 12a).
+	ownAuthors config.OwnAuthorsConfig
 }
 
 // gitObservationWindow is how far back the repository observation reaches.
