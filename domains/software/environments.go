@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"slices"
 	"sort"
@@ -80,6 +81,39 @@ func softwareEnvironmentFactories(reg *tools.Registry, ownAuthors config.OwnAuth
 			},
 			Build: func(ctx environment.BuildContext) (environment.Environment, error) {
 				return &gitEnv{id: EnvGit, vc: boundVC(ctx), verifiers: forgeVerifiers, ownAuthors: ownAuthors, reviewRoundLimit: reviewRoundLimit}, nil
+			},
+		},
+		{
+			// Phase 40 step 13: the snapshot the delivery stream's reconcile
+			// fingerprints. No source for main's roadmap is wired yet, so it
+			// is blind (an empty SHA) rather than reporting no work.
+			EnvID:       "software.env.delivery_work",
+			Domain:      "software",
+			Description: "Whether delivery has work: Planned items on main, branches and review comments",
+			Build: func(ctx environment.BuildContext) (environment.Environment, error) {
+				return NewDeliveryWorkEnvironment("software.env.delivery_work", boundVC(ctx), func(context.Context) (string, error) {
+					return "", errors.New("no source for main's roadmap is wired")
+				}), nil
+			},
+		},
+		{
+			// Phase 40 step 13, discovery half: the same reading as above, read
+			// as "the pipeline is empty". No source for main's roadmap, for
+			// the end of the last cycle or for a closed proposal's comment is
+			// wired yet, so it is blind (an empty SHA) and starts nothing.
+			EnvID:       "software.env.discovery_trigger",
+			Domain:      "software",
+			Description: "Whether a discovery cycle should start: nothing Planned, no open proposal, minimum time elapsed",
+			Build: func(ctx environment.BuildContext) (environment.Environment, error) {
+				return NewDiscoveryTriggerEnvironment("software.env.discovery_trigger", boundVC(ctx), DiscoveryTriggerSources{
+					ReadMain: func(context.Context) (string, error) {
+						return "", errors.New("no source for main's roadmap is wired")
+					},
+					LastCycleEnd: func(context.Context) (time.Time, error) {
+						return time.Time{}, errors.New("no record of the last discovery cycle is wired")
+					},
+					MinGap: DiscoveryMinGap,
+				}), nil
 			},
 		},
 		{

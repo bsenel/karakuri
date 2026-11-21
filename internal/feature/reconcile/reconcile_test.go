@@ -48,6 +48,9 @@ type fakeLoop struct {
 	criteria []objective.Criterion
 	// violation is the bounds violation an action of the run carried.
 	violation *environment.BoundsViolation
+	// onRun, when set, is called as a run starts: what the run does to the
+	// world, such as opening a pull request.
+	onRun func()
 }
 
 func (f *fakeLoop) Run(ctx context.Context, req coreloop.Request) (coreloop.Result, error) {
@@ -56,7 +59,11 @@ func (f *fakeLoop) Run(ctx context.Context, req coreloop.Request) (coreloop.Resu
 	f.authority = req.Agent.Authority
 	f.rung = req.AutonomyRung
 	err := f.err
+	onRun := f.onRun
 	f.mu.Unlock()
+	if onRun != nil {
+		onRun()
+	}
 	if err != nil {
 		return coreloop.Result{}, err
 	}

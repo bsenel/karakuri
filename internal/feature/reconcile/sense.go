@@ -2,6 +2,7 @@ package reconcile
 
 import (
 	"context"
+	"slices"
 	"sort"
 	"strings"
 
@@ -46,6 +47,13 @@ func fingerprint(ctx context.Context, envs []environment.Environment) reconcile.
 			continue
 		}
 		fp.Environments[id] = snap.SHA
+		if work, ok := snap.State["has_work"].(bool); ok {
+			if work {
+				fp.Working = append(fp.Working, id)
+			} else {
+				fp.Idle = append(fp.Idle, id)
+			}
+		}
 	}
 
 	ids := make([]string, 0, len(fp.Environments))
@@ -54,6 +62,8 @@ func fingerprint(ctx context.Context, envs []environment.Environment) reconcile.
 	}
 	sort.Strings(ids)
 	sort.Strings(fp.Blind)
+	sort.Strings(fp.Idle)
+	sort.Strings(fp.Working)
 
 	if len(ids) > 0 {
 		parts := make([]string, len(ids))
@@ -63,6 +73,20 @@ func fingerprint(ctx context.Context, envs []environment.Environment) reconcile.
 		fp.SHA = vfs.SHA([]byte(strings.Join(parts, ",")))
 	}
 	return fp
+}
+
+// movedOnlyToIdle reports whether every environment that moved now says it
+// holds no work, so the move gives the supervisor nothing to act on.
+func movedOnlyToIdle(d reconcile.Drift, fp reconcile.Fingerprint) bool {
+	if len(d.Environments) == 0 {
+		return false
+	}
+	for _, id := range d.Environments {
+		if !slices.Contains(fp.Idle, id) {
+			return false
+		}
+	}
+	return true
 }
 
 // compare measures a fresh fingerprint against the one taken when the
