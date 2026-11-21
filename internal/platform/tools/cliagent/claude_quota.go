@@ -38,7 +38,9 @@ var claudeReset = regexp.MustCompile(`(?i)\bresets\s+(\d{1,2})(?::(\d{2}))?\s*(a
 // classifyClaudeExit names a non-zero exit whose stderr or last output holds
 // the CLI's plan-limit refusal as the domain's rate limit, wrapping err so its
 // message, with the last output, is kept. Any other err is returned unchanged.
-func classifyClaudeExit(err error, now time.Time) error {
+// logPath is the run's session log, "" when unknown; it is read only when the
+// text names no reset.
+func classifyClaudeExit(err error, now time.Time, logPath string) error {
 	var exit *claudeExitError
 	if !errors.As(err, &exit) {
 		return err
@@ -48,9 +50,13 @@ func classifyClaudeExit(err error, now time.Time) error {
 	if !claudePlanLimit.MatchString(text) {
 		return err
 	}
+	retry := untilClaudeReset(text, now)
+	if retry == 0 {
+		retry = untilLoggedReset(logPath, now)
+	}
 	return &coreerrors.ProviderRateLimitError{
 		Provider:   "claude_code",
-		RetryAfter: untilClaudeReset(text, now),
+		RetryAfter: retry,
 		Cause:      err,
 	}
 }
