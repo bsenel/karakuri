@@ -21,6 +21,9 @@ type DelegateInput struct {
 	// AllowedTools optionally constrains which built-in tools the CLI may use
 	// (e.g. ["read", "edit", "bash"]). CLIs that don't support tool gating ignore it.
 	AllowedTools []string
+	// DisallowedTools are entries the CLI must refuse even when AllowedTools admits them
+	// (e.g. a rebase beside a broad git entry).
+	DisallowedTools []string
 	// Env adds environment variables to the CLI's process (merged onto os.Environ()).
 	Env map[string]string
 	// Timeout caps the subprocess wall-clock; 0 means inherit ctx deadline.
