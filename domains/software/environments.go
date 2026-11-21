@@ -29,7 +29,7 @@ import (
 // only the CI env is still a no-op.
 // reg may be nil — in that case every adapter-backed env falls back to no-op
 // behavior, except observability, which has no no-op to fall back on.
-func softwareEnvironmentFactories(reg *tools.Registry) []environment.Factory {
+func softwareEnvironmentFactories(reg *tools.Registry, ownAuthors config.OwnAuthorsConfig) []environment.Factory {
 	noopFactory := func(id, desc string) environment.Factory {
 		return environment.Factory{
 			EnvID:       environment.EnvironmentID(id),
@@ -79,7 +79,7 @@ func softwareEnvironmentFactories(reg *tools.Registry) []environment.Factory {
 				CapPathsDeclared,
 			},
 			Build: func(ctx environment.BuildContext) (environment.Environment, error) {
-				return &gitEnv{id: EnvGit, vc: boundVC(ctx), verifiers: forgeVerifiers}, nil
+				return &gitEnv{id: EnvGit, vc: boundVC(ctx), verifiers: forgeVerifiers, ownAuthors: ownAuthors}, nil
 			},
 		},
 		{
@@ -424,6 +424,13 @@ func (e *gitEnv) Observe(ctx context.Context, q environment.ObservationQuery) (e
 	// A stream's branch ahead of main with no open pull request (Phase 40
 	// step 6), so its stream opens that pull request before new work.
 	observeBranchesWithoutPR(ctx, adapter, repo, state)
+	// The comments on those pull requests no later commit answers, owner's or
+	// third party's (Phase 40 steps 12 and 12a). A stranger's comment is their
+	// writing, so it makes the observation third party like a stranger's title.
+	observeUnansweredReviewComments(ctx, adapter, repo, e.ownAuthors, state)
+	if hasThirdPartyComment(state) {
+		trust = environment.TrustThirdParty
+	}
 	// The open stream pull requests whose head has no review (Phase 40 step 11),
 	// from the pull requests listed above rather than a second read of them.
 	if prsErr == nil {

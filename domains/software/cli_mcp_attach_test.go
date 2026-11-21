@@ -380,7 +380,7 @@ func TestCLIEnvIsBuiltForItsTwin(t *testing.T) {
 	reg := tools.NewRegistry()
 	reg.CLIAgents.Set("recording", "stub", &recordingCLI{})
 
-	for _, f := range softwareEnvironmentFactories(reg) {
+	for _, f := range softwareEnvironmentFactories(reg, config.OwnAuthorsConfig{}) {
 		if f.EnvID != "software.env.cli_agent" {
 			continue
 		}
@@ -612,7 +612,7 @@ func TestCLIEnvReadsToolsAndTimeoutFromTheInstance(t *testing.T) {
 // buildCLIEnv builds the software.env.cli_agent environment from reg.
 func buildCLIEnv(t *testing.T, reg *tools.Registry) *cliEnv {
 	t.Helper()
-	for _, f := range softwareEnvironmentFactories(reg) {
+	for _, f := range softwareEnvironmentFactories(reg, config.OwnAuthorsConfig{}) {
 		if f.EnvID != "software.env.cli_agent" {
 			continue
 		}

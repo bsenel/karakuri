@@ -4,6 +4,7 @@ package software
 import (
 	"context"
 
+	"github.com/bsenel/karakuri/config"
 	"github.com/bsenel/karakuri/internal/core/agent"
 	"github.com/bsenel/karakuri/internal/core/capability"
 	"github.com/bsenel/karakuri/internal/core/domain"
@@ -17,6 +18,15 @@ type Pack struct {
 	// issuer mints the credential a delegation holds for Karakuri's own MCP
 	// tools; nil until AttachDelegationIssuer.
 	issuer delegationIssuer
+	// ownAuthors says whose pull request comments are the deployment's own.
+	ownAuthors config.OwnAuthorsConfig
+}
+
+// WithOwnAuthors sets the accounts whose pull request comments are the
+// deployment's own (Phase 40 step 12a).
+func (p *Pack) WithOwnAuthors(a config.OwnAuthorsConfig) *Pack {
+	p.ownAuthors = a
+	return p
 }
 
 // AttachDelegationIssuer gives the CLI environment the issuer for delegation
@@ -49,7 +59,7 @@ func (p *Pack) Capabilities() []capability.Capability {
 }
 
 func (p *Pack) EnvironmentFactories() []environment.Factory {
-	factories := softwareEnvironmentFactories(p.tools)
+	factories := softwareEnvironmentFactories(p.tools, p.ownAuthors)
 	for i, f := range factories {
 		if f.EnvID != "software.env.cli_agent" {
 			continue
