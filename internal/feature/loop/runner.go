@@ -35,6 +35,10 @@ type stepContext struct {
 	svc        *serviceImpl
 	memEntries []memory.Entry
 
+	// resume is what the cut-off pass before this run left (Phase 40 step 9a);
+	// nil after an ordinary ending.
+	resume *loop.Resume
+
 	// evidence names the environments that have put a third party's writing in
 	// front of the planner during this run — observations in stepObserve,
 	// action results in stepAct. It accumulates rather than resetting per
@@ -154,6 +158,7 @@ func (s *serviceImpl) runLoop(ctx context.Context, loopID string, req loop.Reque
 		twinID:   obj.TwinID,
 		svc:      s,
 		rung:     req.AutonomyRung,
+		resume:   req.Resume,
 		sleep:    s.sleep,
 	}
 

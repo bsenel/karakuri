@@ -195,7 +195,7 @@ func NewService(
 	cfg Config,
 ) *Service {
 	cfg = cfg.withDefaults()
-	return &Service{
+	s := &Service{
 		store:    store,
 		loops:    loops,
 		envReg:   envReg,
@@ -210,6 +210,8 @@ func NewService(
 		cancels:  map[objective.ObjectiveID]context.CancelCauseFunc{},
 		now:      func() time.Time { return time.Now().UTC() },
 	}
+	s.branchCommits = s.streamBranch
+	return s
 }
 
 // WithCheckpointSweeper sets what the tick asks to expire unanswered

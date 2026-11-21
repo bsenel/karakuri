@@ -19,6 +19,16 @@ type Environment interface {
 	Snapshot(ctx context.Context) (EnvironmentSnapshot, error)
 }
 
+// BranchReader is implemented by an environment that can say which branch a
+// stream's work is on and what it holds ahead of its base (Phase 40 step 9a).
+//
+// Branch is "" when the stream has no branch yet. Commits is meaningful only
+// when err is nil; an environment that cannot read returns the error and never
+// an empty list (AGENTS.md rule 10).
+type BranchReader interface {
+	StreamBranch(ctx context.Context, templateID string) (branch string, commits []string, err error)
+}
+
 // Trust says who wrote what a payload carries.
 //
 // It is declared by the environment that built the payload, the way

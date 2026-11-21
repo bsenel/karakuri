@@ -87,6 +87,7 @@ func stepReason(ctx context.Context, sc *stepContext, ws loop.WorldState) plan {
 			"'confidence' (0.0-1.0), and 'reasoning' (string). " +
 			"Return raw JSON only — no Markdown code fences, no commentary before or after.\n\n" +
 			provenance +
+			buildResumeNotice(sc) +
 			catalog,
 	}
 
@@ -438,6 +439,39 @@ func buildProvenanceNotice(sc *stepContext, ws loop.WorldState) string {
 		return ""
 	}
 	b.WriteString("\n")
+	return b.String()
+}
+
+// buildResumeNotice tells the planner that the pass before this one was cut off,
+// what its branch already holds and which criteria it had not settled, so it
+// plans only what is left on that branch (Phase 40 step 9a). Empty after an
+// ordinary ending. A branch that could not be read is said to be unreadable,
+// never listed as empty.
+func buildResumeNotice(sc *stepContext) string {
+	if sc == nil || sc.resume == nil {
+		return ""
+	}
+	r := sc.resume
+	var b strings.Builder
+	b.WriteString("The pass before this one was cut off (the usage limit or a restart) and this one takes it up.\n")
+	switch {
+	case r.CommitsUnreadable != "":
+		fmt.Fprintf(&b, "The stream's branch could not be read (%s): you do not know what it holds, so do not assume it is empty.\n", r.CommitsUnreadable)
+	case len(r.Commits) == 0:
+		fmt.Fprintf(&b, "The stream's branch %q was read and holds no commits ahead of its base.\n", r.Branch)
+	default:
+		fmt.Fprintf(&b, "The stream's branch %q already holds these commits ahead of its base:\n", r.Branch)
+		for _, c := range r.Commits {
+			fmt.Fprintf(&b, "  - %s\n", c)
+		}
+	}
+	if len(r.Unsettled) > 0 {
+		b.WriteString("These success criteria were not settled as met:\n")
+		for _, id := range r.Unsettled {
+			fmt.Fprintf(&b, "  - %s\n", id)
+		}
+	}
+	b.WriteString("Plan only what is left, on that same branch; never start the item again on a second branch.\n\n")
 	return b.String()
 }
 

@@ -315,6 +315,7 @@ func (s *Service) reconcileNow(
 		// Beside the bounds it produced, so the audit rows the loop writes can
 		// name the rung without the loop working it back out of the bounds.
 		AutonomyRung: level,
+		Resume:       s.resumeFor(ctx, obj),
 	})
 	if p, stopped := stoppedBy(ctx); stopped {
 		outcome.LoopID = res.LoopID

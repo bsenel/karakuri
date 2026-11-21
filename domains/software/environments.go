@@ -532,6 +532,39 @@ func (e *gitEnv) Subscribe(_ context.Context, _ environment.EventFilter) (<-chan
 	return ch, nil
 }
 
+// StreamBranch is the branch of the stream built from templateID that holds
+// commits ahead of main, with those commits, for the pass that takes a cut-off
+// one up again (Phase 40 step 9a). A stream with no such branch has none: "" and
+// no commits. A forge that cannot list or compare is an error, never an empty
+// list (AGENTS.md rule 10).
+func (e *gitEnv) StreamBranch(ctx context.Context, templateID string) (string, []string, error) {
+	if e.vc == nil || !e.vc.Active() {
+		return "", nil, fmt.Errorf("no version control adapter is active: %w", versioncontrol.ErrUnsupported)
+	}
+	branches, err := e.vc.ListBranches(ctx, "", streamBranchPrefix)
+	if err != nil {
+		return "", nil, err
+	}
+	for _, b := range branches {
+		if strings.Contains(b.Name, "-salvage") || branchStream(b.Name) != templateID {
+			continue
+		}
+		ahead, err := e.vc.CompareCommits(ctx, "", "main", b.Name)
+		if err != nil {
+			return b.Name, nil, err
+		}
+		if len(ahead) == 0 {
+			continue
+		}
+		lines := make([]string, len(ahead))
+		for i, c := range ahead {
+			lines[i] = shortSHA(c.SHA) + " " + c.Message
+		}
+		return b.Name, lines, nil
+	}
+	return "", nil, nil
+}
+
 func (e *gitEnv) Snapshot(ctx context.Context) (environment.EnvironmentSnapshot, error) {
 	obs, _ := e.Observe(ctx, environment.ObservationQuery{})
 	return environment.EnvironmentSnapshot{SHA: obs.Version, EnvID: e.id, State: obs.State, Timestamp: obs.Timestamp}, nil
