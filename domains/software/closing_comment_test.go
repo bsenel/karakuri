@@ -197,4 +197,3 @@ func buildRegisteredDiscoveryTrigger(t *testing.T, s storage.StorageAdapter, for
 	t.Fatal("no discovery_trigger factory")
 	return nil
 }
-
