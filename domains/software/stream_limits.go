@@ -126,6 +126,11 @@ var branchesWithoutPRConstraint = objective.Constraint{
 	Hard: true,
 }
 
+// reviewCommentsFirstConstraint tells every stream's planner to answer the
+// unanswered review comments on its own pull requests before any new work
+// (Phase 40 step 12). Scaffolding: the text and the four templates come next.
+var reviewCommentsFirstConstraint = objective.Constraint{}
+
 // withBase is the base tools and a stream's own, in a fresh slice.
 func withBase(tools ...string) []string {
 	return append(append([]string{}, streamBaseTools...), tools...)
