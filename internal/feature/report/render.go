@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -152,6 +153,15 @@ func Plain(d digest.Digest) string {
 			}
 			if o.Failures > 0 {
 				fmt.Fprintf(&b, ", %d failures", o.Failures)
+			}
+			// Apart from failures, each under its own name, in a stable order.
+			endings := make([]string, 0, len(o.Endings))
+			for name := range o.Endings {
+				endings = append(endings, name)
+			}
+			sort.Strings(endings)
+			for _, name := range endings {
+				fmt.Fprintf(&b, ", %d %s", o.Endings[name], name)
 			}
 			fmt.Fprintf(&b, " · criteria %.0f%%\n", o.CriteriaMet*100)
 			for _, c := range o.Criteria {

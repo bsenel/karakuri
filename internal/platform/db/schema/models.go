@@ -315,6 +315,9 @@ type ReconcileOutcomeModel struct {
 	CheckpointID string `gorm:"column:checkpoint_id;not null;default:''"`
 	Error        string `gorm:"column:error;not null;default:''"`
 	Inconclusive bool   `gorm:"column:inconclusive;not null;default:false"`
+	// Ending names a pass that ended neither as a result nor as a failure:
+	// refused_by_bounds, interrupted_by_restart (Phase 40 step 7).
+	Ending string `gorm:"column:ending;not null;default:''"`
 
 	// CriteriaJSON is the per-criterion states the pass's loop settled, each
 	// with the pass time (Phase 41). Sustain is evaluated over these.
