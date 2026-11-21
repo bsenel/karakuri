@@ -75,6 +75,24 @@ describe('QuotaRequests', () => {
     expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument();
   });
 
+  it('offers a retry when the requests cannot be loaded', async () => {
+    get.mockImplementation((path: string) =>
+      path === '/quota/requests'
+        ? Promise.reject(new Error('requests unavailable'))
+        : Promise.resolve([]),
+    );
+
+    render(<QuotaRequests />);
+    expect(await screen.findByText('requests unavailable')).toBeInTheDocument();
+
+    get.mockImplementation((path: string) =>
+      Promise.resolve(path === '/quota/requests' ? [pending] : []),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+
+    expect(await screen.findByText('a long migration')).toBeInTheDocument();
+  });
+
   it('says how to make the first request when there are none', async () => {
     get.mockResolvedValue([]);
 

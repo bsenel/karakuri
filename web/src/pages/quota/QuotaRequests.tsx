@@ -96,6 +96,7 @@ export function QuotaRequests() {
         label="Requests"
         loading={requests.loading}
         error={requests.error}
+        onRetry={requests.reload}
         rows={requests.data ?? []}
         keyOf={(r) => r.id}
         empty={
@@ -174,6 +175,7 @@ export function QuotaRequests() {
         label="Raises in force"
         loading={overrides.loading}
         error={overrides.error}
+        onRetry={overrides.reload}
         rows={overrides.data ?? []}
         keyOf={(o) => o.subject + o.name}
         empty="No raises in force — every subject is on the configured tier."
