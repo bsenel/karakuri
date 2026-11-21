@@ -11,6 +11,7 @@ package software
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -35,7 +36,6 @@ type postedCommentIDs func(ctx context.Context) (map[int64]bool, error)
 // list out and says why (AGENTS.md rule 10): an empty list would tell the
 // planner nobody is waiting on an answer.
 func observeUnansweredReviewComments(ctx context.Context, adapter versioncontrol.VersionControlAdapter, repo string, authors config.OwnAuthorsConfig, roundLimit int, posted postedCommentIDs, state map[string]any) {
-	_ = posted // phase 40 step 12a: shared-account handling comes next
 	blind := func(err error) {
 		state["unanswered_review_comments_error"] = err.Error()
 		state["unanswered_review_comments_lines"] = []string{
@@ -49,6 +49,22 @@ func observeUnansweredReviewComments(ctx context.Context, adapter versioncontrol
 	if err != nil {
 		blind(err)
 		return
+	}
+	// Read once, and only when a comment from a shared account turns up.
+	var record map[int64]bool
+	recordRead := false
+	karakuriPosted := func(id int64) (bool, error) {
+		if !recordRead {
+			if posted == nil {
+				return false, errors.New("a comment came from an account Karakuri and the owner share, and no record of what Karakuri posted is available")
+			}
+			m, err := posted(ctx)
+			if err != nil {
+				return false, fmt.Errorf("a comment came from an account Karakuri and the owner share, and the record of what Karakuri posted could not be read: %w", err)
+			}
+			record, recordRead = m, true
+		}
+		return record[id], nil
 	}
 	listed := []map[string]any{}
 	lines := []string{}
@@ -90,11 +106,26 @@ func observeUnansweredReviewComments(ctx context.Context, adapter versioncontrol
 		atLimit := roundLimit > 0 && rounds >= roundLimit
 		waiting := false
 		for _, c := range comments {
-			if !c.CreatedAt.After(last) || loginIn(authors.Karakuri, c.Author) {
+			if !c.CreatedAt.After(last) {
 				continue
 			}
+			isOwner := loginIn(authors.Owners, c.Author)
+			if loginIn(authors.Karakuri, c.Author) {
+				if !isOwner {
+					continue
+				}
+				// A shared account: the owner's unless Karakuri recorded it.
+				ours, err := karakuriPosted(c.ID)
+				if err != nil {
+					blind(err)
+					return
+				}
+				if ours {
+					continue
+				}
+			}
 			from := commentFromThirdParty
-			if loginIn(authors.Owners, c.Author) {
+			if isOwner {
 				from = commentFromOwner
 			}
 			if from == commentFromThirdParty && atLimit {
