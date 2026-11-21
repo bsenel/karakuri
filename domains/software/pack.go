@@ -10,6 +10,7 @@ import (
 	"github.com/bsenel/karakuri/internal/core/domain"
 	"github.com/bsenel/karakuri/internal/core/environment"
 	"github.com/bsenel/karakuri/internal/core/objective"
+	"github.com/bsenel/karakuri/internal/platform/storage"
 	"github.com/bsenel/karakuri/internal/platform/tools"
 )
 
@@ -22,6 +23,16 @@ type Pack struct {
 	ownAuthors config.OwnAuthorsConfig
 	// reviewRoundLimit is the declared review round limit; 0 means none.
 	reviewRoundLimit int
+	// store is the audit log the record of Karakuri's own comments is read
+	// from (Phase 40 step 12a); nil until WithStorage.
+	store storage.StorageAdapter
+}
+
+// WithStorage gives the git environment the audit log it reads the comments
+// Karakuri posted from (Phase 40 step 12a).
+func (p *Pack) WithStorage(s storage.StorageAdapter) *Pack {
+	p.store = s
+	return p
 }
 
 // WithReviewRoundLimit sets how many answered third-party comment rounds a
@@ -71,6 +82,17 @@ func (p *Pack) Capabilities() []capability.Capability {
 func (p *Pack) EnvironmentFactories() []environment.Factory {
 	factories := softwareEnvironmentFactories(p.tools, p.ownAuthors, p.reviewRoundLimit)
 	for i, f := range factories {
+		if f.EnvID == EnvGit && p.store != nil {
+			build := f.Build
+			factories[i].Build = func(ctx environment.BuildContext) (environment.Environment, error) {
+				env, err := build(ctx)
+				if git, ok := env.(*gitEnv); ok {
+					git.posted = newPostedCommentReader(p.store)
+				}
+				return env, err
+			}
+			continue
+		}
 		if f.EnvID != "software.env.cli_agent" {
 			continue
 		}

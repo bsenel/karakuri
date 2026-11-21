@@ -130,7 +130,7 @@ func softwareEnvironmentFactories(reg *tools.Registry, ownAuthors config.OwnAuth
 						cli = a
 					}
 				}
-				env := &cliEnv{id: "software.env.cli_agent", cli: cli, twinID: ctx.TwinID}
+				env := &cliEnv{id: "software.env.cli_agent", cli: cli, twinID: ctx.TwinID, vc: boundVC(ctx), ownAuthors: ownAuthors}
 				if reg != nil {
 					opts := reg.CLIAgents.Options(ctx.AdapterBindings["cli_agents"])
 					env.attachMCP, env.mcpURL = cliMCPOptions(opts)
@@ -298,6 +298,9 @@ type gitEnv struct {
 	ownAuthors config.OwnAuthorsConfig
 	// reviewRoundLimit is the declared round limit; 0 means none (Phase 40 step 12).
 	reviewRoundLimit int
+	// posted reads the IDs of the comments Karakuri is recorded as having
+	// posted; nil means no record (Phase 40 step 12a).
+	posted postedCommentIDs
 }
 
 // gitObservationWindow is how far back the repository observation reaches.
@@ -429,7 +432,7 @@ func (e *gitEnv) Observe(ctx context.Context, q environment.ObservationQuery) (e
 	// The comments on those pull requests no later commit answers, owner's or
 	// third party's (Phase 40 steps 12 and 12a). A stranger's comment is their
 	// writing, so it makes the observation third party like a stranger's title.
-	observeUnansweredReviewComments(ctx, adapter, repo, e.ownAuthors, e.reviewRoundLimit, nil, state)
+	observeUnansweredReviewComments(ctx, adapter, repo, e.ownAuthors, e.reviewRoundLimit, e.posted, state)
 	if hasThirdPartyComment(state) {
 		trust = environment.TrustThirdParty
 	}
@@ -706,6 +709,10 @@ type cliEnv struct {
 
 	// twinID is the twin this environment was built for (BuildContext.TwinID).
 	twinID string
+	// vc and ownAuthors let a delegation on a branch record the comments it
+	// posted (Phase 40 step 12a); a nil vc records nothing.
+	vc         versioncontrol.VersionControlAdapter
+	ownAuthors config.OwnAuthorsConfig
 	// attachMCP and mcpURL are the instance's attach_karakuri_mcp and
 	// karakuri_mcp_url options; issuer mints the credential for one delegation.
 	attachMCP bool
