@@ -27,6 +27,9 @@ var reviewShellCommands = []string{
 	"go build ./...", "go test ./...", "go vet ./...", "gofmt -l .",
 	"make build", "make test", "make lint",
 	"scripts/check_langchaingo_imports.sh",
+	// A binary the pull request changes, each exactly: a wildcard here would
+	// also admit `go run ./cmd/krk x; git push`.
+	"go run ./cmd/krk bogus", "go run ./cmd/krk --help",
 }
 
 // reviewRefusedCapabilities push or change the repository. A limit with no

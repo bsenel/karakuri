@@ -37,6 +37,13 @@ func (e *gitEnv) postReview(ctx context.Context, a environment.Action) environme
 		return fail("needs the pull request's branch: pass params.branch", environment.TrustOperator, nil)
 	}
 	body := asString(a.Params, "body")
+	if workdir := asString(a.Params, "workdir"); body == "" && workdir != "" {
+		composed, err := composeReviewBody(ctx, workdir)
+		if err != nil {
+			return fail("could not run the branch in its worktree: "+err.Error(), environment.TrustOperator, nil)
+		}
+		body = composed
+	}
 	if !reviewRan.MatchString(body) {
 		return fail(`the review has no "What was run" section`, environment.TrustOperator, nil)
 	}
