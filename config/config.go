@@ -389,6 +389,10 @@ type RotationConfig struct {
 type ProvidersConfig struct {
 	Default  string            `yaml:"default"`
 	Fallback map[string]string `yaml:"fallback"`
+	// ClaudeCLIAllowedTools are the tools the `claude` CLI fallback may use
+	// during a model call without asking. Empty allows none. Keep it to
+	// read-only commands: a planner's prompt can carry third-party text.
+	ClaudeCLIAllowedTools []string `yaml:"claude_cli_allowed_tools"`
 }
 
 // AuthConfig configures JWT-based authentication and RBAC. There is no
