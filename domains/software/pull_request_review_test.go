@@ -262,3 +262,26 @@ func TestPullRequestReviewForbidsMerging(t *testing.T) {
 		t.Errorf("%s carries no no_merge constraint", reviewTemplateID)
 	}
 }
+
+// Phase 40 step 11: the pass is woken by stream pull requests whose head has
+// no review, so the planner is told where the list is and what to do with it.
+func TestPullRequestReviewTemplateTellsThePlannerPRsWithoutReview(t *testing.T) {
+	var got *objective.Constraint
+	for _, c := range reviewTemplate(t).Constraints {
+		if c.ID == "prs-without-review" {
+			c := c
+			got = &c
+		}
+	}
+	if got == nil {
+		t.Fatalf("%s declares no prs-without-review constraint", reviewTemplateID)
+	}
+	if !got.Hard {
+		t.Errorf("prs-without-review is not a hard constraint")
+	}
+	for _, want := range []string{"prs_without_review", "prs_without_review_error", "software.act.post_review"} {
+		if !strings.Contains(got.Description, want) {
+			t.Errorf("description %q does not name %s", got.Description, want)
+		}
+	}
+}

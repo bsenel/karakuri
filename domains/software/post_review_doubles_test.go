@@ -30,3 +30,15 @@ func (f *fakeForge) PostReview(_ context.Context, repo, prID, body string, comme
 	f.reviews = append(f.reviews, postedReview{repo, prID, body, comments})
 	return f.postReviewErr
 }
+
+func (s *vcStub) ReviewedCommits(context.Context, string, string) ([]string, error) {
+	return nil, versioncontrol.ErrUnsupported
+}
+
+func (w *windowVC) ReviewedCommits(context.Context, string, string) ([]string, error) {
+	return nil, versioncontrol.ErrUnsupported
+}
+
+func (f *fakeForge) ReviewedCommits(context.Context, string, string) ([]string, error) {
+	return nil, versioncontrol.ErrUnsupported
+}

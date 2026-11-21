@@ -134,6 +134,11 @@ type VersionControlAdapter interface {
 	// never approves and never requests changes. An adapter whose forge
 	// cannot returns an error wrapping ErrUnsupported.
 	PostReview(ctx context.Context, repo, prID, body string, comments []ReviewComment) error
+	// ReviewedCommits lists the commit id of every review on a pull request,
+	// so a caller can tell whether its head was reviewed. An adapter whose
+	// forge cannot returns an error wrapping ErrUnsupported, never an empty
+	// list.
+	ReviewedCommits(ctx context.Context, repo, prID string) ([]string, error)
 	Active() bool
 }
 

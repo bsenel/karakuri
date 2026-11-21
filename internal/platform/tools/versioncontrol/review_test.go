@@ -123,3 +123,58 @@ func TestNoOpPostReviewIsUnsupported(t *testing.T) {
 		t.Errorf("error %q does not name the adapter", err)
 	}
 }
+
+// Phase 40 step 11: a pull request whose head has no review is found by the
+// commit ids its reviews were left at.
+func TestReviewedCommitsListsTheCommitOfEveryReview(t *testing.T) {
+	var method, path string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		method, path = r.Method, r.URL.Path
+		_, _ = w.Write([]byte(`[{"id":1,"commit_id":"aaa111"},{"id":2,"commit_id":"bbb222"}]`))
+	}))
+	defer srv.Close()
+	g := NewGitHub("t", "acme/api")
+	g.client = &http.Client{Transport: toServer{srv}}
+
+	got, err := g.ReviewedCommits(context.Background(), "", "244")
+	if err != nil {
+		t.Fatalf("ReviewedCommits: %v", err)
+	}
+	if method != "GET" || path != "/repos/acme/api/pulls/244/reviews" {
+		t.Errorf("sent %s %s, want GET /repos/acme/api/pulls/244/reviews", method, path)
+	}
+	if !reflect.DeepEqual(got, []string{"aaa111", "bbb222"}) {
+		t.Errorf("commits = %v, want [aaa111 bbb222]", got)
+	}
+}
+
+// A refused read is an error, never an empty list: no reviews and unreadable
+// reviews are different answers.
+func TestReviewedCommitsNon2xxIsAnError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = w.Write([]byte(`{"message":"forbidden"}`))
+	}))
+	defer srv.Close()
+	g := NewGitHub("t", "acme/api")
+	g.client = &http.Client{Transport: toServer{srv}}
+
+	got, err := g.ReviewedCommits(context.Background(), "", "244")
+	if err == nil {
+		t.Fatalf("ReviewedCommits = %v with no error on a 403, want an error", got)
+	}
+	if strings.Contains(err.Error(), "not implemented") {
+		t.Errorf("error %q is the scaffold's, not the forge's refusal", err)
+	}
+}
+
+// AGENTS.md rule 10: an adapter without a backend says so.
+func TestNoOpReviewedCommitsIsUnsupported(t *testing.T) {
+	got, err := NewNoOp().ReviewedCommits(context.Background(), "acme/api", "1")
+	if !errors.Is(err, ErrUnsupported) {
+		t.Errorf("err = %v, want ErrUnsupported", err)
+	}
+	if got != nil {
+		t.Errorf("commits = %v, want none alongside the error", got)
+	}
+}

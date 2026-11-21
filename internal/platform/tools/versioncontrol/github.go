@@ -398,6 +398,11 @@ func (g *GitHub) PostReview(ctx context.Context, repo, prID, body string, commen
 	return nil
 }
 
+// ReviewedCommits is not implemented yet (phase 40 step 11, TDD scaffold).
+func (g *GitHub) ReviewedCommits(ctx context.Context, repo, prID string) ([]string, error) {
+	return nil, fmt.Errorf("github: reviewed commits: not implemented")
+}
+
 // CompareCommits reads the commits on head since base over one compare call,
 // oldest first as GitHub lists them. Without a page parameter GitHub lists at
 // most 250 commits; a branch further ahead than that is cut there.
