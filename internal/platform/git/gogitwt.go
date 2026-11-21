@@ -96,7 +96,17 @@ func (m *GoGitWorktreeManager) Create(ctx context.Context, opts WorktreeOptions)
 		}
 		remote := "refs/remotes/origin/" + branch
 		if m.runGit(ctx, "fetch", "--no-tags", "origin", "+refs/heads/"+branch+":"+remote) == nil {
-			if err := m.runGit(ctx, "worktree", "add", "-B", branch, basePath, remote); err != nil {
+			// --force: an earlier action's worktree is dead once its action has
+			// ended, and its work is already pushed or salvaged. Without it, git
+			// refuses a branch that another worktree has checked out, and every
+			// action after the first on one planned branch fails to provision.
+			// git refuses -B on a branch another worktree holds even with
+			// --force, so the branch is moved to origin's tip first and the
+			// worktree is added on it without -B.
+			if err := m.runGit(ctx, "update-ref", "refs/heads/"+branch, remote); err != nil {
+				return Worktree{}, fmt.Errorf("move branch to origin: %w", err)
+			}
+			if err := m.runGit(ctx, "worktree", "add", "--force", basePath, branch); err != nil {
 				return Worktree{}, fmt.Errorf("worktree add: %w", err)
 			}
 			return m.register(opts, basePath, branch), nil
