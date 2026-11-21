@@ -561,11 +561,6 @@ func (g *GitHub) HasPullRequestForHead(ctx context.Context, repo, branch string)
 	return len(raw) > 0, nil
 }
 
-// ListPullRequestComments is not implemented yet.
-func (g *GitHub) ListPullRequestComments(_ context.Context, _ string, _ int) ([]PullRequestComment, error) {
-	return nil, fmt.Errorf("github: pull request comments: not implemented")
-}
-
 func (g *GitHub) do(ctx context.Context, method, path string, body any, out any) error {
 	var reader io.Reader
 	if body != nil {
