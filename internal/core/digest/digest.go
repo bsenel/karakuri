@@ -103,6 +103,15 @@ type ObjectiveSummary struct {
 	// what the loop touched.
 	Actions int `json:"actions"`
 
+	// Refusals lists the plans and actions the bounds refused in the window
+	// (Phase 40 steps 2 and 3), read from the audit log's refusal rows,
+	// oldest first.
+	Refusals []Refusal `json:"refusals,omitempty"`
+	// Blocks lists what the stream is blocked on at the end of the window
+	// (Phase 40 step 14): out of quota and until when, a pushed-refs
+	// violation, an unreadable remote. Read from outcomes and audit rows.
+	Blocks []Block `json:"blocks,omitempty"`
+
 	Autonomy    objective.AutonomyLevel `json:"autonomy,omitempty"`
 	CriteriaMet float64                 `json:"criteria_met"`
 	Paused      bool                    `json:"paused,omitempty"`
@@ -128,6 +137,36 @@ type CriterionLine struct {
 	Reason      objective.InconclusiveReason `json:"reason,omitempty"`
 	// Passes counts the consecutive latest passes that settled this state.
 	Passes int `json:"passes"`
+}
+
+// Refusal is one plan or action the bounds refused: a plan with an action
+// outside its limits (step 2), or an action that pushed to a ref it never
+// named (step 3).
+type Refusal struct {
+	At         time.Time `json:"at"`
+	Capability string    `json:"capability,omitempty"`
+	Reason     string    `json:"reason,omitempty"`
+}
+
+// BlockKind names why a stream cannot make progress.
+type BlockKind string
+
+const (
+	// BlockQuota is a pass deferred because the coding agent is out of quota.
+	BlockQuota BlockKind = "waiting_for_quota"
+	// BlockBoundsViolation is a pushed-refs violation (step 3).
+	BlockBoundsViolation BlockKind = "bounds_violation"
+	// BlockRemoteUnreadable is a latest pass that could see no environment.
+	BlockRemoteUnreadable BlockKind = "remote_unreadable"
+)
+
+// Block is one thing a stream is blocked on. Until is zero when nothing says
+// when it clears.
+type Block struct {
+	Kind   BlockKind `json:"kind"`
+	Reason string    `json:"reason,omitempty"`
+	At     time.Time `json:"at"`
+	Until  time.Time `json:"until,omitempty"`
 }
 
 // Progress is the weight the optional criteria earned out of their total, as

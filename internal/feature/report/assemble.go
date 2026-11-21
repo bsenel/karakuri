@@ -139,7 +139,14 @@ func (s *Service) summarise(ctx context.Context, obj objective.Objective, since,
 			}
 		}
 	}
+	sum.Refusals, sum.Blocks = s.refusalsAndBlocks(ctx, obj, since, until)
 	return sum
+}
+
+// refusalsAndBlocks reads the bounds refusals and the blocks of one stream
+// for the window. Stub: Phase 40 step 14 fills it in.
+func (s *Service) refusalsAndBlocks(_ context.Context, _ objective.Objective, _, _ time.Time) ([]digest.Refusal, []digest.Block) {
+	return nil, nil
 }
 
 // criteria reads the criterion states the window's passes settled and returns
