@@ -103,6 +103,11 @@ func (s *Service) Create(ctx context.Context, req CreateRequest) (objective.Obje
 			o.SuccessCriteria = tmpl.SuccessCriteria
 			o.Constraints = tmpl.Constraints
 			o.TemplateID = tmpl.ID
+			// The template's place in the order streams share the quota in,
+			// unless the owner set their own (Phase 40 step 9).
+			if o.Priority == 0 {
+				o.Priority = tmpl.Priority
+			}
 			// The template's first suggested agent, carried onto the
 			// objective so selection can honour it. Without this the field
 			// was decoration: the objective kept no link back to the
