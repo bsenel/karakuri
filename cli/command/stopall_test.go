@@ -94,10 +94,24 @@ func TestStopAllServerErrorIsAnError(t *testing.T) {
 		t.Errorf("error %q does not carry the server's body", err)
 	}
 	// It reads as a sentence that says what to do next, not a bare status line.
-	for _, want := range []string{"stop-all did not finish", "(HTTP 500)", "run `krk stop-all` again"} {
+	for _, want := range []string{"stop-all did not finish", "HTTP 500", "run `krk stop-all` again"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error %q does not say %q", err, want)
 		}
+	}
+}
+
+// A JSON refusal reads as the server's sentence, not as the raw body.
+func TestStopAllJSONRefusalReadsAsASentence(t *testing.T) {
+	_, apiURL := startLoopStopServer(t, http.StatusInternalServerError, `{"error":"list running loops: database is locked"}`)
+
+	_, err := runKrkCapturingStdout(t, "--api-url", apiURL, "stop-all")
+	if err == nil {
+		t.Fatal("krk stop-all on a 500 succeeded, want an error")
+	}
+	want := "stop-all did not finish: list running loops: database is locked (HTTP 500)\n"
+	if !strings.HasPrefix(err.Error(), want) {
+		t.Errorf("error %q does not start with %q", err, want)
 	}
 }
 

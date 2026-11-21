@@ -43,7 +43,7 @@ func artifactListCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&objectiveID, "objective", "", "Show only this objective's artifacts, by objective ID from 'krk objective list'")
-	cmd.Flags().StringVar(&agentID, "agent", "", "Filter by agent ID")
+	cmd.Flags().StringVar(&agentID, "agent", "", "Show only artifacts written by this agent, by its agent_id")
 	return cmd
 }
 

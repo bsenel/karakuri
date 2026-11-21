@@ -41,8 +41,8 @@ func NewRoot() *cobra.Command {
 			return nil
 		},
 	}
-	root.PersistentFlags().StringVar(&apiURL, "api-url", "http://localhost:8080/api/v1", "API base URL")
-	root.PersistentFlags().StringVar(&output, "output", "pretty", "Output format: json|pretty|quiet")
+	root.PersistentFlags().StringVar(&apiURL, "api-url", "http://localhost:8080/api/v1", "Base URL of the Karakuri server API, ending in /api/v1; change it to reach a server on another host or port")
+	root.PersistentFlags().StringVar(&output, "output", "pretty", "Output format: pretty (readable), json (for scripts) or quiet (no hints or confirmation lines)")
 
 	root.AddCommand(
 		twinCmd(),

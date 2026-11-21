@@ -82,7 +82,7 @@ func streamTemplates() []objective.Template {
 			SuccessCriteria: append(pullRequestCriteria("docs/research/**"),
 				progress("findings-new", "The report's findings are new since the previous report and cite their sources, and every roadmap phase it proposes is backed by them", 0.3),
 			),
-			Constraints:  []objective.Constraint{noMerge, branchConstraint("this stream's karakuri/discovery-<date> branch", "main"), branchesWithoutPRConstraint},
+			Constraints:  []objective.Constraint{noMerge, branchConstraint("this stream's karakuri/discovery-<date> branch", "main"), unmergeablePRsConstraint, branchesWithoutPRConstraint},
 			ActionLimits: discoveryLimits(),
 		},
 		{
@@ -97,7 +97,7 @@ func streamTemplates() []objective.Template {
 			SuccessCriteria: append(pullRequestCriteria("docs/roadmap.md"),
 				progress("evidence", "Each Engineering Backlog entry this pass added cites the audit log, telemetry or log data that shows the problem", 0.3),
 			),
-			Constraints:  []objective.Constraint{noMerge, branchConstraint("this stream's karakuri/tech-backlog-<date> branch", "main"), branchesWithoutPRConstraint},
+			Constraints:  []objective.Constraint{noMerge, branchConstraint("this stream's karakuri/tech-backlog-<date> branch", "main"), unmergeablePRsConstraint, branchesWithoutPRConstraint},
 			ActionLimits: backlogLimits(),
 		},
 		{
@@ -112,7 +112,7 @@ func streamTemplates() []objective.Template {
 			SuccessCriteria: append(pullRequestCriteria("cli/**", "web/**"),
 				progress("visible", "Each improvement in the pull request is visible to a user of the CLI or the web interface, and has a test", 0.3),
 			),
-			Constraints:  []objective.Constraint{noMerge, branchConstraint("this stream's karakuri/ux-<date> branch", "main"), branchesWithoutPRConstraint},
+			Constraints:  []objective.Constraint{noMerge, branchConstraint("this stream's karakuri/ux-<date> branch", "main"), unmergeablePRsConstraint, branchesWithoutPRConstraint},
 			ActionLimits: uxLimits(),
 		},
 		{
@@ -146,7 +146,7 @@ func streamTemplates() []objective.Template {
 			},
 			Constraints: []objective.Constraint{noMerge, branchConstraint(
 				"the item's branch, karakuri/phase-<n>-<slug> for a phase's group or karakuri/eb-<id>-<slug> for a backlog entry",
-				"main, or the earlier group's head for a later group of the same phase"), branchesWithoutPRConstraint},
+				"main, or the earlier group's head for a later group of the same phase"), unmergeablePRsConstraint, branchesWithoutPRConstraint},
 			ActionLimits: deliveryLimits(),
 		},
 	}

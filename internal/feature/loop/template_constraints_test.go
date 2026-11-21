@@ -198,6 +198,12 @@ func TestAnObjectiveCreatedBeforeItsTemplatesConstraintIsToldIt(t *testing.T) {
 	if n != 1 {
 		t.Fatalf("the delivery template holds %d branches-without-pr constraints, want 1", n)
 	}
+	// Phase 40 step 6a added unmergeable-prs to every stream template, ahead
+	// of branches-without-pr, so it is told the same way.
+	unmergeable, n := constraintByID(tmpl.Constraints, "unmergeable-prs")
+	if n != 1 {
+		t.Fatalf("the delivery template holds %d unmergeable-prs constraints, want 1", n)
+	}
 
 	agent := &inputRecorder{replies: reflexionReplies()}
 	sc, store := constraintContext(t, obj, agent)
@@ -215,7 +221,10 @@ func TestAnObjectiveCreatedBeforeItsTemplatesConstraintIsToldIt(t *testing.T) {
 		if got, n := constraintByID(in.Constraints, "branches-without-pr"); n != 1 || !reflect.DeepEqual(got, withoutPR) {
 			t.Errorf("%s: branches-without-pr is %+v (%d held), the template's is %+v", call, got, n, withoutPR)
 		}
-		if ids := constraintIDs(in.Constraints); !reflect.DeepEqual(ids, []string{"no-merge", "action-limits", "branches-without-pr"}) {
+		if got, n := constraintByID(in.Constraints, "unmergeable-prs"); n != 1 || !reflect.DeepEqual(got, unmergeable) {
+			t.Errorf("%s: unmergeable-prs is %+v (%d held), the template's is %+v", call, got, n, unmergeable)
+		}
+		if ids := constraintIDs(in.Constraints); !reflect.DeepEqual(ids, []string{"no-merge", "action-limits", "unmergeable-prs", "branches-without-pr"}) {
 			t.Errorf("%s: constraints %v, want the objective's own first, then the template's", call, ids)
 		}
 		if in.ID != obj.ID || in.Title != obj.Title || in.TemplateID != obj.TemplateID {
@@ -273,6 +282,7 @@ func TestEveryStreamIsToldItsOwnTemplatesLimits(t *testing.T) {
 func TestTheObjectivesOwnConstraintWinsOverTheTemplates(t *testing.T) {
 	tmpl := softwareTemplate(t, deliveryTemplateID)
 	noMerge, _ := constraintByID(tmpl.Constraints, "no-merge")
+	unmergeable, _ := constraintByID(tmpl.Constraints, "unmergeable-prs")
 	withoutPR, _ := constraintByID(tmpl.Constraints, "branches-without-pr")
 	mine := objective.Constraint{
 		ID:          "action-limits",
@@ -302,10 +312,10 @@ func TestTheObjectivesOwnConstraintWinsOverTheTemplates(t *testing.T) {
 			t.Errorf("%s: %d no-merge constraints, want exactly 1", call, n)
 		}
 		// The objective's own, unchanged and in place, then the template's
-		// one it does not hold.
-		want := []objective.Constraint{mine, noMerge, withoutPR}
+		// ones it does not hold.
+		want := []objective.Constraint{mine, noMerge, unmergeable, withoutPR}
 		if !reflect.DeepEqual(in.Constraints, want) {
-			t.Errorf("%s: constraints %+v, want the objective's own unchanged, then the template's branches-without-pr: %+v", call, in.Constraints, want)
+			t.Errorf("%s: constraints %+v, want the objective's own unchanged, then the template's unmergeable-prs and branches-without-pr: %+v", call, in.Constraints, want)
 		}
 	}
 
@@ -324,13 +334,14 @@ func TestTemplateConstraintsAreMatchedByID(t *testing.T) {
 	reg := softwareRegistry(t)
 	tmpl := softwareTemplate(t, deliveryTemplateID)
 	limits, _ := constraintByID(tmpl.Constraints, "action-limits")
+	unmergeable, _ := constraintByID(tmpl.Constraints, "unmergeable-prs")
 	withoutPR, _ := constraintByID(tmpl.Constraints, "branches-without-pr")
 	mine := objective.Constraint{ID: "no-merge", Description: "never merge, said differently", Hard: false}
 	obj := objective.Objective{ID: "obj-id-match", TemplateID: deliveryTemplateID, Constraints: []objective.Constraint{mine}}
 
 	shown := withTemplateConstraints(reg, obj)
 
-	want := []objective.Constraint{mine, limits, withoutPR}
+	want := []objective.Constraint{mine, limits, unmergeable, withoutPR}
 	if !reflect.DeepEqual(shown.Constraints, want) {
 		t.Errorf("shown %+v\nwant %+v", shown.Constraints, want)
 	}

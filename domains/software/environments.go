@@ -135,6 +135,7 @@ func softwareEnvironmentFactories(reg *tools.Registry) []environment.Factory {
 					env.attachMCP, env.mcpURL = cliMCPOptions(opts)
 					env.timeoutSeconds = cliTimeoutSeconds(opts)
 					env.allowedTools = config.InstanceConfig{Options: opts}.OptStrings("allowed_tools")
+					env.model = config.InstanceConfig{Options: opts}.OptString("model")
 				}
 				return env, nil
 			},
@@ -416,8 +417,12 @@ func (e *gitEnv) Observe(ctx context.Context, q environment.ObservationQuery) (e
 		}
 		state["salvage_branches"] = branches
 	}
-	// A stream's branch ahead of main with no open pull request (Phase 40
-	// step 6), so its stream opens that pull request before new work.
+	// A stream's open pull request that cannot be merged (Phase 40 step 6a),
+	// repaired first, then a stream's branch ahead of main with no open pull
+	// request (step 6), so its stream opens that pull request before new work.
+	// Each reads the open pull requests itself: the read above is bounded to
+	// the observation window, and these must see every open one.
+	observeUnmergeablePRs(ctx, adapter, repo, state)
 	observeBranchesWithoutPR(ctx, adapter, repo, state)
 	// Whether main is protected, so the oversight view can show it (Phase 40
 	// step 3). This is detection, not prevention. A read that failed is "not
@@ -695,6 +700,10 @@ type cliEnv struct {
 	// allowedTools is the instance's allowed_tools option: the tool list a
 	// delegation gets when its action names none.
 	allowedTools []string
+	// model is the instance's model option: the model every delegation runs,
+	// so coding agents can run a cheaper model than the planner. Empty leaves
+	// the CLI on its own default.
+	model string
 }
 
 // DelegationCredential is what one delegation carries to Karakuri's own MCP
@@ -731,6 +740,18 @@ func cliTimeoutSeconds(options map[string]any) int {
 		return n
 	}
 	return 0
+}
+
+// gitRewriteDeny is what every delegation refuses even beside the broad
+// Bash(git:*) a stream needs: step 2's limits match whole tool entries and
+// cannot read a git subcommand, and the claude CLI's deny list takes
+// precedence over its allow list. Merged, never rebased (Phase 40 step 6a).
+var gitRewriteDeny = []string{
+	"Bash(git rebase:*)",
+	"Bash(git push --force:*)",
+	"Bash(git push -f:*)",
+	"Bash(git push --force-with-lease:*)",
+	"Bash(git push origin +*)",
 }
 
 // deniesUnlistedTools reports whether a coding-agent CLI refuses every tool that
@@ -801,9 +822,11 @@ func (e *cliEnv) Act(ctx context.Context, a environment.Action) (environment.Act
 	}
 
 	in := cliagent.DelegateInput{
-		Prompt:         prompt,
-		WorktreePath:   worktree,
-		TimeoutSeconds: e.delegationTimeoutSeconds(),
+		Prompt:          prompt,
+		WorktreePath:    worktree,
+		TimeoutSeconds:  e.delegationTimeoutSeconds(),
+		Model:           e.model,
+		DisallowedTools: slices.Clone(gitRewriteDeny),
 	}
 	if files, ok := a.Params["files"].([]any); ok {
 		for _, f := range files {
@@ -855,7 +878,7 @@ func (e *cliEnv) Act(ctx context.Context, a environment.Action) (environment.Act
 	// agent made outside its declared refs is a failed action (Phase 40 step
 	// 3). An origin that cannot be read is never a pass: a run that succeeded
 	// fails for it, and one that failed keeps its own error and records why.
-	declared := declaredRefs(asString(a.Params, "branch"), worktree)
+	declared := declaredRefs(plannedBranch(a.Params), worktree)
 	refsBefore, refsBeforeErr := readRemoteRefs(ctx, worktree)
 	// scrub keeps the delegation token out of anything the result carries.
 	scrub := func(s string) string { return s }
@@ -1257,4 +1280,14 @@ func cliPrompt(a environment.Action) (string, bool) {
 		return "Write tests only, no implementation changes. " + task, true
 	}
 	return "", false
+}
+
+// plannedBranch is the branch the plan declared for an action: the loop keeps
+// it as planned_branch when it puts the worktree's own branch in
+// params.branch, and an action run outside the loop names it as branch.
+func plannedBranch(params map[string]any) string {
+	if b := asString(params, "planned_branch"); b != "" {
+		return b
+	}
+	return asString(params, "branch")
 }

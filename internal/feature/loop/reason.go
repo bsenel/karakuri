@@ -88,6 +88,7 @@ func stepReason(ctx context.Context, sc *stepContext, ws loop.WorldState) plan {
 			"Return raw JSON only — no Markdown code fences, no commentary before or after.\n\n" +
 			provenance +
 			buildResumeNotice(sc) +
+			buildObservationLines(ws) +
 			catalog,
 	}
 
@@ -476,6 +477,52 @@ func buildResumeNotice(sc *stepContext) string {
 	}
 	b.WriteString("\n")
 	return b.String()
+}
+
+// buildObservationLines puts into the planner's task the sentences an
+// environment wrote for it, the observation state keys ending in "_lines"
+// (for example the git environment's unmergeable_prs_lines). The agent
+// runtime does not serialise WorldState, so without this the constraint that
+// says "repair the listed pull requests" would show the planner no list.
+//
+// Only observations the operator's own infrastructure wrote are rendered: a
+// third party's prose is never lifted into the task as the loop's own words;
+// it reaches the planner through the provenance notice's rules instead.
+// Returns "" when there is nothing to say.
+func buildObservationLines(ws loop.WorldState) string {
+	var b strings.Builder
+	for _, obs := range ws.Observations {
+		if obs.Trust != environment.TrustOperator {
+			continue
+		}
+		keys := make([]string, 0, len(obs.State))
+		for k := range obs.State {
+			if strings.HasSuffix(k, "_lines") {
+				keys = append(keys, k)
+			}
+		}
+		sort.Strings(keys)
+		for _, k := range keys {
+			var lines []string
+			switch v := obs.State[k].(type) {
+			case []string:
+				lines = v
+			case []any:
+				for _, e := range v {
+					if s, ok := e.(string); ok {
+						lines = append(lines, s)
+					}
+				}
+			}
+			for _, l := range lines {
+				fmt.Fprintf(&b, "  - [%s] %s\n", obs.EnvID, l)
+			}
+		}
+	}
+	if b.Len() == 0 {
+		return ""
+	}
+	return "What the environments observed, for you to act on:\n" + b.String() + "\n"
 }
 
 // buildReasonCatalog formats the set of registered environments and

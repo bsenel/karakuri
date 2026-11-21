@@ -122,6 +122,7 @@ func TestDeliveryReviewCriteriaAreJudged(t *testing.T) {
 type windowVC struct {
 	sinceCommits time.Time
 	sincePRs     time.Time
+	readPRs      bool
 }
 
 func (w *windowVC) Name() string { return "window_vc" }
@@ -129,8 +130,14 @@ func (w *windowVC) Active() bool { return true }
 func (w *windowVC) CreatePR(_ context.Context, _ versioncontrol.PullRequest) (string, error) {
 	return "", nil
 }
+
+// ListPRs keeps the since of the first read, the observation's own list of
+// pull requests. The reads after it, for steps 6 and 6a, take every open pull
+// request on purpose and put only the broken ones in state.
 func (w *windowVC) ListPRs(_ context.Context, _ string, since time.Time) ([]versioncontrol.PRSummary, error) {
-	w.sincePRs = since
+	if !w.readPRs {
+		w.readPRs, w.sincePRs = true, since
+	}
 	return nil, nil
 }
 func (w *windowVC) GetCommits(_ context.Context, _ string, since time.Time) ([]versioncontrol.Commit, error) {
@@ -157,6 +164,9 @@ func (w *windowVC) ListMergedPRs(context.Context, string, int) ([]versioncontrol
 }
 func (w *windowVC) EditPRBody(context.Context, string, string, string) error {
 	return versioncontrol.ErrUnsupported
+}
+func (w *windowVC) MergeState(context.Context, string, string) (string, error) {
+	return "", versioncontrol.ErrUnsupported
 }
 
 func (w *windowVC) BranchProtected(context.Context, string, string) (bool, error) {
@@ -187,6 +197,9 @@ func TestGitObservationIsBounded(t *testing.T) {
 	age := time.Since(vc.sinceCommits)
 	if age < gitObservationWindow-time.Minute || age > gitObservationWindow+time.Minute {
 		t.Errorf("commit window is %v, want about %v", age, gitObservationWindow)
+	}
+	if age := time.Since(vc.sincePRs); age < gitObservationWindow-time.Minute || age > gitObservationWindow+time.Minute {
+		t.Errorf("pull request window is %v, want about %v", age, gitObservationWindow)
 	}
 }
 

@@ -180,7 +180,7 @@ func TestClaudeCLIEnvDropsNestedSessionMarkers(t *testing.T) {
 	t.Setenv("CLAUDE_CODE_SESSION_ID", "abc")
 	t.Setenv("ANTHROPIC_API_KEY", "sk-ant-fake-key")
 
-	env := strings.Join(newClaudeCLI("claude").env(context.Background()), "\n")
+	env := strings.Join(newClaudeCLI("claude", nil).env(context.Background()), "\n")
 
 	for _, banned := range []string{"CLAUDECODE=", "CLAUDE_CODE_SESSION_ID="} {
 		if strings.Contains(env, banned) {
