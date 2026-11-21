@@ -303,6 +303,13 @@ function AskForm({
         </button>
         <button onClick={() => setOpen(false)}>Cancel</button>
       </div>
+      {/* Otherwise the twin picker stays empty and Submit stays disabled, with no reason given. */}
+      {needsTwin && twins.error && (
+        <div className="row" style={{ marginTop: 8 }}>
+          <p className="error" role="alert">Could not load twins: {twins.error}</p>
+          <button onClick={twins.reload}>Retry</button>
+        </div>
+      )}
       <p className="muted small" style={{ marginTop: 8 }}>
         A reason is required: a limit raised for a reason nobody wrote down is one nobody
         can review later. Nothing changes until somebody approves it.

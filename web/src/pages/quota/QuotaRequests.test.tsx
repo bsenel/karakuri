@@ -63,6 +63,18 @@ describe('QuotaRequests', () => {
     ).toBeInTheDocument();
   });
 
+  it('says why the twin picker is empty when twins cannot be loaded', async () => {
+    get.mockImplementation((path: string) =>
+      path === '/twins' ? Promise.reject(new Error('twins unavailable')) : Promise.resolve([]),
+    );
+
+    render(<QuotaRequests />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Ask for more' }));
+
+    expect(await screen.findByText('Could not load twins: twins unavailable')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument();
+  });
+
   it('says how to make the first request when there are none', async () => {
     get.mockResolvedValue([]);
 
