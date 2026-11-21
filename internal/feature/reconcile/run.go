@@ -445,7 +445,7 @@ func (s *Service) resumeBrief(ctx context.Context, obj objective.Objective) *cor
 		resume.CommitsUnreadable = "no reader for the stream's branch is configured"
 		return resume
 	}
-	branch, commits, rerr := s.branchCommits(ctx, obj)
+	branch, commits, rerr := s.branchCommits(withCutLoop(ctx, prev.LoopID), obj)
 	resume.Branch = branch
 	if rerr != nil {
 		resume.CommitsUnreadable = rerr.Error()

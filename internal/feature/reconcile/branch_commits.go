@@ -31,8 +31,12 @@ func NewBranchCommitsReader(
 		if err != nil {
 			return "", nil, fmt.Errorf("list loop iterations: %w", err)
 		}
-		repo, base, branch, ok := plannedBranch(its)
+		cut := cutLoopFrom(ctx)
+		repo, base, branch, ok := plannedBranch(its, cut)
 		if !ok {
+			if cut != nil {
+				return "", nil, errors.New("the branch is unknown: the cut-off loop saved no plan that names one")
+			}
 			return "", nil, errors.New("no planned write action names a branch")
 		}
 		adapter := vc(ctx, obj)
@@ -51,15 +55,36 @@ func NewBranchCommitsReader(
 	}
 }
 
+type cutLoopKey struct{}
+
+// withCutLoop tells the reader which loop was cut off, so it reads that loop's
+// own plan (the "act" row the loop saves before acting) and never another
+// pass's. An empty id is a cut-off pass that recorded no loop.
+func withCutLoop(ctx context.Context, loopID string) context.Context {
+	return context.WithValue(ctx, cutLoopKey{}, &loopID)
+}
+
+func cutLoopFrom(ctx context.Context) *string {
+	id, _ := ctx.Value(cutLoopKey{}).(*string)
+	return id
+}
+
 // plannedBranch finds the branch of the most recent planned write action that
 // names one. Reads (verify, observe) may name other branches and are skipped.
-func plannedBranch(its []storage.LoopIteration) (repo, base, branch string, ok bool) {
+// With a cut-off loop it reads only that loop's "act" rows; without one, the
+// newest "learn" row of the objective.
+func plannedBranch(its []storage.LoopIteration, cut *string) (repo, base, branch string, ok bool) {
 	for i := len(its) - 1; i >= 0; i-- {
-		if its[i].Step != "learn" {
+		if cut != nil {
+			if its[i].Step != "act" || *cut == "" {
+				continue
+			}
+		} else if its[i].Step != "learn" {
 			continue
 		}
 		var in struct {
-			Plan struct {
+			LoopID string `json:"loop_id"`
+			Plan   struct {
 				Actions []struct {
 					Capability string         `json:"capability"`
 					Params     map[string]any `json:"params"`
@@ -67,6 +92,9 @@ func plannedBranch(its []storage.LoopIteration) (repo, base, branch string, ok b
 			} `json:"plan"`
 		}
 		if json.Unmarshal([]byte(its[i].InputJSON), &in) != nil {
+			continue
+		}
+		if cut != nil && in.LoopID != *cut {
 			continue
 		}
 		for j := len(in.Plan.Actions) - 1; j >= 0; j-- {
