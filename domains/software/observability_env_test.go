@@ -60,7 +60,7 @@ func (f *fakeObservability) FetchMetrics(_ context.Context, q observability.Metr
 
 func observabilityFactory(t *testing.T, reg *tools.Registry) environment.Factory {
 	t.Helper()
-	for _, f := range softwareEnvironmentFactories(reg, config.OwnAuthorsConfig{}) {
+	for _, f := range softwareEnvironmentFactories(reg, config.OwnAuthorsConfig{}, 0) {
 		if f.EnvID == envObservability {
 			return f
 		}

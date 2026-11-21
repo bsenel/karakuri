@@ -47,6 +47,7 @@ func observeUnansweredReviewComments(ctx context.Context, adapter versioncontrol
 	}
 	listed := []map[string]any{}
 	lines := []string{}
+	waitingLines := []string{}
 	for _, pr := range prs {
 		stream := branchStream(pr.HeadBranch)
 		if stream == "" {
@@ -67,13 +68,22 @@ func observeUnansweredReviewComments(ctx context.Context, adapter versioncontrol
 			blind(err)
 			return
 		}
-		_ = roundLimit // not yet applied
 		var last time.Time
 		for _, c := range commits {
 			if c.Date.After(last) {
 				last = c.Date
 			}
 		}
+		// A round is a third-party comment a later commit answered; the owner's
+		// comments never count (Phase 40 step 12a).
+		rounds := 0
+		for _, c := range comments {
+			if !c.CreatedAt.After(last) && !loginIn(authors.Karakuri, c.Author) && !loginIn(authors.Owners, c.Author) {
+				rounds++
+			}
+		}
+		atLimit := roundLimit > 0 && rounds >= roundLimit
+		waiting := false
 		for _, c := range comments {
 			if !c.CreatedAt.After(last) || loginIn(authors.Karakuri, c.Author) {
 				continue
@@ -81,6 +91,16 @@ func observeUnansweredReviewComments(ctx context.Context, adapter versioncontrol
 			from := commentFromThirdParty
 			if loginIn(authors.Owners, c.Author) {
 				from = commentFromOwner
+			}
+			if from == commentFromThirdParty && atLimit {
+				// One entry per pull request, however many comments are new.
+				if !waiting {
+					waiting = true
+					waitingLines = append(waitingLines, fmt.Sprintf(
+						"Pull request %d of stream %s (branch %s) has had %d answered third-party review rounds, the declared limit. Push nothing more to it; it is waiting for the owner.",
+						pr.Number, stream, pr.HeadBranch, rounds))
+				}
+				continue
 			}
 			body := truncateRunes(c.Body, commentBodyRunes)
 			listed = append(listed, map[string]any{
@@ -93,6 +113,9 @@ func observeUnansweredReviewComments(ctx context.Context, adapter versioncontrol
 	}
 	state["unanswered_review_comments"] = listed
 	state["unanswered_review_comments_lines"] = lines
+	if len(waitingLines) > 0 {
+		state["waiting_for_owner_lines"] = waitingLines
+	}
 }
 
 func commentLine(from, stream string, number int, branch, author, body string) string {

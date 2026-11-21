@@ -20,6 +20,16 @@ type Pack struct {
 	issuer delegationIssuer
 	// ownAuthors says whose pull request comments are the deployment's own.
 	ownAuthors config.OwnAuthorsConfig
+	// reviewRoundLimit is the declared review round limit; 0 means none.
+	reviewRoundLimit int
+}
+
+// WithReviewRoundLimit sets how many answered third-party comment rounds a
+// stream pull request takes before the stream waits for the owner (Phase 40
+// step 12).
+func (p *Pack) WithReviewRoundLimit(n int) *Pack {
+	p.reviewRoundLimit = n
+	return p
 }
 
 // WithOwnAuthors sets the accounts whose pull request comments are the
@@ -59,7 +69,7 @@ func (p *Pack) Capabilities() []capability.Capability {
 }
 
 func (p *Pack) EnvironmentFactories() []environment.Factory {
-	factories := softwareEnvironmentFactories(p.tools, p.ownAuthors)
+	factories := softwareEnvironmentFactories(p.tools, p.ownAuthors, p.reviewRoundLimit)
 	for i, f := range factories {
 		if f.EnvID != "software.env.cli_agent" {
 			continue

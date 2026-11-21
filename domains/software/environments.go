@@ -29,7 +29,7 @@ import (
 // only the CI env is still a no-op.
 // reg may be nil — in that case every adapter-backed env falls back to no-op
 // behavior, except observability, which has no no-op to fall back on.
-func softwareEnvironmentFactories(reg *tools.Registry, ownAuthors config.OwnAuthorsConfig) []environment.Factory {
+func softwareEnvironmentFactories(reg *tools.Registry, ownAuthors config.OwnAuthorsConfig, reviewRoundLimit int) []environment.Factory {
 	noopFactory := func(id, desc string) environment.Factory {
 		return environment.Factory{
 			EnvID:       environment.EnvironmentID(id),
@@ -79,7 +79,7 @@ func softwareEnvironmentFactories(reg *tools.Registry, ownAuthors config.OwnAuth
 				CapPathsDeclared,
 			},
 			Build: func(ctx environment.BuildContext) (environment.Environment, error) {
-				return &gitEnv{id: EnvGit, vc: boundVC(ctx), verifiers: forgeVerifiers, ownAuthors: ownAuthors}, nil
+				return &gitEnv{id: EnvGit, vc: boundVC(ctx), verifiers: forgeVerifiers, ownAuthors: ownAuthors, reviewRoundLimit: reviewRoundLimit}, nil
 			},
 		},
 		{
