@@ -142,6 +142,13 @@ func (s *Service) pass(ctx context.Context, id objective.ObjectiveID, forced rec
 	}
 
 	drift := compare(st.Converged, fp)
+	if drift.Changed && movedOnlyToIdle(drift, fp) {
+		// The world moved to a state with nothing to do (a merge finished the
+		// work): that is the new baseline, not a reason to run (Phase 40 step 13).
+		st.Converged = fp
+		drift.Changed = false
+		drift.Environments = nil
+	}
 	st.LastRunAt = &started
 
 	// First sight of a hashable world with no baseline to compare against.
@@ -737,6 +744,15 @@ func (s *Service) finish(
 			if fp != nil {
 				st.Converged = *fp
 				st.Converged.TakenAt = now
+				// What the pass itself did to the world (a pull request it
+				// opened) is part of what it converged on; read again, or the
+				// next tick sees its own work as drift and plans against an
+				// item only a merge can finish (Phase 40 step 13). A world
+				// that cannot be read now keeps the pre-pass baseline.
+				if again := fingerprint(ctx, s.envsFor(ctx, obj)); again.SHA != "" {
+					st.Converged = again
+					st.Converged.TakenAt = now
+				}
 			}
 			st.LastConvergedAt = &now
 			st.ScoreStreak = 0
