@@ -26,6 +26,8 @@ type fakeForge struct {
 	mu   sync.Mutex
 	prs  []versioncontrol.PRSummary
 	main string
+	// mainErr makes main unreadable.
+	mainErr error
 }
 
 func (f *fakeForge) Active() bool { return true }
@@ -37,7 +39,7 @@ func (f *fakeForge) ListPRs(context.Context, string, time.Time) ([]versioncontro
 func (f *fakeForge) readMain(context.Context) (string, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	return f.main, nil
+	return f.main, f.mainErr
 }
 func (f *fakeForge) openPR(title string) {
 	f.mu.Lock()
