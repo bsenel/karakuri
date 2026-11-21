@@ -97,6 +97,26 @@ func softwareEnvironmentFactories(reg *tools.Registry, ownAuthors config.OwnAuth
 			},
 		},
 		{
+			// Phase 40 step 13, discovery half: the same reading as above, read
+			// as "the pipeline is empty". No source for main's roadmap, for
+			// the end of the last cycle or for a closed proposal's comment is
+			// wired yet, so it is blind (an empty SHA) and starts nothing.
+			EnvID:       "software.env.discovery_trigger",
+			Domain:      "software",
+			Description: "Whether a discovery cycle should start: nothing Planned, no open proposal, minimum time elapsed",
+			Build: func(ctx environment.BuildContext) (environment.Environment, error) {
+				return NewDiscoveryTriggerEnvironment("software.env.discovery_trigger", boundVC(ctx), DiscoveryTriggerSources{
+					ReadMain: func(context.Context) (string, error) {
+						return "", errors.New("no source for main's roadmap is wired")
+					},
+					LastCycleEnd: func(context.Context) (time.Time, error) {
+						return time.Time{}, errors.New("no record of the last discovery cycle is wired")
+					},
+					MinGap: DiscoveryMinGap,
+				}), nil
+			},
+		},
+		{
 			EnvID:       "software.env.ticket",
 			Domain:      "software",
 			Description: "Project management: issues, epics, sprints",

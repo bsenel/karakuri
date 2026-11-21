@@ -132,15 +132,7 @@ func (e *deliveryWorkEnv) Observe(ctx context.Context, _ environment.Observation
 	if e.vc == nil || e.readMain == nil {
 		return environment.Observation{}, errors.New("no forge or no source for main's roadmap is bound")
 	}
-	roadmap, roadmapErr := e.readMain(ctx)
-	prs, err := e.vc.ListPRs(ctx, "", time.Time{})
-	if err != nil {
-		return environment.Observation{}, fmt.Errorf("open pull requests could not be read: %w", err)
-	}
-	state := map[string]any{}
-	observeBranchesWithoutPR(ctx, e.vc, "", state)
-	observeUnansweredReviewComments(ctx, e.vc, "", config.OwnAuthorsConfig{}, 0, nil, state)
-	work, err := ComputeDeliveryWork(roadmap, roadmapErr, prs, state)
+	work, _, err := readDeliveryWork(ctx, e.vc, e.readMain)
 	if err != nil {
 		return environment.Observation{}, err
 	}
@@ -151,6 +143,22 @@ func (e *deliveryWorkEnv) Observe(ctx context.Context, _ environment.Observation
 		EnvID: e.id, State: map[string]any{"has_work": work.HasWork, "reasons": work.Reasons},
 		Version: hex.EncodeToString(sum[:])[:16], Timestamp: time.Now().UTC(), Trust: environment.TrustOperator,
 	}, nil
+}
+
+// readDeliveryWork reads main's roadmap, the open pull requests and the git
+// observation's state, and computes the verdict; the discovery trigger reads
+// the same thing, so the two never disagree about what is in the pipeline.
+func readDeliveryWork(ctx context.Context, vc versioncontrol.VersionControlAdapter, readMain func(context.Context) (string, error)) (DeliveryWork, []versioncontrol.PRSummary, error) {
+	roadmap, roadmapErr := readMain(ctx)
+	prs, err := vc.ListPRs(ctx, "", time.Time{})
+	if err != nil {
+		return DeliveryWork{}, nil, fmt.Errorf("open pull requests could not be read: %w", err)
+	}
+	state := map[string]any{}
+	observeBranchesWithoutPR(ctx, vc, "", state)
+	observeUnansweredReviewComments(ctx, vc, "", config.OwnAuthorsConfig{}, 0, nil, state)
+	work, err := ComputeDeliveryWork(roadmap, roadmapErr, prs, state)
+	return work, prs, err
 }
 
 func (e *deliveryWorkEnv) Act(_ context.Context, a environment.Action) (environment.ActionResult, error) {

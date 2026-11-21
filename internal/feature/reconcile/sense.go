@@ -47,8 +47,12 @@ func fingerprint(ctx context.Context, envs []environment.Environment) reconcile.
 			continue
 		}
 		fp.Environments[id] = snap.SHA
-		if work, ok := snap.State["has_work"].(bool); ok && !work {
-			fp.Idle = append(fp.Idle, id)
+		if work, ok := snap.State["has_work"].(bool); ok {
+			if work {
+				fp.Working = append(fp.Working, id)
+			} else {
+				fp.Idle = append(fp.Idle, id)
+			}
 		}
 	}
 
@@ -59,6 +63,7 @@ func fingerprint(ctx context.Context, envs []environment.Environment) reconcile.
 	sort.Strings(ids)
 	sort.Strings(fp.Blind)
 	sort.Strings(fp.Idle)
+	sort.Strings(fp.Working)
 
 	if len(ids) > 0 {
 		parts := make([]string, len(ids))

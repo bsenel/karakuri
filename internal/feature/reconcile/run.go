@@ -159,7 +159,16 @@ func (s *Service) pass(ctx context.Context, id objective.ObjectiveID, forced rec
 	// level, watching and reporting) would never acquire a baseline and so
 	// could never report drift, which is the one job it has.
 	if st.Converged.SHA == "" && fp.SHA != "" {
-		st.Converged = fp
+		if len(fp.Working) > 0 {
+			// An environment that computes "there is work" is not a world
+			// with nothing to have drifted from: the first sight of it is the
+			// reason to run, and the baseline is left for the pass that
+			// converges on it (Phase 40 step 13).
+			drift.Changed = true
+			drift.Environments = fp.Working
+		} else {
+			st.Converged = fp
+		}
 	}
 
 	s.publish(ctx, event.TypeReconcileSensed, obj, map[string]any{

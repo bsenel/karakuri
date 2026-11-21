@@ -179,7 +179,7 @@ func TestScheduledCycleStillRunsAfterAnEmptyPipelineCycleInTheSamePeriod(t *test
 	w.forge.mu.Unlock()
 	w.forge.setMain(mainWithPlanned)
 
-	tickFor(t, f, obj.ID, 12*time.Hour) // to Sunday 08:00
+	tickFor(t, f, obj.ID, 11*time.Hour) // to Sunday 08:00 (the clock is at 21:00 after the first cycle)
 	if got := f.loops.count(); got != 1 {
 		t.Fatalf("%d cycles before the cadence is due with Planned work on main, want still 1", got)
 	}

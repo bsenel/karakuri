@@ -7606,6 +7606,12 @@ components:
             taken_at:
               format: date-time
               type: string
+            working:
+              description: Environments whose snapshot says they hold work; with no baseline yet, that is a reason to run.
+              items:
+                type: string
+              nullable: true
+              type: array
           type: object
         created_at:
           format: date-time
