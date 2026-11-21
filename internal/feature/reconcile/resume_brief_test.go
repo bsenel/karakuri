@@ -246,3 +246,29 @@ func TestAnUnreadableBranchIsSaidSoAndNeverAnEmptyList(t *testing.T) {
 		})
 	}
 }
+
+// (c) The clock side of the acceptance: no pass runs before the quota's return
+// time; the first one after it is given the brief.
+func TestNoPassRunsBeforeTheQuotaReturnsAndTheNextOneIsGivenTheBrief(t *testing.T) {
+	r := newResumeFixture(t, resumeCommits, nil)
+	r.loops.criteria = resumeCriteria()
+	quotaPass(r.fixture, 2*time.Hour)
+	r.pass(t, r.obj.ID, reconcile.TriggerManual)
+	ran := r.loops.count()
+
+	r.clock = r.clock.Add(time.Hour) // inside the two hours the provider asked for
+	tickAndSettle(t, r.fixture)
+	if r.loops.count() != ran {
+		t.Fatalf("a pass ran an hour before the quota returns")
+	}
+
+	r.clock = r.clock.Add(time.Hour + time.Minute)
+	tickAndSettle(t, r.fixture)
+	if r.loops.count() != ran+1 {
+		t.Fatalf("no pass ran after the quota returned (loop runs %d, want %d)", r.loops.count(), ran+1)
+	}
+	got := r.log.last(t).Resume
+	if got == nil || !reflect.DeepEqual(got.Commits, resumeCommits) || !reflect.DeepEqual(got.Unsettled, resumeUnsettled) {
+		t.Fatalf("request.Resume = %+v, want the two commits and the unsettled criteria", got)
+	}
+}

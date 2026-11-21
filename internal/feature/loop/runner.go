@@ -51,6 +51,11 @@ type stepContext struct {
 	// and never inferred: empty for a one-shot run.
 	rung objective.AutonomyLevel
 
+	// resume is what the request said the cut-off pass left: the branch's
+	// commits and the criteria not settled. Nil for a pass that follows no
+	// cut-off one (Phase 40 step 9a).
+	resume *loop.Resume
+
 	// threshold is the confidence bar stepDecide last applied, which an
 	// operator's modify may have lowered below the one the agent declares.
 	// The act step records it on the rows for the actions that bar let through.
@@ -154,6 +159,7 @@ func (s *serviceImpl) runLoop(ctx context.Context, loopID string, req loop.Reque
 		twinID:   obj.TwinID,
 		svc:      s,
 		rung:     req.AutonomyRung,
+		resume:   req.Resume,
 		sleep:    s.sleep,
 	}
 
