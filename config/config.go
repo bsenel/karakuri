@@ -26,6 +26,9 @@ type Config struct {
 	Reports       ReportsConfig       `yaml:"reports"`
 	Audit         AuditConfig         `yaml:"audit"`
 	OwnAuthors    OwnAuthorsConfig    `yaml:"own_authors"`
+	// ReviewRoundLimit is how many answered third-party comment rounds a stream
+	// pull request takes before the stream stops pushing (Phase 40 step 12).
+	ReviewRoundLimit int `yaml:"review_round_limit"`
 }
 
 // OwnAuthorsConfig names the forge accounts that are this deployment's own

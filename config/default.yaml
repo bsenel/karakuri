@@ -328,6 +328,9 @@ own_authors:
   karakuri: []
   owners: []
 
+# Rounds (a third-party comment answered by a later commit) a stream pull request takes before the stream stops pushing and waits for the owner (Phase 40 step 12).
+review_round_limit: 3
+
 domains:
   - id: software
     enabled: true

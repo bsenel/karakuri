@@ -30,7 +30,7 @@ const (
 // planner lines into state. Anything the forge cannot be read for leaves the
 // list out and says why (AGENTS.md rule 10): an empty list would tell the
 // planner nobody is waiting on an answer.
-func observeUnansweredReviewComments(ctx context.Context, adapter versioncontrol.VersionControlAdapter, repo string, authors config.OwnAuthorsConfig, state map[string]any) {
+func observeUnansweredReviewComments(ctx context.Context, adapter versioncontrol.VersionControlAdapter, repo string, authors config.OwnAuthorsConfig, roundLimit int, state map[string]any) {
 	blind := func(err error) {
 		state["unanswered_review_comments_error"] = err.Error()
 		state["unanswered_review_comments_lines"] = []string{
@@ -67,6 +67,7 @@ func observeUnansweredReviewComments(ctx context.Context, adapter versioncontrol
 			blind(err)
 			return
 		}
+		_ = roundLimit // not yet applied
 		var last time.Time
 		for _, c := range commits {
 			if c.Date.After(last) {

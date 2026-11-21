@@ -296,6 +296,8 @@ type gitEnv struct {
 	// ownAuthors says whose pull request comments are the deployment's own
 	// (Phase 40 step 12a).
 	ownAuthors config.OwnAuthorsConfig
+	// reviewRoundLimit is the declared round limit; 0 means none (Phase 40 step 12).
+	reviewRoundLimit int
 }
 
 // gitObservationWindow is how far back the repository observation reaches.
@@ -427,7 +429,7 @@ func (e *gitEnv) Observe(ctx context.Context, q environment.ObservationQuery) (e
 	// The comments on those pull requests no later commit answers, owner's or
 	// third party's (Phase 40 steps 12 and 12a). A stranger's comment is their
 	// writing, so it makes the observation third party like a stranger's title.
-	observeUnansweredReviewComments(ctx, adapter, repo, e.ownAuthors, state)
+	observeUnansweredReviewComments(ctx, adapter, repo, e.ownAuthors, e.reviewRoundLimit, state)
 	if hasThirdPartyComment(state) {
 		trust = environment.TrustThirdParty
 	}
