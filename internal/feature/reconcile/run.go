@@ -346,6 +346,25 @@ func (s *Service) reconcileNow(
 		// objective on the deployment to babysit one question.
 		st.ActiveLoopID = res.LoopID
 		st.Phase = reconcile.PhaseWaiting
+	case final.Outcome == coreloop.RunWaitingForQuota:
+		// The coding agent's provider refused for quota and the loop stopped
+		// spending at once (Phase 40 step 8). Checked before the text match
+		// below, which the refusal's text would also satisfy: the named
+		// outcome decides. Filed like a spent budget, until the quota
+		// returns where the provider said when, and with no time where it
+		// did not; the cadence decides then.
+		outcome.Deferred = outcomeWaitingForQuota
+		if final.RetryAfter > 0 {
+			outcome.DeferredUntil = outcome.EndedAt.Add(final.RetryAfter)
+		}
+		payload := map[string]any{
+			"reason":  outcomeWaitingForQuota,
+			"loop_id": res.LoopID,
+		}
+		if !outcome.DeferredUntil.IsZero() {
+			payload["resets_at"] = outcome.DeferredUntil
+		}
+		s.publish(ctx, event.TypeReconcileDeferred, obj, payload)
 	case final.Status == objective.StatusFailed && strings.Contains(final.Error, coreerrors.ErrProviderRateLimited.Error()):
 		// The model provider refused, twice, and the loop ended rather than
 		// plan from it (Phase 36). Filed like a spent budget: nothing here
@@ -358,6 +377,11 @@ func (s *Service) reconcileNow(
 			"detail":  final.Error,
 			"loop_id": res.LoopID,
 		})
+	case final.Outcome == coreloop.RunRefusedByBounds:
+		// The bounds refused the plan and the loop ended rather than act
+		// outside them (Phase 40 step 7). That is the bounds working, not
+		// the stream failing, so it is named and not filed as an error.
+		outcome.Ending = string(coreloop.RunRefusedByBounds)
 	case inconclusivePass(final):
 		// Checked before failure: the loop ends failed when it cannot
 		// complete, and one that could not settle a required criterion has not
@@ -384,6 +408,11 @@ func (s *Service) reconcileNow(
 // flight (Phase 37 step 1). Filed like provider_rate_limited, as a reason that
 // is not a failure.
 const outcomeStopped = "stopped"
+
+// outcomeWaitingForQuota is the deferral a pass records when its loop ended
+// waiting_for_quota (Phase 40 step 8): the loop's outcome string, as Ending
+// is for step 7's endings.
+const outcomeWaitingForQuota = string(coreloop.RunWaitingForQuota)
 
 // stopPrincipal is who the loop service records as having stopped a pass's
 // loop: the supervisor that carried the pause out. The person who paused is on
@@ -604,7 +633,30 @@ func (s *Service) settleActiveLoop(ctx context.Context, st *reconcile.State, obj
 	// A restart ended it at boot (Phase 40 step 4). The pass it belonged to
 	// never finished, so nothing about it is a clean run, a rejection or a
 	// failure; the stream is free, and the caller runs that pass again.
+	//
+	// The cut-off pass is recorded once, by name (Phase 40 step 7), so the
+	// history and the digest can say a restart ended it. It goes straight to
+	// the store rather than through finish: no counter moves for it, and the
+	// pass run again next is the one that schedules the stream. Its times
+	// are when the supervisor found it ended, the only time it knows.
 	if ls.Outcome == coreloop.RunInterruptedByRestart {
+		now := s.now()
+		cutOff := reconcile.Outcome{
+			ID:           newOutcomeID(),
+			ObjectiveID:  obj.ID,
+			TwinID:       obj.TwinID,
+			Trigger:      st.LastTrigger,
+			LoopID:       ls.LoopID,
+			Autonomy:     st.EffectiveAutonomy(decl),
+			CriteriaMet:  st.CriteriaMet,
+			CheckpointID: ls.CheckpointID,
+			Ending:       string(coreloop.RunInterruptedByRestart),
+			StartedAt:    now,
+			EndedAt:      now,
+		}
+		if err := s.store.SaveReconcileOutcome(ctx, cutOff); err != nil {
+			return false, false, false, fmt.Errorf("record the pass a restart cut off: %w", err)
+		}
 		st.ActiveLoopID = ""
 		st.Phase = reconcile.PhaseIdle
 		return true, false, true, nil
@@ -713,6 +765,14 @@ func (s *Service) finish(
 		// bounded agent should do. The counters wait for the human.
 		st.LastError = ""
 		st.LastReconciledAt = &now
+
+	case outcome.Ending != "":
+		// A loop its bounds refused (Phase 40 step 7) ended by name: the
+		// breaker does not count it, and it is not a clean run either, so
+		// no counter moves.
+		st.LastError = ""
+		st.LastReconciledAt = &now
+		st.Phase = reconcile.PhaseIdle
 
 	case outcome.Inconclusive:
 		// Neither either: a required criterion could not be settled, so

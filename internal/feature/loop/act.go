@@ -3,6 +3,7 @@ package loop
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"maps"
 	"strconv"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/bsenel/karakuri/internal/core/capability"
 	"github.com/bsenel/karakuri/internal/core/environment"
+	coreerrors "github.com/bsenel/karakuri/internal/core/errors"
 	"github.com/bsenel/karakuri/internal/core/event"
 	"github.com/bsenel/karakuri/internal/core/loop"
 	"github.com/bsenel/karakuri/internal/core/telemetry"
@@ -123,13 +125,27 @@ func stepAct(ctx context.Context, sc *stepContext, p plan) []actionOutcome {
 		if sc.svc.needsWorkspace(action.CapabilityID) {
 			taskID := fmt.Sprintf("%s-%d-%d-%s", sc.loopID[:8], sc.iteration, i,
 				strconv.FormatInt(time.Now().UnixNano(), 36))
+			// A branch the plan names, already held to the template's branch
+			// patterns by the decide step, is the branch the work is done on:
+			// a repair of a pull request's head is made on that head.
+			plannedBranch, _ := params["branch"].(string)
 			wt, err := sc.svc.wt.Create(ctx, git.WorktreeOptions{
 				ObjectiveID: sc.obj.ID,
 				TaskID:      taskID,
+				BranchName:  plannedBranch,
 			})
 			provisionErr = err
 			if err == nil {
 				params["worktree_path"] = wt.Path
+				// The plan's own branch is the ref the action is declared to
+				// push; the worktree's branch replaces params.branch below for
+				// the adapters that push or open a pull request from the
+				// worktree, so keep the plan's under its own key. Without it
+				// the pushed-refs check (Phase 40 step 3) declared only the
+				// worktree branch and failed every push to the item branch.
+				if planned, _ := params["branch"].(string); planned != "" {
+					params["planned_branch"] = planned
+				}
 				params["branch"] = wt.Branch
 				// Persist worktree record
 				_ = sc.svc.store.SaveWorktree(ctx, storage.Worktree{
@@ -186,9 +202,12 @@ func stepAct(ctx context.Context, sc *stepContext, p plan) []actionOutcome {
 			})
 			sc.state.endAction()
 			if err != nil {
-				result = environment.ActionResult{
-					Success: false,
-					Error:   err.Error(),
+				// What the environment reported beside its error stays: a
+				// coding agent refused for quota still names the salvage
+				// branch its edits went to (Phase 40 step 8).
+				result.Success = false
+				if result.Error == "" {
+					result.Error = err.Error()
 				}
 			}
 			errored = err != nil
@@ -377,6 +396,18 @@ func stepAct(ctx context.Context, sc *stepContext, p plan) []actionOutcome {
 			Errored:      errored,
 			Err:          actErr,
 		})
+
+		// A provider that refused for quota refuses the next action too: the
+		// pass stops spending actions here (Phase 40 step 8). Read by type,
+		// never by text, so an exit 1 with nothing said goes on as before.
+		var quota *coreerrors.ProviderRateLimitError
+		if errors.As(actErr, &quota) {
+			sc.state.mu.Lock()
+			sc.state.outOfQuota = true
+			sc.state.retryAfter = quota.RetryAfter
+			sc.state.mu.Unlock()
+			break
+		}
 	}
 
 	// 3. Emit step completed

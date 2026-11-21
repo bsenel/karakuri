@@ -276,7 +276,7 @@ func authBindingsCmd() *cobra.Command {
 		Example: `  krk auth bindings add --principal alice --role operator --scope twin:abc
   krk auth bindings add --principal alice --role operator --org acme --team eng
   krk auth bindings add --principal oidc:bob --role viewer --project delta`,
-		RunE: func(_ *cobra.Command, _ []string) error {
+		RunE: func(c *cobra.Command, _ []string) error {
 			if principal == "" || role == "" {
 				return fmt.Errorf("--principal and --role are required: name who gets which role, e.g. `krk auth bindings add --principal alice --role operator --scope twin:abc`\nList the principals with `krk auth users list`")
 			}
@@ -302,6 +302,15 @@ func authBindingsCmd() *cobra.Command {
 				return err
 			}
 			client.PrintOutput(data, output)
+			// The body is the stored binding; a line on stderr says who got
+			// what, over what. Stdout is the same in every format.
+			if output == "pretty" {
+				over := "everything"
+				if scope != "" {
+					over = scope
+				}
+				fmt.Fprintf(c.ErrOrStderr(), "%s now has role %s over %s\n", principal, role, over)
+			}
 			return nil
 		},
 	}

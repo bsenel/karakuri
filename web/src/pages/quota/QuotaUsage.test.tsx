@@ -75,6 +75,28 @@ describe('QuotaUsage', () => {
     expect(screen.getByText('250,000')).toBeInTheDocument();
   });
 
+  it('offers a retry when usage cannot be read', async () => {
+    get.mockImplementation((path: string) =>
+      path === '/twins'
+        ? Promise.resolve(twins)
+        : Promise.reject(new APIError(500, '{"message":"quota store unavailable"}')),
+    );
+
+    render(<QuotaUsage />);
+    await waitFor(() => expect(screen.getByRole('option', { name: 'Ann' })).toBeInTheDocument());
+    fireEvent.change(screen.getByRole('combobox', { name: 'Twin' }), {
+      target: { value: 'twin-1' },
+    });
+    await screen.findByText('quota store unavailable');
+
+    get.mockImplementation((path: string) =>
+      Promise.resolve(path === '/twins' ? twins : { twin_id: 'twin-1', tiers: {} }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+
+    expect(await screen.findByText('No tiers are counted for this twin.')).toBeInTheDocument();
+  });
+
   it('announces a failure to read usage', async () => {
     get.mockImplementation((path: string) =>
       path === '/twins'
