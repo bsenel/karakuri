@@ -64,15 +64,19 @@ func checkPushedRefs(ctx context.Context, worktree string, declared map[string]b
 	}, nil
 }
 
+// mainTrackingRef is where the path check keeps origin's main.
+const mainTrackingRef = "refs/remotes/origin/main"
+
 // checkPushedPaths fails an action that declared params.paths, globs here, and
 // pushed to its declared branch a change to a file outside them (Phase 40 step
 // 10). The decide step held the declaration to the template's paths; this
-// holds the push to the declaration. What the run pushed is the branch's diff
-// from its tip before the run, or, for a branch the run created, from main as
-// origin had it before the run: a proposal stream's pull request opens only
-// against main. A rename counts both names. No globs, no branch or a branch
-// the run did not move is nothing to check; a diff that cannot be read is an
-// error, never a pass.
+// holds the push to the declaration. What the run pushed is the files of the
+// commits it added to the branch since its tip before the run (since main as
+// origin had it before the run, for a branch it created) that origin's main
+// does not hold, so a merge of main counts only its own conflict resolutions.
+// A rename counts both names. No globs, no branch or a branch the run did not
+// move is nothing to check; a history that cannot be read is an error, never
+// a pass.
 func checkPushedPaths(ctx context.Context, worktree, branch string, globs []string, before map[string]string) (*environment.BoundsViolation, error) {
 	if len(globs) == 0 || branch == "" {
 		return nil, nil
@@ -96,6 +100,15 @@ func checkPushedPaths(ctx context.Context, worktree, branch string, globs []stri
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), salvageTimeout)
 	defer cancel()
 	dir := filepath.Clean(worktree)
+	// Main is fetched as origin has it now, so a merge of it is recognised as
+	// main's own commits and not the run's. A main that cannot be fetched or
+	// resolved is an error, never an empty list.
+	if _, err := gitOutput(ctx, dir, nil, "fetch", "--no-tags", "origin", "+"+headsPrefix+"main:"+mainTrackingRef); err != nil {
+		return nil, fmt.Errorf("what the run pushed to %s could not be checked: fetching origin's main: %w", branch, err)
+	}
+	if _, err := gitOutput(ctx, dir, nil, "rev-parse", "--verify", "--quiet", mainTrackingRef+"^{commit}"); err != nil {
+		return nil, fmt.Errorf("what the run pushed to %s could not be checked: origin's main cannot be resolved: %w", branch, err)
+	}
 	// Fetched by ref, which origin always serves, when the worktree's
 	// repository does not hold the commit.
 	for sha, from := range map[string]string{base: baseRef, now: ref} {
@@ -105,7 +118,10 @@ func checkPushedPaths(ctx context.Context, worktree, branch string, globs []stri
 			}
 		}
 	}
-	out, err := gitOutput(ctx, dir, nil, "diff", "--name-only", "--no-renames", base+"..."+now)
+	// Only the commits the run added that origin's main does not hold: a merge
+	// of main adds just its own conflict resolutions (the combined diff of a
+	// merge lists only files that differ from every parent).
+	out, err := gitOutput(ctx, dir, nil, "log", "--name-only", "--no-renames", "--format=", now, "--not", base, mainTrackingRef)
 	if err != nil {
 		return nil, fmt.Errorf("what the run pushed to %s could not be checked: %w", branch, err)
 	}

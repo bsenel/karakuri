@@ -1,6 +1,7 @@
 package software
 
 import (
+	"context"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -95,6 +96,21 @@ func TestAProposalActionThatCommittedOutsideItsPathsOnABacklogBranchIsCaught(t *
 	})
 	if res.Success || res.BoundsViolation == nil || !strings.Contains(res.Error, "internal/feature/x.go") {
 		t.Fatalf("a commit of internal/feature/x.go passed or went unnamed: success=%v error %q violation %+v", res.Success, res.Error, res.BoundsViolation)
+	}
+}
+
+func TestAPathCheckWhoseOriginMainCannotBeResolvedIsAnErrorNotAPass(t *testing.T) {
+	f := newMergeMainFixture(t)
+	before, err := readRemoteRefs(context.Background(), f.worktree)
+	if err != nil {
+		t.Fatal(err)
+	}
+	commitIn(t, f.worktree, "item.txt")
+	gitIn(t, f.worktree, "push", "origin", "HEAD:refs/heads/"+f.branch)
+	gitIn(t, f.origin, "update-ref", "-d", "refs/heads/main")
+	violation, err := checkPushedPaths(context.Background(), f.worktree, f.branch, []string{"item.txt"}, before)
+	if err == nil {
+		t.Fatalf("an origin whose main cannot be fetched passed the path check: violation %+v", violation)
 	}
 }
 

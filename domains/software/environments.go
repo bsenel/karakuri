@@ -954,7 +954,7 @@ func (e *cliEnv) Act(ctx context.Context, a environment.Action) (environment.Act
 		// A proposal stream's action declares the files it writes, and a
 		// push to its branch that changed any other fails (ADR 030).
 		var outside *environment.BoundsViolation
-		outside, pushedErr = checkPushedPaths(ctx, worktree, asString(a.Params, "branch"), pathGlobsParam(a.Params), refsBefore)
+		outside, pushedErr = checkPushedPaths(ctx, worktree, plannedBranch(a.Params), pathGlobsParam(a.Params), refsBefore)
 		pushed = joinViolations(pushed, outside)
 	}
 	logErr := pushes.remove()
