@@ -97,6 +97,10 @@ func (v *recordingVC) CompareCommits(context.Context, string, string, string) ([
 	return nil, versioncontrol.ErrUnsupported
 }
 
+func (v *recordingVC) ListClosedPRs(context.Context, string, int) ([]versioncontrol.PRSummary, error) {
+	return nil, versioncontrol.ErrUnsupported
+}
+
 func (v *recordingVC) ListMergedPRs(context.Context, string, int) ([]versioncontrol.PRSummary, error) {
 	return nil, versioncontrol.ErrUnsupported
 }

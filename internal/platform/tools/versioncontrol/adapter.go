@@ -119,6 +119,10 @@ type VersionControlAdapter interface {
 	// merged pull requests, newest first, with their head SHA and CheckState.
 	// An adapter whose forge cannot returns an error wrapping ErrUnsupported.
 	ListMergedPRs(ctx context.Context, repo string, limit int) ([]PRSummary, error)
+	// ListClosedPRs returns up to limit of the repository's most recently
+	// closed pull requests that were not merged, newest first. An adapter
+	// whose forge cannot returns an error wrapping ErrUnsupported.
+	ListClosedPRs(ctx context.Context, repo string, limit int) ([]PRSummary, error)
 	// EditPRBody replaces a pull request's description with body. An adapter
 	// whose forge cannot returns an error wrapping ErrUnsupported.
 	EditPRBody(ctx context.Context, repo, prID, body string) error

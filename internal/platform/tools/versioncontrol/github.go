@@ -506,6 +506,11 @@ func (g *GitHub) ListMergedPRs(ctx context.Context, repo string, limit int) ([]P
 	return out, nil
 }
 
+// ListClosedPRs is a stub until the production slice lands.
+func (g *GitHub) ListClosedPRs(ctx context.Context, repo string, limit int) ([]PRSummary, error) {
+	return nil, fmt.Errorf("github: closed pull requests: not implemented")
+}
+
 // EditPRBody replaces a pull request's description.
 func (g *GitHub) EditPRBody(ctx context.Context, repo, prID, body string) error {
 	if repo == "" {

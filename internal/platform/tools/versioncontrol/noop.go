@@ -52,6 +52,10 @@ func (n *NoOp) ListMergedPRs(_ context.Context, _ string, _ int) ([]PRSummary, e
 	return nil, fmt.Errorf("noop: merged pull requests: %w", ErrUnsupported)
 }
 
+func (n *NoOp) ListClosedPRs(_ context.Context, _ string, _ int) ([]PRSummary, error) {
+	return nil, fmt.Errorf("noop: closed pull requests: %w", ErrUnsupported)
+}
+
 func (n *NoOp) EditPRBody(_ context.Context, _, _, _ string) error {
 	return fmt.Errorf("noop: edit pull request body: %w", ErrUnsupported)
 }

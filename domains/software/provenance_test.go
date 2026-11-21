@@ -99,6 +99,10 @@ func (s *vcStub) CompareCommits(_ context.Context, repo, base, head string) ([]v
 	return s.compared, nil
 }
 
+func (s *vcStub) ListClosedPRs(context.Context, string, int) ([]versioncontrol.PRSummary, error) {
+	return nil, versioncontrol.ErrUnsupported
+}
+
 func (s *vcStub) ListMergedPRs(context.Context, string, int) ([]versioncontrol.PRSummary, error) {
 	return nil, versioncontrol.ErrUnsupported
 }

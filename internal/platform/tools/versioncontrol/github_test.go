@@ -3,6 +3,8 @@ package versioncontrol
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -462,6 +464,63 @@ func TestListMergedPRsKeepsTheMergedNewestFirst(t *testing.T) {
 	}
 	if want := []string{"7:h7:success", "8:h8:success"}; !slices.Equal(ids, want) {
 		t.Errorf("merged = %v, want %v", ids, want)
+	}
+}
+
+// Closed pull requests are the closed ones without a merge time, newest first,
+// at most limit of them.
+func TestListClosedPRsKeepsTheUnmergedInOrder(t *testing.T) {
+	var gotQuery string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "/check-runs") {
+			_, _ = w.Write([]byte(`{"check_runs":[]}`))
+			return
+		}
+		gotQuery = r.URL.RawQuery
+		_, _ = w.Write([]byte(`[
+			{"number":9,"merged_at":null,"updated_at":"2026-11-09T10:00:00Z","head":{"ref":"x9","sha":"h9"},"user":{"login":"x"}},
+			{"number":8,"merged_at":"2026-11-08T10:00:00Z","updated_at":"2026-11-08T10:00:00Z","head":{"ref":"x8","sha":"h8"},"user":{"login":"x"}},
+			{"number":7,"merged_at":null,"updated_at":"2026-11-07T10:00:00Z","head":{"ref":"x7","sha":"h7"},"user":{"login":"x"}},
+			{"number":6,"merged_at":null,"updated_at":"2026-11-06T10:00:00Z","head":{"ref":"x6","sha":"h6"},"user":{"login":"x"}}
+		]`))
+	}))
+	defer srv.Close()
+	g := NewGitHub("t", "acme/api")
+	g.client = &http.Client{Transport: toServer{srv}}
+
+	prs, err := g.ListClosedPRs(context.Background(), "", 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(gotQuery, "state=closed") {
+		t.Errorf("query %q does not ask for closed pull requests", gotQuery)
+	}
+	var got []string
+	for _, pr := range prs {
+		got = append(got, fmt.Sprintf("%d:%s", pr.Number, pr.HeadBranch))
+	}
+	if want := []string{"9:x9", "7:x7"}; !slices.Equal(got, want) {
+		t.Errorf("closed = %v, want %v (merged skipped, newest first, limit kept)", got, want)
+	}
+}
+
+func TestListClosedPRsFailsOnANon2xx(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte(`{"message":"boom"}`))
+	}))
+	defer srv.Close()
+	g := NewGitHub("t", "acme/api")
+	g.client = &http.Client{Transport: toServer{srv}}
+	if prs, err := g.ListClosedPRs(context.Background(), "", 5); err == nil {
+		t.Fatalf("a 500 was read as success: %v", prs)
+	}
+}
+
+func TestNoOpListClosedPRsIsUnsupported(t *testing.T) {
+	_, err := NewNoOp().ListClosedPRs(context.Background(), "", 5)
+	if !errors.Is(err, ErrUnsupported) {
+		t.Fatalf("err = %v, want ErrUnsupported", err)
 	}
 }
 
