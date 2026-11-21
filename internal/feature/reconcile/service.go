@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"sort"
 	"sync"
 	"time"
 
@@ -80,6 +81,11 @@ type Config struct {
 	// ceiling that pass holds one of MaxConcurrent slots for the life of the
 	// process, and four of them stop the supervisor dead.
 	MaxLoopWait time.Duration
+
+	// QuotaProbeBackoff is how long the deployment waits before probing the
+	// quota again when a probe found it still out and the provider gave no
+	// return time (Phase 40 step 9).
+	QuotaProbeBackoff time.Duration
 }
 
 func (c Config) withDefaults() Config {
@@ -112,6 +118,9 @@ func (c Config) withDefaults() Config {
 	}
 	if c.LoopPoll <= 0 {
 		c.LoopPoll = 2 * time.Second
+	}
+	if c.QuotaProbeBackoff <= 0 {
+		c.QuotaProbeBackoff = 15 * time.Minute
 	}
 	return c
 }
@@ -150,6 +159,18 @@ type Service struct {
 	// cancels holds the cancel function of each running pass, under the same
 	// lock as running, so a pause can stop the pass in flight (Phase 37).
 	cancels map[objective.ObjectiveID]context.CancelCauseFunc
+
+	// The deployment's coding-agent quota, as the last pass that ran a loop
+	// found it (Phase 40 step 9), under the same lock as running. The quota is
+	// the deployment's, not one stream's: while it is out Tick starts no pass
+	// until quotaUntil, then one probe, by quotaProbe, and nothing beside it
+	// until that probe ends. Held in memory only: a restart forgets it, so a
+	// restarted server learns the quota is out again from the first pass it
+	// starts, at the cost of one more refusal, until step 9a reads the stored
+	// deferral back instead.
+	quotaOut   bool
+	quotaUntil time.Time
+	quotaProbe objective.ObjectiveID
 
 	// sweeper expires unanswered checkpoints on the tick. Nil means expiry is
 	// off, which is what a deployment that configured no duration gets.
@@ -265,17 +286,115 @@ func (s *Service) Tick(ctx context.Context) {
 		slog.Warn("reconcile due query failed", "err", err)
 		return
 	}
-	for _, st := range due {
-		s.dispatch(ctx, st.ObjectiveID, "")
+	ids := s.byPriority(ctx, due)
+	if probe, held := s.quotaHold(now, ids); held {
+		if probe == "" {
+			return
+		}
+		ids = []objective.ObjectiveID{probe}
+	} else {
+		ids = afterThePassItWaitedFor(due, ids)
 	}
+	for _, id := range ids {
+		s.dispatch(ctx, id, "")
+	}
+}
+
+// quotaHold says whether the quota being out holds this tick's dispatch, and
+// which one objective, if any, may probe it: the first of ids, which byPriority
+// put first, once the return time has come and no earlier probe is still
+// running (Phase 40 step 9).
+func (s *Service) quotaHold(now time.Time, ids []objective.ObjectiveID) (objective.ObjectiveID, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if !s.quotaOut {
+		return "", false
+	}
+	if s.running[s.quotaProbe] || now.Before(s.quotaUntil) || len(ids) == 0 {
+		return "", true
+	}
+	s.quotaProbe = ids[0]
+	return s.quotaProbe, true
+}
+
+// noteQuota folds what a pass found about the quota into the deployment's
+// state. A loop that ended waiting_for_quota puts it out until the provider's
+// time, or for the declared backoff where it gave none; a loop that ran and
+// was not deferred brings it back. A pass that ran no loop, or one deferred
+// for another reason, says nothing about the coding agent's quota.
+func (s *Service) noteQuota(outcome reconcile.Outcome, now time.Time) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	switch {
+	case outcome.Deferred == outcomeWaitingForQuota:
+		until := outcome.DeferredUntil
+		if until.IsZero() {
+			until = now.Add(s.cfg.QuotaProbeBackoff)
+		}
+		s.quotaOut, s.quotaUntil = true, until
+		slog.Info("coding agent quota out; holding every stream", "objective", string(outcome.ObjectiveID), "until", until)
+	case outcome.LoopID != "" && outcome.Deferred == "" && s.quotaOut:
+		s.quotaOut, s.quotaUntil, s.quotaProbe = false, time.Time{}, ""
+		slog.Info("coding agent quota back; releasing the streams", "objective", string(outcome.ObjectiveID))
+	}
+}
+
+// byPriority orders the due objectives the way slots are handed out: highest
+// priority first, and among equals the most overdue first, which is the order
+// ListDueReconcileStates returns them in (Phase 40 step 9). An objective that
+// cannot be read keeps its place among priority 0; its pass reports the error.
+func (s *Service) byPriority(ctx context.Context, due []reconcile.State) []objective.ObjectiveID {
+	ids := make([]objective.ObjectiveID, len(due))
+	priority := make(map[objective.ObjectiveID]int, len(due))
+	for i, st := range due {
+		ids[i] = st.ObjectiveID
+		if obj, err := s.store.GetObjective(ctx, st.ObjectiveID); err == nil {
+			priority[st.ObjectiveID] = obj.Priority
+		}
+	}
+	sort.SliceStable(ids, func(i, j int) bool { return priority[ids[i]] > priority[ids[j]] })
+	return ids
+}
+
+// afterThePassItWaitedFor keeps the priority order from starving a fixed
+// cadence (Phase 40 step 9): an objective that was already due when the last
+// pass of one ahead of it in ids ended has waited for that pass, so it goes
+// ahead of that objective's next one. Without it a continuous stream, due again
+// right after every pass, would hold the slot for as long as it has work. It
+// waits for a running pass to end, never for the pipeline to drain. Among the
+// objectives that waited, and among the rest, ids keeps its order.
+//
+// Applied only outside the quota hold: the probe is the highest-priority
+// waiting stream, and a probe that found the quota back has ended a pass every
+// waiting stream waited for, so they keep their priority order.
+func afterThePassItWaitedFor(due []reconcile.State, ids []objective.ObjectiveID) []objective.ObjectiveID {
+	states := make(map[objective.ObjectiveID]reconcile.State, len(due))
+	for _, st := range due {
+		states[st.ObjectiveID] = st
+	}
+	var waited, rest []objective.ObjectiveID
+	// lastEnded is the latest end of a pass of any objective ahead in ids.
+	var lastEnded time.Time
+	for _, id := range ids {
+		st := states[id]
+		if st.NextDueAt != nil && !lastEnded.IsZero() && !st.NextDueAt.After(lastEnded) {
+			waited = append(waited, id)
+		} else {
+			rest = append(rest, id)
+		}
+		if st.LastReconciledAt != nil && st.LastReconciledAt.After(lastEnded) {
+			lastEnded = *st.LastReconciledAt
+		}
+	}
+	return append(waited, rest...)
 }
 
 // dispatch runs one objective's pass in the background, under both the
 // concurrency bound and the this-replica guard.
 //
 // A slot that is not free means the objective is left due; the next tick picks
-// it up, and the ordering in ListDueReconcileStates means the most overdue
-// objectives are the ones that get the slots.
+// it up, and Tick dispatches in byPriority order, so the highest-priority and
+// then most overdue objectives are the ones that get the slots.
 func (s *Service) dispatch(ctx context.Context, id objective.ObjectiveID, forced reconcile.Trigger) {
 	s.mu.Lock()
 	if s.running[id] {

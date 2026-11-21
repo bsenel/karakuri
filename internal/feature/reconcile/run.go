@@ -707,6 +707,7 @@ func (s *Service) finish(
 ) error {
 	now := s.now()
 	decl := obj.AutonomyDeclaration()
+	s.noteQuota(outcome, now)
 
 	// The score this pass has to beat, captured before st.CriteriaMet is
 	// overwritten below. Comparing the outcome against the field it was just
