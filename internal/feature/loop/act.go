@@ -130,6 +130,15 @@ func stepAct(ctx context.Context, sc *stepContext, p plan) []actionOutcome {
 			provisionErr = err
 			if err == nil {
 				params["worktree_path"] = wt.Path
+				// The plan's own branch is the ref the action is declared to
+				// push; the worktree's branch replaces params.branch below for
+				// the adapters that push or open a pull request from the
+				// worktree, so keep the plan's under its own key. Without it
+				// the pushed-refs check (Phase 40 step 3) declared only the
+				// worktree branch and failed every push to the item branch.
+				if planned, _ := params["branch"].(string); planned != "" {
+					params["planned_branch"] = planned
+				}
 				params["branch"] = wt.Branch
 				// Persist worktree record
 				_ = sc.svc.store.SaveWorktree(ctx, storage.Worktree{
