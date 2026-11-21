@@ -109,6 +109,10 @@ func (v *recordingVC) BranchProtected(context.Context, string, string) (bool, er
 	return false, versioncontrol.ErrUnsupported
 }
 
+func (v *recordingVC) ListPullRequestComments(context.Context, string, int) ([]versioncontrol.PullRequestComment, error) {
+	return nil, versioncontrol.ErrUnsupported
+}
+
 func (v *recordingVC) HasPullRequestForHead(context.Context, string, string) (bool, error) {
 	return false, versioncontrol.ErrUnsupported
 }
