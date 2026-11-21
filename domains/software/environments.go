@@ -959,7 +959,9 @@ func (e *cliEnv) Act(ctx context.Context, a environment.Action) (environment.Act
 		}
 		in.Env = env
 	}
+	recorder := startCommentRecorder(ctx, e.vc, e.ownAuthors, asString(a.Params, "repo"), asString(a.Params, "branch"))
 	out, err := e.cli.Delegate(ctx, in)
+	postedKeys := recorder.finish(ctx)
 	pushed, pushedErr := checkPushedRefs(ctx, worktree, declared, refsBefore, refsBeforeErr, pushes)
 	logErr := pushes.remove()
 	// What a Karakuri tool returned can be a stranger's prose (an audit row
@@ -993,6 +995,9 @@ func (e *cliEnv) Act(ctx context.Context, a environment.Action) (environment.Act
 			}
 			delta[k] = v
 		}
+		for k, v := range postedKeys {
+			delta[k] = v
+		}
 		if pushedErr != nil {
 			delta["pushed_refs_error"] = scrub(pushedErr.Error())
 		}
@@ -1011,6 +1016,9 @@ func (e *cliEnv) Act(ctx context.Context, a environment.Action) (environment.Act
 		"tool_uses":  out.ToolUses,
 		"exit_code":  out.ExitCode,
 		"raw_output": scrub(out.RawOutput),
+	}
+	for k, v := range postedKeys {
+		delta[k] = v
 	}
 	if credential != nil {
 		delta["delegation_credential"] = credential

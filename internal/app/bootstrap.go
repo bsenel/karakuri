@@ -201,7 +201,7 @@ func BootstrapServer(cfgPath string) (*Bootstrap, error) {
 	}
 
 	// Register domain packs (software pack uses the tool registry; others are stubs)
-	swPack := domainsw.NewWithTools(toolReg).WithOwnAuthors(cfg.OwnAuthors).WithReviewRoundLimit(cfg.ReviewRoundLimit)
+	swPack := domainsw.NewWithTools(toolReg).WithOwnAuthors(cfg.OwnAuthors).WithReviewRoundLimit(cfg.ReviewRoundLimit).WithStorage(store)
 	allPacks := []domain.Pack{
 		swPack,
 		domainagri.New(),
