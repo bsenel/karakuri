@@ -121,6 +121,10 @@ func (s *vcStub) ListPullRequestComments(context.Context, string, int) ([]versio
 	return nil, versioncontrol.ErrUnsupported
 }
 
+func (s *vcStub) FileAt(context.Context, string, string, string) (string, error) {
+	return "", versioncontrol.ErrUnsupported
+}
+
 func (s *vcStub) HasPullRequestForHead(context.Context, string, string) (bool, error) {
 	return false, versioncontrol.ErrUnsupported
 }

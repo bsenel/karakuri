@@ -561,6 +561,12 @@ func (g *GitHub) HasPullRequestForHead(ctx context.Context, repo, branch string)
 	return len(raw) > 0, nil
 }
 
+// FileAt would read one file's text at ref through the contents API. Scaffold:
+// the implementation is the next action's.
+func (g *GitHub) FileAt(_ context.Context, _, _, _ string) (string, error) {
+	return "", fmt.Errorf("github: file at ref: not implemented")
+}
+
 func (g *GitHub) do(ctx context.Context, method, path string, body any, out any) error {
 	var reader io.Reader
 	if body != nil {

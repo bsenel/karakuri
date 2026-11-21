@@ -167,6 +167,10 @@ func (w *windowVC) ListPullRequestComments(context.Context, string, int) ([]vers
 	return nil, versioncontrol.ErrUnsupported
 }
 
+func (w *windowVC) FileAt(context.Context, string, string, string) (string, error) {
+	return "", versioncontrol.ErrUnsupported
+}
+
 func (w *windowVC) HasPullRequestForHead(context.Context, string, string) (bool, error) {
 	return false, versioncontrol.ErrUnsupported
 }

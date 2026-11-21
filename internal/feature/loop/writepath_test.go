@@ -113,6 +113,10 @@ func (v *recordingVC) ListPullRequestComments(context.Context, string, int) ([]v
 	return nil, versioncontrol.ErrUnsupported
 }
 
+func (v *recordingVC) FileAt(context.Context, string, string, string) (string, error) {
+	return "", versioncontrol.ErrUnsupported
+}
+
 func (v *recordingVC) HasPullRequestForHead(context.Context, string, string) (bool, error) {
 	return false, versioncontrol.ErrUnsupported
 }

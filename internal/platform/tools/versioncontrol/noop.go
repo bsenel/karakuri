@@ -64,6 +64,10 @@ func (n *NoOp) HasPullRequestForHead(_ context.Context, _, _ string) (bool, erro
 	return false, fmt.Errorf("noop: pull requests for head: %w", ErrUnsupported)
 }
 
+func (n *NoOp) FileAt(_ context.Context, _, _, _ string) (string, error) {
+	return "", fmt.Errorf("noop: file at ref: %w", ErrUnsupported)
+}
+
 func (n *NoOp) ListPullRequestComments(_ context.Context, _ string, _ int) ([]PullRequestComment, error) {
 	return nil, fmt.Errorf("noop: pull request comments: %w", ErrUnsupported)
 }

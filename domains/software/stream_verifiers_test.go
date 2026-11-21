@@ -77,6 +77,10 @@ func (f *fakeForge) ListPullRequestComments(context.Context, string, int) ([]ver
 	return nil, versioncontrol.ErrUnsupported
 }
 
+func (f *fakeForge) FileAt(context.Context, string, string, string) (string, error) {
+	return "", versioncontrol.ErrUnsupported
+}
+
 func (f *fakeForge) HasPullRequestForHead(context.Context, string, string) (bool, error) {
 	return false, versioncontrol.ErrUnsupported
 }
