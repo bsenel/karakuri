@@ -429,7 +429,7 @@ func (e *gitEnv) Observe(ctx context.Context, q environment.ObservationQuery) (e
 	// The comments on those pull requests no later commit answers, owner's or
 	// third party's (Phase 40 steps 12 and 12a). A stranger's comment is their
 	// writing, so it makes the observation third party like a stranger's title.
-	observeUnansweredReviewComments(ctx, adapter, repo, e.ownAuthors, e.reviewRoundLimit, state)
+	observeUnansweredReviewComments(ctx, adapter, repo, e.ownAuthors, e.reviewRoundLimit, nil, state)
 	if hasThirdPartyComment(state) {
 		trust = environment.TrustThirdParty
 	}

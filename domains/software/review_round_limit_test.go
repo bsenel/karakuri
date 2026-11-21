@@ -19,7 +19,7 @@ import (
 func rcObserveLimit(t *testing.T, f *commentForge, limit int) map[string]any {
 	t.Helper()
 	state := map[string]any{}
-	observeUnansweredReviewComments(context.Background(), f, "", rcAuthors, limit, state)
+	observeUnansweredReviewComments(context.Background(), f, "", rcAuthors, limit, nil, state)
 	return state
 }
 

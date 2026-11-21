@@ -75,7 +75,7 @@ func rcComment(id int64, author string, at time.Time) versioncontrol.PullRequest
 func rcObserve(t *testing.T, f *commentForge) map[string]any {
 	t.Helper()
 	state := map[string]any{}
-	observeUnansweredReviewComments(context.Background(), f, "", rcAuthors, 0, state)
+	observeUnansweredReviewComments(context.Background(), f, "", rcAuthors, 0, nil, state)
 	return state
 }
 

@@ -26,11 +26,16 @@ const (
 	commentBodyRunes = 300
 )
 
+// postedCommentIDs reads the IDs of the comments the audit log records Karakuri
+// as having posted. A nil reader means no record is available.
+type postedCommentIDs func(ctx context.Context) (map[int64]bool, error)
+
 // observeUnansweredReviewComments writes unanswered_review_comments and its
 // planner lines into state. Anything the forge cannot be read for leaves the
 // list out and says why (AGENTS.md rule 10): an empty list would tell the
 // planner nobody is waiting on an answer.
-func observeUnansweredReviewComments(ctx context.Context, adapter versioncontrol.VersionControlAdapter, repo string, authors config.OwnAuthorsConfig, roundLimit int, state map[string]any) {
+func observeUnansweredReviewComments(ctx context.Context, adapter versioncontrol.VersionControlAdapter, repo string, authors config.OwnAuthorsConfig, roundLimit int, posted postedCommentIDs, state map[string]any) {
+	_ = posted // phase 40 step 12a: shared-account handling comes next
 	blind := func(err error) {
 		state["unanswered_review_comments_error"] = err.Error()
 		state["unanswered_review_comments_lines"] = []string{
