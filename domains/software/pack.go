@@ -67,11 +67,11 @@ func (p *Pack) EnvironmentFactories() []environment.Factory {
 }
 
 func (p *Pack) AgentDefinitions() []agent.Definition {
-	return append(softwareAgentDefinitions(), selfImproveAgents()...)
+	return append(append(softwareAgentDefinitions(), selfImproveAgents()...), pullRequestReviewAgent())
 }
 
 func (p *Pack) ObjectiveTemplates() []objective.Template {
-	return append(append(softwareObjectiveTemplates(), selfImproveTemplates()...), streamTemplates()...)
+	return append(append(append(softwareObjectiveTemplates(), selfImproveTemplates()...), streamTemplates()...), pullRequestReviewTemplate())
 }
 
 func (p *Pack) PlannerHints() []domain.PlannerHint {

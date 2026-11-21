@@ -49,6 +49,9 @@ type fakeForge struct {
 	// asked.
 	merged      []versioncontrol.PRSummary
 	mergedReads int
+	// reviews is each PostReview call, in order; postReviewErr is what it returns.
+	reviews       []postedReview
+	postReviewErr error
 	// bodyEdits is each EditPRBody call, in order.
 	bodyEdits []bodyEdit
 }

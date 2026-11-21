@@ -368,6 +368,62 @@ func (g *GitHub) MarkReady(ctx context.Context, repo, prID string) error {
 	return nil
 }
 
+// PostReview posts one review that only comments: the event is always
+// COMMENT, so it never approves and never requests changes. A non-2xx answer
+// is an error, because a review the forge refused was not posted.
+func (g *GitHub) PostReview(ctx context.Context, repo, prID, body string, comments []ReviewComment) error {
+	if repo == "" {
+		repo = g.repo
+	}
+	if repo == "" {
+		return fmt.Errorf("github: no repo configured")
+	}
+	type lineComment struct {
+		Path string `json:"path"`
+		Line int    `json:"line"`
+		Body string `json:"body"`
+	}
+	review := struct {
+		Event    string        `json:"event"`
+		Body     string        `json:"body"`
+		Comments []lineComment `json:"comments,omitempty"`
+	}{Event: "COMMENT", Body: body}
+	for _, c := range comments {
+		review.Comments = append(review.Comments, lineComment(c))
+	}
+	path := fmt.Sprintf("/repos/%s/pulls/%s/reviews", repo, url.PathEscape(prID))
+	if err := g.do(ctx, "POST", path, review, nil); err != nil {
+		return fmt.Errorf("github: post review: %w", err)
+	}
+	return nil
+}
+
+// ReviewedCommits lists the commit id each review on a pull request was left
+// at, so a caller can tell whether the current head was ever reviewed. One page
+// of up to 100 reviews is read; a pull request with more has its older reviews
+// cut, which can only make a reviewed head look unreviewed, never the reverse.
+// A non-2xx answer is an error, since unreadable reviews are not "no reviews".
+func (g *GitHub) ReviewedCommits(ctx context.Context, repo, prID string) ([]string, error) {
+	if repo == "" {
+		repo = g.repo
+	}
+	if repo == "" {
+		return nil, fmt.Errorf("github: no repo configured")
+	}
+	var raw []struct {
+		CommitID string `json:"commit_id"`
+	}
+	path := fmt.Sprintf("/repos/%s/pulls/%s/reviews?per_page=100", repo, url.PathEscape(prID))
+	if err := g.do(ctx, "GET", path, nil, &raw); err != nil {
+		return nil, fmt.Errorf("github: reviewed commits: %w", err)
+	}
+	out := make([]string, 0, len(raw))
+	for _, r := range raw {
+		out = append(out, r.CommitID)
+	}
+	return out, nil
+}
+
 // CompareCommits reads the commits on head since base over one compare call,
 // oldest first as GitHub lists them. Without a page parameter GitHub lists at
 // most 250 commits; a branch further ahead than that is cut there.

@@ -59,6 +59,9 @@ func softwareEnvironmentFactories(reg *tools.Registry) []environment.Factory {
 				// Marking a group's pull request ready reads and writes the
 				// same forge create_pr opened it on (Phase 44 step 1).
 				CapMarkReady,
+				// A reviewer's comment review on that pull request (Phase 40
+				// step 11).
+				CapPostReview,
 				// Drafting lives here because a roadmap phase and an ADR are
 				// files in this repository, and because gitEnv answers both
 				// before its adapter check — a deployment with no version
@@ -364,9 +367,9 @@ func (e *gitEnv) Observe(ctx context.Context, q environment.ObservationQuery) (e
 	} else {
 		state["commits"] = commits
 	}
-	prs, err := adapter.ListPRs(ctx, repo, since)
-	if err != nil {
-		state["prs_error"] = err.Error()
+	prs, prsErr := adapter.ListPRs(ctx, repo, since)
+	if prsErr != nil {
+		state["prs_error"] = prsErr.Error()
 	} else {
 		// Each entry carries its body's checklist, and the checklists are
 		// written out as lines too, so a plan sees which steps are already
@@ -418,6 +421,11 @@ func (e *gitEnv) Observe(ctx context.Context, q environment.ObservationQuery) (e
 	// A stream's branch ahead of main with no open pull request (Phase 40
 	// step 6), so its stream opens that pull request before new work.
 	observeBranchesWithoutPR(ctx, adapter, repo, state)
+	// The open stream pull requests whose head has no review (Phase 40 step 11),
+	// from the pull requests listed above rather than a second read of them.
+	if prsErr == nil {
+		observePRsWithoutReview(ctx, adapter, repo, prs, state)
+	}
 	// Whether main is protected, so the oversight view can show it (Phase 40
 	// step 3). This is detection, not prevention. A read that failed is "not
 	// known" whatever the bool says, never "protected" (AGENTS.md rule 10).
@@ -467,6 +475,9 @@ func (e *gitEnv) Act(ctx context.Context, a environment.Action) (environment.Act
 	// checks the adapter itself.
 	if a.CapabilityID == CapMarkReady {
 		return e.markReady(ctx, a), nil
+	}
+	if a.CapabilityID == CapPostReview {
+		return e.postReview(ctx, a), nil
 	}
 
 	adapter := e.vc
