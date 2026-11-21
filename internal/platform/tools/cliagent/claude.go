@@ -24,6 +24,10 @@ type ClaudeCode struct {
 	// now is the clock a quota refusal's reset time is measured from; tests
 	// fix it. Nil means time.Now.
 	now func() time.Time
+	// configDir is the CLI's configuration directory, whose projects/ holds the
+	// session logs a quota's return time may be read from. Empty means the
+	// CLI's own default, ~/.claude.
+	configDir string
 }
 
 func NewClaudeCode(bin string) *ClaudeCode {
@@ -48,8 +52,13 @@ func (c *ClaudeCode) Delegate(ctx context.Context, in DelegateInput) (DelegateOu
 	// Drain to close even after an error: Stream removes the per-run MCP
 	// configuration, which holds the credential, before it closes the channel.
 	var runErr error
+	var sessionID string
 	for chunk := range stream {
 		if runErr != nil {
+			continue
+		}
+		if chunk.Kind == "session" {
+			sessionID = chunk.Content
 			continue
 		}
 		raw.WriteString(chunk.Content)
@@ -71,7 +80,7 @@ func (c *ClaudeCode) Delegate(ctx context.Context, in DelegateInput) (DelegateOu
 		if c.now != nil {
 			now = c.now
 		}
-		return out, classifyClaudeExit(runErr, now())
+		return out, classifyClaudeExit(runErr, now(), c.sessionLog(in.WorktreePath, sessionID))
 	}
 	out.RawOutput = raw.String()
 	return out, nil
@@ -225,6 +234,10 @@ func parseClaudeStreamLine(line string, ch chan<- DelegateChunk) {
 		return
 	}
 	switch evt.Type {
+	case "system":
+		if evt.Subtype == "init" && evt.SessionID != "" {
+			ch <- DelegateChunk{Kind: "session", Content: evt.SessionID}
+		}
 	case "assistant":
 		for _, block := range evt.Message.Content {
 			switch block.Type {
@@ -264,6 +277,8 @@ type claudeEvent struct {
 	Message claudeMessage `json:"message,omitempty"`
 	Result  string        `json:"result,omitempty"`
 	Subtype string        `json:"subtype,omitempty"`
+	// SessionID is on the stream's init line; it names the session log.
+	SessionID string `json:"session_id,omitempty"`
 }
 
 type claudeMessage struct {

@@ -7186,6 +7186,8 @@ components:
           type: string
         id:
           type: string
+        priority:
+          type: integer
         risk:
           type: string
         success_criteria:

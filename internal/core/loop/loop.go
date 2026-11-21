@@ -30,6 +30,27 @@ type Request struct {
 	// AutonomyRung is the rung a standing objective was reconciled at. Empty
 	// for a one-shot run, which has no ladder to stand on.
 	AutonomyRung objective.AutonomyLevel
+
+	// Resume is what the pass that follows a cut-off one is given (Phase 40
+	// step 9a): nil unless the previous pass ended waiting_for_quota or
+	// interrupted_by_restart.
+	Resume *Resume
+}
+
+// Resume is the stream's branch and the work the cut-off pass left unsettled,
+// so the next pass plans only what is left.
+type Resume struct {
+	// Branch is the stream's branch the cut-off pass worked on.
+	Branch string
+	// Commits are the commits on Branch ahead of its base. Meaningful only
+	// when CommitsUnreadable is empty: an empty list then means none.
+	Commits []string
+	// CommitsUnreadable says why the commits could not be read; set, the
+	// planner is told it does not know what the branch holds.
+	CommitsUnreadable string
+	// Unsettled are the ids of the success criteria the cut-off pass had not
+	// settled as met.
+	Unsettled []string
 }
 
 type Result struct {

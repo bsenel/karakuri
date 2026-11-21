@@ -40,6 +40,16 @@ const (
 	roadmapDeliveryTemplateID    = "software.objective.roadmap_delivery"
 )
 
+// The order the streams share the quota in, highest first (Phase 40 step 9):
+// approved work is delivered before anything new is found. 40 is left for the
+// review stream (step 11), which comes after delivery and before UX.
+const (
+	deliveryPriority  = 50
+	uxPriority        = 30
+	backlogPriority   = 20
+	discoveryPriority = 10
+)
+
 // streamTemplates are the four standing streams.
 //
 // Each pass is required to leave a pull request a machine can check (Phase
@@ -59,9 +69,10 @@ func streamTemplates() []objective.Template {
 
 	return []objective.Template{
 		{
-			ID:     marketDiscoveryTemplateID,
-			Title:  "Market discovery",
-			Domain: "software",
+			ID:       marketDiscoveryTemplateID,
+			Priority: discoveryPriority,
+			Title:    "Market discovery",
+			Domain:   "software",
 			// It writes a report and proposes roadmap text in a pull request
 			// a human merges.
 			Risk: objective.RiskRoutine,
@@ -79,6 +90,7 @@ func streamTemplates() []objective.Template {
 		},
 		{
 			ID:              engineeringBacklogTemplateID,
+			Priority:        backlogPriority,
 			Title:           "Engineering backlog from this deployment's own data",
 			Domain:          "software",
 			Risk:            objective.RiskRoutine,
@@ -93,9 +105,10 @@ func streamTemplates() []objective.Template {
 			ActionLimits: backlogLimits(),
 		},
 		{
-			ID:     uxImprovementTemplateID,
-			Title:  "CLI and web UX improvement",
-			Domain: "software",
+			ID:       uxImprovementTemplateID,
+			Priority: uxPriority,
+			Title:    "CLI and web UX improvement",
+			Domain:   "software",
 			// It changes code and opens a pull request.
 			Risk:            objective.RiskConsequential,
 			SuggestedAgents: []agent.Definition{{ID: "software.agent.implementer"}},
@@ -108,6 +121,7 @@ func streamTemplates() []objective.Template {
 		},
 		{
 			ID:              roadmapDeliveryTemplateID,
+			Priority:        deliveryPriority,
 			Title:           "Deliver what the roadmap approves",
 			Domain:          "software",
 			Risk:            objective.RiskConsequential,

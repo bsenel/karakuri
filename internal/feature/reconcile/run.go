@@ -315,6 +315,7 @@ func (s *Service) reconcileNow(
 		// Beside the bounds it produced, so the audit rows the loop writes can
 		// name the rung without the loop working it back out of the bounds.
 		AutonomyRung: level,
+		Resume:       s.resumeBrief(ctx, obj),
 	})
 	if p, stopped := stoppedBy(ctx); stopped {
 		outcome.LoopID = res.LoopID
@@ -402,6 +403,56 @@ func (s *Service) reconcileNow(
 		s.block(ctx, st, obj, *final.BoundsViolation)
 	}
 	return s.finish(ctx, st, obj, cadence, outcome, &fp)
+}
+
+// resumeBrief is what the pass after a cut-off one is given (Phase 40 step
+// 9a): the commits already on the stream's branch and the criteria the cut-off
+// loop had not settled as met. Nil unless the stream's latest pass ended
+// waiting_for_quota or interrupted_by_restart; any other ending starts clean.
+func (s *Service) resumeBrief(ctx context.Context, obj objective.Objective) *coreloop.Resume {
+	last, err := s.store.ListReconcileOutcomes(ctx, obj.ID, 5)
+	if err != nil || len(last) == 0 {
+		return nil
+	}
+	// The latest pass; outcomes that share its start (a restart's cut-off pass
+	// is recorded at the instant the supervisor finds it) are ordered by
+	// nothing, so the cut-off one among them is the latest.
+	var prev reconcile.Outcome
+	cutOff := false
+	for _, o := range last {
+		if !o.StartedAt.Equal(last[0].StartedAt) {
+			break
+		}
+		if o.Deferred == outcomeWaitingForQuota || o.Ending == string(coreloop.RunInterruptedByRestart) {
+			prev, cutOff = o, true
+			break
+		}
+	}
+	if !cutOff {
+		return nil
+	}
+	resume := &coreloop.Resume{}
+	if prev.LoopID != "" {
+		if ls, lerr := s.store.GetLoopState(ctx, prev.LoopID); lerr == nil {
+			for _, c := range ls.Criteria {
+				if c.State != objective.CriterionMet {
+					resume.Unsettled = append(resume.Unsettled, c.ID)
+				}
+			}
+		}
+	}
+	if s.branchCommits == nil {
+		resume.CommitsUnreadable = "no reader for the stream's branch is configured"
+		return resume
+	}
+	branch, commits, rerr := s.branchCommits(withCutLoop(ctx, prev.LoopID), obj)
+	resume.Branch = branch
+	if rerr != nil {
+		resume.CommitsUnreadable = rerr.Error()
+		return resume
+	}
+	resume.Commits = commits
+	return resume
 }
 
 // outcomeStopped is the reason a pass records when a pause cancelled it in
@@ -707,6 +758,7 @@ func (s *Service) finish(
 ) error {
 	now := s.now()
 	decl := obj.AutonomyDeclaration()
+	s.noteQuota(outcome, now)
 
 	// The score this pass has to beat, captured before st.CriteriaMet is
 	// overwritten below. Comparing the outcome against the field it was just
