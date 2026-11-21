@@ -130,5 +130,16 @@ type VersionControlAdapter interface {
 	// request in any state whose head is branch. An adapter whose backend
 	// cannot say returns an error wrapping ErrUnsupported.
 	HasPullRequestForHead(ctx context.Context, repo, branch string) (bool, error)
+	// PostReview posts one review of a pull request that only comments: it
+	// never approves and never requests changes. An adapter whose forge
+	// cannot returns an error wrapping ErrUnsupported.
+	PostReview(ctx context.Context, repo, prID, body string, comments []ReviewComment) error
 	Active() bool
+}
+
+// ReviewComment is one comment on a line of a pull request's diff.
+type ReviewComment struct {
+	Path string
+	Line int
+	Body string
 }
