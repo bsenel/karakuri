@@ -389,7 +389,7 @@ func (g *GitHub) PostReview(ctx context.Context, repo, prID, body string, commen
 		Comments []lineComment `json:"comments,omitempty"`
 	}{Event: "COMMENT", Body: body}
 	for _, c := range comments {
-		review.Comments = append(review.Comments, lineComment{Path: c.Path, Line: c.Line, Body: c.Body})
+		review.Comments = append(review.Comments, lineComment(c))
 	}
 	path := fmt.Sprintf("/repos/%s/pulls/%s/reviews", repo, url.PathEscape(prID))
 	if err := g.do(ctx, "POST", path, review, nil); err != nil {
