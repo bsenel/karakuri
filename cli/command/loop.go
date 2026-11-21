@@ -1,6 +1,8 @@
 package command
 
 import (
+	"fmt"
+
 	"github.com/bsenel/karakuri/cli/client"
 	"github.com/spf13/cobra"
 )
@@ -87,12 +89,17 @@ later decision on its checkpoint authorises nothing.`,
   # Record why it was stopped
   krk loop stop loop_123 --reason "started against a merged branch"`,
 		Args: cobra.ExactArgs(1),
-		RunE: func(_ *cobra.Command, args []string) error {
+		RunE: func(c *cobra.Command, args []string) error {
 			data, _, err := api.Post("/loops/"+args[0]+"/stop", map[string]any{"reason": reason})
 			if err != nil {
 				return err
 			}
 			client.PrintOutput(data, output)
+			// The body is the server's record; a line on stderr says what
+			// happened, as container delete does. Stdout is unchanged.
+			if output == "pretty" {
+				fmt.Fprintf(c.ErrOrStderr(), "loop %s stopped; it stays stopped across a server restart\n", args[0])
+			}
 			return nil
 		},
 	}

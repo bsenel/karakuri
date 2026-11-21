@@ -132,6 +132,13 @@ type Outcome struct {
 	// the circuit breaker does not count it, and not a convergence either.
 	Inconclusive bool `json:"inconclusive,omitempty"`
 
+	// Ending names how the pass's loop ended when that ending is neither a
+	// result nor a failure (Phase 40 step 7): "refused_by_bounds" for a loop
+	// whose plan its bounds refused, "interrupted_by_restart" for a pass a
+	// restart cut off. It is the loop's outcome string. Not an Error, so the
+	// circuit breaker does not count it; the digest counts it by name.
+	Ending string `json:"ending,omitempty"`
+
 	// Criteria are the per-criterion states the pass's loop settled, each
 	// with the pass time. A sense-only, deferred or escalated pass settled
 	// nothing and records none. Sustain is evaluated over these.

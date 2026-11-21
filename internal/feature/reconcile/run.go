@@ -358,6 +358,11 @@ func (s *Service) reconcileNow(
 			"detail":  final.Error,
 			"loop_id": res.LoopID,
 		})
+	case final.Outcome == coreloop.RunRefusedByBounds:
+		// The bounds refused the plan and the loop ended rather than act
+		// outside them (Phase 40 step 7). That is the bounds working, not
+		// the stream failing, so it is named and not filed as an error.
+		outcome.Ending = string(coreloop.RunRefusedByBounds)
 	case inconclusivePass(final):
 		// Checked before failure: the loop ends failed when it cannot
 		// complete, and one that could not settle a required criterion has not
@@ -604,7 +609,30 @@ func (s *Service) settleActiveLoop(ctx context.Context, st *reconcile.State, obj
 	// A restart ended it at boot (Phase 40 step 4). The pass it belonged to
 	// never finished, so nothing about it is a clean run, a rejection or a
 	// failure; the stream is free, and the caller runs that pass again.
+	//
+	// The cut-off pass is recorded once, by name (Phase 40 step 7), so the
+	// history and the digest can say a restart ended it. It goes straight to
+	// the store rather than through finish: no counter moves for it, and the
+	// pass run again next is the one that schedules the stream. Its times
+	// are when the supervisor found it ended, the only time it knows.
 	if ls.Outcome == coreloop.RunInterruptedByRestart {
+		now := s.now()
+		cutOff := reconcile.Outcome{
+			ID:           newOutcomeID(),
+			ObjectiveID:  obj.ID,
+			TwinID:       obj.TwinID,
+			Trigger:      st.LastTrigger,
+			LoopID:       ls.LoopID,
+			Autonomy:     st.EffectiveAutonomy(decl),
+			CriteriaMet:  st.CriteriaMet,
+			CheckpointID: ls.CheckpointID,
+			Ending:       string(coreloop.RunInterruptedByRestart),
+			StartedAt:    now,
+			EndedAt:      now,
+		}
+		if err := s.store.SaveReconcileOutcome(ctx, cutOff); err != nil {
+			return false, false, false, fmt.Errorf("record the pass a restart cut off: %w", err)
+		}
 		st.ActiveLoopID = ""
 		st.Phase = reconcile.PhaseIdle
 		return true, false, true, nil
@@ -713,6 +741,14 @@ func (s *Service) finish(
 		// bounded agent should do. The counters wait for the human.
 		st.LastError = ""
 		st.LastReconciledAt = &now
+
+	case outcome.Ending != "":
+		// A loop its bounds refused (Phase 40 step 7) ended by name: the
+		// breaker does not count it, and it is not a clean run either, so
+		// no counter moves.
+		st.LastError = ""
+		st.LastReconciledAt = &now
+		st.Phase = reconcile.PhaseIdle
 
 	case outcome.Inconclusive:
 		// Neither either: a required criterion could not be settled, so
