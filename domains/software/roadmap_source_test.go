@@ -26,6 +26,12 @@ type roadmapForge struct {
 	reads                    int
 }
 
+// ListClosedPRs answers with no closed pull request, so the discovery trigger
+// built over this forge reads an empty closing comment instead of going blind.
+func (f *roadmapForge) ListClosedPRs(context.Context, string, int) ([]versioncontrol.PRSummary, error) {
+	return nil, nil
+}
+
 func (f *roadmapForge) FileAt(_ context.Context, repo, ref, path string) (string, error) {
 	f.reads++
 	f.gotRepo, f.gotRef, f.gotPath = repo, ref, path

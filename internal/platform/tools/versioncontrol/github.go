@@ -506,9 +506,36 @@ func (g *GitHub) ListMergedPRs(ctx context.Context, repo string, limit int) ([]P
 	return out, nil
 }
 
-// ListClosedPRs is a stub until the production slice lands.
+// ListClosedPRs reads up to limit of the most recently closed pull requests
+// that were not merged, newest first. It reads the same page as ListMergedPRs
+// and keeps the ones without a merge time.
 func (g *GitHub) ListClosedPRs(ctx context.Context, repo string, limit int) ([]PRSummary, error) {
-	return nil, fmt.Errorf("github: closed pull requests: not implemented")
+	if repo == "" {
+		repo = g.repo
+	}
+	if repo == "" {
+		return nil, fmt.Errorf("github: no repo configured")
+	}
+	var raw []ghPull
+	path := fmt.Sprintf("/repos/%s/pulls?state=closed&sort=updated&direction=desc&per_page=50", repo)
+	if err := g.do(ctx, "GET", path, nil, &raw); err != nil {
+		return nil, fmt.Errorf("github: closed pull requests: %w", err)
+	}
+	var closed []ghPull
+	for _, r := range raw {
+		if r.MergedAt == nil {
+			closed = append(closed, r)
+		}
+	}
+	sort.SliceStable(closed, func(i, j int) bool { return closed[i].UpdatedAt.After(closed[j].UpdatedAt) })
+	if limit > 0 && len(closed) > limit {
+		closed = closed[:limit]
+	}
+	out := make([]PRSummary, 0, len(closed))
+	for _, r := range closed {
+		out = append(out, g.summary(ctx, repo, r))
+	}
+	return out, nil
 }
 
 // EditPRBody replaces a pull request's description.

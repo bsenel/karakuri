@@ -101,15 +101,17 @@ func softwareEnvironmentFactories(reg *tools.Registry, ownAuthors config.OwnAuth
 			// forge and the end of the last cycle from the run records
 			// (Pack.EnvironmentFactories wires it when the pack has the
 			// audit log; without it the environment is blind, an empty
-			// SHA, and starts nothing). ClosingComment, the owner's comment
-			// on a closed proposal, has no source wired yet.
+			// SHA, and starts nothing). ClosingComment, the last comment on the
+			// newest closed discovery proposal, comes from the forge; the pack
+			// rebinds it with the record of what Karakuri posted.
 			EnvID:       "software.env.discovery_trigger",
 			Domain:      "software",
 			Description: "Whether a discovery cycle should start: nothing Planned, no open proposal, minimum time elapsed",
 			Build: func(ctx environment.BuildContext) (environment.Environment, error) {
 				return NewDiscoveryTriggerEnvironment("software.env.discovery_trigger", boundVC(ctx), DiscoveryTriggerSources{
-					ReadMain:   readMainRoadmap(boundVC(ctx)),
-					OwnAuthors: ownAuthors,
+					ReadMain:       readMainRoadmap(boundVC(ctx)),
+					OwnAuthors:     ownAuthors,
+					ClosingComment: newClosingComment(boundVC(ctx), ownAuthors, nil),
 					LastCycleEnd: func(context.Context) (time.Time, error) {
 						return time.Time{}, errors.New("no record of the last discovery cycle is wired")
 					},

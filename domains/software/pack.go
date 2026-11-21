@@ -110,6 +110,7 @@ func (p *Pack) EnvironmentFactories() []environment.Factory {
 				env, err := build(ctx)
 				if trigger, ok := env.(*discoveryTriggerEnv); ok {
 					trigger.src.Posted = newPostedCommentReader(p.store)
+					trigger.src.ClosingComment = newClosingComment(trigger.vc, p.ownAuthors, trigger.src.Posted)
 					trigger.src.LastCycleEnd = newLastCycleEnd(p.store, marketDiscoveryTemplateID)
 				}
 				return env, err
