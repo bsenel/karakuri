@@ -125,9 +125,14 @@ func stepAct(ctx context.Context, sc *stepContext, p plan) []actionOutcome {
 		if sc.svc.needsWorkspace(action.CapabilityID) {
 			taskID := fmt.Sprintf("%s-%d-%d-%s", sc.loopID[:8], sc.iteration, i,
 				strconv.FormatInt(time.Now().UnixNano(), 36))
+			// A branch the plan names, already held to the template's branch
+			// patterns by the decide step, is the branch the work is done on:
+			// a repair of a pull request's head is made on that head.
+			plannedBranch, _ := params["branch"].(string)
 			wt, err := sc.svc.wt.Create(ctx, git.WorktreeOptions{
 				ObjectiveID: sc.obj.ID,
 				TaskID:      taskID,
+				BranchName:  plannedBranch,
 			})
 			provisionErr = err
 			if err == nil {

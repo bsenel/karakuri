@@ -55,7 +55,9 @@ func TestWriteActionKeepsItsPlannedBranch(t *testing.T) {
 	if got := params["planned_branch"]; got != planned {
 		t.Errorf("planned_branch = %v, want %q", got, planned)
 	}
-	if got, _ := params["branch"].(string); got == "" || got == planned {
-		t.Errorf("branch = %q, want the worktree's own branch", got)
+	// The worktree is made on the planned branch itself (Phase 40 step 6a),
+	// so params.branch names it too; what matters is that it names one.
+	if got, _ := params["branch"].(string); got == "" {
+		t.Errorf("branch is empty, want the worktree's branch")
 	}
 }

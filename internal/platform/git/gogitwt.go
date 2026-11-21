@@ -87,12 +87,53 @@ func (m *GoGitWorktreeManager) Create(ctx context.Context, opts WorktreeOptions)
 	if baseBranch == "" {
 		baseBranch = m.cfg.BaseBranch
 	}
+	// A named branch is one the plan asked the work to be done on, such as a
+	// pull request's head. Work on it starts from origin's tip, not from a
+	// local copy that may be behind, so a push is a fast-forward.
+	if opts.BranchName != "" {
+		if err := m.checkNamedBranch(ctx, branch, baseBranch); err != nil {
+			return Worktree{}, err
+		}
+		remote := "refs/remotes/origin/" + branch
+		if m.runGit(ctx, "fetch", "--no-tags", "origin", "+refs/heads/"+branch+":"+remote) == nil {
+			// --force: an earlier action's worktree is dead once its action has
+			// ended, and its work is already pushed or salvaged. Without it, git
+			// refuses a branch that another worktree has checked out, and every
+			// action after the first on one planned branch fails to provision.
+			// git refuses -B on a branch another worktree holds even with
+			// --force, so the branch is moved to origin's tip first and the
+			// worktree is added on it without -B.
+			if err := m.runGit(ctx, "update-ref", "refs/heads/"+branch, remote); err != nil {
+				return Worktree{}, fmt.Errorf("move branch to origin: %w", err)
+			}
+			if err := m.runGit(ctx, "worktree", "add", "--force", basePath, branch); err != nil {
+				return Worktree{}, fmt.Errorf("worktree add: %w", err)
+			}
+			return m.register(opts, basePath, branch), nil
+		}
+	}
 	_ = m.runGit(ctx, "branch", branch, baseBranch)
 	if err := m.runGit(ctx, "worktree", "add", "-B", branch, basePath, branch); err != nil {
 		if err2 := m.runGit(ctx, "worktree", "add", basePath, branch); err2 != nil {
 			return Worktree{}, fmt.Errorf("worktree add: %w", err)
 		}
 	}
+	return m.register(opts, basePath, branch), nil
+}
+
+// checkNamedBranch refuses a branch a worktree must not reset: the base
+// branch, one outside the karakuri prefix, or a name git does not accept.
+func (m *GoGitWorktreeManager) checkNamedBranch(ctx context.Context, branch, baseBranch string) error {
+	if branch == baseBranch || !strings.HasPrefix(branch, m.cfg.BranchPrefix+"/") {
+		return fmt.Errorf("branch %q is not one a worktree may be made on", branch)
+	}
+	if err := m.runGit(ctx, "check-ref-format", "--branch", branch); err != nil {
+		return fmt.Errorf("branch %q: %w", branch, err)
+	}
+	return nil
+}
+
+func (m *GoGitWorktreeManager) register(opts WorktreeOptions, basePath, branch string) Worktree {
 	wt := Worktree{
 		TaskID: opts.TaskID, ObjectiveID: opts.ObjectiveID,
 		Path: basePath, Branch: branch, CreatedAt: time.Now().UTC(),
@@ -100,7 +141,7 @@ func (m *GoGitWorktreeManager) Create(ctx context.Context, opts WorktreeOptions)
 	m.mu.Lock()
 	m.worktrees[opts.TaskID] = wt
 	m.mu.Unlock()
-	return wt, nil
+	return wt
 }
 
 func (m *GoGitWorktreeManager) Get(_ context.Context, taskID string) (Worktree, error) {
