@@ -51,7 +51,15 @@ export function QuotaUsage() {
         </select>
       </div>
 
-      {!twinID && (
+      {/* Otherwise the picker just stays empty, with no reason given. */}
+      {twins.error && (
+        <div className="row">
+          <p className="error" role="alert">Could not load twins: {twins.error}</p>
+          <button onClick={twins.reload}>Retry</button>
+        </div>
+      )}
+
+      {!twinID && !twins.error && (
         <p className="muted">
           Pick a twin. Quotas are counted per twin, so there is no deployment-wide answer
           to show here — the limits themselves are under Limits.

@@ -23,10 +23,23 @@ import (
 // path's behavior in claude.go).
 type claudeCLI struct {
 	binary string // path to the claude binary; resolved at construction
+	// allowedTools are the tools the CLI may use during a call without
+	// asking. Empty allows none: in print mode the CLI then refuses every
+	// tool that needs permission, which is today's behaviour.
+	allowedTools []string
 }
 
-func newClaudeCLI(binary string) *claudeCLI {
-	return &claudeCLI{binary: binary}
+func newClaudeCLI(binary string, allowedTools []string) *claudeCLI {
+	return &claudeCLI{binary: binary, allowedTools: allowedTools}
+}
+
+// args is the CLI's command line for one call; the prompt goes on stdin.
+func (c *claudeCLI) args() []string {
+	args := []string{"--print", "--output-format", "json"}
+	if len(c.allowedTools) > 0 {
+		args = append(args, "--allowed-tools="+strings.Join(c.allowedTools, ","))
+	}
+	return args
 }
 
 // claudeCLIResponse mirrors the JSON shape emitted by `claude --print
@@ -57,7 +70,7 @@ func (c *claudeCLI) complete(ctx context.Context, req CompletionRequest) (Comple
 	}
 	prompt += lastUserMessage(req.Messages)
 
-	cmd := exec.CommandContext(ctx, c.binary, "--print", "--output-format", "json") // #nosec G204 -- binary is resolved at construction; the prompt goes on stdin, not argv
+	cmd := exec.CommandContext(ctx, c.binary, c.args()...) // #nosec G204 -- binary is resolved at construction; the arguments are fixed flags and the configured tool list; the prompt goes on stdin, not argv
 	cmd.Stdin = strings.NewReader(prompt)
 	// Per invocation, not per process: the CLI is spawned for each call, so
 	// the customer header can vary by twin. Without this the CLI path would be

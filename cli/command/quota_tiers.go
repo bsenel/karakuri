@@ -80,11 +80,11 @@ should be allowed to arrive at once. The others are daily caps: give them --cap.
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&tier, "tier", "", "which limit: request, capability, llm-tokens or adapter (required)")
-	cmd.Flags().IntVar(&cap, "cap", 0, "the new daily ceiling, for the quota tiers")
-	cmd.Flags().IntVar(&perMinute, "per-minute", 0, "sustained requests per minute, for --tier request")
-	cmd.Flags().IntVar(&burst, "burst", 0, "how many may arrive at once, for --tier request (default: --per-minute)")
-	cmd.Flags().StringVar(&reason, "reason", "", "why (required)")
+	cmd.Flags().StringVar(&tier, "tier", "", "Which limit: request, capability, llm-tokens or adapter (required)")
+	cmd.Flags().IntVar(&cap, "cap", 0, "The new daily ceiling, for the quota tiers")
+	cmd.Flags().IntVar(&perMinute, "per-minute", 0, "Sustained requests per minute, for --tier request")
+	cmd.Flags().IntVar(&burst, "burst", 0, "How many may arrive at once, for --tier request (default: --per-minute)")
+	cmd.Flags().StringVar(&reason, "reason", "", "Why you are changing the limit (required)")
 	_ = cmd.MarkFlagRequired("tier")
 	_ = cmd.MarkFlagRequired("reason")
 	return cmd

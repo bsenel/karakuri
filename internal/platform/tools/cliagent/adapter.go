@@ -24,6 +24,10 @@ type DelegateInput struct {
 	// DisallowedTools are entries the CLI must refuse even when AllowedTools admits them
 	// (e.g. a rebase beside a broad git entry).
 	DisallowedTools []string
+	// Model names the model the CLI runs, e.g. "sonnet"; empty leaves the
+	// CLI on its own default (for Claude Code, ANTHROPIC_MODEL or its setting).
+	// CLIs that take no model flag ignore it.
+	Model string
 	// Env adds environment variables to the CLI's process (merged onto os.Environ()).
 	Env map[string]string
 	// Timeout caps the subprocess wall-clock; 0 means inherit ctx deadline.

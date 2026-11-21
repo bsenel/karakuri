@@ -35,7 +35,7 @@ func NewRoot() *cobra.Command {
 			switch output {
 			case "json", "pretty", "quiet":
 			default:
-				return fmt.Errorf("invalid --output %q: use json, pretty or quiet", output)
+				return fmt.Errorf("invalid --output %q: use json, pretty or quiet, e.g. `krk twin list --output json` to feed a script, or drop --output for the readable default", output)
 			}
 			api = client.New(apiURL)
 			return nil

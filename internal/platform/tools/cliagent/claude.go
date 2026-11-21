@@ -82,6 +82,9 @@ func (c *ClaudeCode) Stream(ctx context.Context, in DelegateInput) (<-chan Deleg
 		}
 	}
 	args := []string{"--print", "--output-format=stream-json", "--verbose"}
+	if in.Model != "" {
+		args = append(args, "--model="+in.Model)
+	}
 	if len(allowed) > 0 {
 		args = append(args, "--allowed-tools="+strings.Join(allowed, ","))
 	}
