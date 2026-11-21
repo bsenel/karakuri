@@ -21,6 +21,26 @@ import (
 	"github.com/bsenel/karakuri/quota/cost"
 )
 
+// savePlanBeforeAct stores the plan with the loop it belongs to before any of
+// its actions runs (Phase 40 step 9a). A loop cut during act, by the quota or a
+// restart, never reaches stepLearn, so without this row the pass that resumes
+// it cannot tell which branch the plan named. Best effort, like the learn row.
+func savePlanBeforeAct(ctx context.Context, sc *stepContext, p plan) {
+	in, err := json.Marshal(map[string]any{"loop_id": sc.loopID, "plan": p})
+	if err != nil {
+		return
+	}
+	_ = sc.svc.store.SaveLoopIteration(ctx, storage.LoopIteration{
+		ID:          fmt.Sprintf("li-act-%s-%d", sc.loopID, sc.iteration),
+		ObjectiveID: string(sc.obj.ID),
+		Number:      sc.iteration,
+		Step:        string(loop.StepAct),
+		InputJSON:   string(in),
+		OutputJSON:  "{}",
+		CreatedAt:   time.Now().UTC(),
+	})
+}
+
 // actionOutcome pairs an action with what it produced.
 //
 // stepAct returns these rather than bare results because a result cannot say

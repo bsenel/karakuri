@@ -178,6 +178,10 @@ type Service struct {
 
 	// now is injectable so tests can drive the schedule without sleeping.
 	now func() time.Time
+
+	// branchCommits reads the stream's branch and the commits on it ahead of
+	// its base (Phase 40 step 9a).
+	branchCommits func(ctx context.Context, obj objective.Objective) (branch string, commits []string, err error)
 }
 
 func NewService(
