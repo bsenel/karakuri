@@ -1,15 +1,15 @@
 package software
 
-// Phase 40 step 6a, the git part of the repair. A note for the next action on
-// the plan's item "a plan that rebases or force-pushes is refused (step 2)":
-// it cannot be shown, so no test claims it. Step 2 checks a coding action's
-// tool allow-list against the stream's exact entries (`Bash(git:*)` is one of
-// them, in every stream) and its branch against the stream's patterns; it
-// reads neither the git subcommand nor its flags, so `git rebase` and
-// `git push --force` are inside what it admits. The guard against a rewrite
-// is step 3's check after the push (TestUnmergeableRepairByRebaseAndForcePushIsCaught):
-// it detects, it does not prevent. Only a narrower tool entry or branch
-// protection on the remote would prevent.
+// Phase 40 step 6a, the git part of the repair. The plan's item "a plan that
+// rebases or force-pushes is refused" is held in two places. Step 2's limits
+// match a coding action's tool entries whole, so a rebase or force-push entry
+// of a plan's own is refused (TestStreamLimitsRefuseARebaseOrForcePushToolEntry);
+// but the broad `Bash(git:*)` every stream needs admits any git subcommand, so
+// the claude CLI is also given a deny list, which takes precedence over its
+// allow list (TestEveryStreamsDelegationDeniesRebaseAndForcePush and the
+// cliagent --disallowed-tools tests). Step 3's check after the push
+// (TestUnmergeableRepairByRebaseAndForcePushIsCaught) still detects a rewrite
+// made by any other route.
 
 import (
 	"context"

@@ -735,6 +735,18 @@ func cliTimeoutSeconds(options map[string]any) int {
 	return 0
 }
 
+// gitRewriteDeny is what every delegation refuses even beside the broad
+// Bash(git:*) a stream needs: step 2's limits match whole tool entries and
+// cannot read a git subcommand, and the claude CLI's deny list takes
+// precedence over its allow list. Merged, never rebased (Phase 40 step 6a).
+var gitRewriteDeny = []string{
+	"Bash(git rebase:*)",
+	"Bash(git push --force:*)",
+	"Bash(git push -f:*)",
+	"Bash(git push --force-with-lease:*)",
+	"Bash(git push origin +*)",
+}
+
 // deniesUnlistedTools reports whether a coding-agent CLI refuses every tool that
 // needs permission unless its allow-list names it. Claude Code in headless
 // print mode does, so a run with an empty list can read files but can neither
@@ -803,9 +815,10 @@ func (e *cliEnv) Act(ctx context.Context, a environment.Action) (environment.Act
 	}
 
 	in := cliagent.DelegateInput{
-		Prompt:         prompt,
-		WorktreePath:   worktree,
-		TimeoutSeconds: e.delegationTimeoutSeconds(),
+		Prompt:          prompt,
+		WorktreePath:    worktree,
+		TimeoutSeconds:  e.delegationTimeoutSeconds(),
+		DisallowedTools: slices.Clone(gitRewriteDeny),
 	}
 	if files, ok := a.Params["files"].([]any); ok {
 		for _, f := range files {

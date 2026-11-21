@@ -85,6 +85,9 @@ func (c *ClaudeCode) Stream(ctx context.Context, in DelegateInput) (<-chan Deleg
 	if len(allowed) > 0 {
 		args = append(args, "--allowed-tools="+strings.Join(allowed, ","))
 	}
+	if len(in.DisallowedTools) > 0 {
+		args = append(args, "--disallowed-tools="+strings.Join(in.DisallowedTools, ","))
+	}
 
 	ch := make(chan DelegateChunk, 16)
 	go func() {
