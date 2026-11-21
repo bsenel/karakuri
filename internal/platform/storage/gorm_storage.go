@@ -633,6 +633,7 @@ func (s *GORMStorage) SaveToolEvent(ctx context.Context, e ToolEvent) error {
 		Model:            e.Model,
 		TemplateID:       e.TemplateID,
 		AutonomyRung:     e.AutonomyRung,
+		CreatedAt:        e.CreatedAt,
 	}).Error
 }
 

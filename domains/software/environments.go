@@ -98,9 +98,11 @@ func softwareEnvironmentFactories(reg *tools.Registry, ownAuthors config.OwnAuth
 		{
 			// Phase 40 step 13, discovery half: the same reading as above, read
 			// as "the pipeline is empty". Main's roadmap is read from the
-			// forge; the end of the last cycle and a closed proposal's
-			// comment have no source wired yet, so it is blind (an empty
-			// SHA) and starts nothing.
+			// forge and the end of the last cycle from the run records
+			// (Pack.EnvironmentFactories wires it when the pack has the
+			// audit log; without it the environment is blind, an empty
+			// SHA, and starts nothing). ClosingComment, the owner's comment
+			// on a closed proposal, has no source wired yet.
 			EnvID:       "software.env.discovery_trigger",
 			Domain:      "software",
 			Description: "Whether a discovery cycle should start: nothing Planned, no open proposal, minimum time elapsed",
