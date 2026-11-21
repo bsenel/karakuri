@@ -135,6 +135,7 @@ func softwareEnvironmentFactories(reg *tools.Registry) []environment.Factory {
 					env.attachMCP, env.mcpURL = cliMCPOptions(opts)
 					env.timeoutSeconds = cliTimeoutSeconds(opts)
 					env.allowedTools = config.InstanceConfig{Options: opts}.OptStrings("allowed_tools")
+					env.model = config.InstanceConfig{Options: opts}.OptString("model")
 				}
 				return env, nil
 			},
@@ -695,6 +696,10 @@ type cliEnv struct {
 	// allowedTools is the instance's allowed_tools option: the tool list a
 	// delegation gets when its action names none.
 	allowedTools []string
+	// model is the instance's model option: the model every delegation runs,
+	// so coding agents can run a cheaper model than the planner. Empty leaves
+	// the CLI on its own default.
+	model string
 }
 
 // DelegationCredential is what one delegation carries to Karakuri's own MCP
@@ -804,6 +809,7 @@ func (e *cliEnv) Act(ctx context.Context, a environment.Action) (environment.Act
 		Prompt:         prompt,
 		WorktreePath:   worktree,
 		TimeoutSeconds: e.delegationTimeoutSeconds(),
+		Model:          e.model,
 	}
 	if files, ok := a.Params["files"].([]any); ok {
 		for _, f := range files {
@@ -855,7 +861,7 @@ func (e *cliEnv) Act(ctx context.Context, a environment.Action) (environment.Act
 	// agent made outside its declared refs is a failed action (Phase 40 step
 	// 3). An origin that cannot be read is never a pass: a run that succeeded
 	// fails for it, and one that failed keeps its own error and records why.
-	declared := declaredRefs(asString(a.Params, "branch"), worktree)
+	declared := declaredRefs(plannedBranch(a.Params), worktree)
 	refsBefore, refsBeforeErr := readRemoteRefs(ctx, worktree)
 	// scrub keeps the delegation token out of anything the result carries.
 	scrub := func(s string) string { return s }
@@ -1257,4 +1263,14 @@ func cliPrompt(a environment.Action) (string, bool) {
 		return "Write tests only, no implementation changes. " + task, true
 	}
 	return "", false
+}
+
+// plannedBranch is the branch the plan declared for an action: the loop keeps
+// it as planned_branch when it puts the worktree's own branch in
+// params.branch, and an action run outside the loop names it as branch.
+func plannedBranch(params map[string]any) string {
+	if b := asString(params, "planned_branch"); b != "" {
+		return b
+	}
+	return asString(params, "branch")
 }

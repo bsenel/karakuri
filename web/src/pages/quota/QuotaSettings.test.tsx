@@ -125,4 +125,42 @@ describe('QuotaSettings', () => {
     );
     expect(screen.queryByText('change')).not.toBeInTheDocument();
   });
+
+  // The limits still render without the stored tiers, so the page looked
+  // complete while the reset buttons and "Set by" lines were missing.
+  it('says when the changed limits cannot be read, and retries them', async () => {
+    get.mockImplementation((path: string) =>
+      path === '/quota'
+        ? Promise.resolve(config())
+        : Promise.reject(new APIError(500, '{"message":"database unavailable"}')),
+    );
+
+    render(<QuotaSettings />);
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Could not load the limits changed here: database unavailable.',
+    );
+    expect(screen.getByText('5,000,000')).toBeInTheDocument();
+
+    get.mockImplementation((path: string) =>
+      Promise.resolve(
+        path === '/quota'
+          ? config()
+          : {
+              stored: [
+                {
+                  name: 'llm-tokens',
+                  cap: 5_000_000,
+                  reason: 'the team grew',
+                  updated_by: 'ann',
+                  updated_at: '2026-08-13T09:00:00Z',
+                },
+              ],
+              editable: true,
+            },
+      ),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    expect(await screen.findByText(/Set by ann — the team grew/)).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
 });

@@ -35,14 +35,14 @@ func NewRoot() *cobra.Command {
 			switch output {
 			case "json", "pretty", "quiet":
 			default:
-				return fmt.Errorf("invalid --output %q: use json, pretty or quiet", output)
+				return fmt.Errorf("invalid --output %q: use json, pretty or quiet, e.g. `krk twin list --output json` to feed a script, or drop --output for the readable default", output)
 			}
 			api = client.New(apiURL)
 			return nil
 		},
 	}
-	root.PersistentFlags().StringVar(&apiURL, "api-url", "http://localhost:8080/api/v1", "API base URL")
-	root.PersistentFlags().StringVar(&output, "output", "pretty", "Output format: json|pretty|quiet")
+	root.PersistentFlags().StringVar(&apiURL, "api-url", "http://localhost:8080/api/v1", "Base URL of the Karakuri server API, ending in /api/v1; change it to reach a server on another host or port")
+	root.PersistentFlags().StringVar(&output, "output", "pretty", "Output format: pretty (readable), json (for scripts) or quiet (no hints or confirmation lines)")
 
 	root.AddCommand(
 		twinCmd(),
