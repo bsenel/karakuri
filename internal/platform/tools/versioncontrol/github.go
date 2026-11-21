@@ -3,6 +3,7 @@ package versioncontrol
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -561,10 +562,33 @@ func (g *GitHub) HasPullRequestForHead(ctx context.Context, repo, branch string)
 	return len(raw) > 0, nil
 }
 
-// FileAt would read one file's text at ref through the contents API. Scaffold:
-// the implementation is the next action's.
-func (g *GitHub) FileAt(_ context.Context, _, _, _ string) (string, error) {
-	return "", fmt.Errorf("github: file at ref: not implemented")
+// FileAt reads one file's text at ref through the contents API. The API wraps
+// the base64 payload at 60 columns, so the decoder drops the newlines first.
+func (g *GitHub) FileAt(ctx context.Context, repo, ref, path string) (string, error) {
+	if repo == "" {
+		repo = g.repo
+	}
+	if repo == "" {
+		return "", fmt.Errorf("github: no repo configured")
+	}
+	var raw struct {
+		Type     string `json:"type"`
+		Encoding string `json:"encoding"`
+		Content  string `json:"content"`
+	}
+	q := url.Values{}
+	q.Set("ref", ref)
+	if err := g.do(ctx, "GET", fmt.Sprintf("/repos/%s/contents/%s?%s", repo, refPath(path), q.Encode()), nil, &raw); err != nil {
+		return "", fmt.Errorf("github: file at ref: %w", err)
+	}
+	if raw.Type != "file" || raw.Encoding != "base64" {
+		return "", fmt.Errorf("github: file at ref: %s is not a base64 file (type %q, encoding %q)", path, raw.Type, raw.Encoding)
+	}
+	text, err := base64.StdEncoding.DecodeString(strings.ReplaceAll(raw.Content, "\n", ""))
+	if err != nil {
+		return "", fmt.Errorf("github: file at ref: decode %s: %w", path, err)
+	}
+	return string(text), nil
 }
 
 func (g *GitHub) do(ctx context.Context, method, path string, body any, out any) error {

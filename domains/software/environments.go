@@ -85,30 +85,28 @@ func softwareEnvironmentFactories(reg *tools.Registry, ownAuthors config.OwnAuth
 		},
 		{
 			// Phase 40 step 13: the snapshot the delivery stream's reconcile
-			// fingerprints. No source for main's roadmap is wired yet, so it
-			// is blind (an empty SHA) rather than reporting no work.
+			// fingerprints. It reads main's roadmap from the forge; a read
+			// that fails leaves it blind (an empty SHA) rather than
+			// reporting no work.
 			EnvID:       "software.env.delivery_work",
 			Domain:      "software",
 			Description: "Whether delivery has work: Planned items on main, branches and review comments",
 			Build: func(ctx environment.BuildContext) (environment.Environment, error) {
-				return NewDeliveryWorkEnvironment("software.env.delivery_work", boundVC(ctx), func(context.Context) (string, error) {
-					return "", errors.New("no source for main's roadmap is wired")
-				}), nil
+				return NewDeliveryWorkEnvironment("software.env.delivery_work", boundVC(ctx), readMainRoadmap(boundVC(ctx))), nil
 			},
 		},
 		{
 			// Phase 40 step 13, discovery half: the same reading as above, read
-			// as "the pipeline is empty". No source for main's roadmap, for
-			// the end of the last cycle or for a closed proposal's comment is
-			// wired yet, so it is blind (an empty SHA) and starts nothing.
+			// as "the pipeline is empty". Main's roadmap is read from the
+			// forge; the end of the last cycle and a closed proposal's
+			// comment have no source wired yet, so it is blind (an empty
+			// SHA) and starts nothing.
 			EnvID:       "software.env.discovery_trigger",
 			Domain:      "software",
 			Description: "Whether a discovery cycle should start: nothing Planned, no open proposal, minimum time elapsed",
 			Build: func(ctx environment.BuildContext) (environment.Environment, error) {
 				return NewDiscoveryTriggerEnvironment("software.env.discovery_trigger", boundVC(ctx), DiscoveryTriggerSources{
-					ReadMain: func(context.Context) (string, error) {
-						return "", errors.New("no source for main's roadmap is wired")
-					},
+					ReadMain: readMainRoadmap(boundVC(ctx)),
 					LastCycleEnd: func(context.Context) (time.Time, error) {
 						return time.Time{}, errors.New("no record of the last discovery cycle is wired")
 					},
@@ -335,6 +333,14 @@ type gitEnv struct {
 	// posted reads the IDs of the comments Karakuri is recorded as having
 	// posted; nil means no record (Phase 40 step 12a).
 	posted postedCommentIDs
+}
+
+// readMainRoadmap reads docs/roadmap.md on main through the forge. Nothing in
+// the adapter or config names another default branch, as at BranchProtected.
+func readMainRoadmap(vc versioncontrol.VersionControlAdapter) func(context.Context) (string, error) {
+	return func(ctx context.Context) (string, error) {
+		return vc.FileAt(ctx, "", "main", "docs/roadmap.md")
+	}
 }
 
 // gitObservationWindow is how far back the repository observation reaches.
