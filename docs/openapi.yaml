@@ -7595,6 +7595,12 @@ components:
                 type: string
               nullable: true
               type: object
+            idle:
+              description: Environments whose snapshot says they hold no work; a move into that state is not drift to act on.
+              items:
+                type: string
+              nullable: true
+              type: array
             sha:
               type: string
             taken_at:
