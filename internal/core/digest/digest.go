@@ -99,7 +99,8 @@ type ObjectiveSummary struct {
 	Failures      int `json:"failures"`
 	// Endings counts the passes that ended by name rather than as a result
 	// or a failure (Phase 40 step 7), keyed by the ending: refused_by_bounds,
-	// interrupted_by_restart. None of them is in Failures.
+	// interrupted_by_restart, waiting_for_quota (step 8). None of them is in
+	// Failures.
 	Endings map[string]int `json:"endings,omitempty"`
 
 	// Actions counts what it did to the world, from the audit log rather

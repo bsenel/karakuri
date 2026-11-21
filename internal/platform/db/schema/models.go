@@ -212,6 +212,9 @@ type LoopStateModel struct {
 	Error        string  `gorm:"column:error;not null;default:''"`
 	StoppedBy    string  `gorm:"column:stopped_by;not null;default:''"`
 	StopReason   string  `gorm:"column:stop_reason;not null;default:''"`
+	// RetryAfterMS is how long a provider that refused the run for quota asked
+	// it to wait, in milliseconds; 0 when it did not say (Phase 40 step 8).
+	RetryAfterMS int64 `gorm:"column:retry_after_ms;not null;default:0"`
 	// BoundsViolationJSON is the run's first bounds violation (Phase 40 step
 	// 3), empty when it had none.
 	BoundsViolationJSON string    `gorm:"column:bounds_violation_json;not null;default:''"`

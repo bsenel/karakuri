@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 	"unicode/utf8"
 )
 
@@ -20,6 +21,9 @@ import (
 // AND we accumulate a final DelegateOutput at completion.
 type ClaudeCode struct {
 	bin string // path to claude binary; "claude" by default
+	// now is the clock a quota refusal's reset time is measured from; tests
+	// fix it. Nil means time.Now.
+	now func() time.Time
 }
 
 func NewClaudeCode(bin string) *ClaudeCode {
@@ -63,7 +67,11 @@ func (c *ClaudeCode) Delegate(ctx context.Context, in DelegateInput) (DelegateOu
 		}
 	}
 	if runErr != nil {
-		return out, runErr
+		now := time.Now
+		if c.now != nil {
+			now = c.now
+		}
+		return out, classifyClaudeExit(runErr, now())
 	}
 	out.RawOutput = raw.String()
 	return out, nil
@@ -116,7 +124,7 @@ func (c *ClaudeCode) Stream(ctx context.Context, in DelegateInput) (<-chan Deleg
 			return
 		}
 		if exitCode != 0 {
-			ch <- DelegateChunk{Kind: "error", Err: fmt.Errorf("claude_code: exit %d (stderr: %s)", exitCode, stderr)}
+			ch <- DelegateChunk{Kind: "error", Err: &claudeExitError{code: exitCode, stderr: stderr}}
 		}
 		ch <- DelegateChunk{Kind: "done"}
 	}()

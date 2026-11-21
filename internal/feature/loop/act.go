@@ -3,6 +3,7 @@ package loop
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"maps"
 	"strconv"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/bsenel/karakuri/internal/core/capability"
 	"github.com/bsenel/karakuri/internal/core/environment"
+	coreerrors "github.com/bsenel/karakuri/internal/core/errors"
 	"github.com/bsenel/karakuri/internal/core/event"
 	"github.com/bsenel/karakuri/internal/core/loop"
 	"github.com/bsenel/karakuri/internal/core/telemetry"
@@ -195,9 +197,12 @@ func stepAct(ctx context.Context, sc *stepContext, p plan) []actionOutcome {
 			})
 			sc.state.endAction()
 			if err != nil {
-				result = environment.ActionResult{
-					Success: false,
-					Error:   err.Error(),
+				// What the environment reported beside its error stays: a
+				// coding agent refused for quota still names the salvage
+				// branch its edits went to (Phase 40 step 8).
+				result.Success = false
+				if result.Error == "" {
+					result.Error = err.Error()
 				}
 			}
 			errored = err != nil
@@ -386,6 +391,18 @@ func stepAct(ctx context.Context, sc *stepContext, p plan) []actionOutcome {
 			Errored:      errored,
 			Err:          actErr,
 		})
+
+		// A provider that refused for quota refuses the next action too: the
+		// pass stops spending actions here (Phase 40 step 8). Read by type,
+		// never by text, so an exit 1 with nothing said goes on as before.
+		var quota *coreerrors.ProviderRateLimitError
+		if errors.As(actErr, &quota) {
+			sc.state.mu.Lock()
+			sc.state.outOfQuota = true
+			sc.state.retryAfter = quota.RetryAfter
+			sc.state.mu.Unlock()
+			break
+		}
 	}
 
 	// 3. Emit step completed
