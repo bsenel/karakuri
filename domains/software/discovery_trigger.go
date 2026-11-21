@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/bsenel/karakuri/config"
 	"github.com/bsenel/karakuri/internal/core/environment"
 	"github.com/bsenel/karakuri/internal/platform/tools/versioncontrol"
 )
@@ -67,6 +68,10 @@ func ComputeDiscoveryTrigger(work DeliveryWork, prs []versioncontrol.PRSummary, 
 // DiscoveryTriggerSources is what the trigger's environment reads besides the forge.
 type DiscoveryTriggerSources struct {
 	ReadMain func(context.Context) (string, error)
+	// OwnAuthors and Posted are the delivery reading's (Phase 40 step 12a);
+	// a nil Posted means no record of what Karakuri posted.
+	OwnAuthors config.OwnAuthorsConfig
+	Posted     postedCommentIDs
 	// LastCycleEnd is when the last discovery cycle of either trigger ended; zero if none.
 	LastCycleEnd func(context.Context) (time.Time, error)
 	// ClosingComment is the owner's comment on the most recently closed proposal, "" if none.
@@ -98,7 +103,7 @@ func (e *discoveryTriggerEnv) Observe(ctx context.Context, _ environment.Observa
 	if e.vc == nil || e.src.ReadMain == nil || e.src.LastCycleEnd == nil {
 		return environment.Observation{}, errors.New("no forge or no source for main's roadmap or the last cycle is bound")
 	}
-	work, prs, err := readDeliveryWork(ctx, e.vc, e.src.ReadMain)
+	work, prs, err := readDeliveryWork(ctx, e.vc, e.src.ReadMain, e.src.OwnAuthors, e.src.Posted)
 	if err != nil {
 		return environment.Observation{}, err
 	}

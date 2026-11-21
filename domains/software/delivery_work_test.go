@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/bsenel/karakuri/config"
 	"github.com/bsenel/karakuri/internal/core/environment"
 	"github.com/bsenel/karakuri/internal/platform/tools/versioncontrol"
 )
@@ -103,7 +104,7 @@ func snapshotOf(t *testing.T, env environment.Environment) string {
 func TestDeliveryWorkSnapshotMovesOnlyWhenTheWorkMoves(t *testing.T) {
 	main := &mainFile{text: roadmapNothingPlanned}
 	forge := &branchForge{}
-	env := NewDeliveryWorkEnvironment("software.env.delivery_work", forge, main.read)
+	env := NewDeliveryWorkEnvironment("software.env.delivery_work", forge, main.read, config.OwnAuthorsConfig{}, nil)
 
 	idle := snapshotOf(t, env)
 	if idle == "" {
@@ -142,7 +143,7 @@ func TestDeliveryWorkSnapshotMovesOnlyWhenTheWorkMoves(t *testing.T) {
 
 func TestDeliveryWorkSnapshotIsBlindWhenMainCannotBeRead(t *testing.T) {
 	main := &mainFile{err: errors.New("401 bad credentials")}
-	env := NewDeliveryWorkEnvironment("software.env.delivery_work", &branchForge{}, main.read)
+	env := NewDeliveryWorkEnvironment("software.env.delivery_work", &branchForge{}, main.read, config.OwnAuthorsConfig{}, nil)
 
 	if sha := snapshotOf(t, env); sha != "" {
 		t.Errorf("SHA = %q with main unreadable; blind must be an empty SHA (AGENTS.md rule 10)", sha)

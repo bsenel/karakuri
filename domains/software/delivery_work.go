@@ -113,14 +113,20 @@ func ComputeDeliveryWork(roadmap string, roadmapErr error, prs []versioncontrol.
 // NewDeliveryWorkEnvironment is the environment the delivery stream's
 // reconcile fingerprints: its snapshot is a hash of the computed verdict and
 // what it was computed from, so it moves when the work changes and not otherwise.
-func NewDeliveryWorkEnvironment(id environment.EnvironmentID, vc versioncontrol.VersionControlAdapter, readMain func(context.Context) (string, error)) environment.Environment {
-	return &deliveryWorkEnv{id: id, vc: vc, readMain: readMain}
+//
+// ownAuthors and posted are what the git observation gets (Phase 40 step 12a):
+// whose comments are the deployment's own, and the record of what Karakuri
+// posted from a shared account; a nil posted means no record.
+func NewDeliveryWorkEnvironment(id environment.EnvironmentID, vc versioncontrol.VersionControlAdapter, readMain func(context.Context) (string, error), ownAuthors config.OwnAuthorsConfig, posted func(context.Context) (map[int64]bool, error)) environment.Environment {
+	return &deliveryWorkEnv{id: id, vc: vc, readMain: readMain, ownAuthors: ownAuthors, posted: posted}
 }
 
 type deliveryWorkEnv struct {
-	id       environment.EnvironmentID
-	vc       versioncontrol.VersionControlAdapter
-	readMain func(context.Context) (string, error)
+	id         environment.EnvironmentID
+	vc         versioncontrol.VersionControlAdapter
+	readMain   func(context.Context) (string, error)
+	ownAuthors config.OwnAuthorsConfig
+	posted     postedCommentIDs
 }
 
 func (e *deliveryWorkEnv) ID() environment.EnvironmentID { return e.id }
@@ -132,7 +138,7 @@ func (e *deliveryWorkEnv) Observe(ctx context.Context, _ environment.Observation
 	if e.vc == nil || e.readMain == nil {
 		return environment.Observation{}, errors.New("no forge or no source for main's roadmap is bound")
 	}
-	work, _, err := readDeliveryWork(ctx, e.vc, e.readMain)
+	work, _, err := readDeliveryWork(ctx, e.vc, e.readMain, e.ownAuthors, e.posted)
 	if err != nil {
 		return environment.Observation{}, err
 	}
@@ -148,7 +154,7 @@ func (e *deliveryWorkEnv) Observe(ctx context.Context, _ environment.Observation
 // readDeliveryWork reads main's roadmap, the open pull requests and the git
 // observation's state, and computes the verdict; the discovery trigger reads
 // the same thing, so the two never disagree about what is in the pipeline.
-func readDeliveryWork(ctx context.Context, vc versioncontrol.VersionControlAdapter, readMain func(context.Context) (string, error)) (DeliveryWork, []versioncontrol.PRSummary, error) {
+func readDeliveryWork(ctx context.Context, vc versioncontrol.VersionControlAdapter, readMain func(context.Context) (string, error), authors config.OwnAuthorsConfig, posted postedCommentIDs) (DeliveryWork, []versioncontrol.PRSummary, error) {
 	roadmap, roadmapErr := readMain(ctx)
 	prs, err := vc.ListPRs(ctx, "", time.Time{})
 	if err != nil {
@@ -156,7 +162,7 @@ func readDeliveryWork(ctx context.Context, vc versioncontrol.VersionControlAdapt
 	}
 	state := map[string]any{}
 	observeBranchesWithoutPR(ctx, vc, "", state)
-	observeUnansweredReviewComments(ctx, vc, "", config.OwnAuthorsConfig{}, 0, nil, state)
+	observeUnansweredReviewComments(ctx, vc, "", authors, 0, posted, state)
 	work, err := ComputeDeliveryWork(roadmap, roadmapErr, prs, state)
 	return work, prs, err
 }

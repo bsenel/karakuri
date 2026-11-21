@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/bsenel/karakuri/config"
 	"github.com/bsenel/karakuri/domains/software"
 	"github.com/bsenel/karakuri/internal/core/environment"
 	"github.com/bsenel/karakuri/internal/core/objective"
@@ -65,7 +66,7 @@ func TestDeliveryPassStartsWhenThereIsWorkAndCostsNothingOtherwise(t *testing.T)
 	if err := f.svc.envReg.Register(environment.Factory{
 		EnvID: "delivery_work", Domain: "test",
 		Build: func(environment.BuildContext) (environment.Environment, error) {
-			return software.NewDeliveryWorkEnvironment("delivery_work", forge, forge.readMain), nil
+			return software.NewDeliveryWorkEnvironment("delivery_work", forge, forge.readMain, config.OwnAuthorsConfig{}, nil), nil
 		},
 	}); err != nil {
 		t.Fatalf("register: %v", err)

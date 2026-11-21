@@ -92,7 +92,7 @@ func softwareEnvironmentFactories(reg *tools.Registry, ownAuthors config.OwnAuth
 			Domain:      "software",
 			Description: "Whether delivery has work: Planned items on main, branches and review comments",
 			Build: func(ctx environment.BuildContext) (environment.Environment, error) {
-				return NewDeliveryWorkEnvironment("software.env.delivery_work", boundVC(ctx), readMainRoadmap(boundVC(ctx))), nil
+				return NewDeliveryWorkEnvironment("software.env.delivery_work", boundVC(ctx), readMainRoadmap(boundVC(ctx)), ownAuthors, nil), nil
 			},
 		},
 		{
@@ -108,7 +108,8 @@ func softwareEnvironmentFactories(reg *tools.Registry, ownAuthors config.OwnAuth
 			Description: "Whether a discovery cycle should start: nothing Planned, no open proposal, minimum time elapsed",
 			Build: func(ctx environment.BuildContext) (environment.Environment, error) {
 				return NewDiscoveryTriggerEnvironment("software.env.discovery_trigger", boundVC(ctx), DiscoveryTriggerSources{
-					ReadMain: readMainRoadmap(boundVC(ctx)),
+					ReadMain:   readMainRoadmap(boundVC(ctx)),
+					OwnAuthors: ownAuthors,
 					LastCycleEnd: func(context.Context) (time.Time, error) {
 						return time.Time{}, errors.New("no record of the last discovery cycle is wired")
 					},
