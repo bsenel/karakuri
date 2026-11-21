@@ -25,6 +25,13 @@ func NewRoot() *cobra.Command {
 	root := &cobra.Command{
 		Use:   "krk",
 		Short: "Karakuri CLI — autonomous agent platform",
+		Example: `  # See what exists, then look inside one objective
+  krk twin list
+  krk objective list
+  krk objective get 76bba85ac9ea170c
+
+  # Reach a server on another host, and print JSON for a script
+  krk twin list --api-url https://karakuri.example.com/api/v1 --output json`,
 		// A rejected API call is not a usage mistake. Dumping the flag list
 		// after "forbidden: no policy grants twin:bind" buries the one line
 		// that explains what happened.
