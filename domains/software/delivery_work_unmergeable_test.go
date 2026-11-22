@@ -79,7 +79,7 @@ func deliveryForge(conflicting ...string) *unmergeableForge {
 	return f
 }
 
-func snapshotState(t *testing.T, forge *unmergeableForge) environment.EnvironmentSnapshot {
+func deliverySnapshot(t *testing.T, forge *unmergeableForge) environment.EnvironmentSnapshot {
 	t.Helper()
 	main := &mainFile{text: roadmapNothingPlanned}
 	env := NewDeliveryWorkEnvironment("software.env.delivery_work", forge, main.read, config.OwnAuthorsConfig{}, nil)
@@ -94,7 +94,7 @@ func snapshotState(t *testing.T, forge *unmergeableForge) environment.Environmen
 }
 
 func TestDeliveryWorkSnapshotListsTheDeliveryStreamsUnmergeableBranches(t *testing.T) {
-	snap := snapshotState(t, deliveryForge("1", "2", "3"))
+	snap := deliverySnapshot(t, deliveryForge("1", "2", "3"))
 	want := []string{deliveryBranch2, deliveryBranch1}
 	if got, _ := snap.State["unmergeable_prs"].([]string); !reflect.DeepEqual(got, want) {
 		t.Errorf("state[unmergeable_prs] = %#v, want the delivery stream's branches as a sorted []string: %v", snap.State["unmergeable_prs"], want)
@@ -102,7 +102,7 @@ func TestDeliveryWorkSnapshotListsTheDeliveryStreamsUnmergeableBranches(t *testi
 
 	// Shown, not work: has_work, the reasons and the hash are those of a
 	// forge whose pull requests all merge.
-	clean := snapshotState(t, deliveryForge())
+	clean := deliverySnapshot(t, deliveryForge())
 	if snap.State["has_work"] != clean.State["has_work"] || !reflect.DeepEqual(snap.State["reasons"], clean.State["reasons"]) {
 		t.Errorf("has_work/reasons moved with unmergeable pull requests: %v %v vs %v %v",
 			snap.State["has_work"], snap.State["reasons"], clean.State["has_work"], clean.State["reasons"])
