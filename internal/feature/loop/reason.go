@@ -556,6 +556,10 @@ func buildUnblockNotice(sc *stepContext) string {
 	if u.Remedy != "" {
 		fmt.Fprintf(&b, "The remedy declared for this kind of blocker: %s\n", u.Remedy)
 	}
+	if u.PullRequest > 0 {
+		fmt.Fprintf(&b, "Make your first action post the diagnosis as a comment on the stream's open pull request: "+
+			"write it to a file with the Write tool, then run `gh pr comment %d --body-file <file>`.\n", u.PullRequest)
+	}
 	b.WriteString("\n")
 	return b.String()
 }

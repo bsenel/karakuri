@@ -26,6 +26,7 @@ import (
 // restart, never reaches stepLearn, so without this row the pass that resumes
 // it cannot tell which branch the plan named. Best effort, like the learn row.
 func savePlanBeforeAct(ctx context.Context, sc *stepContext, p plan) {
+	auditPlan(ctx, sc, p)
 	in, err := json.Marshal(map[string]any{"loop_id": sc.loopID, "plan": p})
 	if err != nil {
 		return
@@ -38,6 +39,40 @@ func savePlanBeforeAct(ctx context.Context, sc *stepContext, p plan) {
 		InputJSON:   string(in),
 		OutputJSON:  "{}",
 		CreatedAt:   time.Now().UTC(),
+	})
+}
+
+// auditPlan writes the plan's reasoning to the audit log before its first
+// action runs (Phase 40 step 14b), so a blocked pass's diagnosis is on record
+// even if the action that follows cuts the run. It is generic: the blocker the
+// request carried is named because the request is part of what the plan
+// answers, and nothing is decided from it. Best effort.
+func auditPlan(ctx context.Context, sc *stepContext, p plan) {
+	payload := map[string]any{
+		"loop_id":    sc.loopID,
+		"iteration":  sc.iteration,
+		"reasoning":  p.Reasoning,
+		"confidence": p.Confidence,
+		"actions":    p.Actions,
+	}
+	if u := sc.unblock; u != nil {
+		payload["blocker"] = map[string]any{"kind": u.Kind, "subject": u.Subject, "count": u.Count}
+	}
+	pj, err := json.Marshal(payload)
+	if err != nil {
+		return
+	}
+	now := time.Now().UTC()
+	_ = sc.svc.store.SaveToolEvent(ctx, storage.ToolEvent{
+		ID:          fmt.Sprintf("plan-%s-%d-%d", sc.loopID, sc.iteration, now.UnixNano()),
+		ObjectiveID: string(sc.obj.ID),
+		Kind:        storage.ToolEventPlan,
+		TemplateID:  sc.obj.TemplateID,
+		Provider:    p.provider,
+		Model:       p.model,
+		Success:     true,
+		PayloadJSON: string(pj),
+		CreatedAt:   now,
 	})
 }
 

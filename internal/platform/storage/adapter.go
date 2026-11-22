@@ -193,6 +193,10 @@ const (
 	// because a newer plan was raised for the same objective while it was
 	// open. The payload names both checkpoints.
 	ToolEventSupersession = "supersession"
+	// ToolEventPlan (Phase 40 step 14b) records a plan before its first action
+	// runs: its reasoning, confidence and actions, and the blocker the request
+	// carried when it carried one. One row per plan that is acted on.
+	ToolEventPlan = "plan"
 )
 
 // ResolvedCheckpointFilter narrows the resolved-checkpoint listing. Empty
