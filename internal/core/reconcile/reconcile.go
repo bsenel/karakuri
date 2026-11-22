@@ -84,6 +84,10 @@ type Fingerprint struct {
 	// Working lists environments whose snapshot says they hold work (state
 	// "has_work" true). With no baseline yet, that is a reason to run.
 	Working []string `json:"working,omitempty"`
+	// Unmergeable lists the branches whose pull request cannot be merged, as
+	// an environment's snapshot state "unmergeable_prs" names them (Phase 40
+	// step 14a).
+	Unmergeable []string `json:"unmergeable,omitempty"`
 	// TakenAt is when the snapshots were read.
 	TakenAt time.Time `json:"taken_at"`
 }

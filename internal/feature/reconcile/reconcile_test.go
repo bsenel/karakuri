@@ -140,6 +140,8 @@ type fakeEnv struct {
 	id      string
 	sha     string
 	present bool
+	// state is what the environment's snapshot carries besides its hash.
+	state map[string]any
 }
 
 func (e *fakeEnv) ID() environment.EnvironmentID { return environment.EnvironmentID(e.id) }
@@ -157,7 +159,7 @@ func (e *fakeEnv) Snapshot(context.Context) (environment.EnvironmentSnapshot, er
 	if e.sha == "" {
 		return environment.EnvironmentSnapshot{EnvID: e.ID()}, nil
 	}
-	return environment.EnvironmentSnapshot{EnvID: e.ID(), SHA: e.sha}, nil
+	return environment.EnvironmentSnapshot{EnvID: e.ID(), SHA: e.sha, State: e.state}, nil
 }
 
 // ── fixture ───────────────────────────────────────────────────────────────

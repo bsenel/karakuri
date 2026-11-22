@@ -32,9 +32,10 @@ import (
 //     times running. Subject: the objective ID.
 //   - plan_refused: the loop row's PlanRefusedReason, set in feature/loop/decide.go
 //     where the bounds refuse a plan. Subject: the objective ID.
-//   - unmergeable_pr: DOES NOT REACH RECONCILE. Nothing in this package or its
-//     snapshot (domains/software's delivery_work) reads a pull request's
-//     mergeability. Same failing test, same message.
+//   - unmergeable_pr: the delivery_work snapshot's state["unmergeable_prs"], a
+//     sorted list of the delivery stream's unmergeable branches (roadmap step
+//     6a), which sense.go copies into Fingerprint.Unmergeable. Subject: the
+//     branch. A pass whose fingerprint no longer lists it clears it.
 
 func blockerFixture(t *testing.T) (*fixture, objective.Objective) {
 	t.Helper()
@@ -96,8 +97,6 @@ func TestEachSignalYieldsOneBlocker(t *testing.T) {
 		kind reconcile.BlockerKind
 		// seed arranges the loop's answer and returns the expected subject.
 		seed func(f *fixture) string
-		// unreachable, when set, is why no existing field carries the signal.
-		unreachable string
 	}{
 		{name: "failed verify", kind: reconcile.BlockerVerifyFailed, seed: func(f *fixture) string {
 			f.failVerify("tests-green")
@@ -121,19 +120,58 @@ func TestEachSignalYieldsOneBlocker(t *testing.T) {
 			f.loops.refused = "action outside the bounds' limits"
 			return "obj-1"
 		}},
-		{name: "unmergeable pull request", kind: reconcile.BlockerUnmergeablePR,
-			unreachable: "no code in reconcile or the delivery_work snapshot reads a pull request's mergeability"},
+		{name: "unmergeable pull request", kind: reconcile.BlockerUnmergeablePR, seed: func(f *fixture) string {
+			f.listUnmergeable("karakuri/phase-99-x")
+			return "karakuri/phase-99-x"
+		}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if tc.unreachable != "" {
-				t.Fatalf("%s: cannot be detected without a new signal: %s", tc.kind, tc.unreachable)
-			}
 			f, obj := blockerFixture(t)
 			subject := tc.seed(f)
 			f.pass(t, obj.ID, reconcile.TriggerManual)
 			wantBlockers(t, f.state(t, obj.ID), reconcile.Blocker{Kind: tc.kind, Subject: subject, Count: 1})
 		})
+	}
+}
+
+// listUnmergeable makes the sensed git snapshot list these branches as the
+// stream's pull requests that cannot be merged; none clears the list.
+func (f *fixture) listUnmergeable(branches ...string) {
+	for _, e := range f.envs {
+		if e.id == branchEnvironment {
+			e.state = map[string]any{"unmergeable_prs": branches}
+		}
+	}
+}
+
+func TestOneUnmergeableBlockerPerListedBranch(t *testing.T) {
+	f, obj := blockerFixture(t)
+	f.listUnmergeable("karakuri/phase-99-x", "karakuri/phase-99-y")
+	f.pass(t, obj.ID, reconcile.TriggerManual)
+
+	wantBlockers(t, f.state(t, obj.ID),
+		reconcile.Blocker{Kind: reconcile.BlockerUnmergeablePR, Subject: "karakuri/phase-99-x", Count: 1},
+		reconcile.Blocker{Kind: reconcile.BlockerUnmergeablePR, Subject: "karakuri/phase-99-y", Count: 1},
+	)
+}
+
+func TestAnUnmergeableBranchNoLongerListedClearsItsBlocker(t *testing.T) {
+	f, obj := blockerFixture(t)
+	f.listUnmergeable("karakuri/phase-99-x", "karakuri/phase-99-y")
+	f.pass(t, obj.ID, reconcile.TriggerManual)
+
+	// The repair merged main into the first branch; the second is still broken.
+	f.listUnmergeable("karakuri/phase-99-y")
+	f.again(t, obj.ID)
+	wantBlockers(t, f.state(t, obj.ID),
+		reconcile.Blocker{Kind: reconcile.BlockerUnmergeablePR, Subject: "karakuri/phase-99-y", Count: 2},
+	)
+
+	f.listUnmergeable()
+	f.again(t, obj.ID)
+	if st := f.state(t, obj.ID); len(st.Blockers) != 0 {
+		t.Errorf("blockers = %+v after no branch is listed, want none", st.Blockers)
 	}
 }
 

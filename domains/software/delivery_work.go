@@ -26,7 +26,11 @@ import (
 // in words, why or why not.
 type DeliveryWork struct {
 	HasWork bool
-	Reasons []string
+	// Unmergeable is the delivery stream's open pull requests that cannot be
+	// merged, by branch, sorted (Phase 40 step 14a). It is not work and moves
+	// neither HasWork, Reasons nor the snapshot hash.
+	Unmergeable []string
+	Reasons     []string
 }
 
 var (
