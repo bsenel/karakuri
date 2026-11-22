@@ -334,6 +334,7 @@ func (s *Service) reconcileNow(
 		// name the rung without the loop working it back out of the bounds.
 		AutonomyRung: level,
 		Resume:       s.resumeBrief(ctx, obj),
+		Unblock:      unblockBrief(st.Blockers, tmpl),
 	})
 	if p, stopped := stoppedBy(ctx); stopped {
 		outcome.LoopID = res.LoopID

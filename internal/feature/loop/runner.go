@@ -55,6 +55,8 @@ type stepContext struct {
 	// commits and the criteria not settled. Nil for a pass that follows no
 	// cut-off one (Phase 40 step 9a).
 	resume *loop.Resume
+	// unblock is the blocker the request asked this pass to diagnose (step 14b).
+	unblock *loop.Unblock
 
 	// threshold is the confidence bar stepDecide last applied, which an
 	// operator's modify may have lowered below the one the agent declares.
@@ -160,6 +162,7 @@ func (s *serviceImpl) runLoop(ctx context.Context, loopID string, req loop.Reque
 		svc:      s,
 		rung:     req.AutonomyRung,
 		resume:   req.Resume,
+		unblock:  req.Unblock,
 		sleep:    s.sleep,
 	}
 

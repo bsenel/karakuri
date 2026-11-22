@@ -8,6 +8,44 @@ import (
 	"github.com/bsenel/karakuri/internal/core/reconcile"
 )
 
+// unblockBrief is the blocker the stream's next pass is asked to diagnose and
+// fix (Phase 40 step 14b): the one with the highest count, then the oldest
+// first seen, then kind, then subject, so every pass chooses alike. Quota is
+// waiting, not something a pass can fix, and is never chosen. The remedy is
+// the objective's template's text for that kind.
+func unblockBrief(blockers []reconcile.Blocker, tmpl objective.Template) *coreloop.Unblock {
+	var best *reconcile.Blocker
+	for i := range blockers {
+		b := &blockers[i]
+		if b.Kind == reconcile.BlockerDeferredQuota {
+			continue
+		}
+		if best == nil || blockerBefore(*b, *best) {
+			best = b
+		}
+	}
+	if best == nil {
+		return nil
+	}
+	return &coreloop.Unblock{
+		Kind: string(best.Kind), Subject: best.Subject, Count: best.Count,
+		FirstSeen: best.FirstSeen, LastSeen: best.LastSeen,
+		Remedy: tmpl.BlockerRemedies[string(best.Kind)],
+	}
+}
+
+func blockerBefore(a, b reconcile.Blocker) bool {
+	switch {
+	case a.Count != b.Count:
+		return a.Count > b.Count
+	case !a.FirstSeen.Equal(b.FirstSeen):
+		return a.FirstSeen.Before(b.FirstSeen)
+	case a.Kind != b.Kind:
+		return a.Kind < b.Kind
+	}
+	return a.Subject < b.Subject
+}
+
 // noProgressPasses is how many passes that had work, with no new commit on the
 // stream's branch, make the stream blocked with no_progress (Phase 40 step
 // 14a). No objective or template field declares it yet, so it is a constant.

@@ -88,6 +88,7 @@ func stepReason(ctx context.Context, sc *stepContext, ws loop.WorldState) plan {
 			"Return raw JSON only — no Markdown code fences, no commentary before or after.\n\n" +
 			provenance +
 			buildResumeNotice(sc) +
+			buildUnblockNotice(sc) +
 			buildObservationLines(ws) +
 			catalog,
 	}
@@ -531,6 +532,29 @@ func buildResumeNotice(sc *stepContext) string {
 		for _, id := range r.Unsettled {
 			fmt.Fprintf(&b, "  - %s\n", id)
 		}
+	}
+	b.WriteString("\n")
+	return b.String()
+}
+
+// buildUnblockNotice shows the planner the one blocker the request carries and
+// tells it to diagnose before it acts (Phase 40 step 14b). The loop decides
+// nothing from it; it renders what the request holds. Empty with no blocker,
+// so the ordinary prompt is byte-identical.
+func buildUnblockNotice(sc *stepContext) string {
+	if sc == nil || sc.unblock == nil {
+		return ""
+	}
+	u := sc.unblock
+	var b strings.Builder
+	fmt.Fprintf(&b, "This stream is blocked: %s on %s, seen %d time(s) since %s (last %s).\n",
+		u.Kind, u.Subject, u.Count, u.FirstSeen.UTC().Format(time.RFC3339), u.LastSeen.UTC().Format(time.RFC3339))
+	b.WriteString("Diagnose it before you act. Read the pull request and its checks, the audit log for this objective, " +
+		"and the branch it is about, then write the finding down in your reasoning. " +
+		"Then make the smallest fix that clears it, and add a failing test first where the cause is in code. " +
+		"Stay inside your authority limits; never widen them to get past the blocker.\n")
+	if u.Remedy != "" {
+		fmt.Fprintf(&b, "The remedy declared for this kind of blocker: %s\n", u.Remedy)
 	}
 	b.WriteString("\n")
 	return b.String()
