@@ -193,6 +193,7 @@ func (s *GORMStorage) SaveReconcileOutcome(ctx context.Context, o reconcile.Outc
 		CheckpointID: o.CheckpointID,
 		Error:        o.Error,
 		Inconclusive: o.Inconclusive,
+		Ending:       o.Ending,
 		CriteriaJSON: jsonArray(o.Criteria),
 		Deferred:     o.Deferred,
 		DeferredUntil: func() *time.Time {
@@ -242,6 +243,7 @@ func (s *GORMStorage) ListReconcileOutcomes(ctx context.Context, objectiveID obj
 			CheckpointID: m.CheckpointID,
 			Error:        m.Error,
 			Inconclusive: m.Inconclusive,
+			Ending:       m.Ending,
 			Criteria:     criteria,
 			Deferred:     m.Deferred,
 			DeferredUntil: func() time.Time {

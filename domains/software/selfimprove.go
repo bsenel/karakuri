@@ -530,6 +530,12 @@ func selfImproveAgents() []agent.Definition {
 				// credited with and never actually provided — a pack is a
 				// namespace, and stepAct resolves environments across every
 				// domain an objective names.
+				//
+				// The proposal streams no longer run as this agent: they run
+				// as software.agent.proposer, whose few actions are held to
+				// their templates' paths, branch and base limits, checked
+				// before an action runs and after it pushed (ADR 030). Every
+				// objective that still names the maintainer keeps this zero.
 				MaxAutonomousActions: 0,
 				RequiresApprovalFor:  []capability.CapabilityID{CapProposeRoadmap, CapDraftADR},
 				CanDelegate:          false,

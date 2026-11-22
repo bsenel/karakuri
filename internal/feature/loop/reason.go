@@ -87,6 +87,7 @@ func stepReason(ctx context.Context, sc *stepContext, ws loop.WorldState) plan {
 			"'confidence' (0.0-1.0), and 'reasoning' (string). " +
 			"Return raw JSON only — no Markdown code fences, no commentary before or after.\n\n" +
 			provenance +
+			buildResumeNotice(sc) +
 			buildObservationLines(ws) +
 			catalog,
 	}
@@ -496,6 +497,42 @@ func buildObservationLines(ws loop.WorldState) string {
 			b.WriteString("\n")
 		}
 	}
+	return b.String()
+}
+
+// buildResumeNotice tells the planner what the pass before this one, which was
+// cut off (quota, restart), already left on the stream's branch and which
+// success criteria it had not settled (Phase 40 step 9a). Empty when this pass
+// follows no cut-off one, so the ordinary prompt is byte-identical.
+func buildResumeNotice(sc *stepContext) string {
+	if sc == nil || sc.resume == nil {
+		return ""
+	}
+	r := sc.resume
+	var b strings.Builder
+	b.WriteString("The previous pass on this objective was cut off before it finished. " +
+		"Continue it; do not start the work again, and do not open a second branch or a second pull request.\n")
+	if r.Branch != "" {
+		fmt.Fprintf(&b, "Its branch is %s. Push further work to that branch.\n", r.Branch)
+	}
+	switch {
+	case r.CommitsUnreadable != "":
+		fmt.Fprintf(&b, "What that branch holds could not be read (%s). It is unknown, not empty.\n", r.CommitsUnreadable)
+	case len(r.Commits) == 0:
+		b.WriteString("That branch holds no commits yet.\n")
+	default:
+		b.WriteString("Commits already on that branch, which you must not plan again:\n")
+		for _, c := range r.Commits {
+			fmt.Fprintf(&b, "  - %s\n", c)
+		}
+	}
+	if len(r.Unsettled) > 0 {
+		b.WriteString("Success criteria not yet settled as met:\n")
+		for _, id := range r.Unsettled {
+			fmt.Fprintf(&b, "  - %s\n", id)
+		}
+	}
+	b.WriteString("\n")
 	return b.String()
 }
 

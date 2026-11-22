@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"slices"
 	"sort"
@@ -13,6 +14,7 @@ import (
 	"github.com/bsenel/karakuri/config"
 	"github.com/bsenel/karakuri/internal/core/capability"
 	"github.com/bsenel/karakuri/internal/core/environment"
+	coreerrors "github.com/bsenel/karakuri/internal/core/errors"
 	"github.com/bsenel/karakuri/internal/platform/tools"
 	"github.com/bsenel/karakuri/internal/platform/tools/cliagent"
 	"github.com/bsenel/karakuri/internal/platform/tools/messaging"
@@ -426,8 +428,12 @@ func (e *gitEnv) Observe(ctx context.Context, q environment.ObservationQuery) (e
 		}
 		state["salvage_branches"] = branches
 	}
-	// A stream's branch ahead of main with no open pull request (Phase 40
-	// step 6), so its stream opens that pull request before new work.
+	// A stream's open pull request that cannot be merged (Phase 40 step 6a),
+	// repaired first, then a stream's branch ahead of main with no open pull
+	// request (step 6), so its stream opens that pull request before new work.
+	// Each reads the open pull requests itself: the read above is bounded to
+	// the observation window, and these must see every open one.
+	observeUnmergeablePRs(ctx, adapter, repo, state)
 	observeBranchesWithoutPR(ctx, adapter, repo, state)
 	// The comments on those pull requests no later commit answers, owner's or
 	// third party's (Phase 40 steps 12 and 12a). A stranger's comment is their
@@ -766,6 +772,18 @@ func cliTimeoutSeconds(options map[string]any) int {
 	return 0
 }
 
+// gitRewriteDeny is what every delegation refuses even beside the broad
+// Bash(git:*) a stream needs: step 2's limits match whole tool entries and
+// cannot read a git subcommand, and the claude CLI's deny list takes
+// precedence over its allow list. Merged, never rebased (Phase 40 step 6a).
+var gitRewriteDeny = []string{
+	"Bash(git rebase:*)",
+	"Bash(git push --force:*)",
+	"Bash(git push -f:*)",
+	"Bash(git push --force-with-lease:*)",
+	"Bash(git push origin +*)",
+}
+
 // deniesUnlistedTools reports whether a coding-agent CLI refuses every tool that
 // needs permission unless its allow-list names it. Claude Code in headless
 // print mode does, so a run with an empty list can read files but can neither
@@ -834,10 +852,11 @@ func (e *cliEnv) Act(ctx context.Context, a environment.Action) (environment.Act
 	}
 
 	in := cliagent.DelegateInput{
-		Prompt:         prompt,
-		WorktreePath:   worktree,
-		TimeoutSeconds: e.delegationTimeoutSeconds(),
-		Model:          e.model,
+		Prompt:          prompt,
+		WorktreePath:    worktree,
+		TimeoutSeconds:  e.delegationTimeoutSeconds(),
+		Model:           e.model,
+		DisallowedTools: slices.Clone(gitRewriteDeny),
 	}
 	if files, ok := a.Params["files"].([]any); ok {
 		for _, f := range files {
@@ -889,7 +908,7 @@ func (e *cliEnv) Act(ctx context.Context, a environment.Action) (environment.Act
 	// agent made outside its declared refs is a failed action (Phase 40 step
 	// 3). An origin that cannot be read is never a pass: a run that succeeded
 	// fails for it, and one that failed keeps its own error and records why.
-	declared := declaredRefs(asString(a.Params, "branch"), worktree)
+	declared := declaredRefs(plannedBranch(a.Params), worktree)
 	refsBefore, refsBeforeErr := readRemoteRefs(ctx, worktree)
 	// scrub keeps the delegation token out of anything the result carries.
 	scrub := func(s string) string { return s }
@@ -963,6 +982,13 @@ func (e *cliEnv) Act(ctx context.Context, a environment.Action) (environment.Act
 	out, err := e.cli.Delegate(ctx, in)
 	postedKeys := recorder.finish(ctx)
 	pushed, pushedErr := checkPushedRefs(ctx, worktree, declared, refsBefore, refsBeforeErr, pushes)
+	if pushedErr == nil {
+		// A proposal stream's action declares the files it writes, and a
+		// push to its branch that changed any other fails (ADR 030).
+		var outside *environment.BoundsViolation
+		outside, pushedErr = checkPushedPaths(ctx, worktree, plannedBranch(a.Params), pathGlobsParam(a.Params), refsBefore)
+		pushed = joinViolations(pushed, outside)
+	}
 	logErr := pushes.remove()
 	// What a Karakuri tool returned can be a stranger's prose (an audit row
 	// holds pull-request titles), and the agent wrote everything after it
@@ -1008,7 +1034,16 @@ func (e *cliEnv) Act(ctx context.Context, a environment.Action) (environment.Act
 		if pushed != nil {
 			msg = pushed.Reason + "; the run itself failed: " + msg
 		}
-		return environment.ActionResult{Success: false, Trust: trust, Error: scrub(msg), StateDelta: delta, BoundsViolation: pushed}, nil
+		failed := environment.ActionResult{Success: false, Trust: trust, Error: scrub(msg), StateDelta: delta, BoundsViolation: pushed}
+		// A quota refusal is not a failure of the work, and the loop's act
+		// step can only tell it apart by errors.Is, so it is returned as well
+		// as reported (Phase 40 step 8). The chain is kept; only the text is
+		// scrubbed of the delegation token. A bounds violation stays on the
+		// result either way, so the loop still records it.
+		if errors.Is(err, coreerrors.ErrProviderRateLimited) {
+			return failed, &scrubbedError{text: failed.Error, cause: err}
+		}
+		return failed, nil
 	}
 	delta := map[string]any{
 		"adapter":    e.cli.Name(),
@@ -1055,6 +1090,16 @@ func asString(m map[string]any, key string) string {
 	}
 	return ""
 }
+
+// scrubbedError carries an error whose text has had a secret taken out, with
+// the original still reachable by errors.Is and errors.As.
+type scrubbedError struct {
+	text  string
+	cause error
+}
+
+func (e *scrubbedError) Error() string { return e.text }
+func (e *scrubbedError) Unwrap() error { return e.cause }
 
 func noopObservation(id environment.EnvironmentID) environment.Observation {
 	return environment.Observation{
@@ -1280,4 +1325,14 @@ func cliPrompt(a environment.Action) (string, bool) {
 		return "Write tests only, no implementation changes. " + task, true
 	}
 	return "", false
+}
+
+// plannedBranch is the branch the plan declared for an action: the loop keeps
+// it as planned_branch when it puts the worktree's own branch in
+// params.branch, and an action run outside the loop names it as branch.
+func plannedBranch(params map[string]any) string {
+	if b := asString(params, "planned_branch"); b != "" {
+		return b
+	}
+	return asString(params, "branch")
 }

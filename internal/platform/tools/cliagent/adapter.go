@@ -21,6 +21,9 @@ type DelegateInput struct {
 	// AllowedTools optionally constrains which built-in tools the CLI may use
 	// (e.g. ["read", "edit", "bash"]). CLIs that don't support tool gating ignore it.
 	AllowedTools []string
+	// DisallowedTools are entries the CLI must refuse even when AllowedTools admits them
+	// (e.g. a rebase beside a broad git entry).
+	DisallowedTools []string
 	// Model names the model the CLI runs, e.g. "sonnet"; empty leaves the
 	// CLI on its own default (for Claude Code, ANTHROPIC_MODEL or its setting).
 	// CLIs that take no model flag ignore it.

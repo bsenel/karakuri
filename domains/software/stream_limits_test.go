@@ -37,6 +37,11 @@ type streamBrief struct {
 	tools []string
 	// branches are branch names the brief tells the stream to push to.
 	branches []string
+	// paths are the files a proposal stream's action declares it writes
+	// (Phase 40 step 10); none for a stream with no paths limit.
+	paths []string
+	// bases are the branches its pull request may open onto, beyond main.
+	bases []string
 }
 
 // krk is the operator's krk binary. The tech brief names it by its absolute
@@ -53,6 +58,7 @@ func streamBriefs() []streamBrief {
 				"Bash(gh pr create:*)", "Bash(gh pr edit:*)", "Bash(gh label create:*)", "Bash(ls:*)", "Bash(cat:*)",
 				"Bash(grep:*)", "Bash(find:*)", "Bash(date:*)", "WebSearch", "WebFetch"},
 			branches: []string{"karakuri/discovery-2026-11-15"},
+			paths:    []string{"docs/research/discovery-2026-11-15.md", "docs/roadmap.md"},
 		},
 		{
 			templateID: engineeringBacklogTemplateID,
@@ -70,6 +76,7 @@ func streamBriefs() []streamBrief {
 				"Bash(" + krk + " twin list:*)", "Bash(" + krk + " twin get:*)", "Bash(" + krk + " domain list:*)",
 				"Bash(tail:*)", "Bash(wc:*)", "Bash(sort:*)", "Bash(uniq:*)", "Bash(head:*)"},
 			branches: []string{"karakuri/tech-backlog-2026-11-15"},
+			paths:    []string{"docs/roadmap.md"},
 		},
 		{
 			templateID: uxImprovementTemplateID,
@@ -78,6 +85,7 @@ func streamBriefs() []streamBrief {
 				"Bash(gh label create:*)", "Bash(ls:*)", "Bash(cat:*)", "Bash(grep:*)", "Bash(find:*)", "Bash(date:*)",
 				"Bash(go:*)", "Bash(gofmt:*)", "Bash(sed:*)"},
 			branches: []string{"karakuri/ux-2026-11-15"},
+			bases:    []string{"karakuri/ux-2026-11-15"},
 		},
 		{
 			templateID: roadmapDeliveryTemplateID,
@@ -88,6 +96,7 @@ func streamBriefs() []streamBrief {
 				"Bash(scripts/check_langchaingo_imports.sh:*)", "Bash(sed:*)"},
 			// A phase's first group, a later group, and a backlog entry.
 			branches: []string{"karakuri/phase-40-action-limits", "karakuri/phase-41-step-10-coverage", "karakuri/eb-011-unbound-instance"},
+			bases:    []string{"karakuri/phase-40-action-limits", "karakuri/phase-41-step-10-coverage", "karakuri/eb-011-unbound-instance"},
 		},
 	}
 }
@@ -107,16 +116,20 @@ var mergeOrShell = []string{
 	"Bash(sh:*)",
 }
 
-func codingAction(id capability.CapabilityID, tools []string, branch string) environment.Action {
+func codingAction(id capability.CapabilityID, tools []string, branch string, paths ...string) environment.Action {
 	list := make([]any, len(tools))
 	for i, s := range tools {
 		list[i] = s
 	}
-	return environment.Action{CapabilityID: id, Params: map[string]any{
+	a := environment.Action{CapabilityID: id, Params: map[string]any{
 		"prompt":        "do the slice",
 		"allowed_tools": list,
 		"branch":        branch,
 	}}
+	if len(paths) > 0 {
+		a.Params["paths"] = paths
+	}
+	return a
 }
 
 func templateBounds(tmpl objective.Template) agent.AuthorityBounds {
@@ -156,7 +169,7 @@ func TestStreamTemplatesAdmitTheToolsTheirBriefsGive(t *testing.T) {
 			bounds := templateBounds(streamTemplate(t, b.templateID))
 			for _, id := range codingCapabilities {
 				for _, branch := range b.branches {
-					if v := bounds.CheckActionLimits([]environment.Action{codingAction(id, b.tools, branch)}); len(v) != 0 {
+					if v := bounds.CheckActionLimits([]environment.Action{codingAction(id, b.tools, branch, b.paths...)}); len(v) != 0 {
 						for _, viol := range v {
 							t.Errorf("%s on %s: the brief's %s %q is refused by [%s]", id, branch,
 								viol.Parameter, viol.Value, strings.Join(viol.Limit.Patterns, ", "))
@@ -177,7 +190,7 @@ func TestStreamTemplatesRefuseMergeAndUnrestrictedShell(t *testing.T) {
 			for _, id := range codingCapabilities {
 				for _, tool := range mergeOrShell {
 					for _, tools := range [][]string{{tool}, append(append([]string{}, b.tools...), tool)} {
-						a := codingAction(id, tools, b.branches[0])
+						a := codingAction(id, tools, b.branches[0], b.paths...)
 						if !violates(bounds.CheckActionLimits([]environment.Action{a}), "allowed_tools", tool) {
 							t.Errorf("%s with %q in allowed_tools is inside the limits", id, tool)
 						}
@@ -206,7 +219,7 @@ func TestStreamTemplatesConfineTheBranchACodingActionPushes(t *testing.T) {
 			refused = append(refused, b.branches[0]+"/main")
 			for _, id := range codingCapabilities {
 				for _, branch := range refused {
-					a := codingAction(id, b.tools, branch)
+					a := codingAction(id, b.tools, branch, b.paths...)
 					if !violates(bounds.CheckActionLimits([]environment.Action{a}), "branch", branch) {
 						t.Errorf("%s may push to %q", id, branch)
 					}
@@ -237,10 +250,14 @@ func TestStreamTemplatesConfineThePullRequestsTheyOpen(t *testing.T) {
 			}
 			bounds := templateBounds(tmpl)
 			own := b.branches[0]
-			for _, base := range append([]string{"main"}, b.branches...) {
+			for _, base := range append([]string{"main"}, b.bases...) {
 				if v := bounds.CheckActionLimits([]environment.Action{pr(own, base)}); len(v) != 0 {
 					t.Errorf("a pull request from %s onto %s is refused: %+v", own, base, v)
 				}
+			}
+			// A proposal stream opens its pull request only against main.
+			if len(b.bases) == 0 && !violates(bounds.CheckActionLimits([]environment.Action{pr(own, own)}), "base_branch", own) {
+				t.Errorf("a pull request may be opened onto the stream's own branch %s", own)
 			}
 			if !violates(bounds.CheckActionLimits([]environment.Action{pr("main", "main")}), "branch", "main") {
 				t.Error("a pull request may be opened from main")

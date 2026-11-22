@@ -71,6 +71,7 @@ export function QuotaUsage() {
           label="Usage by tier"
           loading={usage.loading}
           error={usage.error}
+          onRetry={usage.reload}
           rows={rows}
           keyOf={(r) => r.name}
           empty="No tiers are counted for this twin."

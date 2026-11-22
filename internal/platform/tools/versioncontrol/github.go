@@ -520,6 +520,34 @@ func (g *GitHub) EditPRBody(ctx context.Context, repo, prID, body string) error 
 	return nil
 }
 
+// MergeState reads a pull request's mergeable and mergeable_state. GitHub
+// computes mergeable in the background, so a null is "unknown" rather than
+// clean; a "dirty" state is a conflict even before mergeable is filled in.
+func (g *GitHub) MergeState(ctx context.Context, repo, prID string) (string, error) {
+	if repo == "" {
+		repo = g.repo
+	}
+	if repo == "" {
+		return "", fmt.Errorf("github: no repo configured")
+	}
+	var pr struct {
+		Mergeable      *bool  `json:"mergeable"`
+		MergeableState string `json:"mergeable_state"`
+	}
+	path := fmt.Sprintf("/repos/%s/pulls/%s", repo, url.PathEscape(prID))
+	if err := g.do(ctx, "GET", path, nil, &pr); err != nil {
+		return "", fmt.Errorf("github: merge state: %w", err)
+	}
+	switch {
+	case pr.MergeableState == "dirty", pr.Mergeable != nil && !*pr.Mergeable:
+		return "conflicting", nil
+	case pr.Mergeable != nil && *pr.Mergeable:
+		return "clean", nil
+	default:
+		return "unknown", nil
+	}
+}
+
 // BranchProtected reads the branch's own `protected` field with one GET of the
 // branch. A failed read is an error and false, never a guess either way.
 func (g *GitHub) BranchProtected(ctx context.Context, repo, branch string) (bool, error) {

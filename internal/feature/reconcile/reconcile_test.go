@@ -46,6 +46,15 @@ type fakeLoop struct {
 	rung        objective.AutonomyLevel
 	// criteria are the states the run's verify step settled.
 	criteria []objective.Criterion
+	// outcome is how the run ended, as the loop names it on its row.
+	outcome coreloop.RunOutcome
+	// retryAfter is how long the provider asked the run to wait, on its row.
+	retryAfter time.Duration
+	// ran is the objectives the loop was run for, in order.
+	ran []objective.ObjectiveID
+	// gate, when set, holds every run until it is closed, so a test can see
+	// which pass holds a slot while it is held.
+	gate chan struct{}
 	// violation is the bounds violation an action of the run carried.
 	violation *environment.BoundsViolation
 }
@@ -55,8 +64,17 @@ func (f *fakeLoop) Run(ctx context.Context, req coreloop.Request) (coreloop.Resu
 	f.runs++
 	f.authority = req.Agent.Authority
 	f.rung = req.AutonomyRung
+	f.ran = append(f.ran, req.Objective.ID)
 	err := f.err
+	gate := f.gate
 	f.mu.Unlock()
+	if gate != nil {
+		select {
+		case <-gate:
+		case <-ctx.Done():
+			return coreloop.Result{}, ctx.Err()
+		}
+	}
 	if err != nil {
 		return coreloop.Result{}, err
 	}
@@ -72,6 +90,8 @@ func (f *fakeLoop) Run(ctx context.Context, req coreloop.Request) (coreloop.Resu
 		CheckpointID:    f.checkpoint,
 		Criteria:        f.criteria,
 		Error:           f.failure,
+		Outcome:         f.outcome,
+		RetryAfter:      f.retryAfter,
 		BoundsViolation: f.violation,
 	}
 	if err := f.store.SaveLoopState(ctx, st); err != nil {
