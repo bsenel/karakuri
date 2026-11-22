@@ -7646,6 +7646,7 @@ components:
                 description: The pull request, branch or item the blocker is about.
                 type: string
             type: object
+          nullable: true
           type: array
         clean_runs:
           type: integer
