@@ -28,7 +28,8 @@ const oversightDigest = `{
        {"at": "2026-11-21T10:00:00Z", "capability": "software.act.git_push", "reason": "force push is outside the bounds"}
      ],
      "blocks": [
-       {"kind": "waiting_for_quota", "reason": "claude 5-hour limit", "at": "2026-11-21T11:00:00Z", "until": "2026-11-21T16:00:00Z"}
+       {"kind": "waiting_for_quota", "reason": "claude 5-hour limit", "at": "2026-11-21T11:00:00Z", "until": "2026-11-21T16:00:00Z"},
+       {"kind": "verify_failed", "subject": "tests-green", "count": 2, "at": "2026-11-21T12:00:00Z"}
      ]},
     {"id": "obj_discovery", "title": "Discover backlog", "status": "active",
      "senses": 2, "reconciles": 0, "criteria_met": 1}
@@ -62,6 +63,31 @@ func startOversightServer(t *testing.T) (apiURL string, requests func() []string
 		mu.Lock()
 		defer mu.Unlock()
 		return append([]string(nil), got...)
+	}
+}
+
+// Phase 40 step 14a: a reconcile blocker is listed with its kind, subject and
+// how many passes saw it.
+func TestReportOversightPrintsBlockerKindSubjectAndCount(t *testing.T) {
+	apiURL, _ := startOversightServer(t)
+	stdout, stderr, err := runKrkSplit("--api-url", apiURL, "report", "oversight", "--twin", "twin_1")
+	if err != nil {
+		t.Fatalf("krk report oversight: %v\n%s", err, stderr)
+	}
+	var line string
+	for _, l := range strings.Split(stdout, "\n") {
+		if strings.Contains(l, "verify_failed") {
+			line = l
+		}
+	}
+	if line == "" {
+		t.Fatalf("no line for the verify_failed blocker:\n%s", stdout)
+	}
+	if !strings.Contains(line, "tests-green") {
+		t.Errorf("blocker line lacks its subject: %q", line)
+	}
+	if !strings.Contains(line, "2") {
+		t.Errorf("blocker line lacks its count: %q", line)
 	}
 }
 

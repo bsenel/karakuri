@@ -15,7 +15,7 @@ const windows = [
 ];
 
 // A person reads these, not the enum the API carries.
-const blockLabels: Record<BlockKind, string> = {
+const blockLabels: Partial<Record<BlockKind, string>> = {
   waiting_for_quota: 'Waiting for quota',
   bounds_violation: 'Bounds violation',
   remote_unreadable: 'Remote unreadable',

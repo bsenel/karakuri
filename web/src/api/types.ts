@@ -371,7 +371,17 @@ export interface ConformanceResult {
 }
 
 /** Why a stream cannot make progress (Phase 40 step 14). */
-export type BlockKind = 'waiting_for_quota' | 'bounds_violation' | 'remote_unreadable';
+export type BlockKind =
+  | 'waiting_for_quota'
+  | 'bounds_violation'
+  | 'remote_unreadable'
+  | 'verify_failed'
+  | 'plan_refused'
+  | 'plan_error'
+  | 'unmergeable_pr'
+  | 'deferred_quota'
+  | 'pushed_refs_violation'
+  | 'no_progress';
 
 /** One plan or action the bounds refused. */
 export interface Refusal {
@@ -386,6 +396,9 @@ export interface Block {
   reason?: string;
   at: string;
   until?: string;
+  /** What a reconcile blocker is about, and how many passes saw it (step 14a). */
+  subject?: string;
+  count?: number;
 }
 
 /** A stream's open pull request waiting for a merge (internal/core/digest). */

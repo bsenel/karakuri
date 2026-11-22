@@ -183,6 +183,10 @@ type Block struct {
 	Reason string    `json:"reason,omitempty"`
 	At     time.Time `json:"at"`
 	Until  time.Time `json:"until,omitempty"`
+	// Subject and Count come from a reconcile blocker (Phase 40 step 14a):
+	// what it is about and how many passes saw it.
+	Subject string `json:"subject,omitempty"`
+	Count   int    `json:"count,omitempty"`
 }
 
 // Progress is the weight the optional criteria earned out of their total, as

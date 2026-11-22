@@ -192,6 +192,38 @@ describe('OversightPage', () => {
     expect(blocks).not.toHaveTextContent('remote_unreadable');
   });
 
+  it('shows a reconcile blocker with a human label, its subject and how many passes saw it', async () => {
+    get.mockImplementation((path: string) =>
+      Promise.resolve(
+        path === '/twins'
+          ? twins
+          : {
+              ...digest,
+              objectives: [
+                stream({
+                  id: 'obj-1',
+                  title: 'Deliver the roadmap',
+                  blocks: [
+                    { kind: 'verify_failed', subject: 'tests-green', count: 3, at: '2026-11-21T12:00:00Z' },
+                  ],
+                }),
+              ],
+            },
+      ),
+    );
+    renderPage();
+    await pickTwin('twin-1');
+
+    const region = await streamRegion('Deliver the roadmap');
+    const blocks = within(region).getByRole('list', { name: /blocks/i });
+    const item = within(blocks).getByRole('listitem');
+
+    expect(item).toHaveTextContent(/verification failed|verify failed/i);
+    expect(item).toHaveTextContent('tests-green');
+    expect(item).toHaveTextContent(/\b3\b/);
+    expect(item).not.toHaveTextContent('verify_failed');
+  });
+
   it('shows when a quota block clears, and only for a block that says so', async () => {
     renderPage();
     await pickTwin('twin-1');
