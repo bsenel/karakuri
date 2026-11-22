@@ -47,6 +47,9 @@ func fingerprint(ctx context.Context, envs []environment.Environment) reconcile.
 			continue
 		}
 		fp.Environments[id] = snap.SHA
+		if branches, ok := snap.State["unmergeable_prs"].([]string); ok {
+			fp.Unmergeable = append(fp.Unmergeable, branches...)
+		}
 		if work, ok := snap.State["has_work"].(bool); ok {
 			if work {
 				fp.Working = append(fp.Working, id)

@@ -163,12 +163,14 @@ func TestAnUnmergeableBranchNoLongerListedClearsItsBlocker(t *testing.T) {
 
 	// The repair merged main into the first branch; the second is still broken.
 	f.listUnmergeable("karakuri/phase-99-y")
+	f.move(branchEnvironment, "tip-after-first-repair")
 	f.again(t, obj.ID)
 	wantBlockers(t, f.state(t, obj.ID),
 		reconcile.Blocker{Kind: reconcile.BlockerUnmergeablePR, Subject: "karakuri/phase-99-y", Count: 2},
 	)
 
 	f.listUnmergeable()
+	f.move(branchEnvironment, "tip-after-second-repair")
 	f.again(t, obj.ID)
 	if st := f.state(t, obj.ID); len(st.Blockers) != 0 {
 		t.Errorf("blockers = %+v after no branch is listed, want none", st.Blockers)

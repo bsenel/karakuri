@@ -73,7 +73,7 @@ func ComputeDeliveryWork(roadmap string, roadmapErr error, prs []versioncontrol.
 	}
 	// The findings come from the forge too; one that could not be read is
 	// blind as well, since an empty list would read as nothing waiting.
-	for _, key := range []string{"branches_without_pr_error", "unanswered_review_comments_error"} {
+	for _, key := range []string{"branches_without_pr_error", "unanswered_review_comments_error", "unmergeable_prs_error"} {
 		if msg, ok := state[key]; ok {
 			// A forge that has no such signal has no such work; only a read
 			// that failed is blind.
@@ -110,6 +110,14 @@ func ComputeDeliveryWork(roadmap string, roadmapErr error, prs []versioncontrol.
 		w.HasWork = true
 		w.Reasons = append(w.Reasons, fmt.Sprintf("%d unanswered review comment(s) on stream pull requests", len(comments)))
 	}
+	// Shown, not work: the delivery stream's own pull requests only.
+	unmergeable, _ := state["unmergeable_prs"].([]map[string]any)
+	for _, u := range unmergeable {
+		if u["stream"] == roadmapDeliveryTemplateID {
+			w.Unmergeable = append(w.Unmergeable, fmt.Sprint(u["branch"]))
+		}
+	}
+	sort.Strings(w.Unmergeable)
 	sort.Strings(w.Reasons)
 	return w, nil
 }
@@ -150,7 +158,7 @@ func (e *deliveryWorkEnv) Observe(ctx context.Context, _ environment.Observation
 	// comment body, so the observation carries nothing a third party wrote.
 	sum := sha256.Sum256([]byte(fmt.Sprintf("%v|%s", work.HasWork, strings.Join(work.Reasons, "\n"))))
 	return environment.Observation{
-		EnvID: e.id, State: map[string]any{"has_work": work.HasWork, "reasons": work.Reasons},
+		EnvID: e.id, State: map[string]any{"has_work": work.HasWork, "reasons": work.Reasons, "unmergeable_prs": work.Unmergeable},
 		Version: hex.EncodeToString(sum[:])[:16], Timestamp: time.Now().UTC(), Trust: environment.TrustOperator,
 	}, nil
 }
@@ -167,6 +175,7 @@ func readDeliveryWork(ctx context.Context, vc versioncontrol.VersionControlAdapt
 	state := map[string]any{}
 	observeBranchesWithoutPR(ctx, vc, "", state)
 	observeUnansweredReviewComments(ctx, vc, "", authors, 0, posted, state)
+	observeUnmergeablePRs(ctx, vc, "", state)
 	work, err := ComputeDeliveryWork(roadmap, roadmapErr, prs, state)
 	return work, prs, err
 }

@@ -7693,6 +7693,12 @@ components:
             taken_at:
               format: date-time
               type: string
+            unmergeable:
+              description: Branches whose pull request cannot be merged, as an environment's snapshot names them; shown, not acted on.
+              items:
+                type: string
+              nullable: true
+              type: array
             working:
               description: Environments whose snapshot says they hold work; with no baseline yet, that is a reason to run.
               items:

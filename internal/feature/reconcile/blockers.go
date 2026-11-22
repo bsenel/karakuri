@@ -21,9 +21,6 @@ const branchEnvironment = "git"
 // cleared (Phase 40 step 14a). It reads only signals the pass already
 // produced, calls no model, and touches no counter that decides whether a pass
 // runs: it detects, counts and shows.
-//
-// unmergeable_pr is not raised here: nothing reads a pull request's
-// mergeability yet (roadmap step 6a), so no signal reaches reconcile.
 func (s *Service) noteBlockers(st *reconcile.State, outcome reconcile.Outcome, final coreloop.State, fp *reconcile.Fingerprint) {
 	at := outcome.EndedAt
 	if at.IsZero() {
@@ -63,6 +60,14 @@ func (s *Service) noteBlockers(st *reconcile.State, outcome reconcile.Outcome, f
 		raise(reconcile.BlockerPushedRefsViolation, v.Refs[0])
 	}
 
+	// A sensed fingerprint lists the stream's unmergeable branches; one it no
+	// longer lists is repaired, or its pull request is gone.
+	if fp != nil {
+		for _, branch := range fp.Unmergeable {
+			raise(reconcile.BlockerUnmergeablePR, branch)
+		}
+	}
+
 	// Progress on a subject removes its blocker: a criterion now met, or a
 	// signal that did not come back on a pass that ran to its end.
 	met := map[string]bool{}
@@ -78,7 +83,7 @@ func (s *Service) noteBlockers(st *reconcile.State, outcome reconcile.Outcome, f
 			if met[b.Subject] || outcome.Converged {
 				continue
 			}
-		case reconcile.BlockerPlanError, reconcile.BlockerPlanRefused, reconcile.BlockerPushedRefsViolation, reconcile.BlockerDeferredQuota:
+		case reconcile.BlockerPlanError, reconcile.BlockerPlanRefused, reconcile.BlockerPushedRefsViolation, reconcile.BlockerDeferredQuota, reconcile.BlockerUnmergeablePR:
 			if !raised[blockerKey{b.Kind, b.Subject}] {
 				continue
 			}
