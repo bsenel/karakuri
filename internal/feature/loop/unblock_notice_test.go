@@ -111,3 +111,25 @@ func TestWithNoBlockerThePromptIsUnchanged(t *testing.T) {
 		}
 	}
 }
+
+// The first action of a blocked pass posts the diagnosis on the stream's open
+// pull request, with tools the stream already has: Write, then gh pr comment.
+func TestABlockerWithAnOpenPullRequestTellsThePlannerToCommentTheDiagnosis(t *testing.T) {
+	prompt := firstPrompt(t, func(r *coreloop.Request) {
+		r.Unblock = &coreloop.Unblock{Kind: "unmergeable_pr", Subject: "karakuri/x", Count: 2, PullRequest: 152}
+	})
+	for _, want := range []string{"first action", "comment", "Write", "gh pr comment 152 --body-file"} {
+		if !strings.Contains(prompt, want) {
+			t.Errorf("the prompt does not say %q", want)
+		}
+	}
+}
+
+func TestABlockerWithNoPullRequestSaysNothingAboutAComment(t *testing.T) {
+	prompt := strings.ToLower(firstPrompt(t, func(r *coreloop.Request) {
+		r.Unblock = &coreloop.Unblock{Kind: "verify_failed", Subject: "tests-pass", Count: 2}
+	}))
+	if strings.Contains(prompt, "gh pr comment") || strings.Contains(prompt, "as a comment") {
+		t.Error("a blocker with no pull request mentions a comment")
+	}
+}

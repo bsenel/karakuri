@@ -52,6 +52,9 @@ type Unblock struct {
 	FirstSeen time.Time
 	LastSeen  time.Time
 	Remedy    string
+	// PullRequest is the number of the stream's open pull request, 0 where it
+	// has none. The planner is told to post its diagnosis there (step 14b).
+	PullRequest int
 }
 
 // Resume is the stream's branch and the work the cut-off pass left unsettled,
