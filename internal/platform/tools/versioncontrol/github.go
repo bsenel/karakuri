@@ -3,6 +3,7 @@ package versioncontrol
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -505,6 +506,38 @@ func (g *GitHub) ListMergedPRs(ctx context.Context, repo string, limit int) ([]P
 	return out, nil
 }
 
+// ListClosedPRs reads up to limit of the most recently closed pull requests
+// that were not merged, newest first. It reads the same page as ListMergedPRs
+// and keeps the ones without a merge time.
+func (g *GitHub) ListClosedPRs(ctx context.Context, repo string, limit int) ([]PRSummary, error) {
+	if repo == "" {
+		repo = g.repo
+	}
+	if repo == "" {
+		return nil, fmt.Errorf("github: no repo configured")
+	}
+	var raw []ghPull
+	path := fmt.Sprintf("/repos/%s/pulls?state=closed&sort=updated&direction=desc&per_page=50", repo)
+	if err := g.do(ctx, "GET", path, nil, &raw); err != nil {
+		return nil, fmt.Errorf("github: closed pull requests: %w", err)
+	}
+	var closed []ghPull
+	for _, r := range raw {
+		if r.MergedAt == nil {
+			closed = append(closed, r)
+		}
+	}
+	sort.SliceStable(closed, func(i, j int) bool { return closed[i].UpdatedAt.After(closed[j].UpdatedAt) })
+	if limit > 0 && len(closed) > limit {
+		closed = closed[:limit]
+	}
+	out := make([]PRSummary, 0, len(closed))
+	for _, r := range closed {
+		out = append(out, g.summary(ctx, repo, r))
+	}
+	return out, nil
+}
+
 // EditPRBody replaces a pull request's description.
 func (g *GitHub) EditPRBody(ctx context.Context, repo, prID, body string) error {
 	if repo == "" {
@@ -587,6 +620,35 @@ func (g *GitHub) HasPullRequestForHead(ctx context.Context, repo, branch string)
 		return false, fmt.Errorf("github: pull requests for head: %w", err)
 	}
 	return len(raw) > 0, nil
+}
+
+// FileAt reads one file's text at ref through the contents API. The API wraps
+// the base64 payload at 60 columns, so the decoder drops the newlines first.
+func (g *GitHub) FileAt(ctx context.Context, repo, ref, path string) (string, error) {
+	if repo == "" {
+		repo = g.repo
+	}
+	if repo == "" {
+		return "", fmt.Errorf("github: no repo configured")
+	}
+	var raw struct {
+		Type     string `json:"type"`
+		Encoding string `json:"encoding"`
+		Content  string `json:"content"`
+	}
+	q := url.Values{}
+	q.Set("ref", ref)
+	if err := g.do(ctx, "GET", fmt.Sprintf("/repos/%s/contents/%s?%s", repo, refPath(path), q.Encode()), nil, &raw); err != nil {
+		return "", fmt.Errorf("github: file at ref: %w", err)
+	}
+	if raw.Type != "file" || raw.Encoding != "base64" {
+		return "", fmt.Errorf("github: file at ref: %s is not a base64 file (type %q, encoding %q)", path, raw.Type, raw.Encoding)
+	}
+	text, err := base64.StdEncoding.DecodeString(strings.ReplaceAll(raw.Content, "\n", ""))
+	if err != nil {
+		return "", fmt.Errorf("github: file at ref: decode %s: %w", path, err)
+	}
+	return string(text), nil
 }
 
 func (g *GitHub) do(ctx context.Context, method, path string, body any, out any) error {

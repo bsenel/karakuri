@@ -93,6 +93,30 @@ func (p *Pack) EnvironmentFactories() []environment.Factory {
 			}
 			continue
 		}
+		if f.EnvID == "software.env.delivery_work" && p.store != nil {
+			build := f.Build
+			factories[i].Build = func(ctx environment.BuildContext) (environment.Environment, error) {
+				env, err := build(ctx)
+				if work, ok := env.(*deliveryWorkEnv); ok {
+					work.posted = newPostedCommentReader(p.store)
+				}
+				return env, err
+			}
+			continue
+		}
+		if f.EnvID == "software.env.discovery_trigger" && p.store != nil {
+			build := f.Build
+			factories[i].Build = func(ctx environment.BuildContext) (environment.Environment, error) {
+				env, err := build(ctx)
+				if trigger, ok := env.(*discoveryTriggerEnv); ok {
+					trigger.src.Posted = newPostedCommentReader(p.store)
+					trigger.src.ClosingComment = newClosingComment(trigger.vc, p.ownAuthors, trigger.src.Posted)
+					trigger.src.LastCycleEnd = newLastCycleEnd(p.store, marketDiscoveryTemplateID)
+				}
+				return env, err
+			}
+			continue
+		}
 		if f.EnvID != "software.env.cli_agent" {
 			continue
 		}

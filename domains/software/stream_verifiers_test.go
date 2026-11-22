@@ -59,6 +59,10 @@ type fakeForge struct {
 // bodyEdit is one EditPRBody call.
 type bodyEdit struct{ repo, prID, body string }
 
+func (f *fakeForge) ListClosedPRs(context.Context, string, int) ([]versioncontrol.PRSummary, error) {
+	return nil, versioncontrol.ErrUnsupported
+}
+
 func (f *fakeForge) ListMergedPRs(context.Context, string, int) ([]versioncontrol.PRSummary, error) {
 	f.mergedReads++
 	return f.merged, nil
@@ -79,6 +83,10 @@ func (f *fakeForge) BranchProtected(context.Context, string, string) (bool, erro
 
 func (f *fakeForge) ListPullRequestComments(context.Context, string, int) ([]versioncontrol.PullRequestComment, error) {
 	return nil, versioncontrol.ErrUnsupported
+}
+
+func (f *fakeForge) FileAt(context.Context, string, string, string) (string, error) {
+	return "", versioncontrol.ErrUnsupported
 }
 
 func (f *fakeForge) HasPullRequestForHead(context.Context, string, string) (bool, error) {

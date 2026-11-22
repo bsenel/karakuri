@@ -159,6 +159,10 @@ func (w *windowVC) MarkReady(context.Context, string, string) error {
 func (w *windowVC) CompareCommits(context.Context, string, string, string) ([]versioncontrol.Commit, error) {
 	return nil, versioncontrol.ErrUnsupported
 }
+func (w *windowVC) ListClosedPRs(context.Context, string, int) ([]versioncontrol.PRSummary, error) {
+	return nil, versioncontrol.ErrUnsupported
+}
+
 func (w *windowVC) ListMergedPRs(context.Context, string, int) ([]versioncontrol.PRSummary, error) {
 	return nil, versioncontrol.ErrUnsupported
 }
@@ -175,6 +179,10 @@ func (w *windowVC) BranchProtected(context.Context, string, string) (bool, error
 
 func (w *windowVC) ListPullRequestComments(context.Context, string, int) ([]versioncontrol.PullRequestComment, error) {
 	return nil, versioncontrol.ErrUnsupported
+}
+
+func (w *windowVC) FileAt(context.Context, string, string, string) (string, error) {
+	return "", versioncontrol.ErrUnsupported
 }
 
 func (w *windowVC) HasPullRequestForHead(context.Context, string, string) (bool, error) {

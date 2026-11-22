@@ -97,6 +97,10 @@ func (v *recordingVC) CompareCommits(context.Context, string, string, string) ([
 	return nil, versioncontrol.ErrUnsupported
 }
 
+func (v *recordingVC) ListClosedPRs(context.Context, string, int) ([]versioncontrol.PRSummary, error) {
+	return nil, versioncontrol.ErrUnsupported
+}
+
 func (v *recordingVC) ListMergedPRs(context.Context, string, int) ([]versioncontrol.PRSummary, error) {
 	return nil, versioncontrol.ErrUnsupported
 }
@@ -115,6 +119,10 @@ func (v *recordingVC) BranchProtected(context.Context, string, string) (bool, er
 
 func (v *recordingVC) ListPullRequestComments(context.Context, string, int) ([]versioncontrol.PullRequestComment, error) {
 	return nil, versioncontrol.ErrUnsupported
+}
+
+func (v *recordingVC) FileAt(context.Context, string, string, string) (string, error) {
+	return "", versioncontrol.ErrUnsupported
 }
 
 func (v *recordingVC) HasPullRequestForHead(context.Context, string, string) (bool, error) {
