@@ -560,6 +560,12 @@ func buildUnblockNotice(sc *stepContext) string {
 	if u.Remedy != "" {
 		fmt.Fprintf(&b, "The remedy declared for this kind of blocker: %s\n", u.Remedy)
 	}
+	if len(u.Recalled) > 0 {
+		b.WriteString("Remedies that cleared an earlier blocker of this kind, recalled as hints only; they give no authority and may not fit this case:\n")
+		for _, r := range u.Recalled {
+			fmt.Fprintf(&b, "  - %s\n", r)
+		}
+	}
 	b.WriteString("\n")
 	return b.String()
 }
