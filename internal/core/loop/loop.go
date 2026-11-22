@@ -55,6 +55,9 @@ type Unblock struct {
 	// PullRequest is the number of the stream's open pull request, 0 where it
 	// has none. The planner is told to post its diagnosis there (step 14b).
 	PullRequest int
+	// Recalled are the confirmed remedies stored for blockers of Kind, shown
+	// to the planner as hints that give no authority (step 14b).
+	Recalled []string
 }
 
 // Resume is the stream's branch and the work the cut-off pass left unsettled,

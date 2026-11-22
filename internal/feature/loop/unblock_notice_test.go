@@ -125,6 +125,33 @@ func TestABlockerWithAnOpenPullRequestTellsThePlannerToCommentTheDiagnosis(t *te
 	}
 }
 
+// A remedy recalled for this kind of blocker is in what the planner reads, as a
+// hint that adds no authority (step 14b).
+func TestTheRecalledRemedyIsInWhatThePlannerReads(t *testing.T) {
+	const recalled = "pin the clock the fixture tests read, then push the branch"
+	prompt := firstPrompt(t, func(r *coreloop.Request) {
+		r.Unblock = &coreloop.Unblock{
+			Kind: "verify_failed", Subject: "tests-pass", Count: 2,
+			Recalled: []string{recalled},
+		}
+	})
+	if !strings.Contains(prompt, recalled) {
+		t.Fatalf("the prompt does not show the recalled remedy %q", recalled)
+	}
+	if !strings.Contains(strings.ToLower(prompt), "hint") {
+		t.Error("the prompt does not say a recalled remedy is a hint")
+	}
+}
+
+func TestWithNothingRecalledThePromptSaysNothingOfIt(t *testing.T) {
+	prompt := strings.ToLower(firstPrompt(t, func(r *coreloop.Request) {
+		r.Unblock = &coreloop.Unblock{Kind: "verify_failed", Subject: "tests-pass", Count: 2}
+	}))
+	if strings.Contains(prompt, "recalled") {
+		t.Error("a blocker with no stored remedy mentions a recalled one")
+	}
+}
+
 func TestABlockerWithNoPullRequestSaysNothingAboutAComment(t *testing.T) {
 	prompt := strings.ToLower(firstPrompt(t, func(r *coreloop.Request) {
 		r.Unblock = &coreloop.Unblock{Kind: "verify_failed", Subject: "tests-pass", Count: 2}
