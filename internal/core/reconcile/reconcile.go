@@ -246,6 +246,11 @@ type State struct {
 	// with no sustain has no entry.
 	Sustain []CriterionSustain `json:"sustain,omitempty"`
 
+	// Blockers are what the stream is stuck on now, counted per (kind,
+	// subject) across passes (Phase 40 step 14a). Detection only: nothing
+	// reads them to decide whether a pass runs.
+	Blockers []Blocker `json:"blockers,omitempty"`
+
 	// ConsecutiveFailures drives the circuit breaker and the backoff.
 	ConsecutiveFailures int `json:"consecutive_failures"`
 

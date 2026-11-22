@@ -48,6 +48,8 @@ type fakeLoop struct {
 	criteria []objective.Criterion
 	// violation is the bounds violation an action of the run carried.
 	violation *environment.BoundsViolation
+	// runOutcome is how the loop row says the run ended (Phase 40 step 14a).
+	runOutcome coreloop.RunOutcome
 	// onRun, when set, is called as a run starts: what the run does to the
 	// world, such as opening a pull request.
 	onRun func()
@@ -79,6 +81,7 @@ func (f *fakeLoop) Run(ctx context.Context, req coreloop.Request) (coreloop.Resu
 		CheckpointID:    f.checkpoint,
 		Criteria:        f.criteria,
 		Error:           f.failure,
+		Outcome:         f.runOutcome,
 		BoundsViolation: f.violation,
 	}
 	if err := f.store.SaveLoopState(ctx, st); err != nil {
