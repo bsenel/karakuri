@@ -106,7 +106,7 @@ const branchEnvironment = "git"
 // cleared (Phase 40 step 14a). It reads only signals the pass already
 // produced, calls no model, and touches no counter that decides whether a pass
 // runs: it detects, counts and shows.
-func (s *Service) noteBlockers(st *reconcile.State, outcome reconcile.Outcome, final coreloop.State, fp *reconcile.Fingerprint) {
+func (s *Service) noteBlockers(st *reconcile.State, outcome reconcile.Outcome, final coreloop.State, fp *reconcile.Fingerprint, given *coreloop.Unblock) {
 	at := outcome.EndedAt
 	if at.IsZero() {
 		at = s.now()
@@ -176,6 +176,17 @@ func (s *Service) noteBlockers(st *reconcile.State, outcome reconcile.Outcome, f
 		kept = append(kept, b)
 	}
 	st.Blockers = kept
+
+	// The signal was read again above: a blocker the pass was given that is
+	// still raised (a refused plan included) is one more failed attempt. One
+	// that cleared is gone, and its attempts with it.
+	if given != nil {
+		for i := range st.Blockers {
+			if b := &st.Blockers[i]; string(b.Kind) == given.Kind && b.Subject == given.Subject {
+				b.Attempts++
+			}
+		}
+	}
 
 	noteNoProgress(st, outcome, fp, at)
 }

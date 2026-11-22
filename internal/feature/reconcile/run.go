@@ -270,7 +270,7 @@ func (s *Service) pass(ctx context.Context, id objective.ObjectiveID, forced rec
 			StartedAt:     started,
 			EndedAt:       s.now(),
 		}
-		s.noteBlockers(&st, deferred, coreloop.State{}, nil)
+		s.noteBlockers(&st, deferred, coreloop.State{}, nil, nil)
 		return s.finish(ctx, &st, obj, cadence, deferred, nil)
 	}
 
@@ -426,7 +426,7 @@ func (s *Service) reconcileNow(
 	if !escalated && final.BoundsViolation != nil {
 		s.block(ctx, st, obj, *final.BoundsViolation)
 	}
-	s.noteBlockers(st, outcome, final, &fp)
+	s.noteBlockers(st, outcome, final, &fp, brief)
 	s.keepConfirmedRemedy(ctx, st, def.ID, brief, final.Remedy)
 	return s.finish(ctx, st, obj, cadence, outcome, &fp)
 }
