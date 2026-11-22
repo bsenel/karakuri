@@ -1,6 +1,7 @@
 package command
 
 import (
+	"errors"
 	"fmt"
 	"net/url"
 
@@ -27,7 +28,7 @@ one blocking work.`,
   krk report preview --twin twin_1
   krk report list`,
 	}
-	cmd.AddCommand(reportCreateCmd(), reportListCmd(), reportPreviewCmd(), reportSendCmd(), reportDeleteCmd())
+	cmd.AddCommand(reportCreateCmd(), reportListCmd(), reportPreviewCmd(), reportOversightCmd(), reportSendCmd(), reportDeleteCmd())
 	return cmd
 }
 
@@ -146,6 +147,24 @@ tomorrow's would have looked like.`,
 			}
 			client.PrintOutput(data, output)
 			return nil
+		},
+	}
+	cmd.Flags().StringVar(&twinID, "twin", "", "Twin to report on (required)")
+	cmd.Flags().StringVar(&window, "window", "24h", "How far back to look, e.g. 24h or 168h for a week")
+	_ = cmd.MarkFlagRequired("twin")
+	return cmd
+}
+
+// reportOversightCmd is the one oversight listing: per stream, its passes and
+// outcomes, pull requests waiting for a merge with the review result, and the
+// refusals and blocks the digest carries (Phase 40 step 14).
+func reportOversightCmd() *cobra.Command {
+	var twinID, window string
+	cmd := &cobra.Command{
+		Use:   "oversight",
+		Short: "List each stream's passes, waiting pull requests, refusals and blocks",
+		RunE: func(_ *cobra.Command, _ []string) error {
+			return errors.New("krk report oversight is not implemented")
 		},
 	}
 	cmd.Flags().StringVar(&twinID, "twin", "", "Twin to report on (required)")
