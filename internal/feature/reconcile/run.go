@@ -325,6 +325,11 @@ func (s *Service) reconcileNow(
 		StartedAt:   started,
 	}
 
+	brief := unblockBrief(st.Blockers, tmpl)
+	if brief != nil {
+		brief.Recalled = s.recalledRemedies(ctx, def.ID, brief.Kind)
+	}
+
 	res, err := s.loops.Run(ctx, coreloop.Request{
 		Objective: obj,
 		Twin:      twin,
@@ -334,7 +339,7 @@ func (s *Service) reconcileNow(
 		// name the rung without the loop working it back out of the bounds.
 		AutonomyRung: level,
 		Resume:       s.resumeBrief(ctx, obj),
-		Unblock:      unblockBrief(st.Blockers, tmpl),
+		Unblock:      brief,
 	})
 	if p, stopped := stoppedBy(ctx); stopped {
 		outcome.LoopID = res.LoopID
@@ -422,6 +427,7 @@ func (s *Service) reconcileNow(
 		s.block(ctx, st, obj, *final.BoundsViolation)
 	}
 	s.noteBlockers(st, outcome, final, &fp)
+	s.keepConfirmedRemedy(ctx, st, def.ID, brief, final.Remedy)
 	return s.finish(ctx, st, obj, cadence, outcome, &fp)
 }
 

@@ -1,9 +1,13 @@
 package reconcile
 
 import (
+	"context"
+	"log/slog"
 	"time"
 
+	coreagent "github.com/bsenel/karakuri/internal/core/agent"
 	coreloop "github.com/bsenel/karakuri/internal/core/loop"
+	"github.com/bsenel/karakuri/internal/core/memory"
 	"github.com/bsenel/karakuri/internal/core/objective"
 	"github.com/bsenel/karakuri/internal/core/reconcile"
 )
@@ -32,6 +36,49 @@ func unblockBrief(blockers []reconcile.Blocker, tmpl objective.Template) *corelo
 		FirstSeen: best.FirstSeen, LastSeen: best.LastSeen,
 		Remedy: tmpl.BlockerRemedies[string(best.Kind)],
 	}
+}
+
+// maxRecalledRemedies bounds how many stored remedies of one kind a pass is
+// shown; the newest come first.
+const maxRecalledRemedies = 3
+
+// keepConfirmedRemedy stores the remedy a diagnose-and-fix pass applied as one
+// semantic memory of the stream's agent, with the blocker's kind as its domain
+// (Phase 40 step 14b). Only a confirmed remedy is kept: the pass named one and
+// the blocker it was given is gone from the state after this pass's reading.
+// A failed write is logged and costs the pass nothing.
+func (s *Service) keepConfirmedRemedy(ctx context.Context, st *reconcile.State, agentID coreagent.AgentID, brief *coreloop.Unblock, remedy string) {
+	if brief == nil || remedy == "" {
+		return
+	}
+	for _, b := range st.Blockers {
+		if string(b.Kind) == brief.Kind && b.Subject == brief.Subject {
+			return
+		}
+	}
+	err := s.store.SaveMemorySemantic(ctx, memory.Entry{
+		ID: "remedy-" + newOutcomeID(), AgentID: agentID, Tier: string(memory.TierSemantic),
+		Domain: brief.Kind, Content: remedy, CreatedAt: s.now(),
+	})
+	if err != nil {
+		slog.Warn("reconcile: storing a confirmed remedy failed", "kind", brief.Kind, "error", err)
+	}
+}
+
+// recalledRemedies are the remedies the agent stored for blockers of kind,
+// newest first. A store that cannot answer recalls nothing.
+func (s *Service) recalledRemedies(ctx context.Context, agentID coreagent.AgentID, kind string) []string {
+	entries, err := s.store.QuerySemantic(ctx, memory.Query{AgentID: agentID, Domain: kind, TopK: maxRecalledRemedies})
+	if err != nil {
+		return nil
+	}
+	var out []string
+	for _, e := range entries {
+		if e.Domain == kind && e.Content != "" {
+			out = append(out, e.Content)
+		}
+	}
+	return out
 }
 
 func blockerBefore(a, b reconcile.Blocker) bool {
