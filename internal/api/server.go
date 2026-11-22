@@ -36,6 +36,7 @@ import (
 	"github.com/bsenel/karakuri/internal/platform/observability"
 	"github.com/bsenel/karakuri/internal/platform/storage"
 	"github.com/bsenel/karakuri/internal/platform/tools"
+	"github.com/bsenel/karakuri/internal/platform/tools/versioncontrol"
 	karakuriquota "github.com/bsenel/karakuri/internal/quota"
 	karakuriweb "github.com/bsenel/karakuri/web"
 	"github.com/go-chi/chi/v5"
@@ -161,6 +162,18 @@ func NewApp(
 	if cfg.Reconcile.CheckpointTTLDuration() > 0 {
 		reconcileSvc.WithCheckpointSweeper(cpSvc)
 	}
+	// A resumed pass reads its stream's branch from the forge bound to the twin.
+	reconcileSvc.WithBranchCommits(featurereconcile.NewBranchCommitsReader(store,
+		func(ctx context.Context, obj coreobjective.Objective) versioncontrol.VersionControlAdapter {
+			if obj.TwinID != "" && toolReg != nil {
+				if t, err := store.GetTwin(ctx, obj.TwinID); err == nil {
+					if a, ok := toolReg.VC.Resolve(t.AdapterBindings["versioncontrol"]); ok {
+						return a
+					}
+				}
+			}
+			return versioncontrol.NewNoOp()
+		}))
 
 	reportSvc := featurereport.NewService(store, toolReg, agentFactory, quotaDeps, featurereport.Config{
 		Enabled:  cfg.Reports.Enabled,

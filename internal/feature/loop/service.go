@@ -66,6 +66,18 @@ type loopState struct {
 	// at the replay's first decide so that checkpoint, and not a new one, is
 	// the one the runner reads the decision for.
 	answered bool
+	// refused is set when stepDecide refuses the plan because the bounds'
+	// action limits refuse it (Phase 40 step 7). The runner ends the run at
+	// that iteration and finalizeLoop names it refused_by_bounds: nothing
+	// failed, so it is not an error.
+	refused bool
+	// outOfQuota is set when stepAct finds an action refused by its provider
+	// for quota (Phase 40 step 8); retryAfter is how long that provider asked
+	// to wait, zero when it did not say. The runner ends the run at that
+	// action and finalizeLoop names it waiting_for_quota: not an error,
+	// reconcile defers the pass until the quota returns.
+	outOfQuota bool
+	retryAfter time.Duration
 	// approved is the plan a restored loop's checkpoint showed, set when that
 	// checkpoint is approved after the restart. The runner takes it at its
 	// first iteration and acts on it without observing or reasoning, so the
@@ -596,6 +608,7 @@ func (s *serviceImpl) persistState(ctx context.Context, state *loopState, comple
 	outcome := state.outcome
 	criteria := state.criteria
 	runErr := state.runErr
+	retryAfter := state.retryAfter
 	violation := state.violation
 	planRefused := state.planRefused
 	stoppedBy, stopReason := state.stoppedBy, state.stopReason
@@ -626,6 +639,7 @@ func (s *serviceImpl) persistState(ctx context.Context, state *loopState, comple
 		Error:        runErr,
 		StoppedBy:    stoppedBy,
 		StopReason:   stopReason,
+		RetryAfter:   retryAfter,
 		RequestJSON:  string(reqJSON),
 
 		BoundsViolation: violation,
@@ -820,6 +834,9 @@ func (s *serviceImpl) endedByRestart(ctx context.Context, st loop.State, req loo
 			"loop", st.LoopID, "objective", st.ObjectiveID, "err", err)
 		return true
 	}
+	// The audit log's record that the run ended, beside the loop row (Phase 40
+	// step 7): the same run_end row finalizeLoop writes for a run that ran.
+	s.recordRunEnd(ctx, st.LoopID, obj, st.Status, st.Outcome, objective.AllRequiredMet(st.Criteria), st.Criteria, 0, nil)
 	slog.Info("ended a standing objective's loop interrupted by a restart; reconcile re-runs its pass",
 		"loop", st.LoopID, "objective", st.ObjectiveID)
 	return true

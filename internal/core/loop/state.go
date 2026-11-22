@@ -44,6 +44,10 @@ type State struct {
 	// it ended on a stop (Phase 37 step 3).
 	StoppedBy  string `json:"stopped_by,omitempty"`
 	StopReason string `json:"stop_reason,omitempty"`
+	// RetryAfter is how long the provider asked the run to wait, set only
+	// when it ended waiting_for_quota and the provider said; zero otherwise.
+	// Reconcile reads it as the time the quota returns (Phase 40 step 8).
+	RetryAfter time.Duration `json:"retry_after,omitempty"`
 	// BoundsViolation is the first action result of the run that carried one
 	// (Phase 40 step 3), so the supervisor blocks the stream on a typed field
 	// rather than on Error's text.
@@ -77,4 +81,12 @@ const (
 	// died under, ended at boot rather than replayed (Phase 40 step 4). It is
 	// not an error: reconcile re-runs the pass it cut off.
 	RunInterruptedByRestart RunOutcome = "interrupted_by_restart"
+	// RunRefusedByBounds is a run whose plan fell outside its bounds' action
+	// limits at a rung that refuses rather than escalates (Phase 40 step 7).
+	// It is not an error: the bounds did what they were declared to do.
+	RunRefusedByBounds RunOutcome = "refused_by_bounds"
+	// RunWaitingForQuota is a run whose delegated coding agent its provider
+	// refused for quota (Phase 40 step 8). It is not an error: reconcile defers
+	// the pass until the quota returns.
+	RunWaitingForQuota RunOutcome = "waiting_for_quota"
 )

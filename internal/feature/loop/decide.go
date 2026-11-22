@@ -176,6 +176,12 @@ func stepDecide(ctx context.Context, sc *stepContext, p plan, mods *corecheckpoi
 		row.PayloadJSON = string(auditPayload)
 		_ = sc.svc.store.SaveToolEvent(ctx, row)
 		sc.state.recordPlanRefusal(verdict.Reason)
+		// The run ends here: planning again under the same bounds is refused
+		// again, and spending the iterations on that would name the run
+		// budget_spent (Phase 40 step 7).
+		sc.state.mu.Lock()
+		sc.state.refused = true
+		sc.state.mu.Unlock()
 	} else if escalate {
 		// 3. Write the audit row first so the checkpoint payload can
 		// reference its ID — reviewers deep-link from /checkpoints into

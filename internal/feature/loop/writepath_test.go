@@ -109,6 +109,10 @@ func (v *recordingVC) EditPRBody(context.Context, string, string, string) error 
 	return versioncontrol.ErrUnsupported
 }
 
+func (v *recordingVC) MergeState(context.Context, string, string) (string, error) {
+	return "", versioncontrol.ErrUnsupported
+}
+
 func (v *recordingVC) BranchProtected(context.Context, string, string) (bool, error) {
 	return false, versioncontrol.ErrUnsupported
 }
@@ -236,6 +240,53 @@ func TestWritePathEndToEnd(t *testing.T) {
 	}
 	if pr.Title != "Route by declaration" {
 		t.Errorf("PR title = %q", pr.Title)
+	}
+}
+
+// The loop never removes an action's worktree, so a second write action on the
+// branch the plan names must still get one; git refuses a branch another
+// worktree has checked out unless the manager forces it.
+func TestWritePathTwoActionsOnOnePlannedBranch(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available")
+	}
+	t.Setenv("GIT_CONFIG_PARAMETERS", "")
+
+	repo := scratchRepo(t)
+	const branch = "karakuri/phase-99-repair"
+	steps := [][]string{
+		[]string{"checkout", "-q", "-b", branch},
+		[]string{"commit", "-q", "--allow-empty", "-m", "on the branch"},
+		[]string{"push", "-q", "origin", branch},
+		[]string{"checkout", "-q", "main"},
+	}
+	for _, args := range steps {
+		c := exec.Command("git", args...)
+		c.Dir = repo
+		if out, err := c.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	cli := &scriptedCLI{}
+	sc := writePathContext(t, repo, cli, &recordingVC{})
+
+	results := stepAct(context.Background(), sc, plan{
+		Confidence: 0.9,
+		Actions: []plannedAction{
+			{CapabilityID: "software.act.write_code", Params: map[string]any{"prompt": "first", "branch": branch}},
+			{CapabilityID: "software.act.write_code", Params: map[string]any{"prompt": "second", "branch": branch}},
+		},
+	})
+	if len(results) != 2 {
+		t.Fatalf("got %d results, want 2", len(results))
+	}
+	for i, o := range results {
+		if !o.Result.Success {
+			t.Errorf("action %d failed: %s", i, o.Result.Error)
+		}
+	}
+	if len(cli.calls) != 2 {
+		t.Fatalf("the CLI ran %d times, want 2", len(cli.calls))
 	}
 }
 
