@@ -103,6 +103,10 @@ type ObjectiveSummary struct {
 	// what the loop touched.
 	Actions int `json:"actions"`
 
+	// WaitingPullRequests lists the stream's open pull requests waiting for a
+	// merge, by number, each with the result of its latest review (Phase 40
+	// step 14).
+	WaitingPullRequests []WaitingPullRequest `json:"waiting_pull_requests,omitempty"`
 	// Refusals lists the plans and actions the bounds refused in the window
 	// (Phase 40 steps 2 and 3), read from the audit log's refusal rows,
 	// oldest first.
@@ -137,6 +141,18 @@ type CriterionLine struct {
 	Reason      objective.InconclusiveReason `json:"reason,omitempty"`
 	// Passes counts the consecutive latest passes that settled this state.
 	Passes int `json:"passes"`
+}
+
+// WaitingPullRequest is one open pull request of a stream waiting for a merge.
+// Review is the state of the latest review: "approved", "changes_requested",
+// "commented", or "none" when nobody has reviewed it. ReviewedHead says
+// whether that review was left at the pull request's current head.
+type WaitingPullRequest struct {
+	Number       int    `json:"number"`
+	Title        string `json:"title"`
+	URL          string `json:"url,omitempty"`
+	Review       string `json:"review"`
+	ReviewedHead bool   `json:"reviewed_head"`
 }
 
 // Refusal is one plan or action the bounds refused: a plan with an action
