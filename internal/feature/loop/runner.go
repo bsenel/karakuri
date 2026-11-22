@@ -663,10 +663,6 @@ func (s *serviceImpl) finalizeLoop(ctx context.Context, state *loopState, obj ob
 	}
 	state.mu.Unlock()
 
-	// Persist the terminal state (Phase 11): Completed=true keeps it out of
-	// the ListActiveLoopStates set used by the restart-resume path.
-	s.persistState(ctx, state, true)
-
 	if obj.ID != "" {
 		state.mu.RLock()
 		criteria := slices.Clone(state.criteria)
@@ -679,11 +675,18 @@ func (s *serviceImpl) finalizeLoop(ctx context.Context, state *loopState, obj ob
 			payload["error"] = runErr.Error()
 		}
 		s.recordRunEnd(ctx, state.id, obj, finalStatus, outcome, criteriaMet, criteria, retryAfter, runErr)
+		// Persist the terminal state last (Phase 11): Completed=true keeps it
+		// out of the ListActiveLoopStates set used by the restart-resume path,
+		// and it is what a caller waits on, so every write of the run is done
+		// before it is readable.
+		s.persistState(ctx, state, true)
 		s.hub.Publish(ctx, event.Event{
 			Type:        evtType,
 			ObjectiveID: string(obj.ID),
 			Payload:     payload,
 			Timestamp:   time.Now().UTC(),
 		})
+		return
 	}
+	s.persistState(ctx, state, true)
 }
