@@ -60,6 +60,10 @@ func (n *NoOp) EditPRBody(_ context.Context, _, _, _ string) error {
 	return fmt.Errorf("noop: edit pull request body: %w", ErrUnsupported)
 }
 
+func (n *NoOp) MergeState(_ context.Context, _, _ string) (string, error) {
+	return "", fmt.Errorf("noop: merge state: %w", ErrUnsupported)
+}
+
 func (n *NoOp) BranchProtected(_ context.Context, _, _ string) (bool, error) {
 	return false, fmt.Errorf("noop: branch protection: %w", ErrUnsupported)
 }

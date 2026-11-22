@@ -40,6 +40,16 @@ const (
 	roadmapDeliveryTemplateID    = "software.objective.roadmap_delivery"
 )
 
+// The order the streams share the quota in, highest first (Phase 40 step 9):
+// approved work is delivered before anything new is found. 40 is left for the
+// review stream (step 11), which comes after delivery and before UX.
+const (
+	deliveryPriority  = 50
+	uxPriority        = 30
+	backlogPriority   = 20
+	discoveryPriority = 10
+)
+
 // streamTemplates are the four standing streams.
 //
 // Each pass is required to leave a pull request a machine can check (Phase
@@ -59,39 +69,46 @@ func streamTemplates() []objective.Template {
 
 	return []objective.Template{
 		{
-			ID:     marketDiscoveryTemplateID,
-			Title:  "Market discovery",
-			Domain: "software",
+			ID:       marketDiscoveryTemplateID,
+			Priority: discoveryPriority,
+			Title:    "Market discovery",
+			Domain:   "software",
 			// It writes a report and proposes roadmap text in a pull request
 			// a human merges.
-			Risk:            objective.RiskRoutine,
-			SuggestedAgents: []agent.Definition{{ID: "software.agent.strategist"}},
+			Risk: objective.RiskRoutine,
+			// The proposer acts at act_with_notice, held to this template's
+			// limits (ADR 030).
+			SuggestedAgents: []agent.Definition{{ID: AgentProposer}},
 			Description: "Research who the users are, what they need, where the field is moving and what is feasible, " +
 				"record it as a dated report with sources, and propose roadmap phases only where the evidence supports them.",
-			SuccessCriteria: append(pullRequestCriteria("docs/research/**"),
+			SuccessCriteria: append(pullRequestCriteria(discoveryPaths...),
 				progress("findings-new", "The report's findings are new since the previous report and cite their sources, and every roadmap phase it proposes is backed by them", 0.3),
 			),
-			Constraints:  []objective.Constraint{noMerge, branchConstraint("this stream's karakuri/discovery-<date> branch", "main"), branchesWithoutPRConstraint, reviewCommentsFirstConstraint},
+			Constraints: []objective.Constraint{noMerge,
+				branchConstraint("this stream's karakuri/discovery-<date> branch", "main"), unmergeablePRsConstraint, branchesWithoutPRConstraint, reviewCommentsFirstConstraint, pathsConstraint(discoveryPaths)},
 			ActionLimits: discoveryLimits(),
 		},
 		{
 			ID:              engineeringBacklogTemplateID,
+			Priority:        backlogPriority,
 			Title:           "Engineering backlog from this deployment's own data",
 			Domain:          "software",
 			Risk:            objective.RiskRoutine,
-			SuggestedAgents: []agent.Definition{{ID: "software.agent.maintainer"}},
+			SuggestedAgents: []agent.Definition{{ID: AgentProposer}},
 			Description: "Read this deployment's telemetry, audit log and logs, and record technical enhancements " +
 				"in the roadmap's Engineering Backlog, each with the data that shows the problem.",
-			SuccessCriteria: append(pullRequestCriteria("docs/roadmap.md"),
+			SuccessCriteria: append(pullRequestCriteria(backlogPaths...),
 				progress("evidence", "Each Engineering Backlog entry this pass added cites the audit log, telemetry or log data that shows the problem", 0.3),
 			),
-			Constraints:  []objective.Constraint{noMerge, branchConstraint("this stream's karakuri/tech-backlog-<date> branch", "main"), branchesWithoutPRConstraint, reviewCommentsFirstConstraint},
+			Constraints: []objective.Constraint{noMerge,
+				branchConstraint("this stream's karakuri/tech-backlog-<date> branch", "main"), unmergeablePRsConstraint, branchesWithoutPRConstraint, reviewCommentsFirstConstraint, pathsConstraint(backlogPaths)},
 			ActionLimits: backlogLimits(),
 		},
 		{
-			ID:     uxImprovementTemplateID,
-			Title:  "CLI and web UX improvement",
-			Domain: "software",
+			ID:       uxImprovementTemplateID,
+			Priority: uxPriority,
+			Title:    "CLI and web UX improvement",
+			Domain:   "software",
 			// It changes code and opens a pull request.
 			Risk:            objective.RiskConsequential,
 			SuggestedAgents: []agent.Definition{{ID: "software.agent.implementer"}},
@@ -99,11 +116,12 @@ func streamTemplates() []objective.Template {
 			SuccessCriteria: append(pullRequestCriteria("cli/**", "web/**"),
 				progress("visible", "Each improvement in the pull request is visible to a user of the CLI or the web interface, and has a test", 0.3),
 			),
-			Constraints:  []objective.Constraint{noMerge, branchConstraint("this stream's karakuri/ux-<date> branch", "main"), branchesWithoutPRConstraint, reviewCommentsFirstConstraint},
+			Constraints:  []objective.Constraint{noMerge, branchConstraint("this stream's karakuri/ux-<date> branch", "main"), unmergeablePRsConstraint, branchesWithoutPRConstraint, reviewCommentsFirstConstraint},
 			ActionLimits: uxLimits(),
 		},
 		{
 			ID:              roadmapDeliveryTemplateID,
+			Priority:        deliveryPriority,
 			Title:           "Deliver what the roadmap approves",
 			Domain:          "software",
 			Risk:            objective.RiskConsequential,
@@ -132,7 +150,7 @@ func streamTemplates() []objective.Template {
 			},
 			Constraints: []objective.Constraint{noMerge, branchConstraint(
 				"the item's branch, karakuri/phase-<n>-<slug> for a phase's group or karakuri/eb-<id>-<slug> for a backlog entry",
-				"main, or the earlier group's head for a later group of the same phase"), branchesWithoutPRConstraint, reviewCommentsFirstConstraint},
+				"main, or the earlier group's head for a later group of the same phase"), unmergeablePRsConstraint, branchesWithoutPRConstraint, reviewCommentsFirstConstraint},
 			ActionLimits: deliveryLimits(),
 		},
 	}

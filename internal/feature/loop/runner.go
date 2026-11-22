@@ -51,6 +51,11 @@ type stepContext struct {
 	// and never inferred: empty for a one-shot run.
 	rung objective.AutonomyLevel
 
+	// resume is what the request said the cut-off pass left: the branch's
+	// commits and the criteria not settled. Nil for a pass that follows no
+	// cut-off one (Phase 40 step 9a).
+	resume *loop.Resume
+
 	// threshold is the confidence bar stepDecide last applied, which an
 	// operator's modify may have lowered below the one the agent declares.
 	// The act step records it on the rows for the actions that bar let through.
@@ -154,6 +159,7 @@ func (s *serviceImpl) runLoop(ctx context.Context, loopID string, req loop.Reque
 		twinID:   obj.TwinID,
 		svc:      s,
 		rung:     req.AutonomyRung,
+		resume:   req.Resume,
 		sleep:    s.sleep,
 	}
 
@@ -372,11 +378,23 @@ func (s *serviceImpl) runLoop(ctx context.Context, loopID string, req loop.Reque
 			return
 		}
 
+		// The bounds refused the plan, here or in a modify's re-decide: the
+		// run ends at this iteration with nothing carried into act.
+		state.mu.RLock()
+		refused := state.refused
+		state.mu.RUnlock()
+		if refused {
+			span.End()
+			s.finalizeLoop(ctx, state, obj, iterations, false, nil)
+			return
+		}
+
 		// act
 		state.mu.Lock()
 		state.status.Step = loop.StepAct
 		state.mu.Unlock()
 
+		savePlanBeforeAct(ictx, sc, p)
 		results := stepAct(ictx, sc, p)
 		iterations = append(iterations, loop.Iteration{
 			Number:    iter,
@@ -385,6 +403,18 @@ func (s *serviceImpl) runLoop(ctx context.Context, loopID string, req loop.Reque
 			Output:    results,
 			Timestamp: time.Now().UTC(),
 		})
+
+		// An action's provider refused for quota: verifying would spend the
+		// quota that is out, so the run ends here and reconcile defers the
+		// pass (Phase 40 step 8).
+		state.mu.RLock()
+		outOfQuota := state.outOfQuota
+		state.mu.RUnlock()
+		if outOfQuota {
+			span.End()
+			s.finalizeLoop(ctx, state, obj, iterations, false, nil)
+			return
+		}
 
 		// verify
 		state.mu.Lock()
@@ -515,10 +545,12 @@ func (s *serviceImpl) recordCheckpointTerminal(ctx context.Context, state *loopS
 // how the run ended and every criterion with its state, reason and settlement.
 // The hub is not stored, so without this row the record of what a run was
 // required to do and did not would end with the process. Its payload is
-// {loop_id, objective_id, status, outcome, criteria_met, criteria, error?},
-// criteria in objective.Criterion's JSON form. A failed write is logged and
-// changes nothing about the run.
-func (s *serviceImpl) recordRunEnd(ctx context.Context, loopID string, obj objective.Objective, status objective.ObjectiveStatus, outcome loop.RunOutcome, criteriaMet bool, criteria []objective.Criterion, runErr error) {
+// {loop_id, objective_id, status, outcome, criteria_met, criteria,
+// retry_after?, error?}, criteria in objective.Criterion's JSON form and
+// retry_after in loop.State's (nanoseconds), set only when the provider said
+// how long its quota is out. A failed write is logged and changes nothing
+// about the run.
+func (s *serviceImpl) recordRunEnd(ctx context.Context, loopID string, obj objective.Objective, status objective.ObjectiveStatus, outcome loop.RunOutcome, criteriaMet bool, criteria []objective.Criterion, retryAfter time.Duration, runErr error) {
 	if criteria == nil {
 		criteria = []objective.Criterion{}
 	}
@@ -529,6 +561,9 @@ func (s *serviceImpl) recordRunEnd(ctx context.Context, loopID string, obj objec
 		"outcome":      string(outcome),
 		"criteria_met": criteriaMet,
 		"criteria":     criteria,
+	}
+	if retryAfter > 0 {
+		payload["retry_after"] = retryAfter
 	}
 	if runErr != nil {
 		payload["error"] = runErr.Error()
@@ -562,6 +597,8 @@ func (s *serviceImpl) finalizeLoop(ctx context.Context, state *loopState, obj ob
 		return
 	}
 	state.ended = true
+	refused := state.refused
+	outOfQuota, retryAfter := state.outOfQuota, state.retryAfter
 	state.mu.Unlock()
 
 	finalStatus := objective.StatusCompleted
@@ -580,6 +617,14 @@ func (s *serviceImpl) finalizeLoop(ctx context.Context, state *loopState, obj ob
 	switch {
 	case runErr != nil:
 		outcome = loop.RunErrored
+	case refused:
+		// The bounds did what they were declared to do; no error is stored,
+		// because reconcile reads that field as the run's failure.
+		outcome = loop.RunRefusedByBounds
+	case outOfQuota:
+		// Not an error either: the retry-after on the row, not an error
+		// text, is what reconcile defers the pass by.
+		outcome = loop.RunWaitingForQuota
 	case criteriaMet:
 		outcome = loop.RunConverged
 	}
@@ -629,7 +674,7 @@ func (s *serviceImpl) finalizeLoop(ctx context.Context, state *loopState, obj ob
 		if runErr != nil {
 			payload["error"] = runErr.Error()
 		}
-		s.recordRunEnd(ctx, state.id, obj, finalStatus, outcome, criteriaMet, criteria, runErr)
+		s.recordRunEnd(ctx, state.id, obj, finalStatus, outcome, criteriaMet, criteria, retryAfter, runErr)
 		s.hub.Publish(ctx, event.Event{
 			Type:        evtType,
 			ObjectiveID: string(obj.ID),
