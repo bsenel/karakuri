@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/bsenel/karakuri/internal/core/capability"
@@ -137,6 +138,20 @@ func stepDecide(ctx context.Context, sc *stepContext, p plan, mods *corecheckpoi
 	escalateReason = verdict.Reason
 	if verdict.Allowed < len(p.Actions) {
 		p.Actions = p.Actions[:verdict.Allowed]
+	}
+
+	// A plan allowed to act on a blocker is the fix the pass applies to it
+	// (Phase 40 step 14b); reconcile keeps it only once the blocker is clear.
+	if sc.unblock != nil && !verdict.Refuse && !escalate {
+		var reasons []string
+		for _, a := range p.Actions {
+			if a.Reason != "" {
+				reasons = append(reasons, a.Reason)
+			}
+		}
+		if len(reasons) > 0 {
+			sc.state.recordRemedy(strings.Join(reasons, "; "))
+		}
 	}
 
 	paused := false
