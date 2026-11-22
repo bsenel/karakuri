@@ -7653,6 +7653,9 @@ components:
           items:
             additionalProperties: false
             properties:
+              attempts:
+                description: The passes that were given this blocker and left its signal raised, including a refused plan.
+                type: integer
               count:
                 type: integer
               first_seen:
