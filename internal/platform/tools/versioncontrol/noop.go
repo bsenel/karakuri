@@ -67,3 +67,7 @@ func (n *NoOp) BranchProtected(_ context.Context, _, _ string) (bool, error) {
 func (n *NoOp) HasPullRequestForHead(_ context.Context, _, _ string) (bool, error) {
 	return false, fmt.Errorf("noop: pull requests for head: %w", ErrUnsupported)
 }
+
+func (n *NoOp) ListPullRequestComments(_ context.Context, _ string, _ int) ([]PullRequestComment, error) {
+	return nil, fmt.Errorf("noop: pull request comments: %w", ErrUnsupported)
+}

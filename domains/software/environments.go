@@ -31,7 +31,7 @@ import (
 // only the CI env is still a no-op.
 // reg may be nil — in that case every adapter-backed env falls back to no-op
 // behavior, except observability, which has no no-op to fall back on.
-func softwareEnvironmentFactories(reg *tools.Registry) []environment.Factory {
+func softwareEnvironmentFactories(reg *tools.Registry, ownAuthors config.OwnAuthorsConfig, reviewRoundLimit int) []environment.Factory {
 	noopFactory := func(id, desc string) environment.Factory {
 		return environment.Factory{
 			EnvID:       environment.EnvironmentID(id),
@@ -81,7 +81,7 @@ func softwareEnvironmentFactories(reg *tools.Registry) []environment.Factory {
 				CapPathsDeclared,
 			},
 			Build: func(ctx environment.BuildContext) (environment.Environment, error) {
-				return &gitEnv{id: EnvGit, vc: boundVC(ctx), verifiers: forgeVerifiers}, nil
+				return &gitEnv{id: EnvGit, vc: boundVC(ctx), verifiers: forgeVerifiers, ownAuthors: ownAuthors, reviewRoundLimit: reviewRoundLimit}, nil
 			},
 		},
 		{
@@ -132,7 +132,7 @@ func softwareEnvironmentFactories(reg *tools.Registry) []environment.Factory {
 						cli = a
 					}
 				}
-				env := &cliEnv{id: "software.env.cli_agent", cli: cli, twinID: ctx.TwinID}
+				env := &cliEnv{id: "software.env.cli_agent", cli: cli, twinID: ctx.TwinID, vc: boundVC(ctx), ownAuthors: ownAuthors}
 				if reg != nil {
 					opts := reg.CLIAgents.Options(ctx.AdapterBindings["cli_agents"])
 					env.attachMCP, env.mcpURL = cliMCPOptions(opts)
@@ -295,6 +295,14 @@ type gitEnv struct {
 	// pull requests when a pull request changes one of their files (Phase 44
 	// step 5).
 	verifiers []verifierRule
+	// ownAuthors says whose pull request comments are the deployment's own
+	// (Phase 40 step 12a).
+	ownAuthors config.OwnAuthorsConfig
+	// reviewRoundLimit is the declared round limit; 0 means none (Phase 40 step 12).
+	reviewRoundLimit int
+	// posted reads the IDs of the comments Karakuri is recorded as having
+	// posted; nil means no record (Phase 40 step 12a).
+	posted postedCommentIDs
 }
 
 // gitObservationWindow is how far back the repository observation reaches.
@@ -427,6 +435,13 @@ func (e *gitEnv) Observe(ctx context.Context, q environment.ObservationQuery) (e
 	// the observation window, and these must see every open one.
 	observeUnmergeablePRs(ctx, adapter, repo, state)
 	observeBranchesWithoutPR(ctx, adapter, repo, state)
+	// The comments on those pull requests no later commit answers, owner's or
+	// third party's (Phase 40 steps 12 and 12a). A stranger's comment is their
+	// writing, so it makes the observation third party like a stranger's title.
+	observeUnansweredReviewComments(ctx, adapter, repo, e.ownAuthors, e.reviewRoundLimit, e.posted, state)
+	if hasThirdPartyComment(state) {
+		trust = environment.TrustThirdParty
+	}
 	// The open stream pull requests whose head has no review (Phase 40 step 11),
 	// from the pull requests listed above rather than a second read of them.
 	if prsErr == nil {
@@ -700,6 +715,10 @@ type cliEnv struct {
 
 	// twinID is the twin this environment was built for (BuildContext.TwinID).
 	twinID string
+	// vc and ownAuthors let a delegation on a branch record the comments it
+	// posted (Phase 40 step 12a); a nil vc records nothing.
+	vc         versioncontrol.VersionControlAdapter
+	ownAuthors config.OwnAuthorsConfig
 	// attachMCP and mcpURL are the instance's attach_karakuri_mcp and
 	// karakuri_mcp_url options; issuer mints the credential for one delegation.
 	attachMCP bool
@@ -959,7 +978,9 @@ func (e *cliEnv) Act(ctx context.Context, a environment.Action) (environment.Act
 		}
 		in.Env = env
 	}
+	recorder := startCommentRecorder(ctx, e.vc, e.ownAuthors, asString(a.Params, "repo"), asString(a.Params, "branch"))
 	out, err := e.cli.Delegate(ctx, in)
+	postedKeys := recorder.finish(ctx)
 	pushed, pushedErr := checkPushedRefs(ctx, worktree, declared, refsBefore, refsBeforeErr, pushes)
 	if pushedErr == nil {
 		// A proposal stream's action declares the files it writes, and a
@@ -1000,6 +1021,9 @@ func (e *cliEnv) Act(ctx context.Context, a environment.Action) (environment.Act
 			}
 			delta[k] = v
 		}
+		for k, v := range postedKeys {
+			delta[k] = v
+		}
 		if pushedErr != nil {
 			delta["pushed_refs_error"] = scrub(pushedErr.Error())
 		}
@@ -1027,6 +1051,9 @@ func (e *cliEnv) Act(ctx context.Context, a environment.Action) (environment.Act
 		"tool_uses":  out.ToolUses,
 		"exit_code":  out.ExitCode,
 		"raw_output": scrub(out.RawOutput),
+	}
+	for k, v := range postedKeys {
+		delta[k] = v
 	}
 	if credential != nil {
 		delta["delegation_credential"] = credential

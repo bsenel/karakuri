@@ -144,7 +144,27 @@ type VersionControlAdapter interface {
 	// forge cannot returns an error wrapping ErrUnsupported, never an empty
 	// list.
 	ReviewedCommits(ctx context.Context, repo, prID string) ([]string, error)
+	// ListPullRequestComments reads every comment on a pull request, from the
+	// conversation, the diff and the reviews, oldest first. An adapter whose
+	// forge cannot returns an error wrapping ErrUnsupported, never an empty
+	// list.
+	ListPullRequestComments(ctx context.Context, repo string, number int) ([]PullRequestComment, error)
 	Active() bool
+}
+
+// PullRequestComment is one thing somebody wrote on a pull request, as read
+// back from the forge. ReviewComment is the posting side and is not reused.
+type PullRequestComment struct {
+	ID int64
+	// Kind is issue_comment, review_comment or review.
+	Kind string
+	// Author is the login the forge reports, never a name parsed from Body.
+	Author    string
+	Body      string
+	CreatedAt time.Time
+	// Path and Line are set only for an inline review comment.
+	Path string
+	Line int
 }
 
 // ReviewComment is one comment on a line of a pull request's diff.

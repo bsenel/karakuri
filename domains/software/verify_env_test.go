@@ -173,6 +173,10 @@ func (w *windowVC) BranchProtected(context.Context, string, string) (bool, error
 	return false, versioncontrol.ErrUnsupported
 }
 
+func (w *windowVC) ListPullRequestComments(context.Context, string, int) ([]versioncontrol.PullRequestComment, error) {
+	return nil, versioncontrol.ErrUnsupported
+}
+
 func (w *windowVC) HasPullRequestForHead(context.Context, string, string) (bool, error) {
 	return false, versioncontrol.ErrUnsupported
 }

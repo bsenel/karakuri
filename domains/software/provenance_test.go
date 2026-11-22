@@ -121,6 +121,10 @@ func (s *vcStub) BranchProtected(_ context.Context, repo, branch string) (bool, 
 	return s.protected, nil
 }
 
+func (s *vcStub) ListPullRequestComments(context.Context, string, int) ([]versioncontrol.PullRequestComment, error) {
+	return nil, versioncontrol.ErrUnsupported
+}
+
 func (s *vcStub) HasPullRequestForHead(context.Context, string, string) (bool, error) {
 	return false, versioncontrol.ErrUnsupported
 }

@@ -77,6 +77,10 @@ func (f *fakeForge) BranchProtected(context.Context, string, string) (bool, erro
 	return false, versioncontrol.ErrUnsupported
 }
 
+func (f *fakeForge) ListPullRequestComments(context.Context, string, int) ([]versioncontrol.PullRequestComment, error) {
+	return nil, versioncontrol.ErrUnsupported
+}
+
 func (f *fakeForge) HasPullRequestForHead(context.Context, string, string) (bool, error) {
 	return false, versioncontrol.ErrUnsupported
 }
