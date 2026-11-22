@@ -215,6 +215,9 @@ type LoopStateModel struct {
 	// PlanRefusedReason is why the bounds refused a plan of the run (Phase 40
 	// step 14a), empty when none was.
 	PlanRefusedReason string `gorm:"column:plan_refused_reason;not null;default:''"`
+	// Remedy is the fix a diagnose-and-fix pass applied to its blocker (Phase 40
+	// step 14b), empty when it applied none.
+	Remedy string `gorm:"column:remedy;not null;default:''"`
 	// RetryAfterMS is how long a provider that refused the run for quota asked
 	// it to wait, in milliseconds; 0 when it did not say (Phase 40 step 8).
 	RetryAfterMS int64 `gorm:"column:retry_after_ms;not null;default:0"`
