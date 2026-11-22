@@ -398,6 +398,7 @@ func (s *serviceImpl) runLoop(ctx context.Context, loopID string, req loop.Reque
 		state.mu.Unlock()
 
 		savePlanBeforeAct(ictx, sc, p)
+		savePlanAuditRow(ictx, sc, p)
 		results := stepAct(ictx, sc, p)
 		iterations = append(iterations, loop.Iteration{
 			Number:    iter,

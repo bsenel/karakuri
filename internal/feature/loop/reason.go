@@ -553,6 +553,10 @@ func buildUnblockNotice(sc *stepContext) string {
 		"and the branch it is about, then write the finding down in your reasoning. " +
 		"Then make the smallest fix that clears it, and add a failing test first where the cause is in code. " +
 		"Stay inside your authority limits; never widen them to get past the blocker.\n")
+	if u.PullRequest > 0 {
+		fmt.Fprintf(&b, "Your first action posts the diagnosis as a comment on pull request #%d: Write the finding to a file in the worktree, "+
+			"then run `gh pr comment %d --body-file <that file>`. Do this before any other action.\n", u.PullRequest, u.PullRequest)
+	}
 	if u.Remedy != "" {
 		fmt.Fprintf(&b, "The remedy declared for this kind of blocker: %s\n", u.Remedy)
 	}

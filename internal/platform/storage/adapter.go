@@ -183,6 +183,12 @@ const (
 	// (verifier_ran, verifier_never_ran, no_verifier, reserved_verifier). One
 	// row per run that ended on its own; a stopped run has its stop row.
 	ToolEventRunEnd = "run_end"
+	// ToolEventPlan (Phase 40 step 14b) records a plan before its first action
+	// runs: the reasoning the planner returned, its actions, and the blocker
+	// the request carried, if any. A blocked pass's diagnosis is that
+	// reasoning, so the owner can read what the stream believed before it
+	// acted.
+	ToolEventPlan = "plan"
 	// ToolEventRefusal (Phase 40 step 2) records a plan the decide step
 	// refused because an action was outside its bounds' action limits, at a
 	// rung where a violation is refused rather than escalated. It carries
