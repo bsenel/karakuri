@@ -144,9 +144,64 @@ func (s *Service) summarise(ctx context.Context, obj objective.Objective, since,
 }
 
 // refusalsAndBlocks reads the bounds refusals and the blocks of one stream
-// for the window. Stub: Phase 40 step 14 fills it in.
-func (s *Service) refusalsAndBlocks(_ context.Context, _ objective.Objective, _, _ time.Time) ([]digest.Refusal, []digest.Block) {
-	return nil, nil
+// for the window, oldest first.
+//
+// Refusals are the audit log's refusal rows in [since, until]. The blocks are
+// what the stream is stuck on at the end of the window: the latest pass in the
+// window deferred for quota or unable to see any environment, and the latest
+// refusal of a single action (a row naming a capability, as the pushed-refs
+// check writes; a refused plan names none) as a bounds violation.
+func (s *Service) refusalsAndBlocks(ctx context.Context, obj objective.Objective, since, until time.Time) ([]digest.Refusal, []digest.Block) {
+	var refusals []digest.Refusal
+	var blocks []digest.Block
+
+	events, err := s.store.ListToolEvents(ctx, storage.ToolEventFilter{
+		ObjectiveID:    string(obj.ID),
+		Kind:           storage.ToolEventRefusal,
+		CreatedAtSince: &since,
+		OldestFirst:    true,
+		Limit:          1000,
+	})
+	if err == nil {
+		var violation *digest.Block
+		for _, e := range events {
+			if e.CreatedAt.After(until) {
+				continue
+			}
+			refusals = append(refusals, digest.Refusal{At: e.CreatedAt, Capability: e.Capability, Reason: e.EscalationReason})
+			if e.Capability != "" {
+				violation = &digest.Block{Kind: digest.BlockBoundsViolation, Reason: e.EscalationReason, At: e.CreatedAt}
+			}
+		}
+		if violation != nil {
+			blocks = append(blocks, *violation)
+		}
+	}
+
+	outcomes, err := s.store.ListReconcileOutcomes(ctx, obj.ID, 2000)
+	if err == nil {
+		var latest *reconcile.Outcome
+		for i := range outcomes {
+			o := &outcomes[i]
+			if o.StartedAt.Before(since) || o.StartedAt.After(until) {
+				continue
+			}
+			if latest == nil || o.StartedAt.After(latest.StartedAt) {
+				latest = o
+			}
+		}
+		if latest != nil {
+			if latest.Deferred == string(digest.BlockQuota) {
+				blocks = append(blocks, digest.Block{Kind: digest.BlockQuota, Reason: latest.Deferred, At: latest.StartedAt, Until: latest.DeferredUntil})
+			}
+			if latest.Drift.Blind {
+				blocks = append(blocks, digest.Block{Kind: digest.BlockRemoteUnreadable, Reason: "no environment could be read", At: latest.StartedAt})
+			}
+		}
+	}
+
+	sort.SliceStable(blocks, func(i, j int) bool { return blocks[i].Kind < blocks[j].Kind })
+	return refusals, blocks
 }
 
 // criteria reads the criterion states the window's passes settled and returns
