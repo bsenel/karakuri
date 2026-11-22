@@ -427,7 +427,8 @@ func (s *Service) reconcileNow(
 		s.block(ctx, st, obj, *final.BoundsViolation)
 	}
 	s.noteBlockers(st, outcome, final, &fp)
-	s.keepConfirmedRemedy(ctx, st, def.ID, brief, final.Remedy)
+	noteAttempt(st, outcome, brief)
+	s.keepConfirmedRemedy(ctx, st, def.ID, brief, final)
 	return s.finish(ctx, st, obj, cadence, outcome, &fp)
 }
 

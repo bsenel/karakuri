@@ -42,13 +42,33 @@ func unblockBrief(blockers []reconcile.Blocker, tmpl objective.Template) *corelo
 // shown; the newest come first.
 const maxRecalledRemedies = 3
 
+// noteAttempt reads the blocker's signal again after a pass that was given it
+// (Phase 40 step 14b). noteBlockers has just read the same source that raised
+// it: a blocker it dropped is cleared, and a later occurrence starts a new
+// blocker with no attempts. One still on the state is a failed attempt, which
+// includes a plan the bounds refused for a tool outside the limits. A pass that
+// ran no loop to its end settled nothing and is not an attempt.
+func noteAttempt(st *reconcile.State, outcome reconcile.Outcome, brief *coreloop.Unblock) {
+	if brief == nil || outcome.LoopID == "" || outcome.Deferred != "" || outcome.Escalated {
+		return
+	}
+	for i := range st.Blockers {
+		if b := &st.Blockers[i]; string(b.Kind) == brief.Kind && b.Subject == brief.Subject {
+			b.Attempts++
+			return
+		}
+	}
+}
+
 // keepConfirmedRemedy stores the remedy a diagnose-and-fix pass applied as one
 // semantic memory of the stream's agent, with the blocker's kind as its domain
 // (Phase 40 step 14b). Only a confirmed remedy is kept: the pass named one and
 // the blocker it was given is gone from the state after this pass's reading.
 // A failed write is logged and costs the pass nothing.
-func (s *Service) keepConfirmedRemedy(ctx context.Context, st *reconcile.State, agentID coreagent.AgentID, brief *coreloop.Unblock, remedy string) {
-	if brief == nil || remedy == "" {
+func (s *Service) keepConfirmedRemedy(ctx context.Context, st *reconcile.State, agentID coreagent.AgentID, brief *coreloop.Unblock, final coreloop.State) {
+	remedy := final.Remedy
+	// A plan the bounds refused is never confirmed.
+	if brief == nil || remedy == "" || final.Outcome == coreloop.RunRefusedByBounds || final.PlanRefusedReason != "" {
 		return
 	}
 	for _, b := range st.Blockers {
