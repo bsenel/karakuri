@@ -6762,6 +6762,23 @@ components:
                 type: string
               title:
                 type: string
+              waiting_pull_requests:
+                items:
+                  additionalProperties: false
+                  properties:
+                    number:
+                      type: integer
+                    review:
+                      type: string
+                    reviewed_head:
+                      type: boolean
+                    title:
+                      type: string
+                    url:
+                      type: string
+                  type: object
+                nullable: true
+                type: array
             type: object
           nullable: true
           type: array

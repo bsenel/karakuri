@@ -31,6 +31,18 @@ func (f *fakeForge) PostReview(_ context.Context, repo, prID, body string, comme
 	return f.postReviewErr
 }
 
+func (s *vcStub) ListReviews(context.Context, string, string) ([]versioncontrol.Review, error) {
+	return nil, versioncontrol.ErrUnsupported
+}
+
+func (w *windowVC) ListReviews(context.Context, string, string) ([]versioncontrol.Review, error) {
+	return nil, versioncontrol.ErrUnsupported
+}
+
+func (f *fakeForge) ListReviews(context.Context, string, string) ([]versioncontrol.Review, error) {
+	return nil, versioncontrol.ErrUnsupported
+}
+
 func (s *vcStub) ReviewedCommits(context.Context, string, string) ([]string, error) {
 	return nil, versioncontrol.ErrUnsupported
 }

@@ -110,6 +110,7 @@ func NewApp(
 	prometheusHandler http.Handler, // optional; mounted at /metrics outside auth when non-nil
 	authDeps AuthDeps,
 	quotaDeps karakuriquota.Deps,
+	reportOpts ...featurereport.Option, // how the digest reaches the forge; none leaves it blind
 ) *App {
 	var memSvc *memory.Service
 	if semanticBackend != nil {
@@ -165,7 +166,7 @@ func NewApp(
 		Enabled:  cfg.Reports.Enabled,
 		Tick:     cfg.Reports.TickDuration(),
 		LeaseTTL: cfg.Reports.LeaseTTLDuration(),
-	})
+	}, reportOpts...)
 
 	r := chi.NewRouter()
 	r.Use(chimw.Recoverer)

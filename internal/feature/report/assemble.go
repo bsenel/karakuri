@@ -42,10 +42,25 @@ func (s *Service) Assemble(ctx context.Context, twinID string, since, until time
 		return d, err
 	}
 
+	// Read once: the forge is asked one question per twin, not one per stream.
+	// Skipped for a twin with no standing objective, which has nothing to list.
+	var pulls []StreamPullRequest
+	var pullsErr error
+	if len(objectives) > 0 {
+		pulls, pullsErr = s.readPullRequests(ctx, twinID)
+	}
+
 	titles := make(map[objective.ObjectiveID]string, len(objectives))
 	for _, obj := range objectives {
 		titles[obj.ID] = obj.Title
-		d.Objectives = append(d.Objectives, s.summarise(ctx, obj, since, until))
+		sum := s.summarise(ctx, obj, since, until)
+		var blind *digest.Block
+		sum.WaitingPullRequests, blind = waitingFor(pulls, pullsErr, obj.ID, until)
+		if blind != nil {
+			sum.Blocks = append(sum.Blocks, *blind)
+			sort.SliceStable(sum.Blocks, func(i, j int) bool { return sum.Blocks[i].Kind < sum.Blocks[j].Kind })
+		}
+		d.Objectives = append(d.Objectives, sum)
 		d.AutonomyChanges = append(d.AutonomyChanges, s.autonomyChanges(ctx, obj, since)...)
 		if x, ok := s.exhaustion(ctx, obj, since, until); ok {
 			d.Exhausted = append(d.Exhausted, x)
