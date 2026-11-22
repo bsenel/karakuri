@@ -257,7 +257,7 @@ func authPoliciesCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			printList(c, data, noun, "")
+			printList(c, data, noun, "Grant one with: krk auth bindings add --principal <id> --role <role>")
 			return nil
 		},
 	}
