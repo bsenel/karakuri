@@ -7229,6 +7229,11 @@ components:
             type: object
           nullable: true
           type: array
+        blocker_remedies:
+          additionalProperties:
+            type: string
+          nullable: true
+          type: object
         constraints:
           items:
             $ref: '#/components/schemas/Constraint'

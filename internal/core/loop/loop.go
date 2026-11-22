@@ -35,6 +35,23 @@ type Request struct {
 	// step 9a): nil unless the previous pass ended waiting_for_quota or
 	// interrupted_by_restart.
 	Resume *Resume
+
+	// Unblock is the one blocker the stream's next pass is asked to diagnose
+	// and fix (Phase 40 step 14b): nil when the stream is blocked on nothing
+	// a pass can fix. The loop only shows it to the planner.
+	Unblock *Unblock
+}
+
+// Unblock is a blocker, as the planner is shown it. The core names no domain:
+// Kind and Subject are the stream's own words, and Remedy is the text its pack
+// declared for that kind, empty where it declared none.
+type Unblock struct {
+	Kind      string
+	Subject   string
+	Count     int
+	FirstSeen time.Time
+	LastSeen  time.Time
+	Remedy    string
 }
 
 // Resume is the stream's branch and the work the cut-off pass left unsettled,

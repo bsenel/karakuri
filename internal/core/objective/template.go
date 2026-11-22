@@ -20,4 +20,8 @@ type Template struct {
 	// own limits, so a template narrows an agent's authority and never widens
 	// it (Phase 40 step 2).
 	ActionLimits []agent.ActionLimit `json:"action_limits,omitempty"`
+	// BlockerRemedies maps a blocker kind to the text the pack declares as its
+	// remedy; the stream's next pass is given the one for its blocker (Phase
+	// 40 step 14b). A kind with no entry has no declared remedy.
+	BlockerRemedies map[string]string `json:"blocker_remedies,omitempty"`
 }
