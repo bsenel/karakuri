@@ -21,6 +21,13 @@ const blockLabels: Record<BlockKind, string> = {
   remote_unreadable: 'Remote unreadable',
 };
 
+const reviewLabels: Record<string, string> = {
+  approved: 'Approved',
+  changes_requested: 'Changes requested',
+  commented: 'Commented',
+  none: 'No review yet',
+};
+
 const when = (iso: string) => new Date(iso).toLocaleString();
 
 export function OversightPage() {
@@ -81,6 +88,8 @@ function Stream({ objective: o }: { objective: DigestObjective }) {
   const headingId = `oversight-${o.id}`;
   const refusals = [...(o.refusals ?? [])].sort((a, b) => a.at.localeCompare(b.at));
   const blocks: Block[] = o.blocks ?? [];
+  // The digest orders them; the page does not sort.
+  const waiting = o.waiting_pull_requests ?? [];
   const quiet = refusals.length === 0 && blocks.length === 0;
 
   return (
@@ -93,6 +102,20 @@ function Stream({ objective: o }: { objective: DigestObjective }) {
         <span>Failures: {o.failures}</span>
       </p>
       {quiet && <p className="muted">No refusals and no blocks in this window.</p>}
+      {waiting.length > 0 && (
+        <ul aria-label="Waiting pull requests">
+          {waiting.map((pr) => (
+            <li key={pr.number}>
+              <span className="mono">#{pr.number}</span>{' '}
+              {pr.url ? <a href={pr.url}>{pr.title}</a> : pr.title}:{' '}
+              <strong>{reviewLabels[pr.review] ?? pr.review}</strong>
+              {pr.review !== 'none' && !pr.reviewed_head && (
+                <span className="muted"> · older than the current head</span>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
       {refusals.length > 0 && (
         <ul aria-label="Refusals">
           {refusals.map((r, i) => (
