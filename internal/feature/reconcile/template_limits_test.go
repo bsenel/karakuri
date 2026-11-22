@@ -30,6 +30,7 @@ type streamCase struct {
 	def    coreagent.Definition
 	branch string
 	tools  []string
+	paths  []string
 }
 
 // briefTools is the part of the four briefs' allowed_tools lists every
@@ -45,6 +46,12 @@ func streamCases(t *testing.T) []streamCase {
 		"software.objective.engineering_backlog": "karakuri/tech-backlog-2026-11-15",
 		"software.objective.ux_improvement":      "karakuri/ux-2026-11-15",
 		"software.objective.roadmap_delivery":    "karakuri/phase-40-action-limits",
+	}
+	// The proposal streams' coding actions declare the files they write
+	// (Phase 40 step 10).
+	paths := map[string][]string{
+		"software.objective.market_discovery":    {"docs/research/discovery-2026-11-15.md", "docs/roadmap.md"},
+		"software.objective.engineering_backlog": {"docs/roadmap.md"},
 	}
 	pack := software.New()
 	defs := map[coreagent.AgentID]coreagent.Definition{}
@@ -64,7 +71,7 @@ func streamCases(t *testing.T) []streamCase {
 		if !ok {
 			t.Fatalf("%s suggests %s, which the pack does not declare", tmpl.ID, tmpl.SuggestedAgents[0].ID)
 		}
-		out = append(out, streamCase{tmpl: tmpl, def: def, branch: branch, tools: briefTools})
+		out = append(out, streamCase{tmpl: tmpl, def: def, branch: branch, tools: briefTools, paths: paths[tmpl.ID]})
 	}
 	if len(out) != len(branches) {
 		t.Fatalf("found %d of the %d stream templates", len(out), len(branches))
@@ -72,14 +79,18 @@ func streamCases(t *testing.T) []streamCase {
 	return out
 }
 
-func codeAction(tools []string, branch string) environment.Action {
+func codeAction(tools []string, branch string, paths ...string) environment.Action {
 	list := make([]any, len(tools))
 	for i, s := range tools {
 		list[i] = s
 	}
-	return environment.Action{CapabilityID: writeCode, Params: map[string]any{
+	a := environment.Action{CapabilityID: writeCode, Params: map[string]any{
 		"prompt": "do the slice", "allowed_tools": list, "branch": branch,
 	}}
+	if len(paths) > 0 {
+		a.Params["paths"] = paths
+	}
+	return a
 }
 
 // outsidePlans are the four plans the roadmap names, each one write_code
@@ -93,10 +104,10 @@ func outsidePlans(c streamCase, all []streamCase) map[string]environment.Action 
 		}
 	}
 	return map[string]environment.Action{
-		"a merge tool":            codeAction(append(append([]string{}, c.tools...), "Bash(gh pr merge:*)"), c.branch),
-		"an unrestricted shell":   codeAction(append(append([]string{}, c.tools...), "Bash"), c.branch),
-		"a push to main":          codeAction(c.tools, "main"),
-		"another stream's branch": codeAction(c.tools, other),
+		"a merge tool":            codeAction(append(append([]string{}, c.tools...), "Bash(gh pr merge:*)"), c.branch, c.paths...),
+		"an unrestricted shell":   codeAction(append(append([]string{}, c.tools...), "Bash"), c.branch, c.paths...),
+		"a push to main":          codeAction(c.tools, "main", c.paths...),
+		"another stream's branch": codeAction(c.tools, other, c.paths...),
 	}
 }
 
@@ -128,7 +139,7 @@ func TestStreamTemplateLimitsRefuseAtActWithNotice(t *testing.T) {
 				}
 			}
 
-			inside := codeAction(c.tools, c.branch)
+			inside := codeAction(c.tools, c.branch, c.paths...)
 			if vs := bounds.CheckActionLimits([]environment.Action{inside}); len(vs) != 0 {
 				t.Fatalf("the brief's own plan is outside the limits: %+v", vs)
 			}
@@ -156,7 +167,7 @@ func TestAPlanInsideTheLimitsRunsWithoutACheckpoint(t *testing.T) {
 		}
 		t.Run(c.tmpl.ID, func(t *testing.T) {
 			bounds := effectiveAuthority(c.def, c.tmpl, objective.AutonomyActWithNotice)
-			if v := decide(bounds, codeAction(c.tools, c.branch)); v.Escalate || v.Refuse {
+			if v := decide(bounds, codeAction(c.tools, c.branch, c.paths...)); v.Escalate || v.Refuse {
 				t.Errorf("a plan inside the limits stopped: escalate=%v refuse=%v %q", v.Escalate, v.Refuse, v.Reason)
 			}
 		})
@@ -171,7 +182,7 @@ func TestStreamTemplateLimitsStillEscalateAtPropose(t *testing.T) {
 		t.Run(c.tmpl.ID, func(t *testing.T) {
 			bounds := effectiveAuthority(c.def, c.tmpl, objective.AutonomyPropose)
 			plans := outsidePlans(c, cases)
-			plans["inside the limits"] = codeAction(c.tools, c.branch)
+			plans["inside the limits"] = codeAction(c.tools, c.branch, c.paths...)
 			for name, a := range plans {
 				v := decide(bounds, a)
 				today := decide(effectiveAuthority(c.def, objective.Template{}, objective.AutonomyPropose), a)
@@ -357,7 +368,7 @@ func TestTheSupervisorHandsTheTemplatesLimitsToTheLoop(t *testing.T) {
 			if v := decide(bounds, noBranch); !v.Refuse || v.Escalate {
 				t.Errorf("a write action with no params.branch: refuse=%v escalate=%v %q, want refused", v.Refuse, v.Escalate, v.Reason)
 			}
-			if v := decide(bounds, codeAction(c.tools, c.branch)); v.Refuse || v.Escalate {
+			if v := decide(bounds, codeAction(c.tools, c.branch, c.paths...)); v.Refuse || v.Escalate {
 				t.Errorf("the brief's own plan stopped: refuse=%v escalate=%v %q", v.Refuse, v.Escalate, v.Reason)
 			}
 

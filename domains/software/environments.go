@@ -950,6 +950,13 @@ func (e *cliEnv) Act(ctx context.Context, a environment.Action) (environment.Act
 	}
 	out, err := e.cli.Delegate(ctx, in)
 	pushed, pushedErr := checkPushedRefs(ctx, worktree, declared, refsBefore, refsBeforeErr, pushes)
+	if pushedErr == nil {
+		// A proposal stream's action declares the files it writes, and a
+		// push to its branch that changed any other fails (ADR 030).
+		var outside *environment.BoundsViolation
+		outside, pushedErr = checkPushedPaths(ctx, worktree, plannedBranch(a.Params), pathGlobsParam(a.Params), refsBefore)
+		pushed = joinViolations(pushed, outside)
+	}
 	logErr := pushes.remove()
 	// What a Karakuri tool returned can be a stranger's prose (an audit row
 	// holds pull-request titles), and the agent wrote everything after it
