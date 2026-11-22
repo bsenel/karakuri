@@ -257,7 +257,7 @@ func (s *Service) pass(ctx context.Context, id objective.ObjectiveID, forced rec
 		// reconcile that was due did not happen. Deliberately not a failure:
 		// finish() would count it against the breaker, and an objective that
 		// ran out of money has not misbehaved.
-		return s.finish(ctx, &st, obj, cadence, reconcile.Outcome{
+		deferred := reconcile.Outcome{
 			ID:            newOutcomeID(),
 			ObjectiveID:   obj.ID,
 			TwinID:        obj.TwinID,
@@ -269,7 +269,9 @@ func (s *Service) pass(ctx context.Context, id objective.ObjectiveID, forced rec
 			DeferredUntil: resetsAt,
 			StartedAt:     started,
 			EndedAt:       s.now(),
-		}, nil)
+		}
+		s.noteBlockers(&st, deferred, coreloop.State{}, nil)
+		return s.finish(ctx, &st, obj, cadence, deferred, nil)
 	}
 
 	return s.reconcileNow(ctx, &st, obj, decl, level, cadence, trigger, drift, fp, started)
@@ -393,6 +395,7 @@ func (s *Service) reconcileNow(
 	if !escalated && final.BoundsViolation != nil {
 		s.block(ctx, st, obj, *final.BoundsViolation)
 	}
+	s.noteBlockers(st, outcome, final, &fp)
 	return s.finish(ctx, st, obj, cadence, outcome, &fp)
 }
 
