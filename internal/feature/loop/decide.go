@@ -175,6 +175,7 @@ func stepDecide(ctx context.Context, sc *stepContext, p plan, mods *corecheckpoi
 		auditPayload, _ := json.Marshal(payload)
 		row.PayloadJSON = string(auditPayload)
 		_ = sc.svc.store.SaveToolEvent(ctx, row)
+		sc.state.recordPlanRefusal(verdict.Reason)
 	} else if escalate {
 		// 3. Write the audit row first so the checkpoint payload can
 		// reference its ID — reviewers deep-link from /checkpoints into

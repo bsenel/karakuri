@@ -761,6 +761,8 @@ func (s *GORMStorage) SaveLoopState(ctx context.Context, st coreloop.State) erro
 		StoppedBy:    st.StoppedBy,
 		StopReason:   st.StopReason,
 		RequestJSON:  st.RequestJSON,
+
+		PlanRefusedReason: st.PlanRefusedReason,
 	}
 	if m.RequestJSON == "" {
 		m.RequestJSON = "{}"
@@ -827,26 +829,27 @@ func loopStateFromModel(m schema.LoopStateModel) coreloop.State {
 		}
 	}
 	return coreloop.State{
-		BoundsViolation: violation,
-		Outcome:         coreloop.RunOutcome(m.Outcome),
-		Criteria:        criteria,
-		LoopID:          m.LoopID,
-		ObjectiveID:     objective.ObjectiveID(m.ObjectiveID),
-		TwinID:          m.TwinID,
-		AgentID:         m.AgentID,
-		Iteration:       m.Iteration,
-		Paused:          m.Paused,
-		Completed:       m.Completed,
-		LastStep:        coreloop.Step(m.LastStep),
-		Status:          objective.ObjectiveStatus(m.Status),
-		CriteriaMet:     m.CriteriaMet,
-		CheckpointID:    m.CheckpointID,
-		Error:           m.Error,
-		StoppedBy:       m.StoppedBy,
-		StopReason:      m.StopReason,
-		RequestJSON:     m.RequestJSON,
-		CreatedAt:       m.CreatedAt,
-		UpdatedAt:       m.UpdatedAt,
+		PlanRefusedReason: m.PlanRefusedReason,
+		BoundsViolation:   violation,
+		Outcome:           coreloop.RunOutcome(m.Outcome),
+		Criteria:          criteria,
+		LoopID:            m.LoopID,
+		ObjectiveID:       objective.ObjectiveID(m.ObjectiveID),
+		TwinID:            m.TwinID,
+		AgentID:           m.AgentID,
+		Iteration:         m.Iteration,
+		Paused:            m.Paused,
+		Completed:         m.Completed,
+		LastStep:          coreloop.Step(m.LastStep),
+		Status:            objective.ObjectiveStatus(m.Status),
+		CriteriaMet:       m.CriteriaMet,
+		CheckpointID:      m.CheckpointID,
+		Error:             m.Error,
+		StoppedBy:         m.StoppedBy,
+		StopReason:        m.StopReason,
+		RequestJSON:       m.RequestJSON,
+		CreatedAt:         m.CreatedAt,
+		UpdatedAt:         m.UpdatedAt,
 	}
 }
 

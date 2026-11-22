@@ -212,6 +212,9 @@ type LoopStateModel struct {
 	Error        string  `gorm:"column:error;not null;default:''"`
 	StoppedBy    string  `gorm:"column:stopped_by;not null;default:''"`
 	StopReason   string  `gorm:"column:stop_reason;not null;default:''"`
+	// PlanRefusedReason is why the bounds refused a plan of the run (Phase 40
+	// step 14a), empty when none was.
+	PlanRefusedReason string `gorm:"column:plan_refused_reason;not null;default:''"`
 	// BoundsViolationJSON is the run's first bounds violation (Phase 40 step
 	// 3), empty when it had none.
 	BoundsViolationJSON string    `gorm:"column:bounds_violation_json;not null;default:''"`

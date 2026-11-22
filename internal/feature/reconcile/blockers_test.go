@@ -30,10 +30,8 @@ import (
 //   - no_progress: no field. The branch's tip is the "git" environment's
 //     fingerprint SHA; a pass with work and an unmoved SHA, noProgressPasses
 //     times running. Subject: the objective ID.
-//   - plan_refused: DOES NOT REACH RECONCILE. A refusal is a tool-event row in
-//     the audit table (feature/loop/decide.go), and the loop row carries no
-//     typed field for it. TestEachSignalYieldsOneBlocker fails with that
-//     message instead of matching text.
+//   - plan_refused: the loop row's PlanRefusedReason, set in feature/loop/decide.go
+//     where the bounds refuse a plan. Subject: the objective ID.
 //   - unmergeable_pr: DOES NOT REACH RECONCILE. Nothing in this package or its
 //     snapshot (domains/software's delivery_work) reads a pull request's
 //     mergeability. Same failing test, same message.
@@ -118,8 +116,11 @@ func TestEachSignalYieldsOneBlocker(t *testing.T) {
 			f.loops.status, f.loops.failure = objective.StatusFailed, rateLimitText()
 			return "obj-1"
 		}},
-		{name: "plan refused by the bounds", kind: reconcile.BlockerPlanRefused,
-			unreachable: "no field carries a refused plan into reconcile: the refusal is an audit tool-event row and the loop row has no typed field for it"},
+		{name: "plan refused by the bounds", kind: reconcile.BlockerPlanRefused, seed: func(f *fixture) string {
+			f.loops.status, f.loops.failure = objective.StatusFailed, "the delegated run failed"
+			f.loops.refused = "action outside the bounds' limits"
+			return "obj-1"
+		}},
 		{name: "unmergeable pull request", kind: reconcile.BlockerUnmergeablePR,
 			unreachable: "no code in reconcile or the delivery_work snapshot reads a pull request's mergeability"},
 	}

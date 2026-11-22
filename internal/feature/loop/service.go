@@ -76,6 +76,9 @@ type loopState struct {
 	// carried (Phase 40 step 3), persisted so reconcile blocks the stream on
 	// it.
 	violation *environment.BoundsViolation
+	// planRefused is the reason the bounds refused the run's first refused
+	// plan (Phase 40 step 14a), persisted so reconcile can raise plan_refused.
+	planRefused string
 	// ended is set when finalizeLoop takes the run's own ending, and stoppedBy
 	// and stopReason when Stop takes it instead (Phase 37 step 3). Whichever
 	// is set first under mu is the ending; the other then changes nothing.
@@ -101,6 +104,15 @@ func (ls *loopState) recordViolation(v *environment.BoundsViolation) {
 	defer ls.mu.Unlock()
 	if ls.violation == nil {
 		ls.violation = v
+	}
+}
+
+// recordPlanRefusal keeps the reason of the run's first refused plan.
+func (ls *loopState) recordPlanRefusal(reason string) {
+	ls.mu.Lock()
+	defer ls.mu.Unlock()
+	if ls.planRefused == "" {
+		ls.planRefused = reason
 	}
 }
 
@@ -585,6 +597,7 @@ func (s *serviceImpl) persistState(ctx context.Context, state *loopState, comple
 	criteria := state.criteria
 	runErr := state.runErr
 	violation := state.violation
+	planRefused := state.planRefused
 	stoppedBy, stopReason := state.stoppedBy, state.stopReason
 	state.mu.RUnlock()
 	if stoppedBy != "" {
@@ -616,6 +629,8 @@ func (s *serviceImpl) persistState(ctx context.Context, state *loopState, comple
 		RequestJSON:  string(reqJSON),
 
 		BoundsViolation: violation,
+
+		PlanRefusedReason: planRefused,
 	}
 	return s.store.SaveLoopState(ctx, persisted)
 }

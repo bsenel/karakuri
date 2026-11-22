@@ -48,6 +48,8 @@ type fakeLoop struct {
 	criteria []objective.Criterion
 	// violation is the bounds violation an action of the run carried.
 	violation *environment.BoundsViolation
+	// refused is why the bounds refused a plan of the run.
+	refused string
 	// runOutcome is how the loop row says the run ended (Phase 40 step 14a).
 	runOutcome coreloop.RunOutcome
 	// onRun, when set, is called as a run starts: what the run does to the
@@ -83,6 +85,8 @@ func (f *fakeLoop) Run(ctx context.Context, req coreloop.Request) (coreloop.Resu
 		Error:           f.failure,
 		Outcome:         f.runOutcome,
 		BoundsViolation: f.violation,
+
+		PlanRefusedReason: f.refused,
 	}
 	if err := f.store.SaveLoopState(ctx, st); err != nil {
 		return coreloop.Result{}, err

@@ -22,8 +22,8 @@ const branchEnvironment = "git"
 // produced, calls no model, and touches no counter that decides whether a pass
 // runs: it detects, counts and shows.
 //
-// plan_refused and unmergeable_pr are not raised here: no field of the loop's
-// row or of the snapshot carries them into reconcile.
+// unmergeable_pr is not raised here: nothing reads a pull request's
+// mergeability yet (roadmap step 6a), so no signal reaches reconcile.
 func (s *Service) noteBlockers(st *reconcile.State, outcome reconcile.Outcome, final coreloop.State, fp *reconcile.Fingerprint) {
 	at := outcome.EndedAt
 	if at.IsZero() {
@@ -56,6 +56,9 @@ func (s *Service) noteBlockers(st *reconcile.State, outcome reconcile.Outcome, f
 			}
 		}
 	}
+	if final.PlanRefusedReason != "" {
+		raise(reconcile.BlockerPlanRefused, obj)
+	}
 	if v := final.BoundsViolation; v != nil && len(v.Refs) > 0 {
 		raise(reconcile.BlockerPushedRefsViolation, v.Refs[0])
 	}
@@ -75,7 +78,7 @@ func (s *Service) noteBlockers(st *reconcile.State, outcome reconcile.Outcome, f
 			if met[b.Subject] || outcome.Converged {
 				continue
 			}
-		case reconcile.BlockerPlanError, reconcile.BlockerPushedRefsViolation, reconcile.BlockerDeferredQuota:
+		case reconcile.BlockerPlanError, reconcile.BlockerPlanRefused, reconcile.BlockerPushedRefsViolation, reconcile.BlockerDeferredQuota:
 			if !raised[blockerKey{b.Kind, b.Subject}] {
 				continue
 			}

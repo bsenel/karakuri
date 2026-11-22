@@ -5,8 +5,26 @@ import (
 	"testing"
 	"time"
 
+	coreloop "github.com/bsenel/karakuri/internal/core/loop"
 	"github.com/bsenel/karakuri/internal/core/reconcile"
 )
+
+// Phase 40 step 14a: the reason the bounds refused a plan survives the loop
+// row's round trip, because reconcile reads it from there.
+func TestLoopStatePlanRefusedReasonRoundTrips(t *testing.T) {
+	s := newReconcileStore(t)
+	ctx := context.Background()
+	if err := s.SaveLoopState(ctx, coreloop.State{LoopID: "l1", ObjectiveID: "obj", PlanRefusedReason: "outside the limits"}); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+	got, err := s.GetLoopState(ctx, "l1")
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if got.PlanRefusedReason != "outside the limits" {
+		t.Errorf("plan_refused_reason = %q, want it kept", got.PlanRefusedReason)
+	}
+}
 
 // Phase 40 step 14a: a stream's blockers and the no_progress counters survive
 // the database.
