@@ -6686,9 +6686,15 @@ components:
                     at:
                       format: date-time
                       type: string
+                    count:
+                      description: How many passes saw a reconcile blocker (Phase 40 step 14a). Absent for a block that is not one.
+                      type: integer
                     kind:
                       type: string
                     reason:
+                      type: string
+                    subject:
+                      description: What a reconcile blocker is about. Absent for a block that is not one.
                       type: string
                     until:
                       format: date-time

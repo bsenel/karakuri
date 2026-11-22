@@ -19,6 +19,13 @@ const blockLabels: Partial<Record<BlockKind, string>> = {
   waiting_for_quota: 'Waiting for quota',
   bounds_violation: 'Bounds violation',
   remote_unreadable: 'Remote unreadable',
+  verify_failed: 'Verification failed',
+  plan_refused: 'Plan refused',
+  plan_error: 'Planning failed',
+  unmergeable_pr: 'Pull request cannot merge',
+  deferred_quota: 'Waiting for quota',
+  pushed_refs_violation: 'Pushed to a ref it never named',
+  no_progress: 'No progress',
 };
 
 const reviewLabels: Record<string, string> = {
@@ -130,7 +137,8 @@ function Stream({ objective: o }: { objective: DigestObjective }) {
         <ul aria-label="Blocks">
           {blocks.map((b, i) => (
             <li key={`${b.at}-${i}`}>
-              <strong>{blockLabels[b.kind] ?? b.kind}</strong> {b.reason}{' '}
+              <strong>{blockLabels[b.kind] ?? b.kind}</strong> {b.subject} {b.reason}{' '}
+              {b.count ? <span>· seen {b.count} {b.count === 1 ? 'pass' : 'passes'} </span> : null}
               <span className="muted">{when(b.at)}</span>
               {b.until && <span> · until {when(b.until)}</span>}
             </li>

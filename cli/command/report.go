@@ -215,9 +215,11 @@ type oversightView struct {
 			Reason     string `json:"reason"`
 		} `json:"refusals"`
 		Blocks []struct {
-			Kind   string `json:"kind"`
-			Reason string `json:"reason"`
-			Until  string `json:"until"`
+			Kind    string `json:"kind"`
+			Reason  string `json:"reason"`
+			Subject string `json:"subject"`
+			Count   int    `json:"count"`
+			Until   string `json:"until"`
 		} `json:"blocks"`
 	} `json:"objectives"`
 }
@@ -254,7 +256,16 @@ func printOversight(w io.Writer, d oversightView) {
 			fmt.Fprintf(w, "  refused: %s: %s\n", r.Capability, r.Reason)
 		}
 		for _, b := range o.Blocks {
-			fmt.Fprintf(w, "  blocked: %s: %s", b.Kind, b.Reason)
+			fmt.Fprintf(w, "  blocked: %s", b.Kind)
+			if b.Subject != "" {
+				fmt.Fprintf(w, " %s", b.Subject)
+			}
+			if b.Count > 0 {
+				fmt.Fprintf(w, " x%d", b.Count)
+			}
+			if b.Reason != "" {
+				fmt.Fprintf(w, ": %s", b.Reason)
+			}
 			if b.Until != "" && !strings.HasPrefix(b.Until, "0001-") {
 				fmt.Fprintf(w, " (until %s)", b.Until)
 			}

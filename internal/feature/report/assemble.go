@@ -100,7 +100,9 @@ func rank(o digest.ObjectiveSummary) int {
 func (s *Service) summarise(ctx context.Context, obj objective.Objective, since, until time.Time) digest.ObjectiveSummary {
 	sum := digest.ObjectiveSummary{ID: obj.ID, Title: obj.Title, Status: obj.Status}
 
+	var stateBlockers []reconcile.Blocker
 	if st, err := s.store.GetReconcileState(ctx, obj.ID); err == nil {
+		stateBlockers = st.Blockers
 		sum.Autonomy = st.EffectiveAutonomy(obj.AutonomyDeclaration())
 		sum.CriteriaMet = st.CriteriaMet
 		sum.Paused = st.Paused
@@ -155,6 +157,7 @@ func (s *Service) summarise(ctx context.Context, obj objective.Objective, since,
 		}
 	}
 	sum.Refusals, sum.Blocks = s.refusalsAndBlocks(ctx, obj, since, until)
+	sum.Blocks = withBlockers(sum.Blocks, stateBlockers, until)
 	return sum
 }
 
@@ -217,6 +220,43 @@ func (s *Service) refusalsAndBlocks(ctx context.Context, obj objective.Objective
 
 	sort.SliceStable(blocks, func(i, j int) bool { return blocks[i].Kind < blocks[j].Kind })
 	return refusals, blocks
+}
+
+// withBlockers adds what the stream's stored reconcile state says it is stuck
+// on (Phase 40 step 14a), in a stable order: by kind, then subject. A blocker
+// first seen after the window's end is not part of that window. A quota
+// deferral already shown from the latest pass is not listed twice; otherwise
+// it is shown as waiting for quota.
+func withBlockers(blocks []digest.Block, blockers []reconcile.Blocker, until time.Time) []digest.Block {
+	for _, b := range blockers {
+		if b.FirstSeen.After(until) {
+			continue
+		}
+		kind := digest.BlockKind(b.Kind)
+		if b.Kind == reconcile.BlockerDeferredQuota {
+			kind = digest.BlockQuota
+			if hasKind(blocks, kind) {
+				continue
+			}
+		}
+		blocks = append(blocks, digest.Block{Kind: kind, Subject: b.Subject, Count: b.Count, At: b.LastSeen})
+	}
+	sort.SliceStable(blocks, func(i, j int) bool {
+		if blocks[i].Kind != blocks[j].Kind {
+			return blocks[i].Kind < blocks[j].Kind
+		}
+		return blocks[i].Subject < blocks[j].Subject
+	})
+	return blocks
+}
+
+func hasKind(blocks []digest.Block, kind digest.BlockKind) bool {
+	for _, b := range blocks {
+		if b.Kind == kind {
+			return true
+		}
+	}
+	return false
 }
 
 // criteria reads the criterion states the window's passes settled and returns
