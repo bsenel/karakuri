@@ -51,6 +51,13 @@ const digest: Digest = {
       escalations: 2,
       failures: 1,
       actions: 4,
+      // Given in the order the digest wants them shown, not sorted by number.
+      waiting_pull_requests: [
+        { number: 281, title: 'feat(web): show the digest', url: 'https://example.test/pull/281', review: 'approved', reviewed_head: true },
+        { number: 279, title: 'feat(report): oversight digest', review: 'changes_requested', reviewed_head: true },
+        { number: 300, title: 'fix(loop): stop early', review: 'commented', reviewed_head: false },
+        { number: 12, title: 'docs: add the runbook', review: 'none', reviewed_head: false },
+      ],
       refusals: [
         {
           at: '2026-11-21T18:00:00Z',
@@ -197,6 +204,83 @@ describe('OversightPage', () => {
 
     expect(quota).toHaveTextContent(/until[\s\S]*2026/i);
     expect(violation).not.toHaveTextContent(/until/i);
+  });
+
+  it('lists the waiting pull requests with number, title and the review in words, in the digest order', async () => {
+    renderPage();
+    await pickTwin('twin-1');
+
+    const region = await streamRegion('Deliver the roadmap');
+    const waiting = within(region).getByRole('list', { name: /waiting pull requests/i });
+    const items = within(waiting).getAllByRole('listitem');
+
+    expect(items).toHaveLength(4);
+    expect(items[0]).toHaveTextContent('281');
+    expect(items[0]).toHaveTextContent('feat(web): show the digest');
+    expect(items[0]).toHaveTextContent(/approved/i);
+    expect(items[1]).toHaveTextContent('279');
+    expect(items[1]).toHaveTextContent('feat(report): oversight digest');
+    expect(items[1]).toHaveTextContent(/changes requested/i);
+    expect(items[2]).toHaveTextContent('300');
+    expect(items[2]).toHaveTextContent('fix(loop): stop early');
+    expect(items[2]).toHaveTextContent(/commented/i);
+    expect(items[3]).toHaveTextContent('12');
+    expect(items[3]).toHaveTextContent('docs: add the runbook');
+    expect(items[3]).toHaveTextContent(/no review yet/i);
+    // The raw enum is for the API, not for a person.
+    expect(waiting).not.toHaveTextContent('changes_requested');
+  });
+
+  it('says a review is older than the head only when the digest says so', async () => {
+    renderPage();
+    await pickTwin('twin-1');
+
+    const region = await streamRegion('Deliver the roadmap');
+    const waiting = within(region).getByRole('list', { name: /waiting pull requests/i });
+    const items = within(waiting).getAllByRole('listitem');
+
+    expect(items[0]).not.toHaveTextContent(/older|outdated|stale/i);
+    expect(items[1]).not.toHaveTextContent(/older|outdated|stale/i);
+    expect(items[2]).toHaveTextContent(/older|outdated|stale/i);
+  });
+
+  it('shows no waiting list, and no placeholder for it, on a stream with none', async () => {
+    renderPage();
+    await pickTwin('twin-1');
+
+    const region = await streamRegion('Keep the docs fresh');
+    expect(within(region).queryByRole('list', { name: /waiting pull requests/i })).not.toBeInTheDocument();
+    expect(region).not.toHaveTextContent(/waiting/i);
+    expect(region).not.toHaveTextContent(/pull request/i);
+  });
+
+  it('still shows the remote unreadable block with its label when pull requests could not be read', async () => {
+    get.mockImplementation((path: string) =>
+      Promise.resolve(
+        path === '/twins'
+          ? twins
+          : {
+              ...digest,
+              objectives: [
+                stream({
+                  id: 'obj-9',
+                  title: 'Blind stream',
+                  blocks: [{ kind: 'remote_unreadable', reason: 'forge returned 500', at: '2026-11-21T21:00:00Z' }],
+                }),
+              ],
+            },
+      ),
+    );
+
+    renderPage();
+    await pickTwin('twin-1');
+
+    const region = await streamRegion('Blind stream');
+    const blocks = within(region).getByRole('list', { name: /blocks/i });
+    expect(blocks).toHaveTextContent(/remote unreadable/i);
+    expect(blocks).toHaveTextContent('forge returned 500');
+    expect(within(region).queryByRole('list', { name: /waiting pull requests/i })).not.toBeInTheDocument();
+    expect(region).not.toHaveTextContent(/no refusals and no blocks/i);
   });
 
   it('says in words that a quiet stream has no refusals and no blocks', async () => {

@@ -388,6 +388,17 @@ export interface Block {
   until?: string;
 }
 
+/** A stream's open pull request waiting for a merge (internal/core/digest). */
+export interface WaitingPullRequest {
+  number: number;
+  title: string;
+  url?: string;
+  /** The latest review: "approved", "changes_requested", "commented" or "none". */
+  review: string;
+  /** Whether that review was left at the pull request's current head. */
+  reviewed_head: boolean;
+}
+
 /** One standing objective's window in a digest (internal/core/digest). */
 export interface DigestObjective {
   id: string;
@@ -400,6 +411,7 @@ export interface DigestObjective {
   escalations: number;
   failures: number;
   actions: number;
+  waiting_pull_requests?: WaitingPullRequest[];
   refusals?: Refusal[];
   blocks?: Block[];
   autonomy?: AutonomyLevel;
