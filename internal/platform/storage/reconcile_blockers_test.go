@@ -72,7 +72,7 @@ func TestReconcileStateBlockersRoundTrip(t *testing.T) {
 	at := time.Date(2026, 11, 22, 12, 0, 0, 0, time.UTC)
 
 	want := []reconcile.Blocker{
-		{Kind: reconcile.BlockerVerifyFailed, Subject: "tests-green", Count: 2, FirstSeen: at, LastSeen: at.Add(time.Hour)},
+		{Kind: reconcile.BlockerVerifyFailed, Subject: "tests-green", Count: 2, Attempts: 2, FirstSeen: at, LastSeen: at.Add(time.Hour)},
 		{Kind: reconcile.BlockerDeferredQuota, Subject: "obj", Count: 1, FirstSeen: at, LastSeen: at},
 	}
 	if err := s.SaveReconcileState(ctx, reconcile.State{
@@ -89,7 +89,7 @@ func TestReconcileStateBlockersRoundTrip(t *testing.T) {
 	}
 	for i, w := range want {
 		g := got.Blockers[i]
-		if g.Kind != w.Kind || g.Subject != w.Subject || g.Count != w.Count || !g.FirstSeen.Equal(w.FirstSeen) || !g.LastSeen.Equal(w.LastSeen) {
+		if g.Kind != w.Kind || g.Subject != w.Subject || g.Count != w.Count || g.Attempts != w.Attempts || !g.FirstSeen.Equal(w.FirstSeen) || !g.LastSeen.Equal(w.LastSeen) {
 			t.Errorf("blockers[%d] = %+v, want %+v", i, g, w)
 		}
 	}

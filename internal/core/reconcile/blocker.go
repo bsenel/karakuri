@@ -21,8 +21,12 @@ const (
 type Blocker struct {
 	Kind BlockerKind `json:"kind"`
 	// Subject is the pull request, branch or item the blocker is about.
-	Subject   string    `json:"subject"`
-	Count     int       `json:"count"`
+	Subject string `json:"subject"`
+	Count   int    `json:"count"`
+	// Attempts is how many diagnose-and-fix passes tried a remedy for this
+	// blocker and read its signal still raised (Phase 40 step 14b). A blocker
+	// that clears leaves the list, so its next occurrence starts at zero.
+	Attempts  int       `json:"attempts,omitempty"`
 	FirstSeen time.Time `json:"first_seen"`
 	LastSeen  time.Time `json:"last_seen"`
 }
