@@ -398,7 +398,7 @@ Part 6 status: truncated. Written: (A) the AI Act amendment status from Commissi
 - The audit row records what produced the decision: `internal/platform/storage/adapter.go:124-132` (`Provider`, `Model`, `TemplateID`, `AutonomyRung`, Phase 31), with `Approver` and `BoundsViolation` at `adapter.go:122-123`.
 - Checkpoints: a resolved or superseded checkpoint refuses a second decision, `internal/feature/checkpoint/service.go:185-197`; `Supersede` at `service.go:250-262`.
 - Evidence export and audit API, located by grep and not opened this pass: `internal/feature/audit/export.go:177` (`Export` over a window), `:254` (checkpoints), `:356` (unmet obligations); `internal/api/handler/audit.go:52` (`ExportWindow`); retention at `internal/app/bootstrap.go:458`.
-- Inferred: Karakuri can show an audit log, an export and a retention setting. Whether the default retention meets the Article 26(6) minimum was not checked, and the article text was not read this pass.
+- Inferred: Karakuri can show an audit log, an export and a retention setting. Whether the default retention meets the six-month minimum in Article 26(6) (A1) was not checked.
 
 ### B. Feasibility
 
