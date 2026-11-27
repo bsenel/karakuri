@@ -183,6 +183,47 @@ New: yes, for LangGraph 2026-06-30 to 07-30. Still unread: LangGraph 2026-04-08 
 - **(iii) What Karakuri does that it does not.** Karakuri's autonomy is rendered into the same bounds an operator writes, with no second gate (internal/feature/reconcile/authority.go:10-19, opened); provenance on evidence decides escalation (internal/core/environment/environment.go:55-59, opened). Inferred: nothing in the LangGraph notes read here ties escalation to the source of a payload.
 - **(iv) Complaints.** [E] https://github.com/langchain-ai/langgraph/issues?q=is%3Aissue+sort%3Areactions-%2B1-desc (read 2026-11-27): the listing's first entries are #5891 (a `Send` object not msgpack-serialisable when a tool uses `BaseStore`, closed 2025-10-08, 7 on the listing badge) and #5023 (feedback on moving `config.configurable` to `context`, closed 2025-07-25, 14 on the badge). The badges may be comment counts, and neither thread was opened, so these are not reaction counts. Observed: both are from 2025, outside the window; the listing gave no in-window complaint.
 - **(v) Inferred.** Mid-2026 LangGraph releases were maintenance of checkpoint serialisation, which suggests durable state is still where its users hit bugs. One page; weak.
+
+### C. Temporal as a durable-execution engine for agents
+
+New: yes, for April to early July 2026 and for three forum threads on LLM use. Extends 2026-11-15 p4 item 5 (which read 09-11 to 11-02).
+
+- **(i) Shipped. Months read: April, May, June and early July 2026 (04-10 to 07-08); August not reached; September onward was read on 2026-11-15.** [E] https://github.com/temporalio/temporal/releases?page=2 (read 2026-11-27): v1.31.0 (04-29, before the window) brings Serverless Workers on AWS Lambda in pre-release, principal attribution, IAM auth for SQL, Worker Versioning GA and a Standalone Activities preview. In the window: v1.29.6.1 (05-06), v1.31.1 (06-10, a search-attribute race fix and stale gRPC connection cleanup), v1.29.7 (06-12) and v1.30.5 (06-15, security and Postgres fixes), v1.30.6 (07-08, CVE-2026-5724 and a possibly breaking change for replication with authorization). Observed: no AI-agent feature appears in the server releases read.
+- **(ii) What it does that Karakuri does not.** Inferred: principal attribution on server calls, and running workers serverless. Karakuri runs as one server process (ADR 001).
+- **(iii) What Karakuri does that it does not.** Temporal stores and replays whatever the workflow does; deciding whether an agent may act is left to the application. Karakuri decides it in the domain: bounds that fail toward asking (internal/core/agent/agent.go:32-35, opened), and escalation on third-party evidence (internal/core/environment/environment.go:55-59, opened).
+- **(iv) Complaints.** [E] https://github.com/temporalio/temporal/issues/680 (read 2026-11-27): wait for an external workflow to complete, 77 thumbs-up, open. [E] https://github.com/temporalio/temporal/issues/2318 (read 2026-11-27): MongoDB persistence, 48 thumbs-up, open; a comment says an upstream PR was declined and a fork exists. Forum, [E] https://community.temporal.io/latest (read 2026-11-27): "A2A integration for Temporal" (t/19678, last active 2026-11-18, 4 replies, 378 views); "The Lord of the Loop" on the best abstraction for LLM-driven Temporal apps (t/18631, 2026-11-08, 6 replies, 1,251 views); "Letting Temporal own LLM retries" (t/19849, 2026-11-04, 2 replies, 77 views). The threads themselves were not opened [N].
+- **(v) Inferred.** The most-viewed agent thread asks what abstraction to put on top of Temporal for an LLM loop: users bring the loop themselves. That is the layer Karakuri occupies; Temporal is a possible substrate, not a direct rival. Based on thread titles only.
+
+### Still thin (part 3)
+
+- Codex 2026-05-01 to 10-28: releases pages 7 onward of https://github.com/openai/codex/releases.
+- Agents SDK May to September; LangSmith April to August (https://docs.langchain.com/langsmith/changelog past the first 40,000 characters).
+- LangGraph 2026-04-08 to 06-29: https://github.com/langchain-ai/langgraph/releases?page=7 and 8 (8 timed out).
+- Temporal August 2026; any full complaint thread with reaction counts for Codex and LangGraph; the three Temporal forum threads in full.
+
+### Earlier thin spots in this area
+
+- Codex 05-01 to 10-28: still thin (third cycle: 11-08, 11-15, 11-22).
+- LangGraph 04-08 to 06-29: still thin; 06-30 to 07-30 now read (sixth cycle, per 11-15's "fifth-cycle").
+- LangSmith April to August: still thin (third cycle).
+- Codex and LangGraph complaints: still thin, only listings read (second cycle).
+- Temporal complaints: partly filled, two open issues with thumbs-up counts (second cycle).
+
+### Sources (part 3)
+
+| URL | Read | Primary/secondary | Grade |
+|---|---|---|---|
+| https://github.com/openai/codex/releases?page=3 | 2026-11-27 | primary | [E] |
+| https://github.com/openai/codex/releases?page=6 | 2026-11-27 | primary | [E] |
+| https://github.com/openai/codex/issues?q=is%3Aissue+sort%3Areactions-%2B1-desc | 2026-11-27 | primary | [E] |
+| https://github.com/langchain-ai/langgraph/releases?page=6 | 2026-11-27 | primary | [E] |
+| https://github.com/langchain-ai/langgraph/releases?page=8 | 2026-11-27 | primary | [N] HTTP 504 twice |
+| https://github.com/langchain-ai/langgraph/issues?q=is%3Aissue+sort%3Areactions-%2B1-desc | 2026-11-27 | primary | [E] |
+| https://github.com/temporalio/temporal/releases?page=2 | 2026-11-27 | primary | [E] |
+| https://github.com/temporalio/temporal/issues/680 | 2026-11-27 | primary | [E] |
+| https://github.com/temporalio/temporal/issues/2318 | 2026-11-27 | primary | [E] |
+| https://community.temporal.io/latest | 2026-11-27 | primary | [E] |
+| https://community.temporal.io/search?q=agent%20order%3Alatest | 2026-11-27 | primary | [N] empty placeholder |
 <!-- p3:end -->
 
 <!-- p4:start -->
