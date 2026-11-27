@@ -446,7 +446,35 @@ Not assessed (time): (8) safe-by-default approval prompts, (9) transaction-token
 <!-- p7:start -->
 ## Fit and bets; ranking; What changed since the last report
 
-not started
+Part 7 status: in progress. Written: (A) capability matrix. Part 6's status line is present (truncated). This part reasons over parts 1 to 6; no web page was read. Karakuri cells cite a path:line already given in parts 3, 4 or 6, or a file opened by this part on 2026-11-27 (marked "p7, opened"). Nothing was built, run or tested.
+
+### A. Capability matrix
+
+Legend: **O** observed in code or in a page read; **V** claimed by the vendor in release notes or a changelog (a claim, not a measurement); **?** unknown (nothing in parts 3 and 4 says either way); **no** observed absent. Each cell names its part. Product cells come only from parts 3 and 4.
+
+| Capability | Codex CLI / Agents SDK | LangGraph / LangSmith | Temporal | Claude Code / Agent SDK | incident.io | Arize Phoenix | Karakuri |
+|---|---|---|---|---|---|---|---|
+| Standing objectives on a cadence | ? (p3 A; agent command center only) | ? (p3 B) | ? (p3 C; durable workflows, no objective notion read) | V: recurring prompt via `/loop` and cloud scheduled tasks, not a declared objective (p4 D i) | ? (p4 E) | no, observability only (p4 F) | O: reconciler owns standing objectives, AGENTS.md rule 8 (p4 D iii); default minimum interval 10 min, `internal/feature/reconcile/service.go:66,107-108` (p7, opened) |
+| Human checkpoints with earned autonomy | V: managed command checkpoints needing fresh approval; Guardian reviewer model (p3 A i); earned autonomy ? | ? (p3 B; no interrupt work in releases read) | no, left to the application (p3 C iii) | V: per-call permission rules and refusing hooks (p4 D i); earned autonomy ? | V: approval before a change runs (p4 E i); earned ? | no, annotation after the fact (p4 F iii) | O: checkpoints refuse a second decision, `internal/feature/checkpoint/service.go:185-197`; `AutonomyRung` in the audit row, `internal/platform/storage/adapter.go:124-132` (p6 A4) |
+| Provenance-aware escalation | ? (p3 A) | ? (p3 B v: nothing read ties escalation to source) | no (p3 C iii) | ? (p4 D) | ? (p4 E iii) | no (p4 F) | O: `internal/core/environment/environment.go:55-59` (p3, p4) |
+| Durable resume | V: resume across a change of model provider (p3 A i) | V: checkpoint correctness fixes (p3 B i); resume bugs open (p2 item 4) | V: stores and replays workflows (p3 C iii) | V: rewind fixes (p4 D i) | ? | V: persistent agent sessions 20.0.0 (p4 F i) | O: restored loop acts on the checkpoint's plan, `internal/feature/loop/runner.go:240-251` (p6 F1) |
+| Per-run money budget | ? | ? | ? | ? (p2 item 3: user issues show account caps only) | ? | no gate; V: trace-tree cost metrics (p4 F i) | O for objective runs: `internal/feature/loop/budget.go:27-55`; ad-hoc runs not metered, `budget.go:65-69` (p6 F3) |
+| Audit log and evidence export | ? | ? | V: principal attribution (p3 C i) | ? | ? | V: traces and annotations (p4 F i); no regulatory export read | O: `internal/feature/audit/export.go:34-98` (p4); audit row `adapter.go:122-132` (p6) |
+| MCP client and server | ? | ? | ? | ? (not in the versions read, p4 D) | V: MCP server and plugin (p4 E i) | V: remote MCP, MCP plugins (p4 F i) | O: client `internal/platform/tools/mcp/client.go:71,95`; server `internal/api/handler/mcp.go:484` (p7, opened) |
+| OTel GenAI telemetry | ? | V: per-node `trace_policy` (p3 B i); GenAI attributes ? | ? | V: `gen_ai.*` on LLM spans (p4 D i) | ? | V: tracing of agent frameworks, DECISION spans (p4 F i) | O: `gen_ai.*` attribute names, `internal/core/telemetry/genai.go:7,12` (p7, opened); convention version not pinned (p5 A3, inferred) |
+| Sub-agent bound inheritance | V: 0.170.0 fixes child threads losing sandbox restrictions (p3 A i) | ? | ? | no, per users: #18950 open (p2 item 2); nothing in vendor notes read (p4 D) | ? | ? | partial: `CanDelegate`, `internal/core/agent/agent.go:43` (p6 F7); authority carried in the request, `internal/feature/reconcile/authority.go:10-19` (p3); Phase 49 planned |
+| Incident path | ? | ? | ? | ? | V: investigation agent posting a root-cause hypothesis (p4 E i) | ? | no: no incident-domain package under `internal/feature` (p4 E ii) |
+| Self-host | ? (local CLI; not assessed) | V: prebuilt images for `langgraph deploy` (p3 B i) | V: self-hosted server releases, serverless workers (p3 C i) | ? | ? (not read) | V: auth on by default for self-hosted, 21.0.0 (p4 F i, v) | O: one server process, ADR 001 (p3 C ii); exporters under `internal/platform/observability/` (p4 E iii) |
+
+Incomplete columns, because their part was truncated:
+- **Codex / Agents SDK** (part 3): only November 2026 releases read; May to October and the whole Agents SDK unread, so most "?" cells are unknown, not absent.
+- **LangGraph / LangSmith** (part 3): LangGraph 04-08 to 06-29 and LangSmith April to August unread.
+- **Temporal** (part 3): August not read; forum threads read by title only.
+- **Claude Code** (part 4): only versions 2.1.331 and 2.1.332; nothing dated.
+- **incident.io** (part 4): undated titles, about 60% of the changelog.
+- **Phoenix** (part 4) is the most complete column (six months of dated notes).
+- Google ADK, Microsoft Agent Framework and gh-aw have no column: not torn down this cycle (p4).
+- Inferred: a Karakuri "O" means the code exists at that line; none of it was run this cycle.
 <!-- p7:end -->
 
 <!-- p8:start -->
