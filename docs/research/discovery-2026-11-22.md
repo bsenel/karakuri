@@ -71,7 +71,9 @@ Not reached this cycle. The session spent its time on the merge, the PR descript
 <!-- p2:start -->
 ## What they ask for and complain about
 
-not started
+Part 2 status: in progress; items 1 to 5 not yet written. Part 1's status line is present (truncated).
+
+Method: pages were read on 2026-11-27 through a web-fetch tool, which returns a model-written report of the page. The `gh` CLI was refused in this session. Grading: [Q] means the tool reported the words as verbatim; [E] means an extract or a paraphrase; [N] means not read. Nothing was built, run or tested.
 <!-- p2:end -->
 
 <!-- p3:start -->
