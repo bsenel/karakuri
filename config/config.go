@@ -25,6 +25,22 @@ type Config struct {
 	Reconcile     ReconcileConfig     `yaml:"reconcile"`
 	Reports       ReportsConfig       `yaml:"reports"`
 	Audit         AuditConfig         `yaml:"audit"`
+	OwnAuthors    OwnAuthorsConfig    `yaml:"own_authors"`
+	// ReviewRoundLimit is how many answered third-party comment rounds a stream
+	// pull request takes before the stream stops pushing (Phase 40 step 12).
+	ReviewRoundLimit int `yaml:"review_round_limit"`
+}
+
+// OwnAuthorsConfig names the forge accounts that are this deployment's own
+// (Phase 40 step 12a). A comment on a pull request by one of them is not
+// third-party text. Both lists are empty by default: with none configured,
+// every comment is somebody else's.
+type OwnAuthorsConfig struct {
+	// Karakuri are the accounts Karakuri itself posts with; its own comments
+	// are never listed as unanswered.
+	Karakuri []string `yaml:"karakuri"`
+	// Owners are the accounts whose comment is an instruction to amend.
+	Owners []string `yaml:"owners"`
 }
 
 // AuditConfig configures the audit log (Phase 31).

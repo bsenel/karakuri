@@ -224,7 +224,7 @@ func TestAnObjectiveCreatedBeforeItsTemplatesConstraintIsToldIt(t *testing.T) {
 		if got, n := constraintByID(in.Constraints, "unmergeable-prs"); n != 1 || !reflect.DeepEqual(got, unmergeable) {
 			t.Errorf("%s: unmergeable-prs is %+v (%d held), the template's is %+v", call, got, n, unmergeable)
 		}
-		if ids := constraintIDs(in.Constraints); !reflect.DeepEqual(ids, []string{"no-merge", "action-limits", "unmergeable-prs", "branches-without-pr"}) {
+		if ids := constraintIDs(in.Constraints); !reflect.DeepEqual(ids, []string{"no-merge", "action-limits", "unmergeable-prs", "branches-without-pr", "review-comments-first"}) {
 			t.Errorf("%s: constraints %v, want the objective's own first, then the template's", call, ids)
 		}
 		if in.ID != obj.ID || in.Title != obj.Title || in.TemplateID != obj.TemplateID {
@@ -284,6 +284,7 @@ func TestTheObjectivesOwnConstraintWinsOverTheTemplates(t *testing.T) {
 	noMerge, _ := constraintByID(tmpl.Constraints, "no-merge")
 	unmergeable, _ := constraintByID(tmpl.Constraints, "unmergeable-prs")
 	withoutPR, _ := constraintByID(tmpl.Constraints, "branches-without-pr")
+	commentsFirst, _ := constraintByID(tmpl.Constraints, "review-comments-first")
 	mine := objective.Constraint{
 		ID:          "action-limits",
 		Description: "Every coding action sets params.branch to karakuri/phase-40-action-limits.",
@@ -313,7 +314,7 @@ func TestTheObjectivesOwnConstraintWinsOverTheTemplates(t *testing.T) {
 		}
 		// The objective's own, unchanged and in place, then the template's
 		// ones it does not hold.
-		want := []objective.Constraint{mine, noMerge, unmergeable, withoutPR}
+		want := []objective.Constraint{mine, noMerge, unmergeable, withoutPR, commentsFirst}
 		if !reflect.DeepEqual(in.Constraints, want) {
 			t.Errorf("%s: constraints %+v, want the objective's own unchanged, then the template's unmergeable-prs and branches-without-pr: %+v", call, in.Constraints, want)
 		}
@@ -336,12 +337,13 @@ func TestTemplateConstraintsAreMatchedByID(t *testing.T) {
 	limits, _ := constraintByID(tmpl.Constraints, "action-limits")
 	unmergeable, _ := constraintByID(tmpl.Constraints, "unmergeable-prs")
 	withoutPR, _ := constraintByID(tmpl.Constraints, "branches-without-pr")
+	commentsFirst, _ := constraintByID(tmpl.Constraints, "review-comments-first")
 	mine := objective.Constraint{ID: "no-merge", Description: "never merge, said differently", Hard: false}
 	obj := objective.Objective{ID: "obj-id-match", TemplateID: deliveryTemplateID, Constraints: []objective.Constraint{mine}}
 
 	shown := withTemplateConstraints(reg, obj)
 
-	want := []objective.Constraint{mine, limits, unmergeable, withoutPR}
+	want := []objective.Constraint{mine, limits, unmergeable, withoutPR, commentsFirst}
 	if !reflect.DeepEqual(shown.Constraints, want) {
 		t.Errorf("shown %+v\nwant %+v", shown.Constraints, want)
 	}

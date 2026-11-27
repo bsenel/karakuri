@@ -119,6 +119,10 @@ type VersionControlAdapter interface {
 	// merged pull requests, newest first, with their head SHA and CheckState.
 	// An adapter whose forge cannot returns an error wrapping ErrUnsupported.
 	ListMergedPRs(ctx context.Context, repo string, limit int) ([]PRSummary, error)
+	// ListClosedPRs returns up to limit of the repository's most recently
+	// closed pull requests that were not merged, newest first. An adapter
+	// whose forge cannot returns an error wrapping ErrUnsupported.
+	ListClosedPRs(ctx context.Context, repo string, limit int) ([]PRSummary, error)
 	// EditPRBody replaces a pull request's description with body. An adapter
 	// whose forge cannot returns an error wrapping ErrUnsupported.
 	EditPRBody(ctx context.Context, repo, prID, body string) error
@@ -135,5 +139,45 @@ type VersionControlAdapter interface {
 	// request in any state whose head is branch. An adapter whose backend
 	// cannot say returns an error wrapping ErrUnsupported.
 	HasPullRequestForHead(ctx context.Context, repo, branch string) (bool, error)
+	// FileAt returns the text of the file at path as it is at ref, a branch,
+	// a tag or a commit SHA. An adapter whose forge cannot returns an error
+	// wrapping ErrUnsupported, never an empty string.
+	FileAt(ctx context.Context, repo, ref, path string) (string, error)
+	// PostReview posts one review of a pull request that only comments: it
+	// never approves and never requests changes. An adapter whose forge
+	// cannot returns an error wrapping ErrUnsupported.
+	PostReview(ctx context.Context, repo, prID, body string, comments []ReviewComment) error
+	// ReviewedCommits lists the commit id of every review on a pull request,
+	// so a caller can tell whether its head was reviewed. An adapter whose
+	// forge cannot returns an error wrapping ErrUnsupported, never an empty
+	// list.
+	ReviewedCommits(ctx context.Context, repo, prID string) ([]string, error)
+	// ListPullRequestComments reads every comment on a pull request, from the
+	// conversation, the diff and the reviews, oldest first. An adapter whose
+	// forge cannot returns an error wrapping ErrUnsupported, never an empty
+	// list.
+	ListPullRequestComments(ctx context.Context, repo string, number int) ([]PullRequestComment, error)
 	Active() bool
+}
+
+// PullRequestComment is one thing somebody wrote on a pull request, as read
+// back from the forge. ReviewComment is the posting side and is not reused.
+type PullRequestComment struct {
+	ID int64
+	// Kind is issue_comment, review_comment or review.
+	Kind string
+	// Author is the login the forge reports, never a name parsed from Body.
+	Author    string
+	Body      string
+	CreatedAt time.Time
+	// Path and Line are set only for an inline review comment.
+	Path string
+	Line int
+}
+
+// ReviewComment is one comment on a line of a pull request's diff.
+type ReviewComment struct {
+	Path string
+	Line int
+	Body string
 }

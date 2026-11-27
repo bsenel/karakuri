@@ -31,7 +31,7 @@ import (
 // only the CI env is still a no-op.
 // reg may be nil — in that case every adapter-backed env falls back to no-op
 // behavior, except observability, which has no no-op to fall back on.
-func softwareEnvironmentFactories(reg *tools.Registry) []environment.Factory {
+func softwareEnvironmentFactories(reg *tools.Registry, ownAuthors config.OwnAuthorsConfig, reviewRoundLimit int) []environment.Factory {
 	noopFactory := func(id, desc string) environment.Factory {
 		return environment.Factory{
 			EnvID:       environment.EnvironmentID(id),
@@ -61,6 +61,9 @@ func softwareEnvironmentFactories(reg *tools.Registry) []environment.Factory {
 				// Marking a group's pull request ready reads and writes the
 				// same forge create_pr opened it on (Phase 44 step 1).
 				CapMarkReady,
+				// A reviewer's comment review on that pull request (Phase 40
+				// step 11).
+				CapPostReview,
 				// Drafting lives here because a roadmap phase and an ADR are
 				// files in this repository, and because gitEnv answers both
 				// before its adapter check — a deployment with no version
@@ -78,7 +81,43 @@ func softwareEnvironmentFactories(reg *tools.Registry) []environment.Factory {
 				CapPathsDeclared,
 			},
 			Build: func(ctx environment.BuildContext) (environment.Environment, error) {
-				return &gitEnv{id: EnvGit, vc: boundVC(ctx), verifiers: forgeVerifiers}, nil
+				return &gitEnv{id: EnvGit, vc: boundVC(ctx), verifiers: forgeVerifiers, ownAuthors: ownAuthors, reviewRoundLimit: reviewRoundLimit}, nil
+			},
+		},
+		{
+			// Phase 40 step 13: the snapshot the delivery stream's reconcile
+			// fingerprints. It reads main's roadmap from the forge; a read
+			// that fails leaves it blind (an empty SHA) rather than
+			// reporting no work.
+			EnvID:       "software.env.delivery_work",
+			Domain:      "software",
+			Description: "Whether delivery has work: Planned items on main, branches and review comments",
+			Build: func(ctx environment.BuildContext) (environment.Environment, error) {
+				return NewDeliveryWorkEnvironment("software.env.delivery_work", boundVC(ctx), readMainRoadmap(boundVC(ctx)), ownAuthors, nil), nil
+			},
+		},
+		{
+			// Phase 40 step 13, discovery half: the same reading as above, read
+			// as "the pipeline is empty". Main's roadmap is read from the
+			// forge and the end of the last cycle from the run records
+			// (Pack.EnvironmentFactories wires it when the pack has the
+			// audit log; without it the environment is blind, an empty
+			// SHA, and starts nothing). ClosingComment, the last comment on the
+			// newest closed discovery proposal, comes from the forge; the pack
+			// rebinds it with the record of what Karakuri posted.
+			EnvID:       "software.env.discovery_trigger",
+			Domain:      "software",
+			Description: "Whether a discovery cycle should start: nothing Planned, no open proposal, minimum time elapsed",
+			Build: func(ctx environment.BuildContext) (environment.Environment, error) {
+				return NewDiscoveryTriggerEnvironment("software.env.discovery_trigger", boundVC(ctx), DiscoveryTriggerSources{
+					ReadMain:       readMainRoadmap(boundVC(ctx)),
+					OwnAuthors:     ownAuthors,
+					ClosingComment: newClosingComment(boundVC(ctx), ownAuthors, nil),
+					LastCycleEnd: func(context.Context) (time.Time, error) {
+						return time.Time{}, errors.New("no record of the last discovery cycle is wired")
+					},
+					MinGap: DiscoveryMinGap,
+				}), nil
 			},
 		},
 		{
@@ -129,7 +168,7 @@ func softwareEnvironmentFactories(reg *tools.Registry) []environment.Factory {
 						cli = a
 					}
 				}
-				env := &cliEnv{id: "software.env.cli_agent", cli: cli, twinID: ctx.TwinID}
+				env := &cliEnv{id: "software.env.cli_agent", cli: cli, twinID: ctx.TwinID, vc: boundVC(ctx), ownAuthors: ownAuthors}
 				if reg != nil {
 					opts := reg.CLIAgents.Options(ctx.AdapterBindings["cli_agents"])
 					env.attachMCP, env.mcpURL = cliMCPOptions(opts)
@@ -292,6 +331,22 @@ type gitEnv struct {
 	// pull requests when a pull request changes one of their files (Phase 44
 	// step 5).
 	verifiers []verifierRule
+	// ownAuthors says whose pull request comments are the deployment's own
+	// (Phase 40 step 12a).
+	ownAuthors config.OwnAuthorsConfig
+	// reviewRoundLimit is the declared round limit; 0 means none (Phase 40 step 12).
+	reviewRoundLimit int
+	// posted reads the IDs of the comments Karakuri is recorded as having
+	// posted; nil means no record (Phase 40 step 12a).
+	posted postedCommentIDs
+}
+
+// readMainRoadmap reads docs/roadmap.md on main through the forge. Nothing in
+// the adapter or config names another default branch, as at BranchProtected.
+func readMainRoadmap(vc versioncontrol.VersionControlAdapter) func(context.Context) (string, error) {
+	return func(ctx context.Context) (string, error) {
+		return vc.FileAt(ctx, "", "main", "docs/roadmap.md")
+	}
 }
 
 // gitObservationWindow is how far back the repository observation reaches.
@@ -366,9 +421,9 @@ func (e *gitEnv) Observe(ctx context.Context, q environment.ObservationQuery) (e
 	} else {
 		state["commits"] = commits
 	}
-	prs, err := adapter.ListPRs(ctx, repo, since)
-	if err != nil {
-		state["prs_error"] = err.Error()
+	prs, prsErr := adapter.ListPRs(ctx, repo, since)
+	if prsErr != nil {
+		state["prs_error"] = prsErr.Error()
 	} else {
 		// Each entry carries its body's checklist, and the checklists are
 		// written out as lines too, so a plan sees which steps are already
@@ -424,6 +479,18 @@ func (e *gitEnv) Observe(ctx context.Context, q environment.ObservationQuery) (e
 	// the observation window, and these must see every open one.
 	observeUnmergeablePRs(ctx, adapter, repo, state)
 	observeBranchesWithoutPR(ctx, adapter, repo, state)
+	// The comments on those pull requests no later commit answers, owner's or
+	// third party's (Phase 40 steps 12 and 12a). A stranger's comment is their
+	// writing, so it makes the observation third party like a stranger's title.
+	observeUnansweredReviewComments(ctx, adapter, repo, e.ownAuthors, e.reviewRoundLimit, e.posted, state)
+	if hasThirdPartyComment(state) {
+		trust = environment.TrustThirdParty
+	}
+	// The open stream pull requests whose head has no review (Phase 40 step 11),
+	// from the pull requests listed above rather than a second read of them.
+	if prsErr == nil {
+		observePRsWithoutReview(ctx, adapter, repo, prs, state)
+	}
 	// Whether main is protected, so the oversight view can show it (Phase 40
 	// step 3). This is detection, not prevention. A read that failed is "not
 	// known" whatever the bool says, never "protected" (AGENTS.md rule 10).
@@ -473,6 +540,9 @@ func (e *gitEnv) Act(ctx context.Context, a environment.Action) (environment.Act
 	// checks the adapter itself.
 	if a.CapabilityID == CapMarkReady {
 		return e.markReady(ctx, a), nil
+	}
+	if a.CapabilityID == CapPostReview {
+		return e.postReview(ctx, a), nil
 	}
 
 	adapter := e.vc
@@ -689,6 +759,10 @@ type cliEnv struct {
 
 	// twinID is the twin this environment was built for (BuildContext.TwinID).
 	twinID string
+	// vc and ownAuthors let a delegation on a branch record the comments it
+	// posted (Phase 40 step 12a); a nil vc records nothing.
+	vc         versioncontrol.VersionControlAdapter
+	ownAuthors config.OwnAuthorsConfig
 	// attachMCP and mcpURL are the instance's attach_karakuri_mcp and
 	// karakuri_mcp_url options; issuer mints the credential for one delegation.
 	attachMCP bool
@@ -948,8 +1022,17 @@ func (e *cliEnv) Act(ctx context.Context, a environment.Action) (environment.Act
 		}
 		in.Env = env
 	}
+	recorder := startCommentRecorder(ctx, e.vc, e.ownAuthors, asString(a.Params, "repo"), asString(a.Params, "branch"))
 	out, err := e.cli.Delegate(ctx, in)
+	postedKeys := recorder.finish(ctx)
 	pushed, pushedErr := checkPushedRefs(ctx, worktree, declared, refsBefore, refsBeforeErr, pushes)
+	if pushedErr == nil {
+		// A proposal stream's action declares the files it writes, and a
+		// push to its branch that changed any other fails (ADR 030).
+		var outside *environment.BoundsViolation
+		outside, pushedErr = checkPushedPaths(ctx, worktree, plannedBranch(a.Params), pathGlobsParam(a.Params), refsBefore)
+		pushed = joinViolations(pushed, outside)
+	}
 	logErr := pushes.remove()
 	// What a Karakuri tool returned can be a stranger's prose (an audit row
 	// holds pull-request titles), and the agent wrote everything after it
@@ -982,6 +1065,9 @@ func (e *cliEnv) Act(ctx context.Context, a environment.Action) (environment.Act
 			}
 			delta[k] = v
 		}
+		for k, v := range postedKeys {
+			delta[k] = v
+		}
 		if pushedErr != nil {
 			delta["pushed_refs_error"] = scrub(pushedErr.Error())
 		}
@@ -1009,6 +1095,9 @@ func (e *cliEnv) Act(ctx context.Context, a environment.Action) (environment.Act
 		"tool_uses":  out.ToolUses,
 		"exit_code":  out.ExitCode,
 		"raw_output": scrub(out.RawOutput),
+	}
+	for k, v := range postedKeys {
+		delta[k] = v
 	}
 	if credential != nil {
 		delta["delegation_credential"] = credential

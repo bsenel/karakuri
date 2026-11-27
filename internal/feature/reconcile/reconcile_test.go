@@ -57,6 +57,9 @@ type fakeLoop struct {
 	gate chan struct{}
 	// violation is the bounds violation an action of the run carried.
 	violation *environment.BoundsViolation
+	// onRun, when set, is called as a run starts: what the run does to the
+	// world, such as opening a pull request.
+	onRun func()
 }
 
 func (f *fakeLoop) Run(ctx context.Context, req coreloop.Request) (coreloop.Result, error) {
@@ -66,8 +69,12 @@ func (f *fakeLoop) Run(ctx context.Context, req coreloop.Request) (coreloop.Resu
 	f.rung = req.AutonomyRung
 	f.ran = append(f.ran, req.Objective.ID)
 	err := f.err
+	onRun := f.onRun
 	gate := f.gate
 	f.mu.Unlock()
+	if onRun != nil {
+		onRun()
+	}
 	if gate != nil {
 		select {
 		case <-gate:

@@ -184,6 +184,23 @@ func softwareCapabilities() []capability.Capability {
 			},
 			OutputSchema: capability.Schema{Type: "object"},
 		},
+		// A forge call on an existing pull request. Only the review template
+		// allows it; it posts a comment review and nothing else.
+		{
+			ID: CapPostReview, Name: "Post PR Review", Domain: "software",
+			Description: "Post one comment review (never an approval or a request for changes) on the open pull request on params.branch. " +
+				"Requires params.branch and params.body; the body must have a 'What was run' and a 'What was not run' section. Optional params.repo.",
+			InputSchema: capability.Schema{
+				Type: "object",
+				Properties: map[string]capability.SchemaProperty{
+					"branch": {Type: "string", Description: "The head branch of the pull request to review"},
+					"body":   {Type: "string", Description: "The review: findings, then What was run and What was not run sections"},
+					"repo":   {Type: "string", Description: "owner/name of the repository when it is not the bound one"},
+				},
+				Required: []string{"branch", "body"},
+			},
+			OutputSchema: capability.Schema{Type: "object"},
+		},
 		act("software.act.create_ticket", "Create Ticket", "Create ticket in project management tool", false),
 		act("software.act.send_message", "Send Message", "Send a message via MessagingAdapter", false),
 		writes(act("software.act.delegate_to_cli", "Delegate to CLI Agent", "Hand a task to a coding-agent CLI (Claude Code, Cursor, Gemini, Copilot) in an isolated worktree", false)),

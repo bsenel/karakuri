@@ -52,6 +52,10 @@ func (n *NoOp) ListMergedPRs(_ context.Context, _ string, _ int) ([]PRSummary, e
 	return nil, fmt.Errorf("noop: merged pull requests: %w", ErrUnsupported)
 }
 
+func (n *NoOp) ListClosedPRs(_ context.Context, _ string, _ int) ([]PRSummary, error) {
+	return nil, fmt.Errorf("noop: closed pull requests: %w", ErrUnsupported)
+}
+
 func (n *NoOp) EditPRBody(_ context.Context, _, _, _ string) error {
 	return fmt.Errorf("noop: edit pull request body: %w", ErrUnsupported)
 }
@@ -66,4 +70,12 @@ func (n *NoOp) BranchProtected(_ context.Context, _, _ string) (bool, error) {
 
 func (n *NoOp) HasPullRequestForHead(_ context.Context, _, _ string) (bool, error) {
 	return false, fmt.Errorf("noop: pull requests for head: %w", ErrUnsupported)
+}
+
+func (n *NoOp) FileAt(_ context.Context, _, _, _ string) (string, error) {
+	return "", fmt.Errorf("noop: file at ref: %w", ErrUnsupported)
+}
+
+func (n *NoOp) ListPullRequestComments(_ context.Context, _ string, _ int) ([]PullRequestComment, error) {
+	return nil, fmt.Errorf("noop: pull request comments: %w", ErrUnsupported)
 }

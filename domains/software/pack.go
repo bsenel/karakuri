@@ -4,11 +4,13 @@ package software
 import (
 	"context"
 
+	"github.com/bsenel/karakuri/config"
 	"github.com/bsenel/karakuri/internal/core/agent"
 	"github.com/bsenel/karakuri/internal/core/capability"
 	"github.com/bsenel/karakuri/internal/core/domain"
 	"github.com/bsenel/karakuri/internal/core/environment"
 	"github.com/bsenel/karakuri/internal/core/objective"
+	"github.com/bsenel/karakuri/internal/platform/storage"
 	"github.com/bsenel/karakuri/internal/platform/tools"
 )
 
@@ -17,6 +19,35 @@ type Pack struct {
 	// issuer mints the credential a delegation holds for Karakuri's own MCP
 	// tools; nil until AttachDelegationIssuer.
 	issuer delegationIssuer
+	// ownAuthors says whose pull request comments are the deployment's own.
+	ownAuthors config.OwnAuthorsConfig
+	// reviewRoundLimit is the declared review round limit; 0 means none.
+	reviewRoundLimit int
+	// store is the audit log the record of Karakuri's own comments is read
+	// from (Phase 40 step 12a); nil until WithStorage.
+	store storage.StorageAdapter
+}
+
+// WithStorage gives the git environment the audit log it reads the comments
+// Karakuri posted from (Phase 40 step 12a).
+func (p *Pack) WithStorage(s storage.StorageAdapter) *Pack {
+	p.store = s
+	return p
+}
+
+// WithReviewRoundLimit sets how many answered third-party comment rounds a
+// stream pull request takes before the stream waits for the owner (Phase 40
+// step 12).
+func (p *Pack) WithReviewRoundLimit(n int) *Pack {
+	p.reviewRoundLimit = n
+	return p
+}
+
+// WithOwnAuthors sets the accounts whose pull request comments are the
+// deployment's own (Phase 40 step 12a).
+func (p *Pack) WithOwnAuthors(a config.OwnAuthorsConfig) *Pack {
+	p.ownAuthors = a
+	return p
 }
 
 // AttachDelegationIssuer gives the CLI environment the issuer for delegation
@@ -49,8 +80,43 @@ func (p *Pack) Capabilities() []capability.Capability {
 }
 
 func (p *Pack) EnvironmentFactories() []environment.Factory {
-	factories := softwareEnvironmentFactories(p.tools)
+	factories := softwareEnvironmentFactories(p.tools, p.ownAuthors, p.reviewRoundLimit)
 	for i, f := range factories {
+		if f.EnvID == EnvGit && p.store != nil {
+			build := f.Build
+			factories[i].Build = func(ctx environment.BuildContext) (environment.Environment, error) {
+				env, err := build(ctx)
+				if git, ok := env.(*gitEnv); ok {
+					git.posted = newPostedCommentReader(p.store)
+				}
+				return env, err
+			}
+			continue
+		}
+		if f.EnvID == "software.env.delivery_work" && p.store != nil {
+			build := f.Build
+			factories[i].Build = func(ctx environment.BuildContext) (environment.Environment, error) {
+				env, err := build(ctx)
+				if work, ok := env.(*deliveryWorkEnv); ok {
+					work.posted = newPostedCommentReader(p.store)
+				}
+				return env, err
+			}
+			continue
+		}
+		if f.EnvID == "software.env.discovery_trigger" && p.store != nil {
+			build := f.Build
+			factories[i].Build = func(ctx environment.BuildContext) (environment.Environment, error) {
+				env, err := build(ctx)
+				if trigger, ok := env.(*discoveryTriggerEnv); ok {
+					trigger.src.Posted = newPostedCommentReader(p.store)
+					trigger.src.ClosingComment = newClosingComment(trigger.vc, p.ownAuthors, trigger.src.Posted)
+					trigger.src.LastCycleEnd = newLastCycleEnd(p.store, marketDiscoveryTemplateID)
+				}
+				return env, err
+			}
+			continue
+		}
 		if f.EnvID != "software.env.cli_agent" {
 			continue
 		}
@@ -67,11 +133,11 @@ func (p *Pack) EnvironmentFactories() []environment.Factory {
 }
 
 func (p *Pack) AgentDefinitions() []agent.Definition {
-	return append(softwareAgentDefinitions(), selfImproveAgents()...)
+	return append(append(softwareAgentDefinitions(), selfImproveAgents()...), pullRequestReviewAgent())
 }
 
 func (p *Pack) ObjectiveTemplates() []objective.Template {
-	return append(append(softwareObjectiveTemplates(), selfImproveTemplates()...), streamTemplates()...)
+	return append(append(append(softwareObjectiveTemplates(), selfImproveTemplates()...), streamTemplates()...), pullRequestReviewTemplate())
 }
 
 func (p *Pack) PlannerHints() []domain.PlannerHint {

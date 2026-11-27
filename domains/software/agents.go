@@ -7,6 +7,11 @@ import (
 	"github.com/bsenel/karakuri/internal/core/capability"
 )
 
+// AgentProposer runs the proposal streams, market_discovery and
+// engineering_backlog: a few autonomous actions, bounded by the templates'
+// limits rather than by permitting none (Phase 40 step 10, ADR 030).
+const AgentProposer agent.AgentID = "software.agent.proposer"
+
 func softwareAgentDefinitions() []agent.Definition {
 	mem := agent.MemoryConfig{
 		WorkingWindowSize: 20,
@@ -93,6 +98,28 @@ func softwareAgentDefinitions() []agent.Definition {
 			Memory: mem, ReasoningStrategy: agent.ReasoningReAct,
 			Authority: authority(0, 0.95),
 			LLMHints:  capability.LLMHints{PreferredProvider: "claude", TemperatureMax: 0.3},
+		},
+		{
+			ID: AgentProposer, Name: "Proposer", Domain: "software",
+			// What a proposal pass does: research or read, then write its
+			// report or roadmap text. Nothing that merges, marks a pull request
+			// ready or runs a shell outside a coding agent's allow-list.
+			// create_pr is not listed because an agent holding it holds
+			// mark_ready too (mark_ready_test.go); the coding agent opens the
+			// pull request with its gh pr create tool, and a planned
+			// software.act.create_pr is still held to the template's
+			// base_branch limit.
+			Capabilities: caps(
+				"software.reason.research", "software.observe.fetch_prs", "software.observe.read_codebase",
+				"software.act.write_code", "software.act.delegate_to_cli",
+			),
+			Memory: mem, ReasoningStrategy: agent.ReasoningReflexion,
+			// Three: the write, the pull request and one retry of the write.
+			// What those actions may hold is the templates' limits, which
+			// confine a pass to its paths, its own branch and a pull request
+			// against main (stream_limits.go).
+			Authority: authority(3, 0.8),
+			LLMHints:  capability.LLMHints{PreferredProvider: "claude", TemperatureMax: 0.6},
 		},
 	}
 }

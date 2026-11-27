@@ -99,6 +99,10 @@ func (s *vcStub) CompareCommits(_ context.Context, repo, base, head string) ([]v
 	return s.compared, nil
 }
 
+func (s *vcStub) ListClosedPRs(context.Context, string, int) ([]versioncontrol.PRSummary, error) {
+	return nil, versioncontrol.ErrUnsupported
+}
+
 func (s *vcStub) ListMergedPRs(context.Context, string, int) ([]versioncontrol.PRSummary, error) {
 	return nil, versioncontrol.ErrUnsupported
 }
@@ -119,6 +123,14 @@ func (s *vcStub) BranchProtected(_ context.Context, repo, branch string) (bool, 
 		return true, s.protectedErr
 	}
 	return s.protected, nil
+}
+
+func (s *vcStub) ListPullRequestComments(context.Context, string, int) ([]versioncontrol.PullRequestComment, error) {
+	return nil, versioncontrol.ErrUnsupported
+}
+
+func (s *vcStub) FileAt(context.Context, string, string, string) (string, error) {
+	return "", versioncontrol.ErrUnsupported
 }
 
 func (s *vcStub) HasPullRequestForHead(context.Context, string, string) (bool, error) {

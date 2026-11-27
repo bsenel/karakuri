@@ -45,6 +45,14 @@ type branchForge struct {
 	headAsks []string
 }
 
+func (f *branchForge) ListPullRequestComments(context.Context, string, int) ([]versioncontrol.PullRequestComment, error) {
+	return nil, versioncontrol.ErrUnsupported
+}
+
+func (f *branchForge) FileAt(context.Context, string, string, string) (string, error) {
+	return "", versioncontrol.ErrUnsupported
+}
+
 func (f *branchForge) HasPullRequestForHead(_ context.Context, _, branch string) (bool, error) {
 	f.headAsks = append(f.headAsks, branch)
 	if f.prsErr != nil {

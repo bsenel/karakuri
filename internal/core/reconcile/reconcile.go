@@ -78,6 +78,12 @@ type Fingerprint struct {
 	Environments map[string]string `json:"environments,omitempty"`
 	// Blind lists environments that returned no SHA.
 	Blind []string `json:"blind,omitempty"`
+	// Idle lists environments whose snapshot says they hold no work (state
+	// "has_work" false). A move into that state is not drift to act on.
+	Idle []string `json:"idle,omitempty"`
+	// Working lists environments whose snapshot says they hold work (state
+	// "has_work" true). With no baseline yet, that is a reason to run.
+	Working []string `json:"working,omitempty"`
 	// TakenAt is when the snapshots were read.
 	TakenAt time.Time `json:"taken_at"`
 }
