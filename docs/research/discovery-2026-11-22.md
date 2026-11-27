@@ -229,7 +229,20 @@ New: yes, for April to early July 2026 and for three forum threads on LLM use. E
 <!-- p4:start -->
 ## Competitive teardown, products 4 onward, and the capability matrix
 
-not started
+Part 4 status: truncated. Written: D (Claude Code), E (incident.io), F (Arize Phoenix). Not reached: Claude Code month-by-month (the changelog carries no dates, so no version could be placed in a month), any incident.io entry with a date, and any full complaint thread for D, E or F. Part 3's status line is present (truncated). Every page was read through a fetch tool that returns a model-written extract, so every external line below is [E] and nothing is quoted. Nothing was built, run or tested. The capability matrix is part 7's.
+
+Not torn down this cycle: Google ADK, Microsoft Agent Framework, GitHub Agentic Workflows (github/gh-aw).
+
+### D. Claude Code and the Claude Agent SDK
+
+New: yes, for versions 2.1.331 and 2.1.332. Still unread: every earlier version in the window; the window could not be mapped to versions.
+
+- **(i) Shipped. Months read: none could be dated.** [E] https://raw.githubusercontent.com/anthropics/claude-code/main/CHANGELOG.md (read 2026-11-27): the file has no release dates; only the top ~40,000 of ~1.42M characters were read (2.1.332 and most of 2.1.331). Observed in those two versions: `/permissions` refuses a rule that would be skipped at next start and says why; a `PreSkillShellCommand` hook event can refuse a skill's inline shell commands at load; a `PermissionDenied` hook's `retry: true` changes meaning; fixes to rewind (a rewind deleting files after a failed restore; a freeze opening a rewind point); fixes to background agents and background commands in `claude -p` and the SDK; "routine" renamed to "cloud scheduled task" in `/schedule` and `/loop`; `gen_ai.*` usage attributes on `claude_code.llm_request` trace spans. One entry mentions a change "on or after November 30, 2026", which only suggests these versions are from late November. The release notes were asked for month by month; they could not be given.
+- **(ii) What it does that Karakuri does not.** Matrix cells, from (i): permission rules evaluated per tool call with hook events that can refuse before a command runs (including at skill load); file-level rewind of a session's edits; recurring prompts in a local `/loop` and in cloud scheduled tasks; OTel `gen_ai.*` attributes on LLM spans. Karakuri's gate is per capability and per action count (internal/core/agent/agent.go:37-48, opened), with no per-shell-command hook and no file rewind (not searched beyond this file).
+- **(iii) What Karakuri does that it does not.** Matrix cells: bounds left empty permit nothing, and opting out needs `UnlimitedActions = -1` (internal/core/agent/agent.go:32-35, opened); per-parameter value limits on a planned action that can refuse rather than escalate (internal/core/agent/agent.go:46-54, opened); third-party text in evidence escalates the plan (internal/core/environment/environment.go:55-59, opened); an audit export with obligations, retention and oversight records (internal/feature/audit/export.go:34-98, opened); a standing objective owned by a reconciler rather than a recurring prompt (AGENTS.md rule 8). Inferred: Claude Code's `/loop` re-runs a prompt; nothing read here says it keeps a declared objective or its authority across runs.
+- **(iv) Complaints.** Not read this pass [N]; the 2026-11-15 cycle read them.
+- **(v) Inferred.** Both late-November versions harden the per-call permission layer (rules that would be silently skipped, hooks at skill load). Claude Code is converging on per-command policy, as Codex did (part 3 A). One version pair; weak.
+<!-- p4:D:end -->
 <!-- p4:end -->
 
 <!-- p5:start -->
