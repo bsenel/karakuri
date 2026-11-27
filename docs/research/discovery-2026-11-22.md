@@ -505,7 +505,7 @@ Incomplete columns, because their part was truncated:
 
 Reasoning for the order (Inferred):
 - Rank 1 is first because the gap is in Karakuri's core claim, that authority is checked before an action, and F1 observed a path where a restored loop acts on checkpoint-time state. The demand is partial: the wait itself has one clean source; the neighbour (approval bound to its action and run) has two organisations. It passes on the neighbour, and the F1 slice covers both. Part 6's caveat stands: the in-process approve path may already re-check.
-- Rank 2 is a recurring complaint (fourth thread pair across two cycles) with a small slice; its feasibility rests on a grep miss, so the first step is reading the retry code.
+- Rank 2 is a complaint that recurs across two cycles and two organisations (p2 ranking) with a small slice; its feasibility rests on a grep miss, so the first step is reading the retry code.
 - Rank 3 is the cheapest: one primary source, part of it already built, and silent rerouting breaks Phase 30 baselines (p5 C3). Low value if `Model` is already the response id.
 - Ranks 4 to 8 may be worth more than rank 3 but have no feasibility row; they go back to part 6 next cycle, not to the bin.
 - Declined by a human: none (p1), so no candidate is excluded on that ground.
