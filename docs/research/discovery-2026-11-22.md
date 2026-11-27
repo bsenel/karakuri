@@ -71,9 +71,92 @@ Not reached this cycle. The session spent its time on the merge, the PR descript
 <!-- p2:start -->
 ## What they ask for and complain about
 
-Part 2 status: in progress; items 1 to 5 not yet written. Part 1's status line is present (truncated).
+Part 2 status: truncated. Items 1 to 4 are written. Not reached: item 5 (second sources for the cancelled-run state and for output overload). Pages that could not be read: claude-code #21460, codex #62943, codex #57101 and the claude-code `permission` search page, each HTTP 504 twice. Part 1's status line is present (truncated).
 
-Method: pages were read on 2026-11-27 through a web-fetch tool, which returns a model-written report of the page. The `gh` CLI was refused in this session. Grading: [Q] means the tool reported the words as verbatim; [E] means an extract or a paraphrase; [N] means not read. Nothing was built, run or tested.
+Method: all pages were read on 2026-11-27 through a web-fetch tool, which returns a model-written report of each page. The `gh` CLI was refused in this session, so no issue was read through the API. Grading: [Q] means the tool marked the words as verbatim page text; [E] means an extract or a paraphrase; [N] means not read. On most pages the tool did not show reaction counts: where a count is missing below, it was not seen, which does not mean it is zero. Nothing was built, run or tested.
+
+**Item 1. Re-validating authority at the moment of action, after a long human wait.** New: yes (a second-source search; the requirement itself is from 2026-11-15).
+- Observed: the only source is still Temporal forum t/19610, titled "Dealing with Authorization/Execution Drift (TOCTOU) in long-running workflows: Recommended patterns?" and opened 2026-06-05 [Q] https://community.temporal.io/t/19610 (read 2026-11-27).
+- Observed, a partial match from a different organisation: langgraph #8102, "RFC: Pre-execution tool call interception hooks for policy enforcement". It was opened 2026-06-16 and closed as not planned on 2026-10-16. The body asks for a policy hook that runs before execution; resume after a wait comes up only in the replies. rpelevin (2026-06-27): [Q] "resume can consume the prior decision only when the proposed envelope is still identical." armorer-labs (2026-06-29): [Q] "execution must re-check that the envelope did not mutate before the tool actually runs." The tool read the first 39,938 of 77,782 characters verbatim and summarised the rest. Several repliers promote their own products. https://github.com/langchain-ai/langgraph/issues/8102 (read 2026-11-27).
+- Observed, a weaker match: openai-agents-python #5413, "Approval decision transfers across runs when call ID is reused", opened 2026-10-24, still open, last comment 2026-11-27. [Q] "a stale approval from a previous interaction can authorize a new execution." The proposed fix: [Q] "Bind approval records to the run that issued them." The issue is about an approval replayed in a later run, not about a wait inside one run. https://github.com/openai/openai-agents-python/issues/5413 (read 2026-11-27).
+- Searched with no match: langgraph `approval expire` (8 results), openai-agents-python `approval stale` (10 results) and modelcontextprotocol `authorization revalidate` (3 results, none relevant).
+- Inferred: there is no clean second source asking for the check after a wait. Two further organisations (LangChain, OpenAI) describe the neighbouring requirement: an approval binds to the exact action, and to the run, that it was given for. Karakuri's Phase 46 rule, under which one approval buys one action, covers the neighbour, not the wait.
+
+**Item 2. Do subagents inherit hooks and permission rules? claude-code #21460, #18950, #27533.** New: yes.
+- #21460: [N]. HTTP 504 twice; its state is unknown. https://github.com/anthropics/claude-code/issues/21460
+- #18950, "Skills/subagents do not inherit user-level permissions from settings.json": open, 72 👍. Its labels include area:permissions, area:security and has repro. In 2026-01 a bot flagged #10906, #11934 and #18172 as possible duplicates; the author disputes this, and the issue was never auto-closed. Linked from the thread: #58652, #64162, #12796, #10337 and #22576. The fetched page hid 22 timeline items, so the comment total is unknown. Last comment, kreare-priv, 2026-06-18: [Q] "Nope, i'm using exactly that and is followed only by the main agent, subagents doesn't follow the auth rules in that file". The latest timeline event is a maintainer adding area:agents, area:permissions and area:skills on 2026-11-20. https://github.com/anthropics/claude-code/issues/18950 (read 2026-11-27).
+- #27533, "[FEATURE] `--freeze-context` / `--context-lock` for subagent and agent team configuration inheritance": a bot closed it as not planned for inactivity on 2026-03-22 and locked it on 2026-03-30. It has 1 👍 and 4 comments, three of them from the bot. The author says it is not a duplicate of #26479, #27194 or #27038. The last comment is the lock notice: [Q] "This issue has been automatically locked since it was closed and has not had any activity for 7 days." https://github.com/anthropics/claude-code/issues/27533 (read 2026-11-27).
+- Inferred: not fixed. The main thread is still open, the last user report says subagents ignore the rules, and a maintainer re-triaged it a week ago. Closing the feature request recorded inactivity, not a shipped feature.
+
+**Item 3. New recurrences since 2026-11-15.** New: yes.
+- A configured timeout is honoured end to end. claude-code #110211, created 2026-11-15, open, 2 comments: when a PostToolBatch SDK callback [Q] "exceeds its configured timeout ends the session with `error_during_execution`", even though `onFailure: continue` is set. https://github.com/anthropics/claude-code/issues/110211. claude-code #112366, created 2026-11-26, 1 comment, apparently open: on macOS, timeouts count time the machine was asleep, so [Q] "the timeout fires as soon as it wakes". That covers MCP idle, hook and Bash limits. https://github.com/anthropics/claude-code/issues/112366 (both read 2026-11-27).
+- A money budget per run. No per-run thread was found. The two nearest are account-level. claude-code #112086, created 2026-11-25, labelled `invalid` by a bot: [Q] "The spend limit did not stop usage at $200." The reporter puts the charge at $222.69; that figure is a claim. https://github.com/anthropics/claude-code/issues/112086. claude-code #110655, created 2026-11-17, open: [Q] "zero notifications at any threshold (50%, 75%, 90%)". https://github.com/anthropics/claude-code/issues/110655 (both read 2026-11-27).
+- Inferred: both new timeout threads come from the same organisation as each other. They add no new organisation, but they show that "configured" and "enforced" still drift apart in two more places, the hook path and the clock source. The budget threads want a cap that holds and an alert before it is reached. They are evidence for spend control in general, not for a per-run budget.
+
+**Item 4. Tracker sweep: open issues from the last 60 days (created on or after 2026-09-28), sorted by reactions.** New: yes. Only the first page of each search was read.
+- anthropics/claude-code. Source: https://github.com/anthropics/claude-code/issues?q=is%3Aissue+is%3Aopen+created%3A%3E%3D2026-09-28+sort%3Areactions-%2B1-desc. The narrower `permission` search returned 504 [N].
+  - #97854, "Auto mode: server-side safety classifier intermittently returns no verdict, blocking Bash and ScheduleWakeup entirely": 39 👍, 4 👀, 31 comments. A maintainer folded #97766, #97812, #97855, #97874 and #98073 into it on 2026-11-20. [Q] "All Bash-based work (including SSH to remote hosts, git operations, running tests) is blocked". https://github.com/anthropics/claude-code/issues/97854
+  - #103832, "Desktop: start_session asks 'Allow Claude to start the session?' even in Bypass mode": 22 👍, 17 comments, duplicate #104101. [Q] "every mcp__ccd_session__start_session call raises an app dialog". https://github.com/anthropics/claude-code/issues/103832
+  - #102136, "Permission prompt defaults to 'Always allow' instead of 'Allow once' - dangerous UX regression": 22 👍, 14 comments. [Q] "Muscle-memory click on the big button silently saves a permanent allow rule". https://github.com/anthropics/claude-code/issues/102136
+  - #98159, "claude.ai: let users set a default permission mode, incl. 'Skip all approvals'": 29 👍, 12 comments. [Q] "authorise routine tool use once and let the task finish without supervision". https://github.com/anthropics/claude-code/issues/98159
+- openai/codex. Sources: https://github.com/openai/codex/issues?q=is%3Aissue+is%3Aopen+created%3A%3E%3D2026-09-28+sort%3Areactions-%2B1-desc and the same search with `approval`.
+  - #51601, "Windows app 26.1002.51308: sandbox setup fails with sharing violation when validating its own active runtime": 31 👍; the comment count is from a summary, about 17. [Q] "Sandbox setup should complete while Codex's own runtime processes are running." https://github.com/openai/codex/issues/51601
+  - #51634, "Windows sandbox provisioning fails with os error 32 when any runtime file is in use (0.162.0-alpha.2 regression)": 16 👍. A bot flagged 5 possible duplicates. Users ask which release carries PR #51822 [E]. https://github.com/openai/codex/issues/51634
+  - #62943 and #57101 were picked but not read [N], so they are not cited.
+  - The tool reported no issue in the sorted lists that was clearly about hooks, budget, durability, resume, audit or delegation.
+- langchain-ai/langgraph. Sources: https://github.com/langchain-ai/langgraph/issues?q=is%3Aissue+is%3Aopen+created%3A%3E%3D2026-09-28+sort%3Areactions-%2B1-desc and the same search with `interrupt`. Reactions were not shown on any page.
+  - #9706, "Strict resume accepts a bare resume on a thread that was never started or has already finished": created 2026-11-14, 3 comments. [Q] "A bare `Command(resume=value)` is still accepted when nothing is pending". https://github.com/langchain-ai/langgraph/issues/9706
+  - #9491, "Time travel to an interrupt reapplies the Command(update=...) of the old branch": 4 comments, labelled bug. [Q] "`Command(update=...)` is stored as null-task pending writes". https://github.com/langchain-ai/langgraph/issues/9491
+  - #9480, "pydantic RootModel state loses its type on checkpoint round trip and breaks interrupt/resume": 4 comments. [Q] "does not survive a checkpoint round trip." https://github.com/langchain-ai/langgraph/issues/9480
+  - #9277, "interrupt_after='node_one' pauses on a node named 'no'": 3 comments. [Q] "`interrupt_after` should pause after the node named `node_one`." https://github.com/langchain-ai/langgraph/issues/9277
+- Not swept: openai/openai-agents-python (only #5413, read for item 1), google/adk-python, the temporalio SDKs, modelcontextprotocol/modelcontextprotocol (one search for item 1 only) and BerriAI/litellm.
+- Inferred: the claude-code issues with the most reactions are about approval UX, not approval semantics. Users want fewer and safer prompts: a default that does not save a permanent rule, a bypass that really bypasses, and a classifier that does not block all work when it fails. The langgraph issues are about the correctness of resume: a resume with nothing pending, a stale update reapplied, state that does not survive the checkpoint. Codex's most-reacted issues are Windows sandbox setup failures.
+
+**Ranking (part 2).** "Orgs" counts independent organisations seen this pass or carried from 2026-11-15. Counts are as the pages showed them.
+
+| Requirement | Independent orgs | Sources | Counts | Strength | New |
+|---|---|---|---|---|---|
+| Approval prompts that are safe by default and few (allow once, bypass honoured, a classifier failure does not block work) | 1 (Anthropic users); codex permission-selector issue unread | claude-code #97854, #103832, #102136, #98159 | 39/22/22/29 👍; 31/17/14/12 comments; 6 duplicates folded | high | yes |
+| Subagents inherit the parent's permission rules and hooks | 1 | claude-code #18950 (+#27533 closed) | 72 👍; maintainer re-triaged 2026-11-20 | high | no (state new) |
+| Resume and interrupt are correct (refuse a bare resume, no stale replay, state survives the checkpoint) | 2 (LangChain; OpenAI via #5413) | langgraph #9706, #9491, #9480, #9277; agents-python #5413 | 3 to 4 comments each; reactions not seen | medium | yes |
+| A configured timeout is honoured end to end | 2 (2026-11-15) + 2 new threads at Anthropic | claude-code #110211, #112366; earlier litellm #49751 | 2 and 1 comments | medium | no (recurrence new) |
+| Spending cap that holds, alerts before it is reached | 1 | claude-code #112086, #110655 | 2 comments each; one labelled invalid | low-medium | yes (account-level, not per-run) |
+| Approval binds to the exact action and run; re-check authority at execution after a wait | 3 partial (Temporal user, LangChain thread, OpenAI) | t/19610; langgraph #8102; agents-python #5413 | 439 views (2026-11-15); #8102 closed not planned | low-medium | no (2nd source partial) |
+| Sandbox setup that works on Windows | 1 | codex #51601, #51634 | 31 and 16 👍 | medium | yes (out of Karakuri's scope) |
+
+**Still thin (part 2).**
+- claude-code #21460 unread (504); next: the same URL, or the API through `gh` in a session that allows it.
+- No clean second source for re-checking authority after a long wait; next: langgraph #8026 (ApprovalNode, referenced in #8102) and the temporalio SDK trackers.
+- No per-run money budget asked for by users. The threads found are account caps; next: https://github.com/openai/codex/issues/62694 (unread).
+- Reaction counts on langgraph and on the new claude-code threads were not shown; next: the issues API.
+- Codex #62943 (permission selectors lost) and #57101 unread (504).
+- Item 5 not reached: the cancelled-run state and output overload still lack a second-source search.
+
+**Earlier thin spots in this area.** Cycles are counted with this one included.
+- 2026-11-15, re-validate authority after a wait (one source): still thin; two partial neighbours found. Open 2 cycles.
+- 2026-11-15, durable state across a cancelled run (second organisation): still thin, not searched. Open 2 cycles.
+- 2026-11-15, "nobody can read all these outputs": still thin, not searched. Open 2 cycles.
+- 2026-11-15, subagent inheritance #21460, #18950, #27533 (from the p3 next steps): partly filled; #18950 open and #27533 closed not planned; #21460 unread. Open 2 cycles.
+- 2026-11-15, the tracker sweep: partly filled for three repositories; five repositories not swept. Open 2 cycles.
+- 2026-11-15, opencode undo (#5474), crewAI #6043 comments, the two unverified figures: still thin, not attempted. Open 2 cycles.
+
+**Sources (part 2).** All primary unless marked; all read 2026-11-27.
+- https://community.temporal.io/t/19610: primary, title only [Q]
+- https://github.com/langchain-ai/langgraph/issues/8102: primary, first half verbatim, rest extract [Q]/[E]
+- https://github.com/openai/openai-agents-python/issues/5413: primary [Q]
+- Searches: langgraph `approval expire`, openai-agents-python `approval stale`, modelcontextprotocol `authorization revalidate`: primary list pages, used only to choose issues [E]
+- https://github.com/anthropics/claude-code/issues/21460: [N] (504)
+- https://github.com/anthropics/claude-code/issues/18950: primary [Q]
+- https://github.com/anthropics/claude-code/issues/27533: primary [Q]
+- https://github.com/anthropics/claude-code/issues/110211, /112366, /112086, /110655: primary [Q]
+- Search pages for timeout and budget in claude-code and codex (created on or after 2026-11-15): list pages for choosing issues [E]
+- https://github.com/anthropics/claude-code/issues/97854, /103832, /102136, /98159: primary [Q]
+- The claude-code `permission` search: [N] (504)
+- https://github.com/openai/codex/issues/51601: primary, later comments extract only [Q]/[E]
+- https://github.com/openai/codex/issues/51634: primary, comments extract only [Q]/[E]
+- https://github.com/openai/codex/issues/62943, /57101: [N] (504)
+- https://github.com/langchain-ai/langgraph/issues/9706, /9491, /9480, /9277: primary [Q]
+- The three sorted search pages (claude-code, codex, langgraph): list pages for choosing issues [E]
 <!-- p2:end -->
 
 <!-- p3:start -->
