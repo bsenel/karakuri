@@ -1,5 +1,5 @@
 import { act, render, screen, waitFor } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { get, post, stream } = vi.hoisted(() => ({
@@ -29,11 +29,20 @@ describe('ObjectiveDetailPage stream', () => {
   beforeEach(() => {
     get.mockReset();
     post.mockReset();
+    // jsdom has no scrollTo; the page scrolls the event list after each event.
+    if (!Element.prototype.scrollTo) Element.prototype.scrollTo = vi.fn() as never;
   });
 
   it('says live updates are disconnected, and drops the notice once events resume', async () => {
     get.mockResolvedValue(objective);
-    render(<MemoryRouter><ObjectiveDetailPage /></MemoryRouter>);
+    // The page reads its id from the route; without one it never subscribes to the stream.
+    render(
+      <MemoryRouter initialEntries={['/objectives/o1']}>
+        <Routes>
+          <Route path="/objectives/:id" element={<ObjectiveDetailPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
     await waitFor(() => expect(screen.getByRole('heading', { name: 'Ship the docs' })).toBeInTheDocument());
 
     act(() => stream.emit({ type: 'stream_error', timestamp: '2026-11-22T10:00:00Z' }));
