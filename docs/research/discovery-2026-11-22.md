@@ -475,6 +475,40 @@ Incomplete columns, because their part was truncated:
 - **Phoenix** (part 4) is the most complete column (six months of dated notes).
 - Google ADK, Microsoft Agent Framework and gh-aw have no column: not torn down this cycle (p4).
 - Inferred: a Karakuri "O" means the code exists at that line; none of it was run this cycle.
+
+### B. Fit and bets
+
+**Fit per segment (part 1 names four segments but added no user or job this cycle, so every line here is Inferred from the matrix and parts 2 to 6).**
+- (1) Team running an agent in an incident or on call. Strong: provenance-aware escalation, because an alert body or chat message is third-party text (`environment.go:55-59`, p4 E iii). Weak: no incident path, paging integration or investigation agent (p4 E ii); incident.io sells approval before change inside the incident tool (p4 E v). Why they would NOT want it: they already live in an incident tool that now takes their own skills and tools (p4 E i), and Karakuri would be a second place to approve things. No responder's account has been read (seven cycles, see C).
+- (2) Self-hosters. Strong: one server process (ADR 001) with OTLP, Prometheus, Loki and Datadog exporters (p4 E iii); a budget per objective run (p6 F3). Weak: no self-hoster has been heard in their own words; CIMD would need a stable public https URL per install (p5 A5). Why NOT: pre-alpha (Phase 47 gate, p1); Temporal and LangGraph already give them a durable substrate they trust (p3 B, C).
+- (3) Who reviews and merges gh-aw or repo-resident agent PRs. Strong: checkpoints that refuse a stale answer (`checkpoint/service.go:185-197`) and delivery worktrees. Weak: nothing read this cycle about this segment (search refused, p1); gh-aw was not torn down (p4). Why NOT: GitHub-native agents sit where the PR already is. Close to irrelevant until a source says who they are.
+- (4) Regulated organisation, agent on its own authority. Strong: audit row with provider, model, rung, approver and bound violation (`adapter.go:122-132`), evidence export (`audit/export.go:34-98`), retention setting (p6 A4). Weak: whether default retention meets Article 26(6)'s six months is unchecked (p6 A4); no security questionnaire or procurement text read (p6 A3). Why NOT: the Annex III dates moved to 2027-12-02 on one Commission page (p6 A2), which lowers urgency; and every regulated example found so far is a reviewed assistant, not an agent acting alone (p1).
+
+**Candidates ranked by expected value.** Bar: DEMAND needs primary sources from at least two independent organisations; FRONTIER BET needs a primary technical source; both need a part 6 feasibility row. At most five pass.
+
+| Rank | Candidate | Kind | Primary sources | Feasibility (p6) | State on main | Verdict |
+|---|---|---|---|---|---|---|
+| 1 | Approval binds to the action and run it was given for, and authority and world state are re-checked at the moment of action | DEMAND | langgraph #8102 replies (LangChain tracker, 2026-06); openai-agents-python #5413 (OpenAI); Temporal forum t/19610 (p2 item 1) | F1: restored loop acts on `approved.observed, approved.plan` without observing again, `runner.go:240-251` | Not built; Phase 46 (planned) covers the one-approval-one-action neighbour, not the wait | **passes the bar** |
+| 2 | A configured timeout is honoured end to end (one whole-call deadline on the provider path) | DEMAND | claude-code #110211, #112366 (Anthropic users); litellm #49751 (BerriAI, carried from 2026-11-15) (p2 item 3) | F4: no timeout found in `internal/platform/llm/*.go` by grep; retry code unopened | Not built; not a phase | **passes the bar** |
+| 3 | Record the model that answered, not the model asked for | FRONTIER BET | Gemini changelog 2026-11-02, rerouting of `gemini-2.5-pro` (p5 C3) | F6: `Model` in the audit row, `adapter.go:124-131`; which id is written untraced | Partly built (Phase 31) | **passes the bar** (first slice is a trace, possibly a one-line fix) |
+| 4 | Resume and interrupt correctness (refuse a bare resume, no stale replay, state survives the checkpoint) | DEMAND | langgraph #9706, #9491, #9480, #9277; openai-agents-python #5413 (p2 item 4) | none | Unknown | not assessed (truncated): part 6 has no row |
+| 5 | Delegation record shaped like a transaction token | FRONTIER BET | `draft-araut-oauth-transaction-tokens-for-agents-03`, `draft-niyikiza-oauth-attenuating-agent-tokens-02` (p5 A4) | none | Not built | not assessed (truncated): part 6 |
+| 6 | Revoking an objective cascades to its delegates | FRONTIER BET | `draft-chen-oauth-agent-revocation-01` (p5 A4) | none | Unknown whether delegates hold credentials (p5) | not assessed (truncated): part 6 |
+| 7 | CIMD as the MCP client registration path | FRONTIER BET | `draft-ietf-oauth-client-id-metadata-document-03`; MCP draft changelog (p5 A1, A5) | none | MCP client exists (`tools/mcp/client.go:71`); OAuth unchecked | not assessed (truncated): part 6 |
+| 8 | Pin the OTel GenAI convention version | FRONTIER BET | semantic-conventions-genai v0.1.0 (p5 A3) | none (this part found `gen_ai.*` names at `internal/core/telemetry/genai.go:7,12`, which is not a feasibility row) | Attributes built, version unpinned | not assessed (truncated): part 6 |
+| 9 | Rewind of a delivered change | DEMAND (earlier cycles) | none re-read this cycle | F5 marked "not assessed further" | Not built | not assessed (truncated): part 6 F5 incomplete |
+| 10 | Subagents inherit the parent's permissions and hooks | DEMAND | claude-code #18950 (one user organisation); Codex 0.170.0 is a vendor fix, not demand (p2 item 2, p3 A) | F7 | **Already Phase 49 (planned)** | does not pass (evidence): one organisation, and the phase already exists |
+| 11 | Safe-by-default, fewer approval prompts | DEMAND | claude-code #97854, #103832, #102136, #98159 (p2 item 4) | none | n/a | does not pass (evidence): all four threads are one product's users; also no row |
+| 12 | Per-run money budget with a warning before the cap | DEMAND | claude-code #112086, #110655 (account caps, one organisation) (p2 item 3) | F3: built for objective runs, `budget.go:27-55` | Partly built (Phase 23) | does not pass (evidence): one organisation, account-level not per-run |
+| 13 | Refuse an answer to a superseded checkpoint | n/a | p3 (iii) | F2: **already built**, `checkpoint/service.go:195-197` | Built (Phase 40) | does not pass (evidence): already built |
+| 14 | Windows sandbox setup | DEMAND | codex #51601, #51634 (p2 item 4) | out of scope (p6) | n/a | does not pass (evidence): one organisation and outside Karakuri's scope |
+
+Reasoning for the order (Inferred):
+- Rank 1 is first because the gap is in Karakuri's core claim, that authority is checked before an action, and F1 observed a path where a restored loop acts on checkpoint-time state. The demand is partial: the wait itself has one clean source; the neighbour (approval bound to its action and run) has two organisations. It passes on the neighbour, and the F1 slice covers both. Part 6's caveat stands: the in-process approve path may already re-check.
+- Rank 2 is a recurring complaint (fourth thread pair across two cycles) with a small slice; its feasibility rests on a grep miss, so the first step is reading the retry code.
+- Rank 3 is the cheapest: one primary source, part of it already built, and silent rerouting breaks Phase 30 baselines (p5 C3). Low value if `Model` is already the response id.
+- Ranks 4 to 8 may be worth more than rank 3 but have no feasibility row; they go back to part 6 next cycle, not to the bin.
+- Declined by a human: none (p1), so no candidate is excluded on that ground.
 <!-- p7:end -->
 
 <!-- p8:start -->
