@@ -192,6 +192,9 @@ type Block struct {
 	// what it is about and how many passes saw it.
 	Subject string `json:"subject,omitempty"`
 	Count   int    `json:"count,omitempty"`
+	// Attempts is how many diagnose-and-fix passes failed on the blocker
+	// (Phase 40 step 14c).
+	Attempts int `json:"attempts,omitempty"`
 }
 
 // Progress is the weight the optional criteria earned out of their total, as
