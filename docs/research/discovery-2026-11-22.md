@@ -302,6 +302,14 @@ Extends the p5 'Technical frontier' sections of discovery-2026-11-15, -11-08 and
 **A2. A2A: v1.0.1 is still the latest.** Observed [E] (https://github.com/a2aproject/A2A/releases): the latest release is v1.0.1 (changelog dated 2026-05-26), with three spec fixes: `application/a2a+json` preferred, transcoding error changes, and TaskStatus values. Maturity: 1.0 spec. New: no, because there has been no release in six months. Inferred: A2A is stable enough to target, but no implementer page has been read in two cycles, so how widely it is adopted is still unknown.
 
 **A3. OpenTelemetry GenAI conventions: first standalone release.** Observed [E] (https://github.com/open-telemetry/semantic-conventions-genai/releases): v0.1.0, released 21 November 2026, is the repository's first release and depends on semantic-conventions v1.45.0. It renames the registry span type `gen_ai.execute_tool.internal` to `gen_ai.execute_tool`. The releases page does not say whether `invoke_agent` and `execute_tool` are development or stable. Maturity: a 0.x release, which is pre-stable by its version number (Inferred). New: yes. What it would let Karakuri do: Phase 29's agent and tool spans can pin to a versioned GenAI convention instead of tracking a moving doc page, so a dashboard built on Karakuri's spans does not break silently. Inferred: Karakuri should name the convention version it emits, `v0.1.0`, in its span attributes or its docs.
+
+### Sources (part 5)
+
+| URL | Date read | Primary or secondary | Grade |
+|-----|-----------|----------------------|-------|
+| https://modelcontextprotocol.io/specification/draft/changelog | 2026-11-27 | primary | [E] |
+| https://github.com/a2aproject/A2A/releases | 2026-11-27 | primary | [E] |
+| https://github.com/open-telemetry/semantic-conventions-genai/releases | 2026-11-27 | primary | [E] |
 <!-- p5:end -->
 
 <!-- p6:start -->
