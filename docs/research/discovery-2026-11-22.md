@@ -291,7 +291,7 @@ Why this one: Langfuse was read on 2026-11-15; Phoenix publishes dated release n
 <!-- p5:start -->
 ## Technical frontier
 
-Part 5 status: in progress (2026-11-27). Part 4's status line is present (truncated). Nothing was built, run or tested.
+Part 5 status: truncated. Written: A1 to A5 (MCP, A2A, OTel GenAI, the five IETF agent-authorisation drafts read past the title, and CIMD `-03`), the bets, the thin spots and the sources. Not reached: B (research papers) and C (provider release notes), because the fetches did not return within the 600-second budget. Part 4's status line is present (truncated). Nothing was built, run or tested.
 
 Extends the p5 'Technical frontier' sections of discovery-2026-11-15, -11-08 and -11-01 without repeating them. The roadmap on origin/main has MCP 2026-07-28 built (Phase 33) and Phase 42 planned; no later revision is planned. Every page came through a fetch tool that returns a model-written extract, so every external line is [E] unless marked [Q]. Date read for every source: 2026-11-27.
 
@@ -312,6 +312,30 @@ Extends the p5 'Technical frontier' sections of discovery-2026-11-15, -11-08 and
 - Inferred across A4: three drafts in six days (26 to 31 October) attack the same delegation-chain gap from three sides: attenuation, chain context and revocation. No draft is adopted and none has a second implementer that this pass found. Karakuri should not implement any of them now, but its own delegation record (who delegated to whom, with which bounds) should carry the same fields (chain id, hop count, parent, narrowed scope) so that it can be put on the wire later.
 
 **A5. OAuth Client ID Metadata Document, `draft-ietf-oauth-client-id-metadata-document-03`** (2026-11-02, OAuth working-group document, Standards Track). This fills 2026-11-15's 'is CIMD used'. Sections 3 to 6 read [E]: the `client_id` is an https URL with a non-root path, and the authorisation server fetches the JSON document at that URL. The document's `client_id` must equal the URL by simple string comparison. The fetch must return 200 and must not follow redirects. The document may carry public keys but never a `client_secret`. Caching follows HTTP cache headers, and errors are not cached. Maturity: a working-group draft that the MCP draft spec requires at `-03` for implementations that support CIMD (A1). New: yes (the `-03` body). What it would let Karakuri do: an MCP client with no pre-registration at each server, so a twin can bind a new authenticated MCP server without an operator registering a client first. Not checked in code: whether Karakuri's MCP client (Phase 28/33) does OAuth at all. Inferred: if Phase 42 or a later phase adds MCP auth, CIMD `-03` is the registration path to build, and Karakuri would have to host its metadata document at a stable https URL. That is a deployment requirement for self-hosted installs.
+
+### Candidate frontier bets (part 5)
+
+- **A delegation record shaped like a transaction token.** Primary sources: `draft-araut-oauth-transaction-tokens-for-agents-03` and `draft-niyikiza-oauth-attenuating-agent-tokens-02` (A4). The bet: every delegation Karakuri makes records the chain id, hop count, parent and narrowed bounds, so it can later be issued as a token a resource server verifies. Proved wrong if both drafts expire without working-group adoption by the next IETF meeting, or if the OAuth WG adopts a shape with different fields.
+- **Revoking an objective cascades to its delegates.** Primary source: `draft-chen-oauth-agent-revocation-01` (A4). The bet: stopping a standing objective revokes every credential handed to its delegated agents, with an audit reference. Proved wrong if a code trace shows that delegated agents hold no credential that outlives the run.
+- **CIMD as the MCP client registration path.** Primary sources: `draft-ietf-oauth-client-id-metadata-document-03` (A5) and the MCP draft changelog (A1). Proved wrong if the next MCP revision drops CIMD or keeps dynamic client registration as the recommended path.
+- **Pin the OTel GenAI version.** Primary source: semantic-conventions-genai v0.1.0 (A3). Proved wrong if `invoke_agent` and `execute_tool` are renamed again before a 1.0 release, which would make pinning 0.x churn.
+
+### Still thin (part 5)
+
+- (B) No paper read this pass. A pass^k (repeated-run reliability) paper has still not been found.
+- (C) Anthropic, OpenAI and Gemini release notes for 2026-09-27 to 2026-11-27 were not read this pass. Google ADK has now gone unread for three cycles.
+- (A) The OTel spec pages for the status (development or stable) of `invoke_agent` and `execute_tool` were not read. A4's later sections came only as a summary. There is still no A2A implementer page and no MCP SEP list.
+- Not checked in code: whether the MCP client does OAuth at all, and whether delegated agents hold credentials that outlive a run.
+
+### Earlier thin spots in this area
+
+- IETF drafts read by title only (open since 2026-11-15, 1 cycle): **filled** for the abstracts and core sections; the later sections are still thin.
+- Whether Karakuri's MCP client uses CIMD (open 1 cycle): **half filled**. The draft has been read; the code has not been checked.
+- OTel span names at the new repository (open 1 cycle): **partly filled**. The release was read; the span status was not.
+- MCP SEP list and ext-auth (open 1 cycle): still thin, now 2 cycles.
+- A2A implementer page (open 2 cycles): still thin, now 3 cycles.
+- OpenAI and Google AI Studio changelogs (open 1 cycle): still thin, now 2 cycles. Google ADK release notes: still thin, now 3 cycles.
+- pass^k reliability paper (open 1 cycle): still thin, now 2 cycles.
 
 ### Sources (part 5)
 
