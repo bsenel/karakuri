@@ -109,9 +109,9 @@ func containerCreateCmd(kind, short string, needsOrg bool) *cobra.Command {
 	_ = cmd.MarkFlagRequired("name")
 	switch {
 	case needsOrg:
-		cmd.Flags().StringVar(&org, "org", "", "Organisation this belongs to")
+		cmd.Flags().StringVar(&org, "org", "", "Name of the organisation the team belongs to, from krk org list (required)")
 	case kind == "org":
-		cmd.Flags().StringVar(&org, "org", "", "Parent organisation, for a subsidiary")
+		cmd.Flags().StringVar(&org, "org", "", "Name of the parent organisation, from krk org list; set it only for a subsidiary")
 	}
 	return cmd
 }
@@ -144,7 +144,7 @@ func containerListCmd(kind, short string) *cobra.Command {
 		},
 	}
 	if kind == "team" {
-		cmd.Flags().StringVar(&org, "org", "", "Only teams directly inside this organisation")
+		cmd.Flags().StringVar(&org, "org", "", "Name of an organisation, from krk org list; shows only teams directly inside it")
 	}
 	return cmd
 }
@@ -172,7 +172,7 @@ func containerRenameCmd(kind, short string) *cobra.Command {
 	cmd.Flags().StringVar(&name, "to", "", "New display name")
 	_ = cmd.MarkFlagRequired("to")
 	if kind == "team" {
-		cmd.Flags().StringVar(&org, "org", "", "Organisation the team is in")
+		cmd.Flags().StringVar(&org, "org", "", "Name of the organisation the team is in, from krk org list")
 	}
 	return cmd
 }
@@ -210,7 +210,7 @@ func containerDeleteCmd(kind, short string) *cobra.Command {
 		},
 	}
 	if kind == "team" {
-		cmd.Flags().StringVar(&org, "org", "", "Organisation the team is in")
+		cmd.Flags().StringVar(&org, "org", "", "Name of the organisation the team is in, from krk org list")
 	}
 	return cmd
 }
@@ -253,8 +253,8 @@ func teamMoveCmd() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&fromOrg, "org", "", "Organisation the team is currently in")
-	cmd.Flags().StringVar(&toOrg, "to-org", "", "Organisation to move it to")
+	cmd.Flags().StringVar(&fromOrg, "org", "", "Name of the organisation the team is in now, from krk org list")
+	cmd.Flags().StringVar(&toOrg, "to-org", "", "Name of the organisation to move the team to, from krk org list")
 	_ = cmd.MarkFlagRequired("to-org")
 	return cmd
 }
