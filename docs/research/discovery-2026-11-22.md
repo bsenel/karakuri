@@ -383,7 +383,63 @@ Entries that 2026-11-15 C1 already recorded (self-hosted Managed Agents, Fable 5
 <!-- p6:start -->
 ## Governance and buying criteria; Feasibility
 
-not started
+Part 6 status: truncated. Written: (A) the AI Act amendment status from Commission pages, and what Karakuri can evidence; (B) seven feasibility rows. Not reached: the Article 113 and 26(6) text (the EUR-Lex read had not returned when this was committed), US state AI laws, NIST guidance on AI agents, UK AI procurement guidance and a published security questionnaire (no source read for any of them). Part 5's status line is present (truncated). Every web page was read through a fetch tool that returns a model-written extract, so every external line is [E] and nothing is quoted. Nothing was built, run or tested.
+
+### A. Governance and buying criteria
+
+**A1. EU AI Act, Article 113 and Article 26(6).** Not read this pass [N] (see the status line). Still thin.
+
+**A2. The Digital Omnibus on AI.** Observed [E]: the Commission proposal is COM(2025) 836 final, procedure 2025/0359(COD), dated 2025-11-19, amending Regulations (EU) 2024/1689 and (EU) 2018/1139 (https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:52025PC0836; https://digital-strategy.ec.europa.eu/en/library/digital-omnibus-ai-regulation-proposal). As proposed, the high-risk rules in Chapter III Sections 1 to 3 would apply after a Commission decision that support measures are available, with Annex III six months and Annex I twelve months after it, and fallback dates of 2027-12-02 (Annex III) and 2028-08-02 (Annex I). Only the start of the proposal text was read; the rest came as a summary. Observed [E]: a Commission news item, "AI Omnibus enters into force", gives 2026-07-27 as the entry into force, says Annex III high-risk rules apply from 2027-12-02 and Annex I from 2028-08-02, and links the text as OJ L_202601744 (https://digital-strategy.ec.europa.eu/en/news/ai-omnibus-enters-force, page updated 2026-07-31). Not read: the OJ text itself, so the final wording of Article 113 and whether the decision trigger survived are unverified. The Council press page returned HTTP 403 [N]; no Parliament or Council dates were read. Inferred: the high-risk dates have moved from 2026-08-02 to 2027-12-02 (Annex III) and 2028-08-02 (Annex I), on one Commission page. Nothing read says Article 26(6) was amended.
+
+**A3. US state laws, NIST, UK procurement, security questionnaire.** Not reached (time) [N].
+
+**A4. What Karakuri can already evidence (code opened unless marked).**
+- Authority bounds: `internal/core/agent/agent.go:37-55` (`MaxAutonomousActions`, `RequiresApprovalFor`, `CanDelegate`, `ConfidenceThreshold`, `ActionLimits`, `RefuseOutsideLimits`); the zero value permits nothing (`agent.go:32-35`). Applied in `internal/feature/loop/decide.go:135`.
+- The audit row records what produced the decision: `internal/platform/storage/adapter.go:124-132` (`Provider`, `Model`, `TemplateID`, `AutonomyRung`, Phase 31), with `Approver` and `BoundsViolation` at `adapter.go:122-123`.
+- Checkpoints: a resolved or superseded checkpoint refuses a second decision, `internal/feature/checkpoint/service.go:185-197`; `Supersede` at `service.go:250-262`.
+- Evidence export and audit API, located by grep and not opened this pass: `internal/feature/audit/export.go:177` (`Export` over a window), `:254` (checkpoints), `:356` (unmet obligations); `internal/api/handler/audit.go:52` (`ExportWindow`); retention at `internal/app/bootstrap.go:458`.
+- Inferred: Karakuri can show an audit log, an export and a retention setting. Whether the default retention meets the Article 26(6) minimum was not checked, and the article text was not read this pass.
+
+### B. Feasibility
+
+Read from origin/main: the phase list (`git show origin/main:docs/roadmap.md | grep -n '^## Phase'`), Phases 12 to 49. README.md was not read (time).
+
+Candidates raised in parts 1 to 5 and still open from 2026-11-15: (1) re-validate authority at the moment of action; (2) refuse an answer to a superseded checkpoint; (3) per-run money budget; (4) timeout honoured end to end; (5) rewind; (6) record the model that answered; (7) subagents inherit the parent's permissions; (8) safe-by-default approval prompts; (9) delegation record shaped like a transaction token; (10) revocation cascades to delegates; (11) CIMD for MCP client registration; (12) pin the OTel GenAI version; (13) Windows sandbox (out of scope).
+
+| # | Candidate | Exists (path:line) | Missing | First slice, files | Not verified |
+|---|---|---|---|---|---|
+| F1 | Re-validate authority at the moment of action (p2 item 1) | A restored loop whose checkpoint has been approved acts on `approved.observed, approved.plan`, the world state from checkpoint time, without observing again: `internal/feature/loop/runner.go:240-251`; `approvedPlan` at `service.go:200-215`. Phase 46 (planned) makes an approval after third-party text buy one action. | No re-check of bounds or world state between approval and action on this path. | Before acting on `takeApproved()`, observe again and re-run `DecideActions` against the current bounds; refuse with an audit row if the verdict narrows. Files: `internal/feature/loop/runner.go`, `decide.go`, tests. | The in-process (no restart) approve path was not read; it may already re-check. |
+| F2 | Refuse an answer to a superseded checkpoint (p3 (v)) | **Already built**: `internal/feature/checkpoint/service.go:195-197` (Phase 40 step 5); resolved ones at `:190-192`. | Nothing for the stated case. | none | Whether the HTTP handler maps the error to a 409 was not read. |
+| F3 | Per-run money budget (p2, 2026-11-15) | **Already built for objective runs**: `budgetedAgent` with per-run `spent`, `internal/feature/loop/budget.go:27-55`, `Budget.PerReconcile` (Phase 23); `RunBudgetSpent` outcome at `internal/core/loop/state.go:70`. | An ad-hoc run with no twin is not metered (`budget.go:65-69`). No warning before the cap was found. | A warning at a share of the ceiling in `budget.go`, plus a digest line. | The 2026-11-15 p4b 'no' for a per-run money budget looks wrong for objective runs. Whether the API exposes a ceiling per one-shot run was not checked. |
+| F4 | Timeout honoured end to end (p2) | Delegation timeout in config: `config/default.yaml:402`, `:421`. No timeout found in `internal/platform/llm/*.go` (grep; only a comment at `claude.go:140`). | A whole-call deadline covering retries on the provider path. | Read the provider retry code first; then one deadline per model call in `internal/platform/llm`. | The retry code was not opened; a grep miss is not proof of absence. |
+| F5 | Rewind | Worktree manager methods `internal/platform/git/gogitwt.go:56` (Create), `:157` (Remove), `:184` (Prune), listed only. | No method that reverts a delivered change appears in that list. | not assessed further | The Phase 44 salvage branch and the Phase 37 'stopped, not undone' text were not read. |
+| F6 | Record the model that answered (p5) | **Already built** in the audit row: `internal/platform/storage/adapter.go:124-131` (Phase 31). | Unknown whether `Model` is the requested id or the id the provider returned. | If it is the requested one, store the response's model id in the LLM adapter (`internal/platform/llm/*`). | Which id is written was not traced. |
+| F7 | Subagents inherit the parent's permissions (p2 item 2) | `CanDelegate` at `agent.go:43`; Phase 49 (planned), 'A Bound That Says No Delegation Is Kept'. | **Already a planned phase.** | Phase 49 | Phase 49's steps were not read. |
+
+Not assessed (time): (8) safe-by-default approval prompts, (9) transaction-token delegation record, (10) revocation cascade, (11) CIMD, (12) OTel GenAI pin. (13) is out of scope.
+
+### Still thin (part 6)
+
+- The Article 113 and 26(6) text, the Omnibus OJ text (L_202601744), and the Council and Parliament dates [N].
+- US state laws, NIST agent guidance, UK procurement guidance and a security questionnaire: none read.
+- F1's in-process approve path, F4's retry code and F5's revert path were not opened.
+- README.md was not read; `internal/feature/audit/export.go` was located but not opened.
+
+### Earlier thin spots in this area
+
+- AI Act Art. 113 and 26(6) text (open since 2026-11-08, 3 cycles): still thin, now 4 cycles. The amendment status is **partly filled** from Commission pages.
+- Feasibility of most rows (open 2 cycles): **partly filled**, 7 of 13 rows assessed.
+- Rewind feasibility (open 3 cycles): still thin, now 4 cycles.
+- A regulated organisation with an agent that holds its own authority (open since 2026-11-08): not touched, still thin.
+
+### Sources (part 6)
+
+| URL | Date read | Primary or secondary | Grade |
+|---|---|---|---|
+| https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:52025PC0836 | 2026-11-27 | primary | [E] start only, rest summary |
+| https://digital-strategy.ec.europa.eu/en/library/digital-omnibus-ai-regulation-proposal | 2026-11-27 | primary | [E] |
+| https://digital-strategy.ec.europa.eu/en/news/ai-omnibus-enters-force | 2026-11-27 | primary | [E] |
+| https://www.consilium.europa.eu/en/press/press-releases/ | 2026-11-27 | primary | [N] HTTP 403 |
 <!-- p6:end -->
 
 <!-- p7:start -->
