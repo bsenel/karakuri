@@ -50,3 +50,15 @@ func TestContainerOrgFlagHelp(t *testing.T) {
 		t.Errorf("checked %d organisation flags, want 7", checked)
 	}
 }
+
+// "--project string   Project to share into" sat beside "--twin string
+// Twin ID, from krk twin list": the sibling flag said where its value comes
+// from and this one did not.
+func TestProjectTwinFlagHelp(t *testing.T) {
+	for _, cmd := range []*cobra.Command{projectAddCmd(), projectRemoveCmd()} {
+		usage := cmd.Flags().Lookup("project").Usage
+		if !strings.Contains(usage, "Name of") || !strings.Contains(usage, "krk project list") {
+			t.Errorf("%s --project usage %q does not say it takes a name from krk project list", cmd.Name(), usage)
+		}
+	}
+}

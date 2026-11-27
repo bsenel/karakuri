@@ -273,7 +273,7 @@ func projectAddCmd() *cobra.Command {
 			return setTwinContainers(project, twin, true)
 		},
 	}
-	cmd.Flags().StringVar(&project, "project", "", "Project to share into")
+	cmd.Flags().StringVar(&project, "project", "", "Name of the project to share the twin into, from krk project list")
 	cmd.Flags().StringVar(&twin, "twin", "", "Twin ID, from krk twin list")
 	_ = cmd.MarkFlagRequired("project")
 	_ = cmd.MarkFlagRequired("twin")
@@ -290,7 +290,7 @@ func projectRemoveCmd() *cobra.Command {
 			return setTwinContainers(project, twin, false)
 		},
 	}
-	cmd.Flags().StringVar(&project, "project", "", "Project to remove it from")
+	cmd.Flags().StringVar(&project, "project", "", "Name of the project to stop sharing the twin into, from krk project list")
 	cmd.Flags().StringVar(&twin, "twin", "", "Twin ID, from krk twin list")
 	_ = cmd.MarkFlagRequired("project")
 	_ = cmd.MarkFlagRequired("twin")
