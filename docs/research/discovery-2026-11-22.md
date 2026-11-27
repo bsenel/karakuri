@@ -243,6 +243,49 @@ New: yes, for versions 2.1.331 and 2.1.332. Still unread: every earlier version 
 - **(iv) Complaints.** Not read this pass [N]; the 2026-11-15 cycle read them.
 - **(v) Inferred.** Both late-November versions harden the per-call permission layer (rules that would be silently skipped, hooks at skill load). Claude Code is converging on per-command policy, as Codex did (part 3 A). One version pair; weak.
 <!-- p4:D:end -->
+
+### E. incident.io (AI SRE)
+
+Why this one: Rootly and PagerDuty were read on 2026-11-15 (p4a), so incident.io is the one of the four not yet torn down, and it publishes a changelog page. New: yes.
+
+- **(i) Shipped. Months read: none could be dated.** [E] https://incident.io/changelog (read 2026-11-27): the newest entries show titles without dates, and only ~40,000 of ~67,000 characters were read. Undated AI entries near the top (page order suggests newest first; not confirmed): "Plug your skills and tools into the agent" (says a change can be approved before it runs), "Plug your internal AI stack into Nexus", "The incident.io plugin: our skills, in your agent", "Investigations are 2x faster" (a vendor claim, not a measurement), "Investigations now available, powered by Nexus" (posts a root-cause hypothesis with evidence), "Access the agent from everywhere", "Introducing incident.io MCP". Observed: none of these can be placed inside 2026-05-27 to 11-27.
+- **(ii) What it does that Karakuri does not.** Matrix cells, from (i): an investigation agent that posts a root-cause hypothesis with its evidence into the incident; customer skills and tools plugged into the vendor agent with approval before a change runs; an MCP server and a plugin that put the vendor's skills into the customer's own agent. Karakuri has no incident-domain agent or paging integration (no such package under internal/feature, listed this pass).
+- **(iii) What Karakuri does that it does not.** Matrix cells: escalation decided by the provenance of evidence, so a third-party payload (an alert body or chat message) forces a human (internal/core/environment/environment.go:55-59, opened); self-hosted, with observability exporters for OTLP, Prometheus, Loki, Datadog and others (internal/platform/observability/, listed); authority written into the request with no second gate (internal/core/agent/agent.go:37-54, opened). Inferred: nothing read says incident.io's approval depends on where the evidence came from.
+- **(iv) Complaints.** Not read [N]; no thread opened.
+- **(v) Inferred.** incident.io is moving both ways: its agent takes the customer's tools, and its skills go into the customer's agent over MCP. Approval-before-change is now a selling line in SRE tools too. Titles only; weak.
+
+### F. Arize Phoenix (agent observability and evaluation)
+
+Why this one: Langfuse was read on 2026-11-15; Phoenix publishes dated release notes. New: yes.
+
+- **(i) Shipped. Months read: May (05-27 only), June, July, August, September, October and November to 11-23.** [E] https://arize.com/docs/phoenix/release-notes (read 2026-11-27); the page's own summary named 05-13 as the latest entry, which contradicts the dated entries read, so it was not used. June: PXI agent in beta (06-02), evals as pytest and Vitest tests (06-26), trace-level annotations (06-24). July: OAuth2 authorization server and remote MCP in beta (07-17), user-friction evaluator (07-22), toxicity evaluator (07-28). August: hallucination evaluator (08-04), persistent agent sessions in 20.0.0 (08-11), OAuth2 workload identity (08-12), read-only analytics SQL over MCP (08-17). September: PII-detection evaluator and prompt versions over REST (09-01), MCP plugins for coding agents (09-14), trace-tree cost metrics (09-29). October: DECISION spans and trace-tree evals (10-01), Docker sandboxes for code evaluators (10-13), Claude Managed Agents tracing (10-16), decision-model evaluators (10-27). November: authentication on by default, a breaking change, and DECISION and AGENT annotator kinds (11-02, 21.0.0); prompt version timeline (11-18); decision span costs and removal of `cumulative_*` filters, breaking (11-23, 22.0.x). Observed: no in-window entry mentions guardrails or blocking an action.
+- **(ii) What it does that Karakuri does not.** Matrix cells: a library of LLM-judged evaluators (hallucination, toxicity, PII, retrieval relevance, user friction); evals runnable as unit tests in CI; human annotation of spans and traces with annotator kinds; DECISION spans that label an agent's choice points; per-span and per-trace cost; tracing for third-party agent frameworks. Karakuri has an eval service with a judge and calibration against golden cases (internal/feature/eval/eval.go:60-92, opened), but no evaluator library or annotation UI was found (not searched further).
+- **(iii) What Karakuri does that it does not.** Matrix cells: Phoenix records and scores decisions after the fact; Karakuri gates them before they run, with bounds that fail toward asking (internal/core/agent/agent.go:32-35, opened) and value limits that can refuse (internal/core/agent/agent.go:46-54, opened); escalation on third-party evidence (internal/core/environment/environment.go:55-59, opened); an audit export with retention and oversight records (internal/feature/audit/export.go:34-98, opened). Inferred: Phoenix's DECISION spans are where Karakuri's decision records could be exported to, via the OTLP exporter (internal/platform/observability/otlp.go, listed, not opened).
+- **(iv) Complaints.** Not read [N]; no thread opened.
+- **(v) Inferred.** Phoenix added "decision" as a first-class span kind in October and November; observability vendors are naming the same object Karakuri gates. Shipping auth-on-by-default as breaking in November suggests self-hosted instances ran open. From release notes; vendor text.
+
+### Still thin (part 4)
+
+- Claude Code by month: the changelog has no dates; GitHub release tags (https://github.com/anthropics/claude-code/releases) were not read, and versions before 2.1.331 were not reached.
+- incident.io: no dated entry; the rest of https://incident.io/changelog past 40,000 characters.
+- Complaint threads for D, E and F: none opened.
+- Google ADK, Microsoft Agent Framework, gh-aw: not torn down this cycle.
+
+### Earlier thin spots in this area
+
+- Claude Code changelog over a six-month window: still thin; dates not on the page (first cycle this is recorded; complaints were read 11-15).
+- Changelogs under six months (11-08 "Still thin"): partly filled for Phoenix, which now has six months read; still thin for Claude Code and incident.io (at least fourth cycle: 10-08, 10-25, 11-15, 11-22).
+- SRE agent in an incident: still thin; incident.io's changelog shows the vendor's view, not a responder's (seventh cycle per 11-15's "sixth cycle").
+- Langfuse releases 04-25 to 10-15 (11-15 p4a): not revisited; Phoenix was read instead (second cycle).
+
+### Sources (part 4)
+
+| URL | Read | Primary/secondary | Grade |
+|---|---|---|---|
+| https://raw.githubusercontent.com/anthropics/claude-code/main/CHANGELOG.md | 2026-11-27 | primary | [E] top ~40,000 characters only |
+| https://incident.io/changelog | 2026-11-27 | primary | [E] ~40,000 of ~67,000 characters; undated |
+| https://arize.com/docs/phoenix/release-notes | 2026-11-27 | primary | [E] |
+| https://github.com/anthropics/claude-code/releases | not read | primary | [N] |
 <!-- p4:end -->
 
 <!-- p5:start -->
