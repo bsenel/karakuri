@@ -104,7 +104,9 @@ export function MemoryPage() {
             <tr><td colSpan={6} className="muted" role="status">Recalling…</td></tr>
           )}
           {!loading && results.length === 0 && (
-            <tr><td colSpan={6} className="muted">
+            // A live region, as Recalling… is: a recall that found nothing
+            // otherwise ends in silence for a screen reader.
+            <tr><td colSpan={6} className="muted" role="status">
               {ran === 'ok' && 'No memories matched. Try a broader query, more tiers, or clear the agent and twin filters.'}
               {ran === 'failed' && 'The recall failed, so there are no results to show.'}
               {ran === null && 'No results yet — run a recall query.'}
