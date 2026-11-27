@@ -26,7 +26,46 @@ type Blocker struct {
 	// Attempts is how many diagnose-and-fix passes tried a remedy for this
 	// blocker and read its signal still raised (Phase 40 step 14b). A blocker
 	// that clears leaves the list, so its next occurrence starts at zero.
-	Attempts  int       `json:"attempts,omitempty"`
+	Attempts int `json:"attempts,omitempty"`
+	// Tried is each failed attempt, oldest first (Phase 40 step 14c).
+	Tried     []Attempt `json:"tried,omitempty"`
 	FirstSeen time.Time `json:"first_seen"`
 	LastSeen  time.Time `json:"last_seen"`
+}
+
+// Attempt is one diagnose-and-fix pass on a blocker that read its signal
+// still raised afterwards (Phase 40 step 14c): what the pass found, what it
+// tried, and the audit rows the pass wrote.
+type Attempt struct {
+	LoopID    string    `json:"loop_id"`
+	At        time.Time `json:"at"`
+	Diagnosis string    `json:"diagnosis,omitempty"`
+	Remedy    string    `json:"remedy,omitempty"`
+	AuditRows []string  `json:"audit_rows,omitempty"`
+}
+
+// HandoverReason is why a blocker was handed to the engineering backlog.
+type HandoverReason string
+
+const (
+	// HandoverAttemptsSpent is a blocker the stream tried the declared number
+	// of times without clearing its signal; the stream stops trying.
+	HandoverAttemptsSpent HandoverReason = "attempts_spent"
+	// HandoverRecurring is a kind cleared for the second time inside the
+	// declared window; the stream keeps running.
+	HandoverRecurring HandoverReason = "recurring"
+)
+
+// Handover is a blocker the stream cannot remove, or one that comes back,
+// listed for the engineering_backlog stream to file as one entry per kind
+// (Phase 40 step 14c). Later occurrences add evidence to it.
+type Handover struct {
+	Kind      BlockerKind    `json:"kind"`
+	Subject   string         `json:"subject"`
+	Reason    HandoverReason `json:"reason"`
+	Diagnosis string         `json:"diagnosis,omitempty"`
+	Attempts  []Attempt      `json:"attempts,omitempty"`
+	// Cleared is when each occurrence of a recurring kind was cleared.
+	Cleared []time.Time `json:"cleared,omitempty"`
+	At      time.Time   `json:"at"`
 }

@@ -261,6 +261,9 @@ type State struct {
 	// subject) across passes (Phase 40 step 14a). Detection only: nothing
 	// reads them to decide whether a pass runs.
 	Blockers []Blocker `json:"blockers,omitempty"`
+	// Handovers are the blockers handed to the engineering backlog, one per
+	// kind (Phase 40 step 14c).
+	Handovers []Handover `json:"handovers,omitempty"`
 	// BranchSHA is the stream's branch tip as the last pass with work saw it,
 	// and StalledPasses how many passes with work in a row saw it unmoved. The
 	// no_progress blocker reads them; they are stored, not served.
