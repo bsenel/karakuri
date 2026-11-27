@@ -13,7 +13,7 @@ See the progress note above: each part's state is the 'Part N status:' line that
 <!-- p1:start -->
 ## Earlier reports and proposals; Who the users are and what they are trying to do
 
-Part 1 status: truncated, not reached: users and jobs segments (1) to (4), segment table, still-thin lists, sources
+Part 1 status: truncated, not reached: users and jobs segments (1) to (4); no web source was read
 
 ### State of earlier reports and proposals
 
