@@ -446,7 +446,7 @@ Not assessed (time): (8) safe-by-default approval prompts, (9) transaction-token
 <!-- p7:start -->
 ## Fit and bets; ranking; What changed since the last report
 
-Part 7 status: in progress. Written: (A) capability matrix. Part 6's status line is present (truncated). This part reasons over parts 1 to 6; no web page was read. Karakuri cells cite a path:line already given in parts 3, 4 or 6, or a file opened by this part on 2026-11-27 (marked "p7, opened"). Nothing was built, run or tested.
+Part 7 status: complete. Written: (A) capability matrix, (B) fit and bets (three candidates pass), (C) what changed. Part 6's status line is present (truncated). This part reasons over parts 1 to 6; no web page was read. Karakuri cells cite a path:line already given in parts 3, 4 or 6, or a file opened by this part on 2026-11-27 (marked "p7, opened"). Nothing was built, run or tested.
 
 ### A. Capability matrix
 
@@ -509,6 +509,47 @@ Reasoning for the order (Inferred):
 - Rank 3 is the cheapest: one primary source, part of it already built, and silent rerouting breaks Phase 30 baselines (p5 C3). Low value if `Model` is already the response id.
 - Ranks 4 to 8 may be worth more than rank 3 but have no feasibility row; they go back to part 6 next cycle, not to the bin.
 - Declined by a human: none (p1), so no candidate is excluded on that ground.
+
+### C. What changed since the last report
+
+Built from the 'Earlier thin spots in this area' lists of parts 1 to 6, checked against the seven `docs/research/discovery-*.md` files by case-insensitive grep on 2026-11-27 (counts of matching files, not a full reading).
+
+**Confirmed.**
+- Approval gates alone no longer set Karakuri apart: Codex added managed command checkpoints (p3 A), Claude Code hardened per-call rules (p4 D), OpenAI shipped automatic model review and Anthropic inference hooks (p5 C1, C2), incident.io sells approval before change (p4 E).
+- LangGraph's users still hit durable-state bugs: mid-2026 releases are checkpoint fixes (p3 B) and the open issues are resume correctness (p2 item 4).
+- Subagent inheritance is still broken for Claude Code users: #18950 open, re-triaged 2026-11-20 (p2 item 2).
+- No MCP revision after 2026-07-28; A2A still v1.0.1 (p5 A1, A2).
+
+**Contradicted or corrected.**
+- 2026-11-15 p4b said Karakuri had no per-run money budget; part 6 F3 found one for objective runs (`budget.go:27-55`).
+- 'Refuse an answer to a superseded checkpoint' was carried as open; it is built (`checkpoint/service.go:195-197`, p6 F2).
+- The AI Act high-risk dates moved: Annex III to 2027-12-02, Annex I to 2028-08-02, on one Commission page (p6 A2). Earlier cycles worked to 2026-08-02.
+- Cycle counts: part 1 counts the SRE postmortem as open six cycles and part 6 counts Article 113 as four. The grep finds "postmortem" in all seven reports (from 2026-10-04) and "Article 113" in six (from 2026-10-08), so the counts below are higher.
+
+**Filled.**
+- IETF agent-authorisation drafts beyond the title (p5 A4); CIMD `-03` body (p5 A5); OpenAI and Google AI Studio changelogs (p5 C).
+- Article 26(6) text (p6 A1).
+- Phoenix six months of dated release notes (p4 F).
+- Temporal complaints, partly: two open issues with thumbs-up counts (p3 C).
+- Feasibility, partly: 7 of 13 rows (p6 B).
+
+**Still thin, with cycle counts (this cycle included).**
+- SRE incident postmortem by the team that ran the agent: **7 cycles** (2026-10-04 to 11-22). incident.io's changelog is the vendor's view (p4 E).
+- AI Act Article 113 text: **6 cycles** (2026-10-08 to 11-22); the EUR-Lex fetch stopped at Article 112 and the Omnibus OJ text was not read (p6).
+- Regulated organisation whose agent acts on its own authority: **7 cycles** by grep for "regulated" (from 2026-10-04); part 1 counts two under its narrower wording since 2026-11-15. Only reviewed assistants found so far (p1).
+- Self-hosters in their own words and who merges gh-aw PRs: 3 cycles (p1). Enterprises: 2 (p1).
+- Codex May to October: 3 cycles; LangGraph April to June: 6; LangSmith April to August: 3 (p3).
+- Changelogs under six months for Claude Code and incident.io: at least 4 cycles (p4).
+- Rewind feasibility: 4 cycles (p6). Google ADK release notes: 3; A2A implementer page: 3; pass^k paper: 2; MCP SEP list: 2 (p5).
+- Second source for re-checking authority after a wait, the cancelled-run state and output overload: 2 cycles each (p2).
+
+**New this cycle.**
+- OTel GenAI conventions' first standalone release, v0.1.0 (p5 A3).
+- Three IETF drafts in six days on the delegation chain (p5 A4).
+- Provider-side gates below Karakuri: Anthropic inference hooks GA, OpenAI automatic review, Google silent model rerouting from 2026-12-01 (p5 C).
+- Phoenix DECISION spans: observability vendors now name the object Karakuri gates (p4 F).
+- The resume-correctness cluster in langgraph (p2 item 4) and two new timeout threads (p2 item 3).
+- Karakuri has an MCP server as well as a client (`internal/api/handler/mcp.go:484`, opened by this part).
 <!-- p7:end -->
 
 <!-- p8:start -->
