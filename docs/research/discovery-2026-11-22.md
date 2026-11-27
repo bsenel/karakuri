@@ -1,6 +1,17 @@
 # Discovery 2026-11-22: weekly cycle
 
-> **Progress note (part 1).** The 2026-11-22 pass stopped at the skeleton (commit 4588d32). This report was written from 2026-11-27 in eight parts, each by a separate session. Each part's state is the 'Part N status:' line that opens its section; a section without that line was not written. Part 8 adds the summary.
+> **Progress note.** The 2026-11-22 pass stopped at the skeleton (commit 4588d32). This report was resumed on 2026-11-27 and written in eight parts, each by a separate session. Nothing was built, run or tested.
+
+| Part | Status | Not reached |
+|---|---|---|
+| 1 | truncated | users and jobs segments (1) to (4); no web source read |
+| 2 | truncated | item 5 (second sources for the cancelled-run state and output overload); four pages HTTP 504 |
+| 3 | truncated | Codex release pages for May to October, Agents SDK, LangSmith April to August, LangGraph April to June, Temporal August and September, full complaint threads |
+| 4 | truncated | Claude Code month by month, incident.io dated entries, full complaint threads for D, E, F |
+| 5 | truncated | papers 3 and 4, OTel span-status pages, Google ADK |
+| 6 | truncated | AI Act Article 113, US state AI laws, NIST, UK procurement guidance, a security questionnaire; feasibility rows for candidates 8 to 12 |
+| 7 | complete | none |
+| 8 | truncated | the merged 'Sources' section (per-part lists stand) |
 
 ## Method
 
@@ -555,5 +566,13 @@ Built from the 'Earlier thin spots in this area' lists of parts 1 to 6, checked 
 <!-- p8:start -->
 ## Proposed phases; Sources
 
-not started
+Part 8 status: truncated. Written: Phases 50 to 52 in docs/roadmap.md (the three candidates part 7 marked 'passes the bar') and the progress table at the top. Not reached: the merged 'Sources' section; the 'Sources (part N)' lists of parts 1 to 6 stand as the sources. Part 7's status line is present (complete). Highest phase on main was 49 (`grep -n '^## Phase' docs/roadmap.md`, 2026-11-27); no open pull request adds a phase heading to docs/roadmap.md (checked for all nine open PRs). No web page was read; nothing was built, run or tested.
+
+| Phase | Part 7 rank | Kind | Rests on |
+|---|---|---|---|
+| 50 — An Approved Action Is Re-checked When It Runs | 1 | DEMAND | p2 item 1; p6 F1 |
+| 51 — A Model Call Has One Deadline, Retries Included | 2 | DEMAND | p2 item 3; p6 F4 |
+| 52 — The Audit Row Records the Model That Answered | 3 | FRONTIER BET | p5 C3; p6 F6 |
+
+Not proposed: ranks 4 to 9 were not assessed because part 6 was truncated (no feasibility row); ranks 10 to 14 did not pass on evidence (part 7). No candidate was declined by a human.
 <!-- p8:end -->
