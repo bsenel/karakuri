@@ -291,7 +291,7 @@ Why this one: Langfuse was read on 2026-11-15; Phoenix publishes dated release n
 <!-- p5:start -->
 ## Technical frontier
 
-not started
+Part 5 status: in progress (2026-11-27). Part 4's status line is present (truncated). Nothing was built, run or tested.
 <!-- p5:end -->
 
 <!-- p6:start -->
