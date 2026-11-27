@@ -291,7 +291,7 @@ Why this one: Langfuse was read on 2026-11-15; Phoenix publishes dated release n
 <!-- p5:start -->
 ## Technical frontier
 
-Part 5 status: truncated. Written: A1 to A5 (MCP, A2A, OTel GenAI, the five IETF agent-authorisation drafts read past the title, and CIMD `-03`), the bets, the thin spots and the sources. Not reached: B (research papers) and C (provider release notes), because the fetches did not return within the 600-second budget. Part 4's status line is present (truncated). Nothing was built, run or tested.
+Part 5 status: truncated. Written: A1 to A5 (MCP, A2A, OTel GenAI, the five IETF agent-authorisation drafts read past the title, and CIMD `-03`), B (two papers of the four allowed), C (Anthropic, OpenAI, Google), the bets, the thin spots and the sources. Not reached: papers 3 and 4, the OTel span-status pages, and Google ADK. Part 4's status line is present (truncated). Nothing was built, run or tested.
 
 Extends the p5 'Technical frontier' sections of discovery-2026-11-15, -11-08 and -11-01 without repeating them. The roadmap on origin/main has MCP 2026-07-28 built (Phase 33) and Phase 42 planned; no later revision is planned. Every page came through a fetch tool that returns a model-written extract, so every external line is [E] unless marked [Q]. Date read for every source: 2026-11-27.
 
@@ -325,7 +325,17 @@ Extends the p5 'Technical frontier' sections of discovery-2026-11-15, -11-08 and
 - Observed, result [E]: on Inj-SQuAD with Llama-3.1-70B, 91.93% accuracy and an attack success rate of 0.55%.
 - Inferred for Karakuri: it complements CapLite (2026-11-15 B1). MINE filters what `TrustThirdParty` text reaches the model, and CapLite constrains what the action may carry. It is weaker as a guarantee, because it is statistical and evaluated on QA, not on agents that act.
 
+### C. Model and provider capabilities, 2026-09-27 to 2026-11-27
+
+Entries that 2026-11-15 C1 already recorded (self-hosted Managed Agents, Fable 5.2, message threads) are not repeated.
+- **C1. Anthropic: inference hooks GA, and dynamic workflows** (https://platform.claude.com/docs/en/release-notes/api) [E]. On 2026-10-20, inference hooks, an allow or deny verdict before inference, came out of beta for Claude Enterprise, and Managed Agents `web_fetch` now follows the organisation's domain restrictions. On 2026-10-09, Managed Agents gained dynamic workflows (beta), in which the server runs many agents in phases. Maturity: shipped by one vendor. New: yes. Inferred: an organisation-level gate now sits below Karakuri. A run's action can be denied by the customer's hook, so Karakuri must surface a provider-side deny as its own outcome, not as a model error.
+- **C2. OpenAI: model-run approval, scheduled automations, and background windows** (https://developers.openai.com/api/docs/changelog, redirected from platform.openai.com/docs/changelog) [E]. On 2026-10-30, the Agents API gained automatic review, in which a model approves or denies tool and permission requests. The same day it gained tool-list updates within a session and background compaction by default. On 2026-10-23, scheduled one-time or recurring tasks in sessions. On 2026-11-17, two- and eight-hour background completion windows at lower token rates (30% lower for two hours). Maturity: shipped by one vendor (Agents API in public beta since 2026-09-10). New: yes. Inferred: "a model approves tool calls" and "recurring tasks" are the vendor's versions of Karakuri's checkpoints and standing objectives. What Karakuri can still do that this does not: earned autonomy, meaning approval policy widened from recorded checkpoint outcomes (B1), and provider independence. The slow-window pricing suits non-urgent reconcile passes.
+- **C3. Google: tool retrieval on demand, and Computer Use GA** (https://aistudio.google.com/docs/changelog, redirected from ai.google.dev/gemini-api/docs/changelog) [E]. On 2026-11-19, tool retrieval (preview) loads function schemas on demand, and remote MCP servers support `defer_loading`. On 2026-10-30, the Computer Use tool became GA. On 2026-11-02, `gemini-2.5-pro` requests route automatically to `gemini-3.8-flash` from 2026-12-01, billed at that model's rate. Maturity: shipped by one vendor. New: yes. Inferred: silent model rerouting breaks any evaluation baseline (Phase 30) pinned to a model id. Karakuri should record the model that answered, not the model it asked for. Deferred tool loading is now offered by two vendors.
+- Inferred across C: in two months all three vendors shipped a managed agent runtime with approvals (Anthropic `auto` policy, 2026-09-10; OpenAI automatic review). Approval gates on their own no longer set Karakuri apart. What still does: approvals that earn wider bounds over time, provenance on every observation, and objectives that keep running across providers.
+
 ### Candidate frontier bets (part 5)
+
+- **Record the model that answered.** Primary source: the Gemini changelog, 2026-11-02 (C3). Proved wrong if no provider reroutes a pinned model id within the next two cycles.
 
 - **A delegation record shaped like a transaction token.** Primary sources: `draft-araut-oauth-transaction-tokens-for-agents-03` and `draft-niyikiza-oauth-attenuating-agent-tokens-02` (A4). The bet: every delegation Karakuri makes records the chain id, hop count, parent and narrowed bounds, so it can later be issued as a token a resource server verifies. Proved wrong if both drafts expire without working-group adoption by the next IETF meeting, or if the OAuth WG adopts a shape with different fields.
 - **Revoking an objective cascades to its delegates.** Primary source: `draft-chen-oauth-agent-revocation-01` (A4). The bet: stopping a standing objective revokes every credential handed to its delegated agents, with an audit reference. Proved wrong if a code trace shows that delegated agents hold no credential that outlives the run.
@@ -334,8 +344,8 @@ Extends the p5 'Technical frontier' sections of discovery-2026-11-15, -11-08 and
 
 ### Still thin (part 5)
 
-- (B) No paper read this pass. A pass^k (repeated-run reliability) paper has still not been found.
-- (C) Anthropic, OpenAI and Gemini release notes for 2026-09-27 to 2026-11-27 were not read this pass. Google ADK has now gone unread for three cycles.
+- (B) Two papers, not four, and neither is on agents that act. A pass^k (repeated-run reliability) paper has still not been found.
+- (C) Google ADK release notes are still unread, now three cycles. The C entries came from changelog lines only; no linked doc page was followed.
 - (A) The OTel spec pages for the status (development or stable) of `invoke_agent` and `execute_tool` were not read. A4's later sections came only as a summary. There is still no A2A implementer page and no MCP SEP list.
 - Not checked in code: whether the MCP client does OAuth at all, and whether delegated agents hold credentials that outlive a run.
 
@@ -346,7 +356,7 @@ Extends the p5 'Technical frontier' sections of discovery-2026-11-15, -11-08 and
 - OTel span names at the new repository (open 1 cycle): **partly filled**. The release was read; the span status was not.
 - MCP SEP list and ext-auth (open 1 cycle): still thin, now 2 cycles.
 - A2A implementer page (open 2 cycles): still thin, now 3 cycles.
-- OpenAI and Google AI Studio changelogs (open 1 cycle): still thin, now 2 cycles. Google ADK release notes: still thin, now 3 cycles.
+- OpenAI and Google AI Studio changelogs (open 1 cycle): **filled** (C2, C3). Google ADK release notes: still thin, now 3 cycles.
 - pass^k reliability paper (open 1 cycle): still thin, now 2 cycles.
 
 ### Sources (part 5)
@@ -362,6 +372,12 @@ Extends the p5 'Technical frontier' sections of discovery-2026-11-15, -11-08 and
 | https://datatracker.ietf.org/doc/draft-ni-wimse-ai-agent-identity/ | 2026-11-27 | primary | [E] |
 | https://datatracker.ietf.org/doc/draft-chen-oauth-agent-authz-use-cases/ | 2026-11-27 | primary | [E] first ~40k of 134k characters |
 | https://datatracker.ietf.org/doc/draft-ietf-oauth-client-id-metadata-document/ | 2026-11-27 | primary | [E] first ~40k of 77k characters |
+| https://arxiv.org/list/cs.AI/recent | 2026-11-27 | secondary (listing) | [E] |
+| https://arxiv.org/html/2611.33394 | 2026-11-27 | primary | [E] |
+| https://arxiv.org/html/2611.34188 | 2026-11-27 | primary | [E] |
+| https://platform.claude.com/docs/en/release-notes/api | 2026-11-27 | primary | [E] |
+| https://developers.openai.com/api/docs/changelog | 2026-11-27 | primary | [E] |
+| https://aistudio.google.com/docs/changelog | 2026-11-27 | primary | [E] |
 <!-- p5:end -->
 
 <!-- p6:start -->
