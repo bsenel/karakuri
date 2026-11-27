@@ -383,11 +383,11 @@ Entries that 2026-11-15 C1 already recorded (self-hosted Managed Agents, Fable 5
 <!-- p6:start -->
 ## Governance and buying criteria; Feasibility
 
-Part 6 status: truncated. Written: (A) the AI Act amendment status from Commission pages, and what Karakuri can evidence; (B) seven feasibility rows. Not reached: the Article 113 and 26(6) text (the EUR-Lex read had not returned when this was committed), US state AI laws, NIST guidance on AI agents, UK AI procurement guidance and a published security questionnaire (no source read for any of them). Part 5's status line is present (truncated). Every web page was read through a fetch tool that returns a model-written extract, so every external line is [E] and nothing is quoted. Nothing was built, run or tested.
+Part 6 status: truncated. Written: (A) the AI Act amendment status from Commission pages, and what Karakuri can evidence; (B) seven feasibility rows. Article 26(6) was read; Article 113 was not (the EUR-Lex page was cut off at Article 112). Not reached: US state AI laws, NIST guidance on AI agents, UK AI procurement guidance and a published security questionnaire (no source read for any of them). Part 5's status line is present (truncated). Every web page was read through a fetch tool that returns a model-written extract, so every external line is [E] and nothing is quoted. Nothing was built, run or tested.
 
 ### A. Governance and buying criteria
 
-**A1. EU AI Act, Article 113 and Article 26(6).** Not read this pass [N] (see the status line). Still thin.
+**A1. EU AI Act, Article 113 and Article 26(6).** Observed: https://eur-lex.europa.eu/legal-content/EN/TXT/HTML/?uri=OJ:L_202401689 returned the text this time (about 525k characters), but the fetch stopped at Article 112(4)(c), so Article 113 was not reached [N]; the ELI fallback was not tried. Article 26(6) was read: deployers keep the logs the high-risk system generates automatically, to the extent they control them, [Q] "for a period appropriate to the intended purpose of the high-risk AI system, of at least six months", unless Union or national law (data protection in particular) provides otherwise [E]. A second subparagraph lets financial institutions meet this through their financial-services documentation [E]. The [Q] phrase was relayed by a fetch sub-agent that reported it as verbatim.
 
 **A2. The Digital Omnibus on AI.** Observed [E]: the Commission proposal is COM(2025) 836 final, procedure 2025/0359(COD), dated 2025-11-19, amending Regulations (EU) 2024/1689 and (EU) 2018/1139 (https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:52025PC0836; https://digital-strategy.ec.europa.eu/en/library/digital-omnibus-ai-regulation-proposal). As proposed, the high-risk rules in Chapter III Sections 1 to 3 would apply after a Commission decision that support measures are available, with Annex III six months and Annex I twelve months after it, and fallback dates of 2027-12-02 (Annex III) and 2028-08-02 (Annex I). Only the start of the proposal text was read; the rest came as a summary. Observed [E]: a Commission news item, "AI Omnibus enters into force", gives 2026-07-27 as the entry into force, says Annex III high-risk rules apply from 2027-12-02 and Annex I from 2028-08-02, and links the text as OJ L_202601744 (https://digital-strategy.ec.europa.eu/en/news/ai-omnibus-enters-force, page updated 2026-07-31). Not read: the OJ text itself, so the final wording of Article 113 and whether the decision trigger survived are unverified. The Council press page returned HTTP 403 [N]; no Parliament or Council dates were read. Inferred: the high-risk dates have moved from 2026-08-02 to 2027-12-02 (Annex III) and 2028-08-02 (Annex I), on one Commission page. Nothing read says Article 26(6) was amended.
 
@@ -420,14 +420,14 @@ Not assessed (time): (8) safe-by-default approval prompts, (9) transaction-token
 
 ### Still thin (part 6)
 
-- The Article 113 and 26(6) text, the Omnibus OJ text (L_202601744), and the Council and Parliament dates [N].
+- The Article 113 text, the Omnibus OJ text (L_202601744), and the Council and Parliament dates [N].
 - US state laws, NIST agent guidance, UK procurement guidance and a security questionnaire: none read.
 - F1's in-process approve path, F4's retry code and F5's revert path were not opened.
 - README.md was not read; `internal/feature/audit/export.go` was located but not opened.
 
 ### Earlier thin spots in this area
 
-- AI Act Art. 113 and 26(6) text (open since 2026-11-08, 3 cycles): still thin, now 4 cycles. The amendment status is **partly filled** from Commission pages.
+- AI Act Art. 113 and 26(6) text (open since 2026-11-08, 3 cycles): 26(6) **filled**; 113 still thin, now 4 cycles (EUR-Lex now returns text but the fetch is cut at Art. 112). The amendment status is **partly filled** from Commission pages.
 - Feasibility of most rows (open 2 cycles): **partly filled**, 7 of 13 rows assessed.
 - Rewind feasibility (open 3 cycles): still thin, now 4 cycles.
 - A regulated organisation with an agent that holds its own authority (open since 2026-11-08): not touched, still thin.
@@ -440,6 +440,7 @@ Not assessed (time): (8) safe-by-default approval prompts, (9) transaction-token
 | https://digital-strategy.ec.europa.eu/en/library/digital-omnibus-ai-regulation-proposal | 2026-11-27 | primary | [E] |
 | https://digital-strategy.ec.europa.eu/en/news/ai-omnibus-enters-force | 2026-11-27 | primary | [E] |
 | https://www.consilium.europa.eu/en/press/press-releases/ | 2026-11-27 | primary | [N] HTTP 403 |
+| https://eur-lex.europa.eu/legal-content/EN/TXT/HTML/?uri=OJ:L_202401689 | 2026-11-27 | primary | Art. 26(6) [Q]/[E]; Art. 113 [N] (cut at Art. 112) |
 <!-- p6:end -->
 
 <!-- p7:start -->
