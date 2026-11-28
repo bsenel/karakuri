@@ -17,6 +17,8 @@ import (
 	"github.com/bsenel/karakuri/internal/core/environment"
 	"github.com/bsenel/karakuri/internal/core/objective"
 	"github.com/bsenel/karakuri/internal/core/reconcile"
+	"github.com/bsenel/karakuri/internal/platform/tools"
+	"github.com/bsenel/karakuri/internal/platform/tools/versioncontrol"
 )
 
 var handedAt = time.Date(2026, 11, 20, 9, 0, 0, 0, time.UTC)
@@ -61,7 +63,12 @@ func handedStates() []reconcile.State {
 
 func observeHanded(t *testing.T, states []reconcile.State) environment.Observation {
 	t.Helper()
-	env := NewHandedBlockersEnvironment(EnvHandedBlockers, func(context.Context) ([]reconcile.State, error) { return states, nil })
+	return observeHandedWith(t, states, &backlogForge{fakeForge: &fakeForge{}})
+}
+
+func observeHandedWith(t *testing.T, states []reconcile.State, forge versioncontrol.VersionControlAdapter) environment.Observation {
+	t.Helper()
+	env := NewHandedBlockersEnvironment(EnvHandedBlockers, func(context.Context) ([]reconcile.State, error) { return states, nil }, forge)
 	obs, err := env.Observe(context.Background(), environment.ObservationQuery{})
 	if err != nil {
 		t.Fatalf("observe: %v", err)
@@ -176,7 +183,7 @@ func TestANewOccurrenceMovesTheBacklogObservation(t *testing.T) {
 func TestUnreadableStatesLeaveTheBacklogObservationBlind(t *testing.T) {
 	env := NewHandedBlockersEnvironment(EnvHandedBlockers, func(context.Context) ([]reconcile.State, error) {
 		return nil, errors.New("database is locked")
-	})
+	}, &backlogForge{fakeForge: &fakeForge{}})
 	if _, err := env.Observe(context.Background(), environment.ObservationQuery{}); err == nil {
 		t.Error("observe returned no error for states it could not read")
 	}
@@ -203,14 +210,22 @@ func TestThePackReadsTheTwinsHandedBlockersFromTheStore(t *testing.T) {
 		}
 	}
 
+	// The twin's forge, bound the way production binds it, holds the backlog
+	// stream's merged entry for verify_failed.
+	forge := &backlogForge{fakeForge: &fakeForge{merged: []versioncontrol.PRSummary{
+		backlogPR(1, "karakuri/tech-backlog-2026-11-21", true, backlogEntryLine("verify_failed", verifyEvidence)),
+	}}}
+	reg := tools.NewRegistry()
+	reg.VC.Set("forge", "stub", versioncontrol.VersionControlAdapter(forge))
 	pack := New()
+	pack.tools = reg
 	pack.WithStorage(s)
 	var env environment.Environment
 	for _, fac := range pack.EnvironmentFactories() {
 		if fac.EnvID != EnvHandedBlockers {
 			continue
 		}
-		built, err := fac.Build(environment.BuildContext{TwinID: "twin-1"})
+		built, err := fac.Build(environment.BuildContext{TwinID: "twin-1", AdapterBindings: map[string]string{"versioncontrol": "forge"}})
 		if err != nil {
 			t.Fatalf("build: %v", err)
 		}
@@ -231,5 +246,205 @@ func TestThePackReadsTheTwinsHandedBlockersFromTheStore(t *testing.T) {
 		if h.Kind == string(reconcile.BlockerPlanError) {
 			t.Errorf("twin-2's plan_error handover is listed for twin-1")
 		}
+	}
+	if lines := linesOf(t, obs); len(lines) != 1 || !strings.Contains(lines[0], "unmergeable_pr") {
+		t.Errorf("lines = %q, want one, for unmergeable_pr: verify_failed is filed on the bound forge", lines)
+	}
+}
+
+// The handovers' newest evidence per kind in handedStates.
+var (
+	verifyEvidence      = handedAt.Add(2 * time.Hour) // delivery's third attempt
+	unmergeableEvidence = handedAt.Add(5 * time.Hour) // UX's third clear
+)
+
+// backlogForge is a forge whose open, merged and closed-unmerged pull requests
+// a test sets, and which counts how often it was read.
+type backlogForge struct {
+	*fakeForge
+	closed []versioncontrol.PRSummary
+	reads  int
+}
+
+func (f *backlogForge) ListPRs(ctx context.Context, repo string, since time.Time) ([]versioncontrol.PRSummary, error) {
+	f.reads++
+	return f.fakeForge.ListPRs(ctx, repo, since)
+}
+
+func (f *backlogForge) ListClosedPRs(context.Context, string, int) ([]versioncontrol.PRSummary, error) {
+	return f.closed, nil
+}
+
+func backlogPR(number int, branch string, own bool, body ...string) versioncontrol.PRSummary {
+	return versioncontrol.PRSummary{
+		Number: number, HeadBranch: branch, OwnAuthor: own,
+		Body: "Adds the Engineering Backlog entries.\n\n" + strings.Join(body, "\r\n") + "\n",
+	}
+}
+
+func linesOf(t *testing.T, obs environment.Observation) []string {
+	t.Helper()
+	lines, ok := obs.State["handed_blockers_lines"].([]string)
+	if !ok {
+		t.Fatalf("state[handed_blockers_lines] = %#v, want []string", obs.State["handed_blockers_lines"])
+	}
+	return lines
+}
+
+func hasWork(obs environment.Observation) bool {
+	work, _ := obs.State["has_work"].(bool)
+	return work
+}
+
+// (1) A kind no entry is filed for is work, and its line hands the pass the
+// exact marker line covering the kind's newest evidence.
+func TestAnUnfiledHandedBlockerIsWorkWithItsMarkerLine(t *testing.T) {
+	obs := observeHanded(t, handedStates())
+	if !hasWork(obs) {
+		t.Fatal("has_work = false with nothing filed, want true")
+	}
+	text := strings.Join(linesOf(t, obs), "\n")
+	for _, want := range []string{
+		backlogEntryLine("verify_failed", verifyEvidence),
+		backlogEntryLine("unmergeable_pr", unmergeableEvidence),
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("the lines do not hand over the marker %q:\n%s", want, text)
+		}
+	}
+}
+
+// (2) Once the pass's pull request carries the marker lines, the next
+// observation has no work and no line, keeps the evidence, and has moved.
+func TestAFiledHandedBlockerIsTheOwnersTurn(t *testing.T) {
+	before := observeHanded(t, handedStates())
+	forge := &backlogForge{fakeForge: &fakeForge{prs: []versioncontrol.PRSummary{
+		backlogPR(7, "karakuri/tech-backlog-2026-11-28", true,
+			backlogEntryLine("verify_failed", verifyEvidence), backlogEntryLine("unmergeable_pr", unmergeableEvidence)),
+	}}}
+	after := observeHandedWith(t, handedStates(), forge)
+	if hasWork(after) {
+		t.Error("has_work = true with every kind filed, want false: it is the owner's turn")
+	}
+	if lines := linesOf(t, after); len(lines) != 0 {
+		t.Errorf("lines = %q, want none", lines)
+	}
+	got := handedOf(t, after)
+	if len(got) != 2 || got[0].FiledThrough == nil || got[1].FiledThrough == nil {
+		t.Errorf("handed blockers = %+v, want both still listed, each with the evidence its entry covers", got)
+	}
+	if before.Version == after.Version {
+		t.Errorf("version %q unchanged by the filing: drift would not see it", after.Version)
+	}
+}
+
+// (3) An occurrence after the filing brings the kind back as work, as evidence
+// for the same entry; a closed-unmerged entry counts as answered too.
+func TestNewEvidenceAfterTheFilingIsWorkAgain(t *testing.T) {
+	forge := &backlogForge{
+		fakeForge: &fakeForge{merged: []versioncontrol.PRSummary{
+			backlogPR(7, "karakuri/tech-backlog-2026-11-28", true, backlogEntryLine("unmergeable_pr", unmergeableEvidence)),
+		}},
+		closed: []versioncontrol.PRSummary{
+			backlogPR(8, "karakuri/tech-backlog-2026-11-27", true, backlogEntryLine("verify_failed", verifyEvidence)),
+		},
+	}
+	filed := observeHandedWith(t, handedStates(), forge)
+	if hasWork(filed) {
+		t.Fatalf("has_work = true before the new occurrence, lines %q", linesOf(t, filed))
+	}
+
+	later := handedStates()
+	h := &later[1].Handovers[1]
+	h.Cleared = append(h.Cleared, unmergeableEvidence.Add(time.Hour))
+	obs := observeHandedWith(t, later, forge)
+	if !hasWork(obs) {
+		t.Fatal("has_work = false after a new occurrence, want true")
+	}
+	lines := linesOf(t, obs)
+	if len(lines) != 1 {
+		t.Fatalf("lines = %q, want one, for unmergeable_pr", lines)
+	}
+	for _, want := range []string{
+		"unmergeable_pr", "covers the evidence up to " + unmergeableEvidence.Format(time.RFC3339),
+		backlogEntryLine("unmergeable_pr", unmergeableEvidence.Add(time.Hour)),
+	} {
+		if !strings.Contains(lines[0], want) {
+			t.Errorf("line does not hold %q:\n%s", want, lines[0])
+		}
+	}
+	if obs.Version == filed.Version {
+		t.Error("version unchanged by the new occurrence")
+	}
+}
+
+// (4) Two kinds, one filed: only the other has a line.
+func TestOnlyTheUnfiledKindHasALine(t *testing.T) {
+	forge := &backlogForge{fakeForge: &fakeForge{prs: []versioncontrol.PRSummary{
+		backlogPR(7, "karakuri/tech-backlog-2026-11-28", true, backlogEntryLine("verify_failed", verifyEvidence)),
+	}}}
+	obs := observeHandedWith(t, handedStates(), forge)
+	lines := linesOf(t, obs)
+	if len(lines) != 1 || !strings.Contains(lines[0], "unmergeable_pr") || strings.Contains(lines[0], "verify_failed") {
+		t.Errorf("lines = %q, want one, for unmergeable_pr only", lines)
+	}
+	if !hasWork(obs) {
+		t.Error("has_work = false with unmergeable_pr unfiled")
+	}
+}
+
+// (5) A forge that cannot be read, or none bound, leaves the observation
+// blind while something is handed over; with nothing handed over the forge is
+// not read at all.
+func TestAnUnreadableForgeLeavesTheBacklogObservationBlind(t *testing.T) {
+	states := func(context.Context) ([]reconcile.State, error) { return handedStates(), nil }
+	for name, vc := range map[string]versioncontrol.VersionControlAdapter{
+		"forge errors":    &backlogForge{fakeForge: &fakeForge{prsErr: errors.New("502 bad gateway")}},
+		"no-op adapter":   versioncontrol.NewNoOp(),
+		"nothing bound":   nil,
+		"merged unlisted": &noMergedForge{backlogForge{fakeForge: &fakeForge{}}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			env := NewHandedBlockersEnvironment(EnvHandedBlockers, states, vc)
+			if _, err := env.Observe(context.Background(), environment.ObservationQuery{}); err == nil {
+				t.Error("observe returned no error for a forge it could not read")
+			}
+			if snap, _ := env.Snapshot(context.Background()); snap.SHA != "" {
+				t.Errorf("snapshot SHA = %q, want empty", snap.SHA)
+			}
+		})
+	}
+
+	forge := &backlogForge{fakeForge: &fakeForge{prsErr: errors.New("502 bad gateway")}}
+	obs := observeHandedWith(t, []reconcile.State{{ObjectiveID: "obj-quiet", TwinID: "twin-1"}}, forge)
+	if hasWork(obs) || forge.reads != 0 {
+		t.Errorf("has_work = %v, forge reads = %d with nothing handed over, want false and 0", hasWork(obs), forge.reads)
+	}
+}
+
+type noMergedForge struct{ backlogForge }
+
+func (f *noMergedForge) ListMergedPRs(context.Context, string, int) ([]versioncontrol.PRSummary, error) {
+	return nil, versioncontrol.ErrUnsupported
+}
+
+// (6) A marker on a pull request that is not the backlog stream's own, on
+// another stream's branch, on a stranger's pull request from the backlog's
+// branch, or on main, retires nothing.
+func TestAPullRequestNotTheBacklogStreamsRetiresNothing(t *testing.T) {
+	markers := []string{backlogEntryLine("verify_failed", verifyEvidence), backlogEntryLine("unmergeable_pr", unmergeableEvidence)}
+	forge := &backlogForge{
+		fakeForge: &fakeForge{
+			prs:    []versioncontrol.PRSummary{backlogPR(1, "karakuri/ux-2026-11-28", true, markers...)},
+			merged: []versioncontrol.PRSummary{backlogPR(2, "karakuri/tech-backlog-2026-11-28", false, markers...)},
+		},
+		closed: []versioncontrol.PRSummary{backlogPR(3, "fix-the-clock", true, markers...)},
+	}
+	obs := observeHandedWith(t, handedStates(), forge)
+	if !hasWork(obs) || len(linesOf(t, obs)) != 2 {
+		t.Errorf("has_work = %v, lines = %q; want work and both kinds' lines", hasWork(obs), linesOf(t, obs))
+	}
+	if obs.Trust == environment.TrustThirdParty {
+		t.Error("trust = third party, but no pull request text is carried")
 	}
 }

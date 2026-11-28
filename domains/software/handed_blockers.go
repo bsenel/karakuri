@@ -21,6 +21,7 @@ import (
 	"github.com/bsenel/karakuri/internal/core/objective"
 	"github.com/bsenel/karakuri/internal/core/reconcile"
 	"github.com/bsenel/karakuri/internal/platform/storage"
+	"github.com/bsenel/karakuri/internal/platform/tools/versioncontrol"
 )
 
 // EnvHandedBlockers is the environment the engineering_backlog stream reads
@@ -41,12 +42,89 @@ type HandedBlocker struct {
 	// Occurrences is how many times a blocker of the kind was cleared and came
 	// back, summed over the streams.
 	Occurrences int `json:"occurrences"`
+	// EvidenceAt is the newest evidence across the streams: the latest of
+	// each handover's time, its attempts' and its clears', to the second.
+	EvidenceAt time.Time `json:"evidence_at"`
+	// FiledThrough is the evidence time the newest Engineering Backlog entry
+	// filed for the kind covers, nil while none is. The kind is the owner's
+	// turn, and gives the stream no work, while it is not before EvidenceAt.
+	FiledThrough *time.Time `json:"filed_through,omitempty"`
+}
+
+// filed reports whether an entry filed for the kind covers all its evidence.
+func (h HandedBlocker) filed() bool {
+	return h.FiledThrough != nil && !h.FiledThrough.Before(h.EvidenceAt)
+}
+
+// backlogEntryMarker starts the one line a backlog pull request's description
+// carries per kind it files: "Karakuri-Backlog-Entry: kind=<kind>
+// evidence=<RFC 3339 time>". The observation hands the pass the exact line.
+const backlogEntryMarker = "Karakuri-Backlog-Entry:"
+
+func backlogEntryLine(kind string, evidence time.Time) string {
+	return fmt.Sprintf("%s kind=%s evidence=%s", backlogEntryMarker, kind, evidence.UTC().Format(time.RFC3339))
 }
 
 // NewHandedBlockersEnvironment observes the handovers on the reconcile states
-// read returns.
-func NewHandedBlockersEnvironment(id environment.EnvironmentID, read func(context.Context) ([]reconcile.State, error)) environment.Environment {
-	return &handedBlockersEnv{id: id, read: read}
+// read returns, and reads from vc which of them the backlog stream already
+// filed.
+func NewHandedBlockersEnvironment(id environment.EnvironmentID, read func(context.Context) ([]reconcile.State, error), vc versioncontrol.VersionControlAdapter) environment.Environment {
+	return &handedBlockersEnv{id: id, read: read, vc: vc}
+}
+
+// backlogFilings reads, from the description of each of the engineering
+// backlog stream's own pull requests, the newest evidence time its marker
+// line covers per kind. A pull request counts when its branch is the stream's
+// and an own author opened it, whether open, merged, or closed unmerged by the
+// owner (an answer too, until new evidence comes): a stranger's pull request,
+// whatever its branch, never retires a handover. A list the forge cannot read
+// is an error, never "nothing filed".
+func backlogFilings(ctx context.Context, vc versioncontrol.VersionControlAdapter) (map[string]time.Time, error) {
+	if vc == nil || !vc.Active() {
+		return nil, errors.New("no version control adapter is bound to read the backlog pull requests from")
+	}
+	open, err := vc.ListPRs(ctx, "", time.Time{})
+	if err != nil {
+		return nil, fmt.Errorf("open pull requests: %w", err)
+	}
+	merged, err := vc.ListMergedPRs(ctx, "", 0)
+	if err != nil {
+		return nil, fmt.Errorf("merged pull requests: %w", err)
+	}
+	closed, err := vc.ListClosedPRs(ctx, "", 0)
+	if err != nil {
+		return nil, fmt.Errorf("closed pull requests: %w", err)
+	}
+	filings := map[string]time.Time{}
+	for _, pr := range append(append(open, merged...), closed...) {
+		if !pr.OwnAuthor || branchStream(pr.HeadBranch) != engineeringBacklogTemplateID {
+			continue
+		}
+		for _, line := range strings.Split(pr.Body, "\n") {
+			kind, at, ok := parseBacklogEntryLine(strings.TrimSpace(line))
+			if ok && at.After(filings[kind]) {
+				filings[kind] = at
+			}
+		}
+	}
+	return filings, nil
+}
+
+// parseBacklogEntryLine reads one marker line; any other line is not one.
+func parseBacklogEntryLine(line string) (string, time.Time, bool) {
+	rest, ok := strings.CutPrefix(line, backlogEntryMarker+" kind=")
+	if !ok {
+		return "", time.Time{}, false
+	}
+	kind, evidence, ok := strings.Cut(rest, " evidence=")
+	if !ok || kind == "" {
+		return "", time.Time{}, false
+	}
+	at, err := time.Parse(time.RFC3339, evidence)
+	if err != nil {
+		return "", time.Time{}, false
+	}
+	return kind, at.UTC(), true
 }
 
 // readTwinHandovers reads the reconcile states of the twin's standing
@@ -77,6 +155,7 @@ func readTwinHandovers(store storage.StorageAdapter, twinID string) func(context
 type handedBlockersEnv struct {
 	id   environment.EnvironmentID
 	read func(context.Context) ([]reconcile.State, error)
+	vc   versioncontrol.VersionControlAdapter
 }
 
 func (e *handedBlockersEnv) ID() environment.EnvironmentID { return e.id }
@@ -84,9 +163,11 @@ func (e *handedBlockersEnv) Domain() string                { return "software" }
 
 // Observe lists the handed-over blockers, one per kind and sorted by kind, the
 // lines that tell the backlog pass what to file, and has_work when there is
-// any. States that cannot be read are an error, never "nothing handed over".
-// The diagnoses are the deployment's own agents' reasoning, so the
-// observation is the operator's.
+// any: a kind with no entry filed, or with evidence newer than its entry. The
+// forge is read only when something is handed over. States or pull requests
+// that cannot be read are an error, never "nothing to file". The diagnoses are
+// the deployment's own agents' reasoning, and of the pull requests only a
+// handed kind and a time are kept, so the observation is the operator's.
 func (e *handedBlockersEnv) Observe(ctx context.Context, _ environment.ObservationQuery) (environment.Observation, error) {
 	if e.read == nil {
 		return environment.Observation{}, errors.New("no source for the reconcile states is bound")
@@ -96,6 +177,18 @@ func (e *handedBlockersEnv) Observe(ctx context.Context, _ environment.Observati
 		return environment.Observation{}, fmt.Errorf("the handed-over blockers could not be read: %w", err)
 	}
 	handed := handedBlockers(states)
+	if len(handed) > 0 {
+		filings, err := backlogFilings(ctx, e.vc)
+		if err != nil {
+			return environment.Observation{}, fmt.Errorf("the backlog entries filed for the handed-over blockers could not be read: %w", err)
+		}
+		for i := range handed {
+			if at, ok := filings[handed[i].Kind]; ok {
+				handed[i].FiledThrough = &at
+			}
+		}
+	}
+	lines := handedBlockerLines(handed)
 	raw, err := json.Marshal(handed)
 	if err != nil {
 		return environment.Observation{}, fmt.Errorf("the handed-over blockers could not be hashed: %w", err)
@@ -105,8 +198,8 @@ func (e *handedBlockersEnv) Observe(ctx context.Context, _ environment.Observati
 		EnvID: e.id,
 		State: map[string]any{
 			"handed_blockers":       handed,
-			"handed_blockers_lines": handedBlockerLines(handed),
-			"has_work":              len(handed) > 0,
+			"handed_blockers_lines": lines,
+			"has_work":              len(lines) > 0,
 		},
 		Version:   hex.EncodeToString(sum[:])[:16],
 		Timestamp: time.Now().UTC(),
@@ -137,6 +230,13 @@ func handedBlockers(states []reconcile.State) []HandedBlocker {
 			}
 			hb.Attempts = append(hb.Attempts, h.Attempts...)
 			hb.Occurrences += len(h.Cleared)
+			hb.EvidenceAt = latest(hb.EvidenceAt, h.At)
+			for _, a := range h.Attempts {
+				hb.EvidenceAt = latest(hb.EvidenceAt, a.At)
+			}
+			for _, c := range h.Cleared {
+				hb.EvidenceAt = latest(hb.EvidenceAt, c)
+			}
 		}
 	}
 	out := make([]HandedBlocker, 0, len(byKind))
@@ -150,6 +250,16 @@ func handedBlockers(states []reconcile.State) []HandedBlocker {
 	return out
 }
 
+// latest is the later of a and b, b in UTC to the second, the precision the
+// marker line carries.
+func latest(a, b time.Time) time.Time {
+	b = b.UTC().Truncate(time.Second)
+	if b.After(a) {
+		return b
+	}
+	return a
+}
+
 func sortedKeys(set map[string]bool) []string {
 	keys := make([]string, 0, len(set))
 	for k := range set {
@@ -161,11 +271,16 @@ func sortedKeys(set map[string]bool) []string {
 
 // handedBlockerLines are what the planner reads: for each kind, file one
 // Engineering Backlog entry, or add to the one already filed, with all the
-// evidence, and propose the change to the brief, the template or the code
-// that would stop the blocker.
+// evidence, propose the change to the brief, the template or the code that
+// would stop the blocker, and put the marker line in the pull request's
+// description. Only a kind with no entry, or with evidence newer than its
+// entry, has a line: a filed kind is the owner's turn.
 func handedBlockerLines(handed []HandedBlocker) []string {
 	lines := make([]string, 0, len(handed))
 	for _, h := range handed {
+		if h.filed() {
+			continue
+		}
 		var b strings.Builder
 		fmt.Fprintf(&b, "Blocker kind %s, handed over by %s, about %s: file one Engineering Backlog entry for it, "+
 			"or add this evidence to the entry already filed for the kind, and propose the change to the stream brief, the template or the code that removes it.",
@@ -183,6 +298,10 @@ func handedBlockerLines(handed []HandedBlocker) []string {
 			}
 			b.WriteString(".")
 		}
+		if h.FiledThrough != nil {
+			fmt.Fprintf(&b, " The entry filed for it covers the evidence up to %s: add what came since to that entry.", h.FiledThrough.Format(time.RFC3339))
+		}
+		fmt.Fprintf(&b, " Put this exact line in the pull request's description: %s", backlogEntryLine(h.Kind, h.EvidenceAt))
 		lines = append(lines, b.String())
 	}
 	return lines
