@@ -65,7 +65,16 @@ function openStream(path: string, onEvent: SSEHandler): SSEStream {
   };
 }
 
-function attach(es: EventSource, onEvent: SSEHandler): void {
+export function attach(es: EventSource, onEvent: SSEHandler): void {
+  // Set by onerror, cleared by the next open: a reconnect that brings no new
+  // event must still end the "disconnected" state, or the notice stays until
+  // the next pass, hours later.
+  let erred = false;
+  es.onopen = () => {
+    if (!erred) return;
+    erred = false;
+    onEvent({ type: 'stream_open', timestamp: new Date().toISOString() });
+  };
   es.onmessage = (msg) => {
     if (!msg.data) return;
     try {
@@ -77,6 +86,7 @@ function attach(es: EventSource, onEvent: SSEHandler): void {
     }
   };
   es.onerror = () => {
+    erred = true;
     // EventSource auto-reconnects; surface a one-shot "disconnected" event for UI.
     onEvent({ type: 'stream_error', timestamp: new Date().toISOString() });
   };

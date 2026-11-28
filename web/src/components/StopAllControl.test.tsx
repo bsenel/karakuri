@@ -19,7 +19,7 @@ import { StopAllControl } from './StopAllControl';
 // Opens the control and confirms it with a reason.
 const stopAll = (reason: string) => {
   fireEvent.click(screen.getByRole('button', { name: 'Stop all' }));
-  const dialog = screen.getByRole('dialog', { name: 'Stop every run' });
+  const dialog = screen.getByRole('dialog', { name: 'Stop every loop' });
   fireEvent.change(within(dialog).getByRole('textbox', { name: 'Reason' }), { target: { value: reason } });
   fireEvent.click(within(dialog).getByRole('button', { name: 'Stop everything' }));
 };
@@ -42,7 +42,7 @@ describe('StopAllControl', () => {
 
     // Opening the control stops nothing: the reason comes first.
     expect(post).not.toHaveBeenCalled();
-    const dialog = screen.getByRole('dialog', { name: 'Stop every run' });
+    const dialog = screen.getByRole('dialog', { name: 'Stop every loop' });
     const confirm = within(dialog).getByRole('button', { name: 'Stop everything' });
     expect(confirm).toBeDisabled();
 
@@ -95,7 +95,7 @@ describe('StopAllControl', () => {
     render(<StopAllControl />);
     stopAll('again');
 
-    await waitFor(() => expect(screen.getByText(/nothing was stopped or paused/i)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/nothing was stopped or paused: no loop was running/i)).toBeInTheDocument());
     expect(screen.queryByRole('list', { name: 'Not reached' })).not.toBeInTheDocument();
   });
 
@@ -118,9 +118,9 @@ describe('StopAllControl', () => {
     render(<StopAllControl />);
     stopAll('something is wrong everywhere');
 
-    const dialog = screen.getByRole('dialog', { name: 'Stop every run' });
+    const dialog = screen.getByRole('dialog', { name: 'Stop every loop' });
     await waitFor(() => expect(within(dialog).getByRole('alert')).toHaveTextContent('stop-all refused'));
-    expect(screen.getByRole('dialog', { name: 'Stop every run' })).toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: 'Stop every loop' })).toBeInTheDocument();
     // The typed reason is not lost, so the operator can try again.
     expect(within(dialog).getByRole('textbox', { name: 'Reason' })).toHaveValue('something is wrong everywhere');
     // Nothing is reported as stopped or paused when the call failed.
@@ -133,7 +133,7 @@ describe('StopAllControl', () => {
     render(<StopAllControl />);
     stopAll('something is wrong everywhere');
 
-    const dialog = screen.getByRole('dialog', { name: 'Stop every run' });
+    const dialog = screen.getByRole('dialog', { name: 'Stop every loop' });
     await waitFor(() =>
       expect(within(dialog).getByRole('alert')).toHaveTextContent('you may not stop runs in org:acme'),
     );

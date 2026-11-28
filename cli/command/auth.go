@@ -111,6 +111,8 @@ func authLogoutCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "logout",
 		Short: "Revoke this session and forget the cached credentials",
+		Example: `  krk auth logout
+  krk auth whoami   # now fails until you run: krk auth login`,
 		RunE: func(c *cobra.Command, _ []string) error {
 			if err := api.Logout(); err != nil {
 				return err
@@ -144,6 +146,8 @@ func authUsersCmd() *cobra.Command {
 	cmd.AddCommand(&cobra.Command{
 		Use:   "list",
 		Short: "List principals",
+		Example: `  krk auth users list
+  krk auth users list --output json`,
 		RunE: func(c *cobra.Command, _ []string) error {
 			data, _, err := api.Get("/auth/users")
 			if err != nil {
@@ -220,6 +224,8 @@ func authRolesCmd() *cobra.Command {
 	cmd.AddCommand(&cobra.Command{
 		Use:   "list",
 		Short: "List roles with their policies",
+		Example: `  krk auth roles list
+  krk auth roles list --output json`,
 		RunE: func(c *cobra.Command, _ []string) error {
 			data, _, err := api.Get("/auth/roles")
 			if err != nil {
@@ -243,15 +249,18 @@ func authPoliciesCmd() *cobra.Command {
 		RunE: func(c *cobra.Command, _ []string) error {
 			path := "/auth/policies"
 			noun := "policies"
+			// With --principal the hint names that principal, so the line can be copied as is.
+			grantee := "<id>"
 			if principal != "" {
 				path += "?" + url.Values{"principal": {principal}}.Encode()
 				noun = fmt.Sprintf("grants reach principal %q", principal)
+				grantee = principal
 			}
 			data, _, err := api.Get(path)
 			if err != nil {
 				return err
 			}
-			printList(c, data, noun, "")
+			printList(c, data, noun, "Grant one with: krk auth bindings add --principal "+grantee+" --role <role>")
 			return nil
 		},
 	}
@@ -356,6 +365,9 @@ func authCatalogCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "catalog",
 		Short: "List every action the server recognises",
+		Example: `  # The actions you can name in krk auth check, e.g. loop:start
+  krk auth catalog
+  krk auth catalog --output json`,
 		RunE: func(_ *cobra.Command, _ []string) error {
 			data, _, err := api.Get("/auth/catalog")
 			if err != nil {
