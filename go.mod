@@ -10,7 +10,7 @@ go 1.26.0
 // build that has to fetch a toolchain now gets a patched one.
 //
 // Raise it whenever a newer patch carries a stdlib advisory fix.
-toolchain go1.26.10
+toolchain go1.26.11
 
 // The auth and quota engines and their backends are separate modules in this
 // repo (ADR 007, ADR 008). Until auth/v0.1.0 and quota/v0.1.0 are tagged they
