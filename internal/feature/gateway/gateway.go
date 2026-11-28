@@ -77,12 +77,9 @@ type Call struct {
 }
 
 // ServePack routes calls for the tools a pack's server lists to that server,
-// with the call contract, instead of the in-process implementation.
-//
-// An acting capability (a "<domain>.act.<name>" ID) stays on the in-process
-// path even when the server lists it: Phase 39 step 3 moves reads and
-// verifiers only, and an act still needs the environment the loop built for
-// its worktree and its bounds checks.
+// with the call contract, instead of the in-process implementation. An acting
+// tool the server lists is routed too (Phase 39 step 4): the loop provisions
+// nothing for it, and the pack keeps its files on the call's identifiers.
 func (g *Gateway) ServePack(ctx context.Context, packID string, server domain.PackServer) error {
 	tools, err := server.ListTools(ctx)
 	if err != nil {
@@ -91,13 +88,12 @@ func (g *Gateway) ServePack(ctx context.Context, packID string, server domain.Pa
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	if g.packs == nil {
-		g.packs = make(map[string]domain.PackServer)
+		g.packs = make(map[string]string)
+		g.servers = make(map[string]domain.PackServer)
 	}
+	g.servers[packID] = server
 	for _, tool := range tools {
-		if strings.Contains(string(tool), ".act.") {
-			continue
-		}
-		g.packs[string(tool)] = server
+		g.packs[string(tool)] = packID
 	}
 	return nil
 }
@@ -108,7 +104,8 @@ func (g *Gateway) ServePack(ctx context.Context, packID string, server domain.Pa
 // operator's would let it steer the loop (AGENTS.md rule 9).
 func (g *Gateway) servedBy(call Call, perform Perform) Perform {
 	g.mu.RLock()
-	server, ok := g.packs[call.Capability]
+	packID, ok := g.packs[call.Capability]
+	server := g.servers[packID]
 	g.mu.RUnlock()
 	if !ok {
 		return perform
@@ -123,6 +120,7 @@ func (g *Gateway) servedBy(call Call, perform Perform) Perform {
 		Bounds:      call.Bounds,
 	}
 	return func(ctx context.Context) (environment.ActionResult, error) {
+		g.calledBy(contract, packID)
 		result, err := server.CallTool(ctx, contract, capability.CapabilityID(call.Capability), call.Params)
 		if result.Trust == "" {
 			result.Trust = environment.TrustThirdParty
@@ -131,20 +129,99 @@ func (g *Gateway) servedBy(call Call, perform Perform) Perform {
 	}
 }
 
+// signalTimeout bounds one lifecycle signal, so a pack that hangs on one does
+// not hold the pass or the stop that sent it.
+const signalTimeout = 10 * time.Second
+
+// objectiveKey and passKey name what a lifecycle signal ends, from the
+// orchestrator's own identifiers.
+func objectiveKey(c domain.CallContract) string {
+	return c.TenantID + "|" + c.TwinID + "|" + c.ObjectiveID
+}
+
+func passKey(c domain.CallContract) string {
+	return fmt.Sprintf("%s|%s|%d", objectiveKey(c), c.LoopID, c.Pass)
+}
+
+// calledBy records that the pack packID was called for the contract's pass
+// and objective, so their ends reach it.
+func (g *Gateway) calledBy(c domain.CallContract, packID string) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if g.calledInPass == nil {
+		g.calledInPass = make(map[string]map[string]domain.CallContract)
+		g.calledForObjective = make(map[string]map[string]bool)
+	}
+	pk := passKey(c)
+	if g.calledInPass[pk] == nil {
+		g.calledInPass[pk] = make(map[string]domain.CallContract)
+	}
+	// What names the pass, without the call's action and bounds.
+	g.calledInPass[pk][packID] = domain.CallContract{
+		TenantID: c.TenantID, TwinID: c.TwinID, ObjectiveID: c.ObjectiveID, LoopID: c.LoopID, Pass: c.Pass,
+	}
+	ok := objectiveKey(c)
+	if g.calledForObjective[ok] == nil {
+		g.calledForObjective[ok] = make(map[string]bool)
+	}
+	g.calledForObjective[ok][packID] = true
+}
+
 // PassEnded tells every pack called during the pass that pass names (its
 // objective, loop and pass) that the pass ended, as domain.ToolPassEnded with
 // the orchestrator's own identifiers (Phase 39 step 4). Best effort: a pack
-// that fails to take the signal is logged, not retried, and fails nothing.
-//
-// Scaffolding for step 4 slice B's tests: it sends nothing yet.
-func (g *Gateway) PassEnded(ctx context.Context, pass domain.CallContract) {}
+// that fails to take the signal is logged, not retried, and fails nothing. A
+// signal is the gateway's own message, so it is neither charged nor audited.
+func (g *Gateway) PassEnded(ctx context.Context, pass domain.CallContract) {
+	pk := passKey(pass)
+	g.mu.Lock()
+	called := g.calledInPass[pk]
+	delete(g.calledInPass, pk)
+	g.mu.Unlock()
+	for packID, contract := range called {
+		g.signal(ctx, packID, contract, domain.ToolPassEnded)
+	}
+}
 
 // ObjectiveEnded tells every pack called for the objective that objective
 // names that it ended or was cancelled, as domain.ToolObjectiveEnded (Phase 39
-// step 4). Best effort, like PassEnded.
-//
-// Scaffolding for step 4 slice B's tests: it sends nothing yet.
-func (g *Gateway) ObjectiveEnded(ctx context.Context, objective domain.CallContract) {}
+// step 4), and forgets the objective's passes, which its end releases too.
+// Best effort, like PassEnded.
+func (g *Gateway) ObjectiveEnded(ctx context.Context, objective domain.CallContract) {
+	ok := objectiveKey(objective)
+	g.mu.Lock()
+	called := g.calledForObjective[ok]
+	delete(g.calledForObjective, ok)
+	for pk := range g.calledInPass {
+		if strings.HasPrefix(pk, ok+"|") {
+			delete(g.calledInPass, pk)
+		}
+	}
+	g.mu.Unlock()
+	contract := domain.CallContract{TenantID: objective.TenantID, TwinID: objective.TwinID, ObjectiveID: objective.ObjectiveID}
+	for packID := range called {
+		g.signal(ctx, packID, contract, domain.ToolObjectiveEnded)
+	}
+}
+
+// signal sends one lifecycle signal to one pack, once, on a context the
+// caller's cancellation does not cut (a stop is what ends an objective) and
+// signalTimeout bounds.
+func (g *Gateway) signal(ctx context.Context, packID string, contract domain.CallContract, kind capability.CapabilityID) {
+	g.mu.RLock()
+	server := g.servers[packID]
+	g.mu.RUnlock()
+	if server == nil {
+		return
+	}
+	sctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), signalTimeout)
+	defer cancel()
+	if _, err := server.CallTool(sctx, contract, kind, nil); err != nil {
+		slog.Warn("a pack did not take a lifecycle signal; not retried",
+			"pack", packID, "signal", string(kind), "objective", contract.ObjectiveID,
+			"loop", contract.LoopID, "pass", contract.Pass, "err", err)
+	}
+}
 
 // Perform is the work behind a call: the environment's Act, or the served
 // tool's implementation.
@@ -164,9 +241,16 @@ type Gateway struct {
 	quota karakuriquota.Deps
 	costs *karakuriquota.Recorder
 
-	// packs maps a tool to the pack server that serves it (Phase 39 step 3).
-	mu    sync.RWMutex
-	packs map[string]domain.PackServer
+	// packs maps a tool to the pack that serves it, and servers a pack to its
+	// server (Phase 39 step 3).
+	mu      sync.RWMutex
+	packs   map[string]string
+	servers map[string]domain.PackServer
+	// calledInPass and calledForObjective record which packs a pass and an
+	// objective called, by passKey and objectiveKey, so their ends reach those
+	// packs and no other (Phase 39 step 4).
+	calledInPass       map[string]map[string]domain.CallContract
+	calledForObjective map[string]map[string]bool
 }
 
 // New builds a gateway over the audit store, the quota dependencies and the

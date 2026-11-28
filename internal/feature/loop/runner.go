@@ -163,6 +163,12 @@ func (s *serviceImpl) runLoop(ctx context.Context, loopID string, req loop.Reque
 		sleep:    s.sleep,
 	}
 
+	// Whichever way the run leaves, the packs its last pass called hear that
+	// the pass ended, and, when the run ended a one-shot objective or a stop
+	// cancelled it, that the objective ended (Phase 39 step 4). A run paused
+	// at a checkpoint has ended neither.
+	defer s.signalRunEnd(ctx, sc)
+
 	// 7. Measure each at_start baseline not measured yet, before the first
 	// plan's work can move it (Phase 41 step 7).
 	s.measureAtStartBaselines(ctx, sc)
@@ -447,6 +453,7 @@ func (s *serviceImpl) runLoop(ctx context.Context, loopID string, req loop.Reque
 		s.persistState(ictx, state, false)
 
 		span.End()
+		s.signalPassEnded(ctx, sc)
 		// Every required criterion met, which an optional one beside them can
 		// leave short of a 1.0 score.
 		if criteriaMet {
