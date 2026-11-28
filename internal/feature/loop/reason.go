@@ -30,6 +30,9 @@ type plan struct {
 	Actions    []plannedAction `json:"actions"`
 	Confidence float64         `json:"confidence"`
 	Reasoning  string          `json:"reasoning"`
+	// Remedy is the fix the planner says this plan applies to the blocker it
+	// was given (Phase 40 step 14b): text kept for recall, never authority.
+	Remedy string `json:"remedy,omitempty"`
 
 	// provider and model say which call produced this plan. Both are empty on
 	// the placeholder built when the call failed: no model produced that one,
