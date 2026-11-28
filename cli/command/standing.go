@@ -9,6 +9,16 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// checkAutonomyLevel refuses a level the server would reject before the
+// request is sent, and names the levels there are.
+func checkAutonomyLevel(flag, level, objectiveID string) error {
+	switch level {
+	case "", "sense", "propose", "act_with_notice", "act":
+		return nil
+	}
+	return fmt.Errorf("invalid %s %q: use sense, propose, act_with_notice or act, e.g. `krk objective standing %s %s propose`", flag, level, objectiveID, flag)
+}
+
 // standingCmd groups the commands for objectives Karakuri holds rather than
 // finishes: declare one, see what its control loop has been doing, reconcile it
 // now, stop it, start it again.
@@ -76,6 +86,12 @@ daily ceiling clears itself at UTC midnight.`,
       --budget-daily 5.00 --budget-per-reconcile 1.00`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
+			if err := checkAutonomyLevel("--autonomy", autonomy, args[0]); err != nil {
+				return err
+			}
+			if err := checkAutonomyLevel("--ceiling", ceiling, args[0]); err != nil {
+				return err
+			}
 			cadence := map[string]any{}
 			for key, val := range map[string]string{
 				"sense":        sense,

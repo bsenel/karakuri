@@ -111,7 +111,9 @@ function Roles() {
       </p>
 
       <div className="tablewrap">
-        <table>
+        {/* Named, as the other tables are, so a screen reader listing tables
+            says which one this is. */}
+        <table aria-label="Actions each role grants">
           <thead>
             <tr>
               <th>Action</th>
