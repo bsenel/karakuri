@@ -24,7 +24,7 @@ import (
 //     typed signal is the row. Subject: the objective ID.
 //   - pushed_refs_violation: the loop row's BoundsViolation (step 3), also
 //     State.PausedReason. Subject: its first ref.
-//   - deferred_quota: Outcome.Deferred ("budget_exhausted" or
+//   - deferred_quota: Outcome.Deferred ("budget_exhausted", "waiting_for_quota" or
 //     "provider_rate_limited"). Subject: the objective ID. Never an Error, so
 //     ConsecutiveFailures does not move.
 //   - no_progress: no field. The branch's tip is the "git" environment's
