@@ -148,6 +148,38 @@ func TestReviewedCommitsListsTheCommitOfEveryReview(t *testing.T) {
 	}
 }
 
+// Phase 40 step 14: the digest shows the latest review's result, so the state
+// of each review is read along with its commit.
+func TestListReviewsReadsTheStateAndCommitOfEveryReview(t *testing.T) {
+	var path string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		path = r.URL.Path
+		_, _ = w.Write([]byte(`[{"id":1,"state":"CHANGES_REQUESTED","commit_id":"aaa111"},{"id":2,"state":"APPROVED","commit_id":"bbb222"}]`))
+	}))
+	defer srv.Close()
+	g := NewGitHub("t", "acme/api")
+	g.client = &http.Client{Transport: toServer{srv}}
+
+	got, err := g.ListReviews(context.Background(), "", "244")
+	if err != nil {
+		t.Fatalf("ListReviews: %v", err)
+	}
+	if path != "/repos/acme/api/pulls/244/reviews" {
+		t.Errorf("sent %s, want /repos/acme/api/pulls/244/reviews", path)
+	}
+	want := []Review{{State: "changes_requested", CommitID: "aaa111"}, {State: "approved", CommitID: "bbb222"}}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("reviews = %v, want %v", got, want)
+	}
+}
+
+func TestNoOpListReviewsIsUnsupported(t *testing.T) {
+	got, err := NewNoOp().ListReviews(context.Background(), "acme/api", "1")
+	if !errors.Is(err, ErrUnsupported) || got != nil {
+		t.Errorf("got %v, %v; want nil and ErrUnsupported", got, err)
+	}
+}
+
 // A refused read is an error, never an empty list: no reviews and unreadable
 // reviews are different answers.
 func TestReviewedCommitsNon2xxIsAnError(t *testing.T) {

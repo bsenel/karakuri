@@ -369,3 +369,63 @@ export interface ConformanceResult {
   passed: boolean;
   message: string;
 }
+
+/** Why a stream cannot make progress (Phase 40 step 14). */
+export type BlockKind = 'waiting_for_quota' | 'bounds_violation' | 'remote_unreadable';
+
+/** One plan or action the bounds refused. */
+export interface Refusal {
+  at: string;
+  capability?: string;
+  reason?: string;
+}
+
+/** One thing a stream is blocked on; `until` is absent when nothing says when it clears. */
+export interface Block {
+  kind: BlockKind;
+  reason?: string;
+  at: string;
+  until?: string;
+}
+
+/** A stream's open pull request waiting for a merge (internal/core/digest). */
+export interface WaitingPullRequest {
+  number: number;
+  title: string;
+  url?: string;
+  /** The latest review: "approved", "changes_requested", "commented" or "none". */
+  review: string;
+  /** Whether that review was left at the pull request's current head. */
+  reviewed_head: boolean;
+}
+
+/** One standing objective's window in a digest (internal/core/digest). */
+export interface DigestObjective {
+  id: string;
+  title: string;
+  status: ObjectiveStatus;
+  senses: number;
+  reconciles: number;
+  drift_detected: number;
+  converged: number;
+  escalations: number;
+  failures: number;
+  actions: number;
+  waiting_pull_requests?: WaitingPullRequest[];
+  refusals?: Refusal[];
+  blocks?: Block[];
+  autonomy?: AutonomyLevel;
+  criteria_met: number;
+  paused?: boolean;
+  paused_why?: string;
+  last_error?: string;
+}
+
+/** What GET /reports/preview answers. */
+export interface Digest {
+  twin_id: string;
+  twin_name?: string;
+  since: string;
+  until: string;
+  objectives?: DigestObjective[];
+}

@@ -30,6 +30,7 @@ import (
 	"github.com/bsenel/karakuri/internal/feature/delegation"
 	"github.com/bsenel/karakuri/internal/feature/gateway"
 	featurememory "github.com/bsenel/karakuri/internal/feature/memory"
+	featurereport "github.com/bsenel/karakuri/internal/feature/report"
 	"github.com/bsenel/karakuri/internal/platform/db"
 	"github.com/bsenel/karakuri/internal/platform/git"
 	"github.com/bsenel/karakuri/internal/platform/llm"
@@ -357,7 +358,8 @@ func BootstrapServer(cfgPath string) (*Bootstrap, error) {
 		}
 	}
 
-	apiApp := api.NewApp(cfg, store, providers, toolReg, exporters, wt, hub, otel, capReg, envReg, domReg, allTemplates, auditKeep, semanticBackend, promHandler, authDeps, quotaDeps, gw)
+	apiApp := api.NewApp(cfg, store, providers, toolReg, exporters, wt, hub, otel, capReg, envReg, domReg, allTemplates, auditKeep, semanticBackend, promHandler, authDeps, quotaDeps, gw,
+		featurereport.WithPullRequestReader(streamPullRequests{store: store, tools: toolReg}))
 
 	// Resume any non-completed loops left behind by a previous server process
 	// (Phase 11). Failures are logged but don't block startup — a working

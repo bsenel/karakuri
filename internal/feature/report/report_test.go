@@ -31,7 +31,9 @@ func newService(t *testing.T) (*Service, storage.StorageAdapter, *time.Time) {
 	// No agent factory and no tool registry: the digest has to be complete
 	// without a model, because that is what gets delivered when one is
 	// unavailable and it is appended beneath the prose when one is not.
-	svc := NewService(store, nil, nil, karakuriquota.Deps{}, Config{})
+	// A forge that holds no pull requests, so the tests that are not about
+	// them do not see the remote_unreadable block a missing reader raises.
+	svc := NewService(store, nil, nil, karakuriquota.Deps{}, Config{}, WithPullRequestReader(&fakePulls{}))
 	svc.now = func() time.Time { return clock }
 	return svc, store, &clock
 }

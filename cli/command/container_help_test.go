@@ -26,3 +26,39 @@ func TestContainerParentHelp(t *testing.T) {
 		}
 	}
 }
+
+// "--org string   Organisation this belongs to" did not say whether it takes a
+// name or an ID, nor where to look one up. Every flag that names an
+// organisation must say it takes a name and point at krk org list.
+func TestContainerOrgFlagHelp(t *testing.T) {
+	cmds := append(teamCmd().Commands(), containerCreateCmd("org", "Create an organisation", false))
+	checked := 0
+	for _, cmd := range cmds {
+		for _, name := range []string{"org", "to-org"} {
+			f := cmd.Flags().Lookup(name)
+			if f == nil {
+				continue
+			}
+			checked++
+			if !strings.Contains(f.Usage, "Name of") || !strings.Contains(f.Usage, "krk org list") {
+				t.Errorf("%s --%s usage %q does not say it takes a name from krk org list", cmd.Name(), name, f.Usage)
+			}
+		}
+	}
+	// team create, list, rename, delete, move (two) and org create.
+	if checked != 7 {
+		t.Errorf("checked %d organisation flags, want 7", checked)
+	}
+}
+
+// "--project string   Project to share into" sat beside "--twin string
+// Twin ID, from krk twin list": the sibling flag said where its value comes
+// from and this one did not.
+func TestProjectTwinFlagHelp(t *testing.T) {
+	for _, cmd := range []*cobra.Command{projectAddCmd(), projectRemoveCmd()} {
+		usage := cmd.Flags().Lookup("project").Usage
+		if !strings.Contains(usage, "Name of") || !strings.Contains(usage, "krk project list") {
+			t.Errorf("%s --project usage %q does not say it takes a name from krk project list", cmd.Name(), usage)
+		}
+	}
+}

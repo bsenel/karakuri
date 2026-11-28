@@ -400,11 +400,26 @@ func (g *GitHub) PostReview(ctx context.Context, repo, prID, body string, commen
 }
 
 // ReviewedCommits lists the commit id each review on a pull request was left
-// at, so a caller can tell whether the current head was ever reviewed. One page
-// of up to 100 reviews is read; a pull request with more has its older reviews
-// cut, which can only make a reviewed head look unreviewed, never the reverse.
-// A non-2xx answer is an error, since unreadable reviews are not "no reviews".
+// at, so a caller can tell whether the current head was ever reviewed. It reads
+// what ListReviews reads, so it shares its limit and its errors.
 func (g *GitHub) ReviewedCommits(ctx context.Context, repo, prID string) ([]string, error) {
+	reviews, err := g.ListReviews(ctx, repo, prID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]string, 0, len(reviews))
+	for _, r := range reviews {
+		out = append(out, r.CommitID)
+	}
+	return out, nil
+}
+
+// ListReviews lists every review on a pull request, oldest first as GitHub
+// lists them, with its state and the commit it was left at. One page of up to
+// 100 reviews is read; a pull request with more has its newest reviews cut, so
+// a caller reading the latest one sees an older one. A non-2xx answer is an
+// error, since unreadable reviews are not "no reviews".
+func (g *GitHub) ListReviews(ctx context.Context, repo, prID string) ([]Review, error) {
 	if repo == "" {
 		repo = g.repo
 	}
@@ -412,15 +427,16 @@ func (g *GitHub) ReviewedCommits(ctx context.Context, repo, prID string) ([]stri
 		return nil, fmt.Errorf("github: no repo configured")
 	}
 	var raw []struct {
+		State    string `json:"state"`
 		CommitID string `json:"commit_id"`
 	}
 	path := fmt.Sprintf("/repos/%s/pulls/%s/reviews?per_page=100", repo, url.PathEscape(prID))
 	if err := g.do(ctx, "GET", path, nil, &raw); err != nil {
-		return nil, fmt.Errorf("github: reviewed commits: %w", err)
+		return nil, fmt.Errorf("github: list reviews: %w", err)
 	}
-	out := make([]string, 0, len(raw))
+	out := make([]Review, 0, len(raw))
 	for _, r := range raw {
-		out = append(out, r.CommitID)
+		out = append(out, Review{State: strings.ToLower(r.State), CommitID: r.CommitID})
 	}
 	return out, nil
 }

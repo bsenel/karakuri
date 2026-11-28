@@ -21,6 +21,7 @@ export const Actions = {
   quotaRequest: 'quota:request',
   quotaApprove: 'quota:approve',
   costRead: 'cost:read',
+  reportRead: 'report:read',
 } as const;
 
 export type Action = (typeof Actions)[keyof typeof Actions];
@@ -45,6 +46,7 @@ export const navigation: NavEntry[] = [
   { to: '/objectives', label: 'Objectives', action: Actions.objectiveRead },
   { to: '/checkpoints', label: 'Checkpoints', action: Actions.checkpointRead },
   { to: '/cost', label: 'Cost', action: Actions.costRead },
+  { to: '/oversight', label: 'Oversight', action: Actions.reportRead },
   { to: '/quota', label: 'Quota', action: Actions.quotaRead },
   { to: '/orgs', label: 'Organisations', action: Actions.containerRead },
   { to: '/users', label: 'Users', action: Actions.authRead },

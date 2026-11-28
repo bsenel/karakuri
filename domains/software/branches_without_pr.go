@@ -31,6 +31,11 @@ var streamBranchPatterns = []struct {
 	{roadmapDeliveryTemplateID, deliveryBranches},
 }
 
+// StreamOfBranch is the template ID of the stream that owns branch, or "" when
+// none does. The digest uses it to say which stream a pull request belongs to,
+// by the rule the git observation uses.
+func StreamOfBranch(branch string) string { return branchStream(branch) }
+
 // branchStream is the template of the stream whose patterns match branch, or
 // "" for a branch no stream owns (a salvage branch, main, a human's branch).
 func branchStream(branch string) string {

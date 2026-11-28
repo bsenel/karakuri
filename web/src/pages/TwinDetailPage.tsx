@@ -77,9 +77,11 @@ export function TwinDetailPage() {
       </div>
 
       <div className="card">
-        <h3>Adapter Bindings</h3>
+        <h3 id="twin-bindings-title">Adapter Bindings</h3>
         <p className="muted small">Map slot → instance. Empty means fall back to the slot's default.</p>
-        <table style={{ marginTop: 12 }}>
+        {/* Named by its heading, as the other tables are, so a screen reader
+            listing tables says which one this is. */}
+        <table style={{ marginTop: 12 }} aria-labelledby="twin-bindings-title">
           <thead>
             <tr><th>Slot</th><th>Instance</th><th>Active types</th></tr>
           </thead>
