@@ -306,9 +306,15 @@ func stepAct(ctx context.Context, sc *stepContext, p plan) []actionOutcome {
 			EnvID:       envAdapter,
 			Params:      params,
 			LoopID:      sc.loopID,
-			Index:       i,
-			RoutedBy:    routedBy,
-			Confidence:  p.Confidence,
+			// The rest of the call contract a pack's server receives (ADR
+			// 028 section b). The deployment has no tenant yet, so TenantID
+			// stays empty; the action is named by its place in this pass.
+			Pass:       sc.iteration,
+			ActionID:   fmt.Sprintf("%s-%d-%d", sc.loopID, sc.iteration, i),
+			Bounds:     sc.agentDef.Authority,
+			Index:      i,
+			RoutedBy:   routedBy,
+			Confidence: p.Confidence,
 			Stamp: func(row *storage.ToolEvent, payload map[string]any) {
 				sc.stampProvenance(row, p, payload)
 			},

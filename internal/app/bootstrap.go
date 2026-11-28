@@ -345,6 +345,17 @@ func BootstrapServer(cfgPath string) (*Bootstrap, error) {
 	// row and the cost entry of every action, applied in one place (Phase 39
 	// step 1).
 	gw := gateway.New(store, quotaDeps, quotaDeps.Costs)
+	// The software pack's reads and verifiers answer through its in-binary
+	// server (Phase 39 step 3), only when a domains: entry enabled the pack.
+	for _, pack := range activePacks {
+		if pack.ID() != swPack.ID() {
+			continue
+		}
+		server := swPack.MCPServer(twinBindings(store)).WithTelemetry(envReg.Telemetry())
+		if err := gw.ServePack(ctx, pack.ID(), server); err != nil {
+			return nil, err
+		}
+	}
 
 	apiApp := api.NewApp(cfg, store, providers, toolReg, exporters, wt, hub, otel, capReg, envReg, domReg, allTemplates, auditKeep, semanticBackend, promHandler, authDeps, quotaDeps, gw)
 

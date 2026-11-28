@@ -56,6 +56,7 @@ var bypassRules = []bypassRule{
 			"internal/feature/loop/act.go:stepAct":                   "the perform func stepAct hands to Gateway.Call; the Act call is inside that closure",
 			"domains/software/remediation_env.go:remediationEnv.Act": "an environment's own Act delegating to its shell executor; the outer Act is the call the gateway already charged and audited",
 			"domains/software/review_runs.go:runReviewCommand":       "runs the review's build inside the review capability's Act (composeReviewBody), which the gateway already charged and audited",
+			"domains/software/mcp_server.go:MCPServer.CallTool":      "the software pack's server, which the gateway calls from the perform it routes to a pack (Gateway.servedBy, Phase 39 step 3); the gateway has already charged the call and writes its row",
 		},
 	},
 	{
