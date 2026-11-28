@@ -25,7 +25,6 @@ import (
 	"github.com/bsenel/karakuri/internal/core/environment"
 	"github.com/bsenel/karakuri/internal/core/event"
 	corememory "github.com/bsenel/karakuri/internal/core/memory"
-	objectivepkg "github.com/bsenel/karakuri/internal/core/objective"
 	"github.com/bsenel/karakuri/internal/feature/audit"
 	"github.com/bsenel/karakuri/internal/feature/container"
 	"github.com/bsenel/karakuri/internal/feature/delegation"
@@ -215,7 +214,9 @@ func BootstrapServer(cfgPath string) (*Bootstrap, error) {
 	for _, dc := range cfg.Domains {
 		enabledDomains[dc.ID] = dc
 	}
-	var allTemplates []objectivepkg.Template
+	// Kept apart from domReg, which still owns Init, Get and List: registering a
+	// pack in both would count its planner hints twice.
+	manifests := domain.NewRegistry()
 	var activePacks []domain.Pack
 	for _, pack := range allPacks {
 		dc, ok := enabledDomains[pack.ID()]
@@ -228,15 +229,25 @@ func BootstrapServer(cfgPath string) (*Bootstrap, error) {
 			slog.Warn("domain pack init failed", "domain", pack.ID(), "err", err)
 			continue
 		}
-		for _, cap := range pack.Capabilities() {
-			_ = capReg.Register(cap)
+		// An enabled pack's tools and templates come from its manifest (ADR 028
+		// Decision 5); a manifest naming anything under mcp. is refused and the
+		// pack stays out of the capability and template registries.
+		if err := manifests.RegisterManifest(pack.ID(), pack.Capabilities(), domain.ManifestOf(pack)); err != nil {
+			slog.Warn("domain pack manifest refused", "domain", pack.ID(), "err", err)
+			continue
 		}
 		for _, factory := range pack.EnvironmentFactories() {
 			_ = envReg.Register(factory)
 		}
-		allTemplates = append(allTemplates, pack.ObjectiveTemplates()...)
 		activePacks = append(activePacks, pack)
 	}
+	for _, cap := range manifests.Capabilities() {
+		_ = capReg.Register(cap)
+	}
+	allTemplates := manifests.ObjectiveTemplates()
+	slog.Info("domain packs registered from manifests", "packs", len(activePacks),
+		"tools", len(manifests.Capabilities()), "templates", len(allTemplates),
+		"agents", len(manifests.AgentDefinitions()), "hints", len(manifests.PlannerHints()))
 
 	// Cross-pack capability/environment/agent collision audit (Phase 13).
 	// Cross-domain objectives recruit from multiple packs in one loop; a

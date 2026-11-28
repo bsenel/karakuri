@@ -1,7 +1,7 @@
 package domain
 
 import (
-	"errors"
+	"fmt"
 
 	"github.com/bsenel/karakuri/internal/core/agent"
 	"github.com/bsenel/karakuri/internal/core/capability"
@@ -23,25 +23,77 @@ type Manifest struct {
 	PlannerHints       []PlannerHint
 }
 
-// errManifestNotImplemented is compile scaffolding for Phase 39 step 2; the
-// tests in manifest_test.go describe the behaviour that replaces it.
-var errManifestNotImplemented = errors.New("pack manifest registration: not implemented")
+// ManifestOf builds a manifest from what a compiled-in pack returns today. Its
+// verifiers are the pack's verifiable capabilities. SnapshotTool stays empty:
+// a compiled-in pack snapshots through its environments, not through a tool.
+func ManifestOf(p Pack) Manifest {
+	var verifiers []capability.CapabilityID
+	for _, c := range p.Capabilities() {
+		if c.Verifiable {
+			verifiers = append(verifiers, c.ID)
+		}
+	}
+	return Manifest{
+		Verifiers:          verifiers,
+		ObjectiveTemplates: p.ObjectiveTemplates(),
+		AgentDefinitions:   p.AgentDefinitions(),
+		PlannerHints:       p.PlannerHints(),
+	}
+}
 
-// ManifestOf builds a manifest from what a compiled-in pack returns today.
-func ManifestOf(_ Pack) Manifest { return Manifest{} }
+// RegisterManifest registers a pack from its tools and its manifest. A tool,
+// verifier or snapshot tool under the reserved `mcp.` namespace is refused,
+// and a refused manifest registers nothing (ADR 028 section a, ADR 022).
+func (r *Registry) RegisterManifest(packID string, tools []capability.Capability, m Manifest) error {
+	if packID == "" {
+		return fmt.Errorf("domain pack ID must not be empty")
+	}
+	for _, c := range tools {
+		if capability.IsMCPCapability(c.ID) {
+			return fmt.Errorf("domain %q: tool %q is in the reserved mcp. namespace", packID, c.ID)
+		}
+	}
+	for _, id := range m.Verifiers {
+		if capability.IsMCPCapability(id) {
+			return fmt.Errorf("domain %q: verifier %q is in the reserved mcp. namespace", packID, id)
+		}
+	}
+	if capability.IsMCPCapability(m.SnapshotTool) {
+		return fmt.Errorf("domain %q: snapshot tool %q is in the reserved mcp. namespace", packID, m.SnapshotTool)
+	}
 
-// RegisterManifest registers a pack from its tools and its manifest.
-func (r *Registry) RegisterManifest(_ string, _ []capability.Capability, _ Manifest) error {
-	return errManifestNotImplemented
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.manifests[packID] {
+		return fmt.Errorf("domain %q already registered from a manifest", packID)
+	}
+	r.manifests[packID] = true
+	r.tools = append(r.tools, tools...)
+	r.templates = append(r.templates, m.ObjectiveTemplates...)
+	r.agents = append(r.agents, m.AgentDefinitions...)
+	r.hints = append(r.hints, m.PlannerHints...)
+	return nil
 }
 
 // Capabilities returns the tools of every pack registered from a manifest.
-func (r *Registry) Capabilities() []capability.Capability { return nil }
+func (r *Registry) Capabilities() []capability.Capability {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return append([]capability.Capability(nil), r.tools...)
+}
 
 // ObjectiveTemplates returns the templates of every pack registered from a
 // manifest.
-func (r *Registry) ObjectiveTemplates() []objective.Template { return nil }
+func (r *Registry) ObjectiveTemplates() []objective.Template {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return append([]objective.Template(nil), r.templates...)
+}
 
 // AgentDefinitions returns the agent definitions of every pack registered from
 // a manifest.
-func (r *Registry) AgentDefinitions() []agent.Definition { return nil }
+func (r *Registry) AgentDefinitions() []agent.Definition {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return append([]agent.Definition(nil), r.agents...)
+}
