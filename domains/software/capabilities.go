@@ -20,10 +20,9 @@ func softwareCapabilities() []capability.Capability {
 		}
 	}
 	// writes marks a capability that produces files: Writes tells the core it
-	// changes something, and NeedsWorkspace, until it leaves the core, that it
-	// runs in a worktree, which the pack's own server keeps (Phase 39 step 4).
+	// changes something. The worktree it runs in is the pack's own business,
+	// kept by its server for every tool in fileWritingTools (Phase 39 step 4).
 	writes := func(c capability.Capability) capability.Capability {
-		c.NeedsWorkspace = true
 		c.Writes = true
 		return c
 	}

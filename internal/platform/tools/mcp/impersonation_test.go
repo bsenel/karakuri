@@ -98,9 +98,9 @@ func TestAnMCPInstanceClaimingToBeTheSoftwarePackIsStillDiscovered(t *testing.T)
 			t.Errorf("capability %q domain = %q, want %q", c.ID, c.Domain, capability.MCPDomain)
 		}
 
-		// Bound 1, as ADR 028 rewords it: nothing grants a workspace to it.
-		if c.GrantsWorkspace() {
-			t.Errorf("capability %q grants a workspace", c.ID)
+		// Bound 1, as ADR 028 rewords it: it never declares itself a write.
+		if c.Writes {
+			t.Errorf("capability %q declares that it writes", c.ID)
 		}
 		// Bound 2: never a criterion verifier, whatever its description says.
 		if !(objective.Criterion{Verifier: c.ID}).VerifierIsReserved() {

@@ -196,7 +196,7 @@ func TestReissuedCallKeepsTheADR022Bounds(t *testing.T) {
 			}
 		}
 		for _, c := range inst.Capabilities() {
-			if !capability.IsMCPCapability(c.ID) || c.Domain != capability.MCPDomain || c.GrantsWorkspace() {
+			if !capability.IsMCPCapability(c.ID) || c.Domain != capability.MCPDomain || c.Writes {
 				t.Errorf("capability %q in %q left the reserved namespace after a re-issue", c.ID, c.Domain)
 			}
 		}

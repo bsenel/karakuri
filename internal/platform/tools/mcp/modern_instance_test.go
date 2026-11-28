@@ -180,8 +180,8 @@ func TestDiscoveredToolsStayInTheReservedNamespaceOnBothPaths(t *testing.T) {
 				if !capability.IsMCPCapability(c.ID) || c.Domain != capability.MCPDomain {
 					t.Errorf("capability %q in %q is outside the reserved namespace", c.ID, c.Domain)
 				}
-				if c.GrantsWorkspace() {
-					t.Errorf("capability %q grants a workspace", c.ID)
+				if c.Writes {
+					t.Errorf("capability %q declares that it writes", c.ID)
 				}
 			}
 			read := caps[1]

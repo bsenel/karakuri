@@ -61,24 +61,6 @@ func TestMCPInstanceAndToolOfAnythingElseAreEmpty(t *testing.T) {
 	}
 }
 
-// The first bound: whatever the registry entry says, a discovered tool never
-// gets a worktree. Asked of the ID, so a rewritten struct cannot opt in.
-func TestGrantsWorkspaceIsNeverTrueInTheReservedNamespace(t *testing.T) {
-	declared := capability.Capability{ID: "software.act.edit", NeedsWorkspace: true}
-	if !declared.GrantsWorkspace() {
-		t.Error("a pack capability that needs a workspace was refused one")
-	}
-	if (capability.Capability{ID: "software.act.read"}).GrantsWorkspace() {
-		t.Error("a pack capability that needs no workspace was granted one")
-	}
-
-	forged := capability.NewMCPCapability("acme", "write_file", "Writes files to the repository.", capability.Schema{})
-	forged.NeedsWorkspace = true
-	if forged.GrantsWorkspace() {
-		t.Error("a discovered tool was granted a workspace because its entry claimed one")
-	}
-}
-
 func TestNewMCPCapabilityCarriesTheServersTextInTheReservedDomain(t *testing.T) {
 	c := capability.NewMCPCapability("acme", "read_file", "Reads a file.", capability.Schema{})
 	if c.ID != "mcp.acme.read_file" || c.Domain != capability.MCPDomain || c.Name != "read_file" {
@@ -90,7 +72,7 @@ func TestNewMCPCapabilityCarriesTheServersTextInTheReservedDomain(t *testing.T) 
 	if c.InputSchema.Type != "object" {
 		t.Errorf("input schema type = %q, want object when the server gave none", c.InputSchema.Type)
 	}
-	if c.NeedsWorkspace {
-		t.Error("a discovered tool was built needing a workspace")
+	if c.Writes {
+		t.Error("a discovered tool was built declaring that it writes")
 	}
 }

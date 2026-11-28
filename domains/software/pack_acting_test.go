@@ -26,10 +26,11 @@ import (
 	"github.com/bsenel/karakuri/internal/platform/tools/cliagent"
 )
 
-// packWritingTools are the acting capabilities that write files today: the
-// ones capabilities.go's writes helper marks. Named here rather than read off
-// NeedsWorkspace, because slice S2 takes that field out of the core and this
-// list must outlive it.
+// packWritingTools are the acting capabilities that write files today. Named
+// here rather than read off the code, so a test can hold capabilities.go's
+// writes helper (Writes) and pack_workspace.go's fileWritingTools to the same
+// list: a tool marked in one and not the other would be planned as a write and
+// run outside a worktree, or the reverse.
 var packWritingTools = []string{
 	"software.act.create_pr",
 	"software.act.delegate_to_cli",
@@ -138,12 +139,22 @@ func TestTheSoftwarePacksServerListsItsFileWritingActingToolsAndNoOtherActingToo
 	for _, id := range packWritingTools {
 		writing[id] = true
 	}
-	// Today the list is the writes helper's; S2 drops this cross-check with
-	// the field it reads.
+	// Writes and fileWritingTools must agree with the list, and so with each
+	// other.
+	inServer := 0
 	for _, c := range pack.Capabilities() {
-		if c.NeedsWorkspace != writing[string(c.ID)] {
-			t.Errorf("%s: marked as writing files = %v, in packWritingTools = %v; the list is out of date", c.ID, c.NeedsWorkspace, writing[string(c.ID)])
+		if c.Writes != writing[string(c.ID)] {
+			t.Errorf("%s: Writes = %v, in packWritingTools = %v; the writes helper and the list disagree", c.ID, c.Writes, writing[string(c.ID)])
 		}
+		if fileWritingTools[c.ID] != c.Writes {
+			t.Errorf("%s: Writes = %v, in fileWritingTools = %v; the server would run a write outside a worktree, or a read inside one", c.ID, c.Writes, fileWritingTools[c.ID])
+		}
+		if fileWritingTools[c.ID] {
+			inServer++
+		}
+	}
+	if inServer != len(fileWritingTools) {
+		t.Errorf("fileWritingTools names %d tools, %d of them declared by the pack", len(fileWritingTools), inServer)
 	}
 
 	var want []string

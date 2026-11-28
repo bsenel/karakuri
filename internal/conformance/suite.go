@@ -123,11 +123,11 @@ func checkEnvironmentFactories(_ context.Context, p domain.Pack) Result {
 //     refuses to pick between them and falls back to the plan's env_id, so an
 //     ambiguous declaration silently returns routing to the model it was built
 //     to take it away from.
-//   - A capability declares NeedsWorkspace and nothing serves it. That is the
-//     exact shape of the bug this phase exists for: write_code was given a git
-//     worktree and had no environment behind it, so every plan that used it
-//     created a branch and returned "unimplemented". A capability that writes
-//     and routes nowhere is inert in the most expensive way available.
+//   - A capability declares Writes and nothing serves it. That is the exact
+//     shape of the bug this check was written for: write_code was planned as a
+//     write and had no environment behind it, so every plan that used it
+//     returned "unimplemented". A capability that writes and routes nowhere is
+//     inert in the most expensive way available.
 //
 // A capability with no route is otherwise fine and common: most are reasoned
 // about or verified rather than executed, and packs with no environments at all
@@ -164,11 +164,11 @@ func checkCapabilityRouting(_ context.Context, p domain.Pack) Result {
 	}
 
 	for _, c := range p.Capabilities() {
-		if c.NeedsWorkspace && servedBy[c.ID] == "" {
+		if c.Writes && servedBy[c.ID] == "" {
 			return Result{
 				Check:   name,
 				Passed:  false,
-				Message: fmt.Sprintf("capability %q declares NeedsWorkspace but no environment serves it: it would be given a worktree and then fail", c.ID),
+				Message: fmt.Sprintf("capability %q declares Writes but no environment serves it: every write planned with it would fail", c.ID),
 			}
 		}
 	}

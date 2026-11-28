@@ -180,8 +180,8 @@ func (s *MCPServer) lifecycle(ctx context.Context, call domain.CallContract, too
 }
 
 // fileWritingTools are the acting capabilities that write files, the ones
-// capabilities.go marks with writes: the server serves them in the worktree of
-// the call's objective and pass, so the loop provisions none for them.
+// capabilities.go marks with writes, so the ones whose Writes is set: the
+// server serves them in the worktree of the call's objective and pass.
 var fileWritingTools = map[capability.CapabilityID]bool{
 	"software.act.create_pr":       true,
 	"software.act.delegate_to_cli": true,
