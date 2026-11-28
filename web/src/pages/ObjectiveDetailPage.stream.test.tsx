@@ -51,4 +51,23 @@ describe('ObjectiveDetailPage stream', () => {
     act(() => stream.emit({ type: 'step', timestamp: '2026-11-22T10:00:05Z' }));
     expect(screen.queryByText(/Live updates are disconnected/)).not.toBeInTheDocument();
   });
+
+  it('drops the notice once the stream reconnects, even when no event follows', async () => {
+    get.mockResolvedValue(objective);
+    render(
+      <MemoryRouter initialEntries={['/objectives/o1']}>
+        <Routes>
+          <Route path="/objectives/:id" element={<ObjectiveDetailPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Ship the docs' })).toBeInTheDocument());
+
+    act(() => stream.emit({ type: 'stream_error', timestamp: '2026-11-22T10:00:00Z' }));
+    expect(screen.getByText(/Live updates are disconnected/)).toBeInTheDocument();
+
+    // An idle standing objective sends nothing between passes; the reconnect alone must clear it.
+    act(() => stream.emit({ type: 'stream_open', timestamp: '2026-11-22T10:00:03Z' }));
+    expect(screen.queryByText(/Live updates are disconnected/)).not.toBeInTheDocument();
+  });
 });

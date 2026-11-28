@@ -16,6 +16,11 @@ func TestRootHelpHasExample(t *testing.T) {
 			t.Errorf("root Example %q does not show %q", root.Example, want)
 		}
 	}
+	// A placeholder ID, never one from a real deployment: every user's help
+	// would name an objective their server does not have.
+	if !strings.Contains(root.Example, "krk objective get obj_123") || strings.Contains(root.Example, "76bba85ac9ea170c") {
+		t.Errorf("root Example %q must use the placeholder obj_123, not a real objective ID", root.Example)
+	}
 	for _, line := range strings.Split(root.Example, "\n") {
 		if _, ok := strings.CutPrefix(strings.TrimSpace(line), "krk "); !ok {
 			continue

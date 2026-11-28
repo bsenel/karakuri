@@ -159,8 +159,9 @@ export function ObjectiveDetailPage() {
       )}
 
       <h2>Loop timeline</h2>
-      {/* The stream reconnects on its own; until an event arrives again, a
-          timeline that has stopped filling is not a loop that has stopped. */}
+      {/* The stream reconnects on its own; until it reopens (stream_open) or an
+          event arrives again, a timeline that has stopped filling is not a loop
+          that has stopped. */}
       {events[events.length - 1]?.type === 'stream_error' && (
         <p className="pill red" role="status">
           Live updates are disconnected. Reconnecting; the timeline may be missing recent steps.

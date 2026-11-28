@@ -28,7 +28,7 @@ func NewRoot() *cobra.Command {
 		Example: `  # See what exists, then look inside one objective
   krk twin list
   krk objective list
-  krk objective get 76bba85ac9ea170c
+  krk objective get obj_123
 
   # Reach a server on another host, and print JSON for a script
   krk twin list --api-url https://karakuri.example.com/api/v1 --output json`,

@@ -249,15 +249,18 @@ func authPoliciesCmd() *cobra.Command {
 		RunE: func(c *cobra.Command, _ []string) error {
 			path := "/auth/policies"
 			noun := "policies"
+			// With --principal the hint names that principal, so the line can be copied as is.
+			grantee := "<id>"
 			if principal != "" {
 				path += "?" + url.Values{"principal": {principal}}.Encode()
 				noun = fmt.Sprintf("grants reach principal %q", principal)
+				grantee = principal
 			}
 			data, _, err := api.Get(path)
 			if err != nil {
 				return err
 			}
-			printList(c, data, noun, "Grant one with: krk auth bindings add --principal <id> --role <role>")
+			printList(c, data, noun, "Grant one with: krk auth bindings add --principal "+grantee+" --role <role>")
 			return nil
 		},
 	}

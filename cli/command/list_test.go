@@ -50,7 +50,7 @@ func TestEmptyListsSaySo(t *testing.T) {
 		{[]string{"auth", "users", "list"}, "No principals. Create one with: krk auth users add\n"},
 		{[]string{"auth", "roles", "list"}, "No roles.\n"},
 		{[]string{"auth", "policies", "list"}, "No policies. Grant one with: krk auth bindings add --principal <id> --role <role>\n"},
-		{[]string{"auth", "policies", "list", "--principal", "alice"}, "No grants reach principal \"alice\". Grant one with: krk auth bindings add --principal <id> --role <role>\n"},
+		{[]string{"auth", "policies", "list", "--principal", "alice"}, "No grants reach principal \"alice\". Grant one with: krk auth bindings add --principal alice --role <role>\n"},
 		{[]string{"verifier", "list", "--domain", "nosuch"}, "No verifiers in domain \"nosuch\". Check the domain ID: krk domain list shows the ones that exist\n"},
 	} {
 		for _, body := range []string{"null", "[]\n"} {

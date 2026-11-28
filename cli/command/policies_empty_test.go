@@ -3,15 +3,15 @@ package command
 import "testing"
 
 // An empty policy list names the command that grants a role, as the other
-// empty lists name the command that makes their rows.
+// empty lists name the command that makes their rows. With --principal the
+// hint names that principal, so it can be copied as is.
 func TestAuthPoliciesListEmptyNamesTheGrantCommand(t *testing.T) {
-	hint := "Grant one with: krk auth bindings add --principal <id> --role <role>\n"
 	cases := []struct {
 		args []string
 		want string
 	}{
-		{[]string{"auth", "policies", "list"}, "No policies. " + hint},
-		{[]string{"auth", "policies", "list", "--principal", "alice"}, "No grants reach principal \"alice\". " + hint},
+		{[]string{"auth", "policies", "list"}, "No policies. Grant one with: krk auth bindings add --principal <id> --role <role>\n"},
+		{[]string{"auth", "policies", "list", "--principal", "alice"}, "No grants reach principal \"alice\". Grant one with: krk auth bindings add --principal alice --role <role>\n"},
 	}
 	for _, tc := range cases {
 		apiURL := startListServer(t, `[]`)
