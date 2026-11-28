@@ -8,10 +8,13 @@ package gateway
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
 
+	"github.com/bsenel/karakuri/internal/core/agent"
+	"github.com/bsenel/karakuri/internal/core/domain"
 	"github.com/bsenel/karakuri/internal/core/environment"
 	"github.com/bsenel/karakuri/internal/platform/storage"
 	karakuriquota "github.com/bsenel/karakuri/internal/quota"
@@ -62,6 +65,23 @@ type Call struct {
 	// Stamp adds the caller's provenance to a row and its payload before the
 	// row is saved. Nil adds nothing.
 	Stamp func(row *storage.ToolEvent, payload map[string]any)
+
+	// The call contract's fields not named above (ADR 028 section b), sent to
+	// a pack's server with the call.
+	TenantID string
+	Pass     int
+	ActionID string
+	Bounds   agent.AuthorityBounds
+}
+
+// errServePackUnimplemented is what ServePack answers until Phase 39 step 3
+// is built.
+var errServePackUnimplemented = errors.New("gateway: routing to a pack's server is not implemented")
+
+// ServePack routes calls for the tools a pack's server lists to that server,
+// with the call contract, instead of the in-process implementation.
+func (g *Gateway) ServePack(_ context.Context, _ string, _ domain.PackServer) error {
+	return errServePackUnimplemented
 }
 
 // Perform is the work behind a call: the environment's Act, or the served
