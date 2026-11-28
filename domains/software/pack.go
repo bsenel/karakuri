@@ -129,7 +129,27 @@ func (p *Pack) EnvironmentFactories() []environment.Factory {
 			return env, err
 		}
 	}
-	return append(factories, platformTelemetryFactory())
+	return append(factories, platformTelemetryFactory(), p.handedBlockersFactory())
+}
+
+// handedBlockersFactory builds the environment the engineering_backlog stream
+// reads the handed-over blockers from (Phase 40 step 14c), bound to the
+// store's reconcile states of the twin it is built for, and to the twin's
+// forge, where the backlog stream's pull requests say which kinds are filed.
+// Without a store it is blind: an error, never "nothing handed over".
+func (p *Pack) handedBlockersFactory() environment.Factory {
+	return environment.Factory{
+		EnvID:       EnvHandedBlockers,
+		Domain:      "software",
+		Description: "The blockers the streams handed to the engineering backlog, one per kind, with their evidence",
+		Build: func(ctx environment.BuildContext) (environment.Environment, error) {
+			vc := boundVC(p.tools, ctx)
+			if p.store == nil {
+				return NewHandedBlockersEnvironment(EnvHandedBlockers, nil, vc), nil
+			}
+			return NewHandedBlockersEnvironment(EnvHandedBlockers, readTwinHandovers(p.store, ctx.TwinID), vc), nil
+		},
+	}
 }
 
 func (p *Pack) AgentDefinitions() []agent.Definition {

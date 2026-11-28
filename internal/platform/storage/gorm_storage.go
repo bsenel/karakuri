@@ -768,6 +768,7 @@ func (s *GORMStorage) SaveLoopState(ctx context.Context, st coreloop.State) erro
 
 		PlanRefusedReason: st.PlanRefusedReason,
 		Remedy:            st.Remedy,
+		Diagnosis:         st.Diagnosis,
 	}
 	if m.RequestJSON == "" {
 		m.RequestJSON = "{}"
@@ -836,6 +837,7 @@ func loopStateFromModel(m schema.LoopStateModel) coreloop.State {
 	return coreloop.State{
 		PlanRefusedReason: m.PlanRefusedReason,
 		Remedy:            m.Remedy,
+		Diagnosis:         m.Diagnosis,
 		BoundsViolation:   violation,
 		Outcome:           coreloop.RunOutcome(m.Outcome),
 		Criteria:          criteria,

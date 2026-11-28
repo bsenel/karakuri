@@ -24,6 +24,17 @@ import (
 	"github.com/bsenel/karakuri/internal/platform/tools/versioncontrol"
 )
 
+// boundVC is the twin's bound version control instance in reg, or the no-op
+// one.
+func boundVC(reg *tools.Registry, ctx environment.BuildContext) versioncontrol.VersionControlAdapter {
+	if reg != nil {
+		if a, ok := reg.VC.Resolve(ctx.AdapterBindings["versioncontrol"]); ok {
+			return a
+		}
+	}
+	return versioncontrol.NewNoOp()
+}
+
 // softwareEnvironmentFactories builds the six software environments. The Git,
 // Ticket, and Communication envs dispatch to the tools.Registry adapters
 // (GitHub / Linear / Slack when configured). The observability env reads the
@@ -32,6 +43,7 @@ import (
 // reg may be nil — in that case every adapter-backed env falls back to no-op
 // behavior, except observability, which has no no-op to fall back on.
 func softwareEnvironmentFactories(reg *tools.Registry, ownAuthors config.OwnAuthorsConfig, reviewRoundLimit int) []environment.Factory {
+	vcFor := func(ctx environment.BuildContext) versioncontrol.VersionControlAdapter { return boundVC(reg, ctx) }
 	noopFactory := func(id, desc string) environment.Factory {
 		return environment.Factory{
 			EnvID:       environment.EnvironmentID(id),
@@ -41,15 +53,6 @@ func softwareEnvironmentFactories(reg *tools.Registry, ownAuthors config.OwnAuth
 				return &noopEnv{id: environment.EnvironmentID(id)}, nil
 			},
 		}
-	}
-	// boundVC is the twin's bound version control instance, or the no-op one.
-	boundVC := func(ctx environment.BuildContext) versioncontrol.VersionControlAdapter {
-		if reg != nil {
-			if a, ok := reg.VC.Resolve(ctx.AdapterBindings["versioncontrol"]); ok {
-				return a
-			}
-		}
-		return versioncontrol.NewNoOp()
 	}
 	return []environment.Factory{
 		{
@@ -81,7 +84,7 @@ func softwareEnvironmentFactories(reg *tools.Registry, ownAuthors config.OwnAuth
 				CapPathsDeclared,
 			},
 			Build: func(ctx environment.BuildContext) (environment.Environment, error) {
-				return &gitEnv{id: EnvGit, vc: boundVC(ctx), verifiers: forgeVerifiers, ownAuthors: ownAuthors, reviewRoundLimit: reviewRoundLimit}, nil
+				return &gitEnv{id: EnvGit, vc: vcFor(ctx), verifiers: forgeVerifiers, ownAuthors: ownAuthors, reviewRoundLimit: reviewRoundLimit}, nil
 			},
 		},
 		{
@@ -93,7 +96,7 @@ func softwareEnvironmentFactories(reg *tools.Registry, ownAuthors config.OwnAuth
 			Domain:      "software",
 			Description: "Whether delivery has work: Planned items on main, branches and review comments",
 			Build: func(ctx environment.BuildContext) (environment.Environment, error) {
-				return NewDeliveryWorkEnvironment("software.env.delivery_work", boundVC(ctx), readMainRoadmap(boundVC(ctx)), ownAuthors, nil), nil
+				return NewDeliveryWorkEnvironment("software.env.delivery_work", vcFor(ctx), readMainRoadmap(vcFor(ctx)), ownAuthors, nil), nil
 			},
 		},
 		{
@@ -109,10 +112,10 @@ func softwareEnvironmentFactories(reg *tools.Registry, ownAuthors config.OwnAuth
 			Domain:      "software",
 			Description: "Whether a discovery cycle should start: nothing Planned, no open proposal, minimum time elapsed",
 			Build: func(ctx environment.BuildContext) (environment.Environment, error) {
-				return NewDiscoveryTriggerEnvironment("software.env.discovery_trigger", boundVC(ctx), DiscoveryTriggerSources{
-					ReadMain:       readMainRoadmap(boundVC(ctx)),
+				return NewDiscoveryTriggerEnvironment("software.env.discovery_trigger", vcFor(ctx), DiscoveryTriggerSources{
+					ReadMain:       readMainRoadmap(vcFor(ctx)),
 					OwnAuthors:     ownAuthors,
-					ClosingComment: newClosingComment(boundVC(ctx), ownAuthors, nil),
+					ClosingComment: newClosingComment(vcFor(ctx), ownAuthors, nil),
 					LastCycleEnd: func(context.Context) (time.Time, error) {
 						return time.Time{}, errors.New("no record of the last discovery cycle is wired")
 					},
@@ -168,7 +171,7 @@ func softwareEnvironmentFactories(reg *tools.Registry, ownAuthors config.OwnAuth
 						cli = a
 					}
 				}
-				env := &cliEnv{id: "software.env.cli_agent", cli: cli, twinID: ctx.TwinID, vc: boundVC(ctx), ownAuthors: ownAuthors}
+				env := &cliEnv{id: "software.env.cli_agent", cli: cli, twinID: ctx.TwinID, vc: vcFor(ctx), ownAuthors: ownAuthors}
 				if reg != nil {
 					opts := reg.CLIAgents.Options(ctx.AdapterBindings["cli_agents"])
 					env.attachMCP, env.mcpURL = cliMCPOptions(opts)
@@ -251,7 +254,7 @@ func softwareEnvironmentFactories(reg *tools.Registry, ownAuthors config.OwnAuth
 				capCLIStartup,
 			},
 			Build: func(ctx environment.BuildContext) (environment.Environment, error) {
-				return newVerifyEnv("software.env.verify", newShellEnv("software.env.verify", "", 600*time.Second), boundVC(ctx)), nil
+				return newVerifyEnv("software.env.verify", newShellEnv("software.env.verify", "", 600*time.Second), vcFor(ctx)), nil
 			},
 		},
 		{

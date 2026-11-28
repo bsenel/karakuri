@@ -95,6 +95,10 @@ type loopState struct {
 	// remedy is the fix the run's planner named for its blocker (Phase 40
 	// step 14b), persisted so reconcile can keep it once the blocker clears.
 	remedy string
+	// diagnosis is the reasoning of the run's first plan when the request
+	// carried a blocker (Phase 40 step 14c), persisted so reconcile records
+	// what each attempt found.
+	diagnosis string
 	// ended is set when finalizeLoop takes the run's own ending, and stoppedBy
 	// and stopReason when Stop takes it instead (Phase 37 step 3). Whichever
 	// is set first under mu is the ending; the other then changes nothing.
@@ -143,6 +147,15 @@ func (ls *loopState) recordRemedy(remedy string) {
 	ls.mu.Lock()
 	defer ls.mu.Unlock()
 	ls.remedy = remedy
+}
+
+// recordDiagnosis keeps the reasoning of the run's first plan.
+func (ls *loopState) recordDiagnosis(reasoning string) {
+	ls.mu.Lock()
+	defer ls.mu.Unlock()
+	if ls.diagnosis == "" {
+		ls.diagnosis = reasoning
+	}
 }
 
 // stopped reports whether a stop has taken this loop's ending.
@@ -635,6 +648,7 @@ func (s *serviceImpl) persistState(ctx context.Context, state *loopState, comple
 	violation := state.violation
 	planRefused := state.planRefused
 	remedy := state.remedy
+	diagnosis := state.diagnosis
 	stoppedBy, stopReason := state.stoppedBy, state.stopReason
 	state.mu.RUnlock()
 	if stoppedBy != "" {
@@ -670,6 +684,7 @@ func (s *serviceImpl) persistState(ctx context.Context, state *loopState, comple
 
 		PlanRefusedReason: planRefused,
 		Remedy:            remedy,
+		Diagnosis:         diagnosis,
 	}
 	return s.store.SaveLoopState(ctx, persisted)
 }

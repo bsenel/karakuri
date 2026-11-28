@@ -113,7 +113,11 @@ func streamTemplateList() []objective.Template {
 			Risk:            objective.RiskRoutine,
 			SuggestedAgents: []agent.Definition{{ID: AgentProposer}},
 			Description: "Read this deployment's telemetry, audit log and logs, and record technical enhancements " +
-				"in the roadmap's Engineering Backlog, each with the data that shows the problem.",
+				"in the roadmap's Engineering Backlog, each with the data that shows the problem. " +
+				// Phase 40 step 14c: the blockers the streams handed over.
+				"For each blocker kind the handed-blockers observation lists, file one entry with its evidence, " +
+				"or add the evidence to the entry already filed for that kind, " +
+				"and put the marker line the observation gives for the kind in the pull request's description.",
 			SuccessCriteria: append(pullRequestCriteria(backlogPaths...),
 				progress("evidence", "Each Engineering Backlog entry this pass added cites the audit log, telemetry or log data that shows the problem", 0.3),
 			),

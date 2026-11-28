@@ -47,6 +47,8 @@ func (s *GORMStorage) SaveReconcileState(ctx context.Context, st reconcile.State
 		ConsecutiveFailures: st.ConsecutiveFailures,
 		SustainJSON:         jsonArray(st.Sustain),
 		BlockersJSON:        jsonArray(st.Blockers),
+		HandoversJSON:       jsonArray(st.Handovers),
+		ClearsJSON:          jsonArray(st.Clears),
 		BranchSHA:           st.BranchSHA,
 		StalledPasses:       st.StalledPasses,
 
@@ -288,6 +290,14 @@ func reconcileStateFromModel(m schema.ReconcileStateModel) reconcile.State {
 	if m.BlockersJSON != "" {
 		_ = json.Unmarshal([]byte(m.BlockersJSON), &blockers)
 	}
+	var handovers []reconcile.Handover
+	if m.HandoversJSON != "" {
+		_ = json.Unmarshal([]byte(m.HandoversJSON), &handovers)
+	}
+	var clears []reconcile.Clear
+	if m.ClearsJSON != "" {
+		_ = json.Unmarshal([]byte(m.ClearsJSON), &clears)
+	}
 	return reconcile.State{
 		ObjectiveID:  objective.ObjectiveID(m.ObjectiveID),
 		TwinID:       m.TwinID,
@@ -316,6 +326,8 @@ func reconcileStateFromModel(m schema.ReconcileStateModel) reconcile.State {
 		ConsecutiveFailures: m.ConsecutiveFailures,
 		Sustain:             sustain,
 		Blockers:            blockers,
+		Handovers:           handovers,
+		Clears:              clears,
 		BranchSHA:           m.BranchSHA,
 		StalledPasses:       m.StalledPasses,
 

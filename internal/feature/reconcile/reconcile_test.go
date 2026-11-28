@@ -66,6 +66,8 @@ type fakeLoop struct {
 	onRun func()
 	// remedy is the fix the run says it applied to the blocker (step 14b).
 	remedy string
+	// diagnosis is what the run says it found before it acted (step 14c).
+	diagnosis string
 }
 
 func (f *fakeLoop) Run(ctx context.Context, req coreloop.Request) (coreloop.Result, error) {
@@ -113,6 +115,7 @@ func (f *fakeLoop) Run(ctx context.Context, req coreloop.Request) (coreloop.Resu
 
 		PlanRefusedReason: f.refused,
 		Remedy:            f.remedy,
+		Diagnosis:         f.diagnosis,
 	}
 	if err := f.store.SaveLoopState(ctx, st); err != nil {
 		return coreloop.Result{}, err

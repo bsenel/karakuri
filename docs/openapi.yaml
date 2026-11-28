@@ -6686,6 +6686,9 @@ components:
                     at:
                       format: date-time
                       type: string
+                    attempts:
+                      description: How many diagnose-and-fix passes failed on a reconcile blocker (Phase 40 step 14c). Absent when none did.
+                      type: integer
                     count:
                       description: How many passes saw a reconcile blocker (Phase 40 step 14a). Absent for a block that is not one.
                       type: integer
@@ -6728,7 +6731,7 @@ components:
               endings:
                 additionalProperties:
                   type: integer
-                description: Passes that ended by name rather than as a result or a failure, keyed by the ending (refused_by_bounds, interrupted_by_restart, waiting_for_quota). None of them is counted in failures.
+                description: Passes that ended by name rather than as a result or a failure, keyed by the ending (refused_by_bounds, interrupted_by_restart, waiting_for_quota, blocker_attempt_failed). None of them is counted in failures.
                 nullable: true
                 type: object
               escalations:
@@ -7229,6 +7232,12 @@ components:
             type: object
           nullable: true
           type: array
+        blocker_attempts:
+          description: How many failed diagnose-and-fix passes on the same blocker before the stream stops and hands it to the backlog (Phase 40 step 14c). Absent means 3.
+          type: integer
+        blocker_recurrence_window:
+          description: The Go duration inside which a blocker kind cleared for the second time is handed to the backlog (Phase 40 step 14c). Absent means 168h.
+          type: string
         blocker_remedies:
           additionalProperties:
             type: string
@@ -7618,7 +7627,7 @@ components:
           format: date-time
           type: string
         ending:
-          description: How the pass's loop ended when that is neither a result nor a failure, refused_by_bounds or interrupted_by_restart. Not counted by the circuit breaker.
+          description: How the pass's loop ended when that is neither a result nor a failure, refused_by_bounds or interrupted_by_restart, or blocker_attempt_failed for a diagnose-and-fix pass that read its blocker still raised (Phase 40 step 14c). Not counted by the circuit breaker.
           type: string
         error:
           type: string
@@ -7669,6 +7678,77 @@ components:
                 type: string
               subject:
                 description: The pull request, branch or item the blocker is about.
+                type: string
+              tried:
+                description: Each failed diagnose-and-fix attempt, oldest first (Phase 40 step 14c), with the loop it ran, what it found, what it tried and the IDs of the audit rows it wrote.
+                items:
+                  additionalProperties: false
+                  properties:
+                    at:
+                      format: date-time
+                      type: string
+                    audit_rows:
+                      items:
+                        type: string
+                      nullable: true
+                      type: array
+                    diagnosis:
+                      type: string
+                    loop_id:
+                      type: string
+                    remedy:
+                      type: string
+                  type: object
+                nullable: true
+                type: array
+            type: object
+          nullable: true
+          type: array
+        handovers:
+          description: The blockers this stream handed to the engineering backlog, one per kind (Phase 40 step 14c). Absent when none.
+          items:
+            additionalProperties: false
+            properties:
+              at:
+                format: date-time
+                type: string
+              attempts:
+                description: Each failed attempt, as on a blocker's tried.
+                items:
+                  additionalProperties: false
+                  properties:
+                    at:
+                      format: date-time
+                      type: string
+                    audit_rows:
+                      items:
+                        type: string
+                      nullable: true
+                      type: array
+                    diagnosis:
+                      type: string
+                    loop_id:
+                      type: string
+                    remedy:
+                      type: string
+                  type: object
+                nullable: true
+                type: array
+              cleared:
+                description: When each occurrence of a recurring kind was cleared.
+                items:
+                  format: date-time
+                  type: string
+                nullable: true
+                type: array
+              diagnosis:
+                type: string
+              kind:
+                type: string
+              reason:
+                description: attempts_spent (the stream stopped trying) or recurring (the kind came back inside the window; the stream keeps running).
+                type: string
+              subject:
                 type: string
             type: object
           nullable: true

@@ -63,6 +63,10 @@ type State struct {
 	// semantic memory only once it has read the blocker clear.
 	Remedy string `json:"remedy,omitempty"`
 
+	// Diagnosis is what a diagnose-and-fix pass found before it acted (Phase
+	// 40 step 14c), empty on a pass that was given no blocker.
+	Diagnosis string `json:"diagnosis,omitempty"`
+
 	// RequestJSON is the full marshalled Request as supplied to Run(); enough
 	// to reconstruct the loop's parameters on a cold start.
 	RequestJSON string `json:"request_json,omitempty"`

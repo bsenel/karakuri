@@ -295,6 +295,12 @@ func (s *serviceImpl) runLoop(ctx context.Context, loopID string, req loop.Reque
 				s.finalizeLoop(ctx, state, obj, iterations, false, p.endErr)
 				return
 			}
+			// A pass given a blocker diagnoses before it acts, and its
+			// diagnosis is the reasoning its plan returned (Phase 40 step
+			// 14c); kept before decide, so a refused plan keeps it too.
+			if sc.unblock != nil {
+				state.recordDiagnosis(p.Reasoning)
+			}
 
 			// decide
 			state.mu.Lock()

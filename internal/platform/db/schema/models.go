@@ -218,6 +218,9 @@ type LoopStateModel struct {
 	// Remedy is the fix a diagnose-and-fix pass applied to its blocker (Phase 40
 	// step 14b), empty when it applied none.
 	Remedy string `gorm:"column:remedy;not null;default:''"`
+	// Diagnosis is what a diagnose-and-fix pass found before it acted (Phase
+	// 40 step 14c), empty on a pass that was given no blocker.
+	Diagnosis string `gorm:"column:diagnosis;not null;default:''"`
 	// RetryAfterMS is how long a provider that refused the run for quota asked
 	// it to wait, in milliseconds; 0 when it did not say (Phase 40 step 8).
 	RetryAfterMS int64 `gorm:"column:retry_after_ms;not null;default:0"`
@@ -291,6 +294,11 @@ type ReconcileStateModel struct {
 	BlockersJSON  string `gorm:"column:blockers_json;not null;default:'[]'"`
 	BranchSHA     string `gorm:"column:branch_sha;not null;default:''"`
 	StalledPasses int    `gorm:"column:stalled_passes;not null;default:0"`
+	// HandoversJSON is what the stream handed to the engineering backlog, and
+	// ClearsJSON the blockers read cleared inside the recurrence window (Phase
+	// 40 step 14c).
+	HandoversJSON string `gorm:"column:handovers_json;not null;default:'[]'"`
+	ClearsJSON    string `gorm:"column:clears_json;not null;default:'[]'"`
 
 	Autonomy  string `gorm:"column:autonomy;not null;default:''"`
 	CleanRuns int    `gorm:"column:clean_runs;not null;default:0"`

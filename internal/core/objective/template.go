@@ -24,4 +24,19 @@ type Template struct {
 	// remedy; the stream's next pass is given the one for its blocker (Phase
 	// 40 step 14b). A kind with no entry has no declared remedy.
 	BlockerRemedies map[string]string `json:"blocker_remedies,omitempty"`
+	// BlockerAttempts is how many failed diagnose-and-fix passes on the same
+	// blocker the stream makes before it stops and hands the blocker to the
+	// backlog (Phase 40 step 14c); 0 means DefaultBlockerAttempts.
+	BlockerAttempts int `json:"blocker_attempts,omitempty"`
+	// BlockerRecurrenceWindow is the Go duration inside which a blocker kind
+	// cleared for the second time is handed to the backlog (Phase 40 step
+	// 14c); empty means DefaultBlockerRecurrenceWindow.
+	BlockerRecurrenceWindow string `json:"blocker_recurrence_window,omitempty"`
 }
+
+// The defaults of a template that declares no blocker limits (Phase 40 step
+// 14c): three attempts, as a first guess, and a week.
+const (
+	DefaultBlockerAttempts         = 3
+	DefaultBlockerRecurrenceWindow = "168h"
+)
