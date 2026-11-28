@@ -43,6 +43,10 @@ import (
 	"gorm.io/gorm"
 )
 
+// packWorkspaceMaxAge is how long the software pack keeps a worktree no
+// "pass ended" or "objective ended" signal released, counted from its last use.
+const packWorkspaceMaxAge = 24 * time.Hour
+
 type Bootstrap struct {
 	Config    *config.Config
 	App       *api.App
@@ -352,7 +356,11 @@ func BootstrapServer(cfgPath string) (*Bootstrap, error) {
 		if pack.ID() != swPack.ID() {
 			continue
 		}
-		server := swPack.MCPServer(twinBindings(store)).WithTelemetry(envReg.Telemetry())
+		// The pack keeps its own worktrees, keyed on each call's objective
+		// and pass (Phase 39 step 4); one no signal released goes after a day
+		// unused.
+		workspaces := domainsw.NewWorkspaces(cfg.Git.RepoPath, packWorkspaceMaxAge, time.Now)
+		server := swPack.MCPServer(twinBindings(store)).WithTelemetry(envReg.Telemetry()).WithWorkspaces(workspaces)
 		if err := gw.ServePack(ctx, pack.ID(), server); err != nil {
 			return nil, err
 		}
