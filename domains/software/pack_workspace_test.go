@@ -300,3 +300,132 @@ func TestPackWorkspacePassEndedThroughTheServerIsSafeToRepeat(t *testing.T) {
 		t.Errorf("objective ended through the server: err %v, result %+v", err, res)
 	}
 }
+
+// Review of #294, finding 1: the loop run is part of the key, so a standing
+// objective's reconcile passes, whose pass numbers restart at 0 on every run,
+// never share a worktree or a branch.
+
+func loopCall(objectiveID, loopID string, pass int) domain.CallContract {
+	return domain.CallContract{TenantID: "tenant-1", TwinID: "twin-1", ObjectiveID: objectiveID, LoopID: loopID, Pass: pass}
+}
+
+// packGit runs git in dir with hooks off, for the tests' own commits and reads.
+func packGit(t *testing.T, dir string, args ...string) string {
+	t.Helper()
+	base := []string{"-c", "user.name=karakuri-test", "-c", "user.email=test@example.invalid", "-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null"}
+	cmd := exec.Command("git", append(base, args...)...) // #nosec G204 -- fixed binary, test arguments
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git %v: %v: %s", args, err, out)
+	}
+	return string(out)
+}
+
+// commitWork commits a file in the worktree dir, so a later run that starts
+// from the same branch would see it.
+func commitWork(t *testing.T, dir, name string) {
+	t.Helper()
+	writeWork(t, dir, name, "committed\n")
+	packGit(t, dir, "add", name)
+	packGit(t, dir, "commit", "-q", "-m", "work")
+}
+
+func TestPackWorkspaceCallsOfTwoLoopRunsGetTwoWorktrees(t *testing.T) {
+	ws, _, _ := newTestWorkspaces(t)
+	first := workspaceFor(t, ws, loopCall("obj-1", "loop-a", 0))
+	second := workspaceFor(t, ws, loopCall("obj-1", "loop-b", 0))
+	if first == second {
+		t.Fatalf("two loop runs of one objective, both at pass 0, share the worktree %s", first)
+	}
+	if again := workspaceFor(t, ws, loopCall("obj-1", "loop-a", 0)); again != first {
+		t.Errorf("the same objective, loop and pass got another worktree: %s, then %s", first, again)
+	}
+}
+
+func TestPackWorkspaceTheNextLoopRunStartsAtTheBase(t *testing.T) {
+	for _, how := range []string{"ended", "left behind"} {
+		t.Run(how, func(t *testing.T) {
+			ws, _, _ := newTestWorkspaces(t)
+			run1 := loopCall("obj-1", "loop-a", 0)
+			first := workspaceFor(t, ws, run1)
+			commitWork(t, first, "committed.go")
+			writeWork(t, first, "uncommitted.go", "package x\n")
+			if how == "ended" {
+				if err := ws.PassEnded(context.Background(), run1); err != nil {
+					t.Fatal(err)
+				}
+			}
+			second := workspaceFor(t, ws, loopCall("obj-1", "loop-b", 0))
+			for _, name := range []string{"committed.go", "uncommitted.go"} {
+				if _, err := os.Stat(filepath.Join(second, name)); !errors.Is(err, os.ErrNotExist) {
+					t.Errorf("the next loop run sees %s from the previous run (stat err %v)", name, err)
+				}
+			}
+		})
+	}
+}
+
+func TestPackWorkspaceTheSameKeyAfterPassEndedStartsAtTheBase(t *testing.T) {
+	ws, _, _ := newTestWorkspaces(t)
+	call := loopCall("obj-1", "loop-a", 0)
+	commitWork(t, workspaceFor(t, ws, call), "committed.go")
+	if err := ws.PassEnded(context.Background(), call); err != nil {
+		t.Fatal(err)
+	}
+	again := workspaceFor(t, ws, call)
+	if _, err := os.Stat(filepath.Join(again, "committed.go")); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("a worktree made again after its pass ended starts from the old branch tip (stat err %v)", err)
+	}
+}
+
+func TestPackWorkspaceRefusesACallWithNoLoop(t *testing.T) {
+	ws, _, _ := newTestWorkspaces(t)
+	if dir, err := ws.For(context.Background(), loopCall("obj-1", "", 0)); err == nil {
+		t.Errorf("a call with no loop got the worktree %s; want a refusal", dir)
+	}
+}
+
+func TestPackWorkspaceObjectiveEndedRemovesTheTreesOfEveryLoop(t *testing.T) {
+	ws, _, _ := newTestWorkspaces(t)
+	a := workspaceFor(t, ws, loopCall("obj-1", "loop-a", 0))
+	b := workspaceFor(t, ws, loopCall("obj-1", "loop-b", 0))
+	if err := ws.ObjectiveEnded(context.Background(), loopCall("obj-1", "", 0)); err != nil {
+		t.Fatal(err)
+	}
+	if !gone(t, a) || !gone(t, b) {
+		t.Errorf("objective ended and a loop's worktree remains: loop a gone=%v, loop b gone=%v", gone(t, a), gone(t, b))
+	}
+}
+
+// Review of #294, finding 2: a worktree an earlier process made and never
+// released is found on disk and expired by the same bound, through git.
+
+func TestPackWorkspaceALeftoverOfAnotherKeeperExpiresByAge(t *testing.T) {
+	repo := packRepo(t)
+	earlier := NewWorkspaces(repo, workspaceAgeBound, time.Now)
+	left := workspaceFor(t, earlier, loopCall("obj-1", "loop-a", 0))
+	commitWork(t, left, "committed.go")
+
+	clock := &packClock{t: time.Now()}
+	later := NewWorkspaces(repo, workspaceAgeBound, clock.now)
+	if err := later.Expire(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if gone(t, left) {
+		t.Fatal("a leftover younger than the bound was expired")
+	}
+	clock.advance(workspaceAgeBound + time.Minute)
+	if err := later.Expire(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if !gone(t, left) {
+		t.Fatalf("a leftover older than the bound %s is still on disk", workspaceAgeBound)
+	}
+	if out := packGit(t, repo, "branch", "--list", packBranchPrefix+"/*"); strings.TrimSpace(out) != "" {
+		t.Errorf("the expired leftover's branch survives: %s", out)
+	}
+	if out := packGit(t, repo, "worktree", "list", "--porcelain"); strings.Contains(out, packWorktreeBase) {
+		t.Errorf("git still lists the expired leftover: %s", out)
+	}
+}
