@@ -33,6 +33,7 @@ import (
 	"github.com/bsenel/karakuri/internal/core/objective"
 	"github.com/bsenel/karakuri/internal/core/reconcile"
 	featurecp "github.com/bsenel/karakuri/internal/feature/checkpoint"
+	"github.com/bsenel/karakuri/internal/feature/gateway"
 	featureloop "github.com/bsenel/karakuri/internal/feature/loop"
 	featurememory "github.com/bsenel/karakuri/internal/feature/memory"
 	platformagent "github.com/bsenel/karakuri/internal/platform/agent"
@@ -123,7 +124,7 @@ func realCutLoop(t *testing.T, f *fixture, obj objective.Objective) string {
 	}
 	svc := featureloop.NewService(f.store, platformagent.NewFactory(providers, hub, otel, nil), nil, envReg,
 		featurememory.NewService(f.store, 5), featurecp.NewService(f.store, hub), nil, nil, hub, otel, nil,
-		karakuriquota.Deps{}, nil, 0)
+		karakuriquota.Deps{}, gateway.New(f.store, karakuriquota.Deps{}, nil), nil, 0)
 
 	run, err := svc.Run(context.Background(), coreloop.Request{
 		Objective: obj,

@@ -1,8 +1,10 @@
 package command
 
 import (
+	"fmt"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -27,6 +29,16 @@ one.`,
 	}
 	cmd.AddCommand(costReportCmd())
 	return cmd
+}
+
+// explainSince adds the next step to a --since the duration parser refused.
+// "30d" is the value people reach for first, and Go durations have no day
+// unit, so the parser's own message names the problem but not the fix.
+func explainSince(c *cobra.Command, err error) error {
+	if !strings.Contains(err.Error(), `"--since"`) {
+		return err
+	}
+	return fmt.Errorf("%w\nGive --since in hours, minutes or seconds; there is no day unit, so 30 days is --since 720h and a week is --since 168h, e.g. `%s --since 720h`", err, c.CommandPath())
 }
 
 func costReportCmd() *cobra.Command {
@@ -98,5 +110,6 @@ func costReportCmd() *cobra.Command {
 	cmd.Flags().StringVar(&groupBy, "group-by", "",
 		"bucket by: day, subject, resource, provider, model, label (comma-separated)")
 	cmd.Flags().IntVar(&limit, "limit", 0, "keep only the largest N buckets; 0 asks for no cut")
+	cmd.SetFlagErrorFunc(explainSince)
 	return cmd
 }

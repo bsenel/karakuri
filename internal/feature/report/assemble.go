@@ -194,7 +194,10 @@ func (s *Service) refusalsAndBlocks(ctx context.Context, obj objective.Objective
 		OldestFirst:    true,
 		Limit:          1000,
 	})
-	if err == nil {
+	if err != nil {
+		// Blind, not quiet: no rows read is not no refusals (AGENTS.md rule 10).
+		blocks = append(blocks, digest.Block{Kind: digest.BlockRemoteUnreadable, Reason: "audit log could not be read: " + err.Error(), At: until})
+	} else {
 		var violation *digest.Block
 		for _, e := range events {
 			if e.CreatedAt.After(until) {
@@ -211,7 +214,9 @@ func (s *Service) refusalsAndBlocks(ctx context.Context, obj objective.Objective
 	}
 
 	outcomes, err := s.store.ListReconcileOutcomes(ctx, obj.ID, 2000)
-	if err == nil {
+	if err != nil {
+		blocks = append(blocks, digest.Block{Kind: digest.BlockRemoteUnreadable, Reason: "reconcile outcomes could not be read: " + err.Error(), At: until})
+	} else {
 		var latest *reconcile.Outcome
 		for i := range outcomes {
 			o := &outcomes[i]

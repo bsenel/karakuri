@@ -22,6 +22,7 @@ import (
 	"github.com/bsenel/karakuri/internal/core/telemetry"
 	featureart "github.com/bsenel/karakuri/internal/feature/artifact"
 	featurecp "github.com/bsenel/karakuri/internal/feature/checkpoint"
+	"github.com/bsenel/karakuri/internal/feature/gateway"
 	featurememory "github.com/bsenel/karakuri/internal/feature/memory"
 	platformagent "github.com/bsenel/karakuri/internal/platform/agent"
 	"github.com/bsenel/karakuri/internal/platform/git"
@@ -272,6 +273,10 @@ type serviceImpl struct {
 	quota karakuriquota.Deps
 	costs *karakuriquota.Recorder
 
+	// gateway is the one path a tool call takes (Phase 39 step 1, ADR 028):
+	// stepAct hands it every routed action. Read it through gate().
+	gateway *gateway.Gateway
+
 	// tracer opens the invoke_agent and execute_tool spans. Nil means no
 	// tracing; read it through tracing() rather than directly.
 	tracer telemetry.Tracer
@@ -338,6 +343,7 @@ func NewService(
 	otel *observability.OTel,
 	domReg *domain.Registry,
 	quotaDeps karakuriquota.Deps,
+	gw *gateway.Gateway,
 	tracer telemetry.Tracer,
 	checkpointTTL time.Duration,
 ) Service {
@@ -359,6 +365,7 @@ func NewService(
 		budget:  quotaDeps.TokenBudget,
 		quota:   quotaDeps,
 		costs:   quotaDeps.Costs,
+		gateway: gw,
 		tracer:  tracer,
 		states:  make(map[string]*loopState),
 		cancels: make(map[string]context.CancelCauseFunc),
