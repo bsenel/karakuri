@@ -270,7 +270,7 @@ func (s *Service) pass(ctx context.Context, id objective.ObjectiveID, forced rec
 			StartedAt:     started,
 			EndedAt:       s.now(),
 		}
-		s.noteBlockers(&st, deferred, coreloop.State{}, nil, nil)
+		s.noteBlockers(&st, deferred, coreloop.State{}, nil)
 		return s.finish(ctx, &st, obj, cadence, deferred, nil)
 	}
 
@@ -426,7 +426,27 @@ func (s *Service) reconcileNow(
 	if !escalated && final.BoundsViolation != nil {
 		s.block(ctx, st, obj, *final.BoundsViolation)
 	}
-	s.noteBlockers(st, outcome, final, &fp, brief)
+	cleared := s.noteBlockers(st, outcome, final, &fp)
+	limit, window := blockerLimits(tmpl)
+	noteRecurrence(st, cleared, window, outcome.EndedAt)
+	if attempted := s.noteAttempt(ctx, st, outcome, final, brief); attempted != nil {
+		b := *attempted
+		// A failed diagnose-and-fix pass counts toward the blocker's attempts
+		// and not toward the circuit breaker (Phase 40 step 14c): it ends by
+		// name, so finish moves no failure counter for it. A pass that made no
+		// diagnosis (its planner returned none) did not diagnose anything, and
+		// stays a failure the breaker counts.
+		if outcome.Failed() && outcome.Ending == "" && final.Diagnosis != "" {
+			outcome.Ending = endingBlockerAttemptFailed
+			outcome.Error = ""
+		}
+		if b.Attempts >= limit {
+			handOverSpent(st, b, outcome.EndedAt)
+			if !st.Paused {
+				s.stopOnBlocker(ctx, st, obj, b)
+			}
+		}
+	}
 	s.keepConfirmedRemedy(ctx, st, def.ID, brief, final.Remedy)
 	return s.finish(ctx, st, obj, cadence, outcome, &fp)
 }
@@ -490,6 +510,11 @@ const outcomeStopped = "stopped"
 // waiting_for_quota (Phase 40 step 8): the loop's outcome string, as Ending
 // is for step 7's endings.
 const outcomeWaitingForQuota = string(coreloop.RunWaitingForQuota)
+
+// endingBlockerAttemptFailed is the ending of a diagnose-and-fix pass that
+// read its blocker's signal still raised (Phase 40 step 14c): an attempt on
+// the blocker, counted there, and not a failure for the breaker.
+const endingBlockerAttemptFailed = "blocker_attempt_failed"
 
 // stopPrincipal is who the loop service records as having stopped a pass's
 // loop: the supervisor that carried the pause out. The person who paused is on

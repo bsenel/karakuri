@@ -145,7 +145,9 @@ type Outcome struct {
 	// Ending names how the pass's loop ended when that ending is neither a
 	// result nor a failure (Phase 40 step 7): "refused_by_bounds" for a loop
 	// whose plan its bounds refused, "interrupted_by_restart" for a pass a
-	// restart cut off. It is the loop's outcome string. Not an Error, so the
+	// restart cut off. It is the loop's outcome string, except
+	// "blocker_attempt_failed" for a diagnose-and-fix pass that read its
+	// blocker still raised (Phase 40 step 14c). Not an Error, so the
 	// circuit breaker does not count it; the digest counts it by name.
 	Ending string `json:"ending,omitempty"`
 
@@ -264,6 +266,9 @@ type State struct {
 	// Handovers are the blockers handed to the engineering backlog, one per
 	// kind (Phase 40 step 14c).
 	Handovers []Handover `json:"handovers,omitempty"`
+	// Clears are the blockers read cleared inside the template's recurrence
+	// window whose kind is not handed over yet. Stored, not served.
+	Clears []Clear `json:"-"`
 	// BranchSHA is the stream's branch tip as the last pass with work saw it,
 	// and StalledPasses how many passes with work in a row saw it unmoved. The
 	// no_progress blocker reads them; they are stored, not served.

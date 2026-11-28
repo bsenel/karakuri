@@ -91,6 +91,10 @@ type loopState struct {
 	// planRefused is the reason the bounds refused the run's first refused
 	// plan (Phase 40 step 14a), persisted so reconcile can raise plan_refused.
 	planRefused string
+	// diagnosis is the reasoning of the run's first plan when the request
+	// carried a blocker (Phase 40 step 14c), persisted so reconcile records
+	// what each attempt found.
+	diagnosis string
 	// ended is set when finalizeLoop takes the run's own ending, and stoppedBy
 	// and stopReason when Stop takes it instead (Phase 37 step 3). Whichever
 	// is set first under mu is the ending; the other then changes nothing.
@@ -125,6 +129,15 @@ func (ls *loopState) recordPlanRefusal(reason string) {
 	defer ls.mu.Unlock()
 	if ls.planRefused == "" {
 		ls.planRefused = reason
+	}
+}
+
+// recordDiagnosis keeps the reasoning of the run's first plan.
+func (ls *loopState) recordDiagnosis(reasoning string) {
+	ls.mu.Lock()
+	defer ls.mu.Unlock()
+	if ls.diagnosis == "" {
+		ls.diagnosis = reasoning
 	}
 }
 
@@ -611,6 +624,7 @@ func (s *serviceImpl) persistState(ctx context.Context, state *loopState, comple
 	retryAfter := state.retryAfter
 	violation := state.violation
 	planRefused := state.planRefused
+	diagnosis := state.diagnosis
 	stoppedBy, stopReason := state.stoppedBy, state.stopReason
 	state.mu.RUnlock()
 	if stoppedBy != "" {
@@ -645,6 +659,7 @@ func (s *serviceImpl) persistState(ctx context.Context, state *loopState, comple
 		BoundsViolation: violation,
 
 		PlanRefusedReason: planRefused,
+		Diagnosis:         diagnosis,
 	}
 	return s.store.SaveLoopState(ctx, persisted)
 }

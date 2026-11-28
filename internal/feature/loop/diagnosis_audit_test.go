@@ -104,3 +104,32 @@ func TestAnOrdinaryPassWritesItsPlanDownBeforeItsFirstAction(t *testing.T) {
 		t.Errorf("a pass with no blocker names one: %s", rows[plan].PayloadJSON)
 	}
 }
+
+// Phase 40 step 14c: the loop's row keeps a blocker pass's diagnosis, the
+// reasoning of its first plan, so reconcile can record what each attempt
+// found. A pass given no blocker keeps none.
+func TestTheLoopRowKeepsABlockerPassesDiagnosis(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		unblock *coreloop.Unblock
+		want    string
+	}{
+		{"given a blocker", &coreloop.Unblock{Kind: "verify_failed", Subject: "tests-pass", Count: 2}, diagnosisText},
+		{"given none", nil, ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			svc, req := quotaFixture(t, &quotaEnv{traceEnv: traceEnv{id: "test.env.ok"}}, 1)
+			providers := llm.NewRegistry(nil)
+			providers.Register(&traceProvider{reply: diagnosisPlan})
+			svc.factory = platformagent.NewFactory(providers, svc.hub, svc.otel, nil)
+			req.Unblock = tc.unblock
+			run, err := svc.Run(context.Background(), req)
+			if err != nil {
+				t.Fatalf("Run: %v", err)
+			}
+			if got := waitStoredCompleted(t, svc.store, run.LoopID).Diagnosis; got != tc.want {
+				t.Errorf("diagnosis = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}

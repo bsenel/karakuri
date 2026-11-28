@@ -1,6 +1,9 @@
 package reconcile
 
-import "time"
+import (
+	"strings"
+	"time"
+)
 
 // BlockerKind is why a stream's pass ended without progress for a reason that
 // is not "nothing to do" (Phase 40 step 14a).
@@ -68,4 +71,46 @@ type Handover struct {
 	// Cleared is when each occurrence of a recurring kind was cleared.
 	Cleared []time.Time `json:"cleared,omitempty"`
 	At      time.Time   `json:"at"`
+}
+
+// Clear is one blocker a pass read cleared, kept only until its kind is
+// handed over as recurring or the declared window has passed it by.
+type Clear struct {
+	Kind    BlockerKind `json:"kind"`
+	Subject string      `json:"subject"`
+	At      time.Time   `json:"at"`
+}
+
+// BlockedOn is how a stream that spent its attempts on a blocker reads in the
+// oversight view and in its paused reason: "blocked on <diagnosis>, tried
+// <what>", each remedy once, in the order it was tried.
+func BlockedOn(diagnosis string, tried []Attempt) string {
+	seen := map[string]bool{}
+	var remedies []string
+	for _, a := range tried {
+		if a.Remedy == "" || seen[a.Remedy] {
+			continue
+		}
+		seen[a.Remedy] = true
+		remedies = append(remedies, a.Remedy)
+	}
+	if diagnosis == "" {
+		diagnosis = "an undiagnosed blocker"
+	}
+	what := "nothing named"
+	if len(remedies) > 0 {
+		what = strings.Join(remedies, "; ")
+	}
+	return "blocked on " + diagnosis + ", tried " + what
+}
+
+// LastDiagnosis is the newest diagnosis among the attempts, empty when none
+// named one.
+func LastDiagnosis(tried []Attempt) string {
+	for i := len(tried) - 1; i >= 0; i-- {
+		if tried[i].Diagnosis != "" {
+			return tried[i].Diagnosis
+		}
+	}
+	return ""
 }
