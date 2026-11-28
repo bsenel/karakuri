@@ -4,16 +4,26 @@ import (
 	"context"
 	"fmt"
 	"sync"
+
+	"github.com/bsenel/karakuri/internal/core/agent"
+	"github.com/bsenel/karakuri/internal/core/capability"
+	"github.com/bsenel/karakuri/internal/core/objective"
 )
 
 type Registry struct {
 	mu    sync.RWMutex
 	packs map[string]Pack
 	hints []PlannerHint
+
+	// Filled by RegisterManifest only.
+	manifests map[string]bool
+	tools     []capability.Capability
+	templates []objective.Template
+	agents    []agent.Definition
 }
 
 func NewRegistry() *Registry {
-	return &Registry{packs: make(map[string]Pack)}
+	return &Registry{packs: make(map[string]Pack), manifests: make(map[string]bool)}
 }
 
 func (r *Registry) Register(ctx context.Context, p Pack, cfg Config) error {

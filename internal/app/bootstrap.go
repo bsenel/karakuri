@@ -25,7 +25,6 @@ import (
 	"github.com/bsenel/karakuri/internal/core/environment"
 	"github.com/bsenel/karakuri/internal/core/event"
 	corememory "github.com/bsenel/karakuri/internal/core/memory"
-	objectivepkg "github.com/bsenel/karakuri/internal/core/objective"
 	"github.com/bsenel/karakuri/internal/feature/audit"
 	"github.com/bsenel/karakuri/internal/feature/container"
 	"github.com/bsenel/karakuri/internal/feature/delegation"
@@ -212,32 +211,22 @@ func BootstrapServer(cfgPath string) (*Bootstrap, error) {
 		domainlegal.New(),
 		domainmech.New(),
 	}
-	enabledDomains := make(map[string]config.DomainConfig)
-	for _, dc := range cfg.Domains {
-		enabledDomains[dc.ID] = dc
-	}
-	var allTemplates []objectivepkg.Template
-	var activePacks []domain.Pack
-	for _, pack := range allPacks {
-		dc, ok := enabledDomains[pack.ID()]
-		if !ok || !dc.Enabled {
-			// Register stub packs as disabled
-			_ = domReg.Register(ctx, pack, domain.Config{})
-			continue
-		}
-		if err := domReg.Register(ctx, pack, domain.Config(dc.Options)); err != nil {
-			slog.Warn("domain pack init failed", "domain", pack.ID(), "err", err)
-			continue
-		}
-		for _, cap := range pack.Capabilities() {
-			_ = capReg.Register(cap)
-		}
+	// A pack is first-party because a domains: entry registered it, under the
+	// entry's ID (ADR 028 section a); its tools and templates come from its
+	// manifest (Decision 5). config/default.yaml enables the software pack.
+	manifests, activePacks := registerConfiguredPacks(ctx, cfg.Domains, allPacks, domReg)
+	for _, pack := range activePacks {
 		for _, factory := range pack.EnvironmentFactories() {
 			_ = envReg.Register(factory)
 		}
-		allTemplates = append(allTemplates, pack.ObjectiveTemplates()...)
-		activePacks = append(activePacks, pack)
 	}
+	for _, cap := range manifests.Capabilities() {
+		_ = capReg.Register(cap)
+	}
+	allTemplates := manifests.ObjectiveTemplates()
+	slog.Info("domain packs registered from manifests", "packs", len(activePacks),
+		"tools", len(manifests.Capabilities()), "templates", len(allTemplates),
+		"agents", len(manifests.AgentDefinitions()), "hints", len(manifests.PlannerHints()))
 
 	// Cross-pack capability/environment/agent collision audit (Phase 13).
 	// Cross-domain objectives recruit from multiple packs in one loop; a
