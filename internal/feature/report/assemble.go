@@ -102,8 +102,10 @@ func (s *Service) summarise(ctx context.Context, obj objective.Objective, since,
 	sum := digest.ObjectiveSummary{ID: obj.ID, Title: obj.Title, Status: obj.Status}
 
 	var stateBlockers []reconcile.Blocker
+	var handovers []reconcile.Handover
 	if st, err := s.store.GetReconcileState(ctx, obj.ID); err == nil {
 		stateBlockers = st.Blockers
+		handovers = st.Handovers
 		sum.Autonomy = st.EffectiveAutonomy(obj.AutonomyDeclaration())
 		sum.CriteriaMet = st.CriteriaMet
 		sum.Paused = st.Paused
@@ -171,7 +173,7 @@ func (s *Service) summarise(ctx context.Context, obj objective.Objective, since,
 		}
 	}
 	sum.Refusals, sum.Blocks = s.refusalsAndBlocks(ctx, obj, since, until)
-	sum.Blocks = withBlockers(sum.Blocks, stateBlockers, until)
+	sum.Blocks = withBlockers(sum.Blocks, stateBlockers, handovers, until)
 	return sum
 }
 
@@ -240,8 +242,10 @@ func (s *Service) refusalsAndBlocks(ctx context.Context, obj objective.Objective
 // on (Phase 40 step 14a), in a stable order: by kind, then subject. A blocker
 // first seen after the window's end is not part of that window. A quota
 // deferral already shown from the latest pass is not listed twice; otherwise
-// it is shown as waiting for quota.
-func withBlockers(blocks []digest.Block, blockers []reconcile.Blocker, until time.Time) []digest.Block {
+// it is shown as waiting for quota. Each shows how many diagnose-and-fix
+// passes failed on it, and one whose attempts are spent and handed to the
+// backlog reads "blocked on <diagnosis>, tried <what>" (Phase 40 step 14c).
+func withBlockers(blocks []digest.Block, blockers []reconcile.Blocker, handovers []reconcile.Handover, until time.Time) []digest.Block {
 	for _, b := range blockers {
 		if b.FirstSeen.After(until) {
 			continue
@@ -253,7 +257,19 @@ func withBlockers(blocks []digest.Block, blockers []reconcile.Blocker, until tim
 				continue
 			}
 		}
-		blocks = append(blocks, digest.Block{Kind: kind, Subject: b.Subject, Count: b.Count, At: b.LastSeen})
+		block := digest.Block{Kind: kind, Subject: b.Subject, Count: b.Count, Attempts: b.Attempts, At: b.LastSeen}
+		if h, ok := spentHandover(handovers, b); ok {
+			diagnosis := h.Diagnosis
+			if diagnosis == "" {
+				diagnosis = reconcile.LastDiagnosis(b.Tried)
+			}
+			tried := b.Tried
+			if len(tried) == 0 {
+				tried = h.Attempts
+			}
+			block.Reason = reconcile.BlockedOn(diagnosis, tried)
+		}
+		blocks = append(blocks, block)
 	}
 	sort.SliceStable(blocks, func(i, j int) bool {
 		if blocks[i].Kind != blocks[j].Kind {
@@ -262,6 +278,17 @@ func withBlockers(blocks []digest.Block, blockers []reconcile.Blocker, until tim
 		return blocks[i].Subject < blocks[j].Subject
 	})
 	return blocks
+}
+
+// spentHandover is the handover that says the stream spent its attempts on
+// this very blocker; a recurring kind, or another subject of it, is not.
+func spentHandover(handovers []reconcile.Handover, b reconcile.Blocker) (reconcile.Handover, bool) {
+	for _, h := range handovers {
+		if h.Kind == b.Kind && h.Subject == b.Subject && h.Reason == reconcile.HandoverAttemptsSpent {
+			return h, true
+		}
+	}
+	return reconcile.Handover{}, false
 }
 
 func hasKind(blocks []digest.Block, kind digest.BlockKind) bool {
