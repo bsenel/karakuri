@@ -114,7 +114,7 @@ func (s *Service) noteBlockers(st *reconcile.State, outcome reconcile.Outcome, f
 	obj := string(outcome.ObjectiveID)
 
 	// A deferral is shown and changes nothing else.
-	if outcome.Deferred == "budget_exhausted" || outcome.Deferred == "provider_rate_limited" {
+	if outcome.Deferred == "budget_exhausted" || outcome.Deferred == "provider_rate_limited" || outcome.Deferred == outcomeWaitingForQuota {
 		raiseBlocker(st, reconcile.BlockerDeferredQuota, obj, at)
 		return
 	}

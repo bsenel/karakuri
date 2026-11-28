@@ -43,6 +43,13 @@ export function ObjectivesPage() {
 
   useEffect(() => { void load(); }, []);
 
+  // Clears the alert first, so the table shows "Loading…" while the retry is
+  // in flight; leaving it up made a second failure look like the click did nothing.
+  const retry = () => {
+    setErr(null);
+    void load();
+  };
+
   const create = async (e: React.FormEvent) => {
     e.preventDefault();
     setCreated(null);
@@ -109,7 +116,7 @@ export function ObjectivesPage() {
           {/* Live regions: text that appears on its own is silent to a screen
               reader, so a failed load or create would go unnoticed. */}
           <span className="pill red" role="alert">{err}</span>{' '}
-          {!loaded && <button onClick={() => void load()}>Retry</button>}
+          {!loaded && <button onClick={retry}>Retry</button>}
         </p>
       )}
       <table aria-label="Objectives">

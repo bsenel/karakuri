@@ -29,6 +29,7 @@ import (
 	"github.com/bsenel/karakuri/internal/feature/audit"
 	"github.com/bsenel/karakuri/internal/feature/container"
 	"github.com/bsenel/karakuri/internal/feature/delegation"
+	"github.com/bsenel/karakuri/internal/feature/gateway"
 	featurememory "github.com/bsenel/karakuri/internal/feature/memory"
 	featurereport "github.com/bsenel/karakuri/internal/feature/report"
 	"github.com/bsenel/karakuri/internal/platform/db"
@@ -352,7 +353,12 @@ func BootstrapServer(cfgPath string) (*Bootstrap, error) {
 	// BuildContext; every pack but karakuri's ignores it.
 	envReg.SetTelemetry(plattelemetry.New(store, quotaDeps))
 
-	apiApp := api.NewApp(cfg, store, providers, toolReg, exporters, wt, hub, otel, capReg, envReg, domReg, allTemplates, auditKeep, semanticBackend, promHandler, authDeps, quotaDeps,
+	// The one path the loop's tool calls take: the capability quota, the audit
+	// row and the cost entry of every action, applied in one place (Phase 39
+	// step 1).
+	gw := gateway.New(store, quotaDeps, quotaDeps.Costs)
+
+	apiApp := api.NewApp(cfg, store, providers, toolReg, exporters, wt, hub, otel, capReg, envReg, domReg, allTemplates, auditKeep, semanticBackend, promHandler, authDeps, quotaDeps, gw,
 		featurereport.WithPullRequestReader(streamPullRequests{store: store, tools: toolReg}))
 
 	// Resume any non-completed loops left behind by a previous server process
