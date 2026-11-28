@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 	"unicode/utf8"
 )
 
@@ -20,6 +21,13 @@ import (
 // AND we accumulate a final DelegateOutput at completion.
 type ClaudeCode struct {
 	bin string // path to claude binary; "claude" by default
+	// now is the clock a quota refusal's reset time is measured from; tests
+	// fix it. Nil means time.Now.
+	now func() time.Time
+	// configDir is the CLI's configuration directory, whose projects/ holds the
+	// session logs a quota's return time may be read from. Empty means the
+	// CLI's own default, ~/.claude.
+	configDir string
 }
 
 func NewClaudeCode(bin string) *ClaudeCode {
@@ -44,8 +52,13 @@ func (c *ClaudeCode) Delegate(ctx context.Context, in DelegateInput) (DelegateOu
 	// Drain to close even after an error: Stream removes the per-run MCP
 	// configuration, which holds the credential, before it closes the channel.
 	var runErr error
+	var sessionID string
 	for chunk := range stream {
 		if runErr != nil {
+			continue
+		}
+		if chunk.Kind == "session" {
+			sessionID = chunk.Content
 			continue
 		}
 		raw.WriteString(chunk.Content)
@@ -63,7 +76,11 @@ func (c *ClaudeCode) Delegate(ctx context.Context, in DelegateInput) (DelegateOu
 		}
 	}
 	if runErr != nil {
-		return out, runErr
+		now := time.Now
+		if c.now != nil {
+			now = c.now
+		}
+		return out, classifyClaudeExit(runErr, now(), c.sessionLog(in.WorktreePath, sessionID))
 	}
 	out.RawOutput = raw.String()
 	return out, nil
@@ -87,6 +104,9 @@ func (c *ClaudeCode) Stream(ctx context.Context, in DelegateInput) (<-chan Deleg
 	}
 	if len(allowed) > 0 {
 		args = append(args, "--allowed-tools="+strings.Join(allowed, ","))
+	}
+	if len(in.DisallowedTools) > 0 {
+		args = append(args, "--disallowed-tools="+strings.Join(in.DisallowedTools, ","))
 	}
 
 	ch := make(chan DelegateChunk, 16)
@@ -116,7 +136,7 @@ func (c *ClaudeCode) Stream(ctx context.Context, in DelegateInput) (<-chan Deleg
 			return
 		}
 		if exitCode != 0 {
-			ch <- DelegateChunk{Kind: "error", Err: fmt.Errorf("claude_code: exit %d (stderr: %s)", exitCode, stderr)}
+			ch <- DelegateChunk{Kind: "error", Err: &claudeExitError{code: exitCode, stderr: stderr}}
 		}
 		ch <- DelegateChunk{Kind: "done"}
 	}()
@@ -214,6 +234,10 @@ func parseClaudeStreamLine(line string, ch chan<- DelegateChunk) {
 		return
 	}
 	switch evt.Type {
+	case "system":
+		if evt.Subtype == "init" && evt.SessionID != "" {
+			ch <- DelegateChunk{Kind: "session", Content: evt.SessionID}
+		}
 	case "assistant":
 		for _, block := range evt.Message.Content {
 			switch block.Type {
@@ -253,6 +277,8 @@ type claudeEvent struct {
 	Message claudeMessage `json:"message,omitempty"`
 	Result  string        `json:"result,omitempty"`
 	Subtype string        `json:"subtype,omitempty"`
+	// SessionID is on the stream's init line; it names the session log.
+	SessionID string `json:"session_id,omitempty"`
 }
 
 type claudeMessage struct {

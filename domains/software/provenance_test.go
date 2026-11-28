@@ -111,6 +111,10 @@ func (s *vcStub) EditPRBody(context.Context, string, string, string) error {
 	return versioncontrol.ErrUnsupported
 }
 
+func (s *vcStub) MergeState(context.Context, string, string) (string, error) {
+	return "", versioncontrol.ErrUnsupported
+}
+
 func (s *vcStub) BranchProtected(_ context.Context, repo, branch string) (bool, error) {
 	s.protectionAsks = append(s.protectionAsks, repo+":"+branch)
 	if s.protectedErr != nil {

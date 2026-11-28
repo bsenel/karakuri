@@ -760,6 +760,7 @@ func (s *GORMStorage) SaveLoopState(ctx context.Context, st coreloop.State) erro
 		Error:        st.Error,
 		StoppedBy:    st.StoppedBy,
 		StopReason:   st.StopReason,
+		RetryAfterMS: st.RetryAfter.Milliseconds(),
 		RequestJSON:  st.RequestJSON,
 	}
 	if m.RequestJSON == "" {
@@ -844,6 +845,7 @@ func loopStateFromModel(m schema.LoopStateModel) coreloop.State {
 		Error:           m.Error,
 		StoppedBy:       m.StoppedBy,
 		StopReason:      m.StopReason,
+		RetryAfter:      time.Duration(m.RetryAfterMS) * time.Millisecond,
 		RequestJSON:     m.RequestJSON,
 		CreatedAt:       m.CreatedAt,
 		UpdatedAt:       m.UpdatedAt,

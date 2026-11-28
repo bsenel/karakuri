@@ -71,7 +71,7 @@ func TestPathsDeclaredCriteriaCarryTheirGlobs(t *testing.T) {
 		id    string
 		globs []string
 	}{
-		{marketDiscoveryTemplateID, []string{"docs/research/**"}},
+		{marketDiscoveryTemplateID, []string{"docs/research/**", "docs/roadmap.md"}},
 		{engineeringBacklogTemplateID, []string{"docs/roadmap.md"}},
 		{uxImprovementTemplateID, []string{"cli/**", "web/**"}},
 		{docsTemplateID, []string{"docs/**"}},
