@@ -12,6 +12,9 @@ func twinCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "twin",
 		Short: "Manage digital twins",
+		Long: "Manage digital twins: the person, team or organization that objectives,\n" +
+			"checkpoints and reports belong to. Start here: create a twin, then pass\n" +
+			"its ID to krk objective create --twin.",
 		Example: `  krk twin create --name "Platform team"
   krk twin list
   krk twin get t_7f2a
@@ -71,6 +74,8 @@ func twinCreateCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "create",
 		Short: "Create a digital twin",
+		Long: "Create a digital twin and print it with its ID. Pass that ID to\n" +
+			"krk objective create --twin to give the twin something to achieve.",
 		Example: `  krk twin create --name "Platform team"
   krk twin create --name "Ada" --kind person`,
 		RunE: func(_ *cobra.Command, _ []string) error {
@@ -84,7 +89,7 @@ func twinCreateCmd() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&name, "name", "", "Twin name (required)")
+	cmd.Flags().StringVar(&name, "name", "", "Twin name shown in lists and reports, e.g. \"Platform team\" (required)")
 	cmd.Flags().StringVar(&kind, "kind", "team", "Twin kind: person|team|organization")
 	cmd.Flags().StringVar(&domain, "domain", "software", "Domain pack the twin works in (see: krk domain list)")
 	_ = cmd.MarkFlagRequired("name")
