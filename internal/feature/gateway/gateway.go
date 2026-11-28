@@ -131,6 +131,21 @@ func (g *Gateway) servedBy(call Call, perform Perform) Perform {
 	}
 }
 
+// PassEnded tells every pack called during the pass that pass names (its
+// objective, loop and pass) that the pass ended, as domain.ToolPassEnded with
+// the orchestrator's own identifiers (Phase 39 step 4). Best effort: a pack
+// that fails to take the signal is logged, not retried, and fails nothing.
+//
+// Scaffolding for step 4 slice B's tests: it sends nothing yet.
+func (g *Gateway) PassEnded(ctx context.Context, pass domain.CallContract) {}
+
+// ObjectiveEnded tells every pack called for the objective that objective
+// names that it ended or was cancelled, as domain.ToolObjectiveEnded (Phase 39
+// step 4). Best effort, like PassEnded.
+//
+// Scaffolding for step 4 slice B's tests: it sends nothing yet.
+func (g *Gateway) ObjectiveEnded(ctx context.Context, objective domain.CallContract) {}
+
 // Perform is the work behind a call: the environment's Act, or the served
 // tool's implementation.
 type Perform func(ctx context.Context) (environment.ActionResult, error)
