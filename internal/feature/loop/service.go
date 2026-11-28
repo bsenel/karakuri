@@ -22,6 +22,7 @@ import (
 	"github.com/bsenel/karakuri/internal/core/telemetry"
 	featureart "github.com/bsenel/karakuri/internal/feature/artifact"
 	featurecp "github.com/bsenel/karakuri/internal/feature/checkpoint"
+	"github.com/bsenel/karakuri/internal/feature/gateway"
 	featurememory "github.com/bsenel/karakuri/internal/feature/memory"
 	platformagent "github.com/bsenel/karakuri/internal/platform/agent"
 	"github.com/bsenel/karakuri/internal/platform/git"
@@ -259,6 +260,10 @@ type serviceImpl struct {
 	// the work spent. Both zero-valued on a caller that configured neither.
 	quota karakuriquota.Deps
 	costs *karakuriquota.Recorder
+
+	// gateway is the one path a tool call takes (Phase 39 step 1, ADR 028).
+	// Scaffolding: stepAct does not call it yet.
+	gateway *gateway.Gateway
 
 	// tracer opens the invoke_agent and execute_tool spans. Nil means no
 	// tracing; read it through tracing() rather than directly.
