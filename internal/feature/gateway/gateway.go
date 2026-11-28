@@ -8,12 +8,14 @@ package gateway
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/bsenel/karakuri/internal/core/agent"
+	"github.com/bsenel/karakuri/internal/core/capability"
 	"github.com/bsenel/karakuri/internal/core/domain"
 	"github.com/bsenel/karakuri/internal/core/environment"
 	"github.com/bsenel/karakuri/internal/platform/storage"
@@ -74,14 +76,59 @@ type Call struct {
 	Bounds   agent.AuthorityBounds
 }
 
-// errServePackUnimplemented is what ServePack answers until Phase 39 step 3
-// is built.
-var errServePackUnimplemented = errors.New("gateway: routing to a pack's server is not implemented")
-
 // ServePack routes calls for the tools a pack's server lists to that server,
 // with the call contract, instead of the in-process implementation.
-func (g *Gateway) ServePack(_ context.Context, _ string, _ domain.PackServer) error {
-	return errServePackUnimplemented
+//
+// An acting capability (a "<domain>.act.<name>" ID) stays on the in-process
+// path even when the server lists it: Phase 39 step 3 moves reads and
+// verifiers only, and an act still needs the environment the loop built for
+// its worktree and its bounds checks.
+func (g *Gateway) ServePack(ctx context.Context, packID string, server domain.PackServer) error {
+	tools, err := server.ListTools(ctx)
+	if err != nil {
+		return fmt.Errorf("gateway: list the tools of pack %s: %w", packID, err)
+	}
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if g.packs == nil {
+		g.packs = make(map[string]domain.PackServer)
+	}
+	for _, tool := range tools {
+		if strings.Contains(string(tool), ".act.") {
+			continue
+		}
+		g.packs[string(tool)] = server
+	}
+	return nil
+}
+
+// servedBy wraps perform so a call for a tool a pack's server serves goes to
+// that server with the call contract. A result that states no trust is third
+// party: the gateway cannot tell who wrote a pack's text, and taking it as the
+// operator's would let it steer the loop (AGENTS.md rule 9).
+func (g *Gateway) servedBy(call Call, perform Perform) Perform {
+	g.mu.RLock()
+	server, ok := g.packs[call.Capability]
+	g.mu.RUnlock()
+	if !ok {
+		return perform
+	}
+	contract := domain.CallContract{
+		TenantID:    call.TenantID,
+		TwinID:      call.TwinID,
+		ObjectiveID: call.ObjectiveID,
+		LoopID:      call.LoopID,
+		Pass:        call.Pass,
+		ActionID:    call.ActionID,
+		Bounds:      call.Bounds,
+	}
+	return func(ctx context.Context) (environment.ActionResult, error) {
+		result, err := server.CallTool(ctx, contract, capability.CapabilityID(call.Capability), call.Params)
+		if result.Trust == "" {
+			result.Trust = environment.TrustThirdParty
+		}
+		return result, err
+	}
 }
 
 // Perform is the work behind a call: the environment's Act, or the served
@@ -101,6 +148,10 @@ type Gateway struct {
 	store storage.StorageAdapter
 	quota karakuriquota.Deps
 	costs *karakuriquota.Recorder
+
+	// packs maps a tool to the pack server that serves it (Phase 39 step 3).
+	mu    sync.RWMutex
+	packs map[string]domain.PackServer
 }
 
 // New builds a gateway over the audit store, the quota dependencies and the
@@ -124,7 +175,7 @@ func (g *Gateway) Call(ctx context.Context, call Call, perform Perform) (environ
 		return environment.ActionResult{Success: false, Error: quotaExhausted}, &QuotaRefusal{Decision: dec}
 	}
 
-	result, err := perform(ctx)
+	result, err := g.servedBy(call, perform)(ctx)
 	if err != nil {
 		// What the call reported beside its error stays: a coding agent
 		// refused for quota still names the salvage branch its edits went to
