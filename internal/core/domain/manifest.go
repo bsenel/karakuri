@@ -2,6 +2,7 @@ package domain
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/bsenel/karakuri/internal/core/agent"
 	"github.com/bsenel/karakuri/internal/core/capability"
@@ -42,8 +43,9 @@ func ManifestOf(p Pack) Manifest {
 }
 
 // RegisterManifest registers a pack from its tools and its manifest. A tool,
-// verifier or snapshot tool under the reserved `mcp.` namespace is refused,
-// and a refused manifest registers nothing (ADR 028 section a, ADR 022).
+// verifier or snapshot tool under the reserved `mcp.` namespace, or outside
+// the `<packID>.` namespace the registering entry assigns, is refused, and a
+// refused manifest registers nothing (ADR 028 section a, ADR 022).
 func (r *Registry) RegisterManifest(packID string, tools []capability.Capability, m Manifest) error {
 	if packID == "" {
 		return fmt.Errorf("domain pack ID must not be empty")
@@ -61,6 +63,22 @@ func (r *Registry) RegisterManifest(packID string, tools []capability.Capability
 	if capability.IsMCPCapability(m.SnapshotTool) {
 		return fmt.Errorf("domain %q: snapshot tool %q is in the reserved mcp. namespace", packID, m.SnapshotTool)
 	}
+	// The namespace is the pack ID of the entry that registers the pack, never
+	// a name the pack picks: anything outside it is the pack claiming another
+	// pack's tools (ADR 028 section a).
+	for _, c := range tools {
+		if !inNamespace(packID, c.ID) || c.Domain != packID {
+			return fmt.Errorf("domain %q: tool %q (domain %q) is outside the pack's namespace %s.", packID, c.ID, c.Domain, packID)
+		}
+	}
+	for _, id := range m.Verifiers {
+		if !inNamespace(packID, id) {
+			return fmt.Errorf("domain %q: verifier %q is outside the pack's namespace %s.", packID, id, packID)
+		}
+	}
+	if m.SnapshotTool != "" && !inNamespace(packID, m.SnapshotTool) {
+		return fmt.Errorf("domain %q: snapshot tool %q is outside the pack's namespace %s.", packID, m.SnapshotTool, packID)
+	}
 
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -73,6 +91,12 @@ func (r *Registry) RegisterManifest(packID string, tools []capability.Capability
 	r.agents = append(r.agents, m.AgentDefinitions...)
 	r.hints = append(r.hints, m.PlannerHints...)
 	return nil
+}
+
+// inNamespace reports whether id sits under packID as a whole segment, so
+// trivial2.x is not under trivial.
+func inNamespace(packID string, id capability.CapabilityID) bool {
+	return strings.HasPrefix(string(id), packID+".")
 }
 
 // Capabilities returns the tools of every pack registered from a manifest.

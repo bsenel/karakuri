@@ -210,36 +210,14 @@ func BootstrapServer(cfgPath string) (*Bootstrap, error) {
 		domainlegal.New(),
 		domainmech.New(),
 	}
-	enabledDomains := make(map[string]config.DomainConfig)
-	for _, dc := range cfg.Domains {
-		enabledDomains[dc.ID] = dc
-	}
-	// Kept apart from domReg, which still owns Init, Get and List: registering a
-	// pack in both would count its planner hints twice.
-	manifests := domain.NewRegistry()
-	var activePacks []domain.Pack
-	for _, pack := range allPacks {
-		dc, ok := enabledDomains[pack.ID()]
-		if !ok || !dc.Enabled {
-			// Register stub packs as disabled
-			_ = domReg.Register(ctx, pack, domain.Config{})
-			continue
-		}
-		if err := domReg.Register(ctx, pack, domain.Config(dc.Options)); err != nil {
-			slog.Warn("domain pack init failed", "domain", pack.ID(), "err", err)
-			continue
-		}
-		// An enabled pack's tools and templates come from its manifest (ADR 028
-		// Decision 5); a manifest naming anything under mcp. is refused and the
-		// pack stays out of the capability and template registries.
-		if err := manifests.RegisterManifest(pack.ID(), pack.Capabilities(), domain.ManifestOf(pack)); err != nil {
-			slog.Warn("domain pack manifest refused", "domain", pack.ID(), "err", err)
-			continue
-		}
+	// A pack is first-party because a domains: entry registered it, under the
+	// entry's ID (ADR 028 section a); its tools and templates come from its
+	// manifest (Decision 5). config/default.yaml enables the software pack.
+	manifests, activePacks := registerConfiguredPacks(ctx, cfg.Domains, allPacks, domReg)
+	for _, pack := range activePacks {
 		for _, factory := range pack.EnvironmentFactories() {
 			_ = envReg.Register(factory)
 		}
-		activePacks = append(activePacks, pack)
 	}
 	for _, cap := range manifests.Capabilities() {
 		_ = capReg.Register(cap)
