@@ -194,6 +194,24 @@ func TestABudgetDeferralIsAQuotaBlockerAndNotAFailure(t *testing.T) {
 	}
 }
 
+// A pass whose coding agent ran out of quota is filed as waiting_for_quota
+// (Phase 40 step 8), the deferral this deployment hits most: it is a
+// deferred_quota blocker like the other two, and a second one counts it.
+func TestAPassWaitingForQuotaIsAQuotaBlocker(t *testing.T) {
+	f, obj := blockerFixture(t)
+	quotaPass(f, 0)
+
+	f.pass(t, obj.ID, reconcile.TriggerManual)
+	st := f.state(t, obj.ID)
+	wantBlockers(t, st, reconcile.Blocker{Kind: reconcile.BlockerDeferredQuota, Subject: string(obj.ID), Count: 1})
+	if st.ConsecutiveFailures != 0 {
+		t.Errorf("consecutive_failures = %d after a quota deferral, want 0", st.ConsecutiveFailures)
+	}
+
+	f.again(t, obj.ID)
+	wantBlockers(t, f.state(t, obj.ID), reconcile.Blocker{Kind: reconcile.BlockerDeferredQuota, Subject: string(obj.ID), Count: 2})
+}
+
 func TestNothingPlannedYieldsNoBlocker(t *testing.T) {
 	f := newFixture(t, Config{})
 	f.use(t, map[string]string{"git": "aaa"})
