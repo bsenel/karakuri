@@ -15,10 +15,9 @@ import (
 	"github.com/bsenel/karakuri/internal/core/event"
 	"github.com/bsenel/karakuri/internal/core/loop"
 	"github.com/bsenel/karakuri/internal/core/telemetry"
+	"github.com/bsenel/karakuri/internal/feature/gateway"
 	"github.com/bsenel/karakuri/internal/platform/git"
 	"github.com/bsenel/karakuri/internal/platform/storage"
-	karakuriquota "github.com/bsenel/karakuri/internal/quota"
-	"github.com/bsenel/karakuri/quota/cost"
 )
 
 // savePlanBeforeAct stores the plan with the loop it belongs to before any of
@@ -108,203 +107,225 @@ func stepAct(ctx context.Context, sc *stepContext, p plan) []actionOutcome {
 			params = make(map[string]any)
 		}
 
-		// a2. Charge the twin's daily allowance for this capability.
-		//
-		// Before the action rather than after, because the point of the tier is
-		// to stop a misconfigured watcher hammering an external service — most
-		// capabilities are not model calls, they reach GitHub or Linear, and a
-		// charge levied afterwards would have already made the call.
-		//
-		// A refusal skips the action and records why, rather than failing the
-		// iteration: the loop can still make progress on whatever else it
-		// planned, and the operator sees a bounded twin rather than a broken one.
-		if !sc.svc.allowCapability(ctx, sc, action.CapabilityID, i) {
-			outcomes = append(outcomes, actionOutcome{
-				CapabilityID: action.CapabilityID,
-				Result: environment.ActionResult{
-					Success: false,
-					Error:   "capability quota exhausted for the day",
-				},
-				Errored: true,
-			})
-			continue
+		envAdapter := ""
+		if targetEnv != nil {
+			envAdapter = string(targetEnv.ID())
 		}
-
-		// b. Worktree for capabilities that declare they write files.
-		//
-		// Asked of the capability registry rather than matched on the name:
-		// the suffix test gave a worktree to two capabilities that had no
-		// implementation and withheld one from delegate_to_cli, which is the
-		// only one that can actually write. See ADR 019.
-		//
-		// The task ID names the branch and the directory, so it has to be
-		// unique per attempt, not per action index: a retried iteration, or a
-		// loop resumed after a restart, runs the same actions again, and
-		// `git worktree add` refuses a path or branch that already exists.
-		var provisionErr error
-		if sc.svc.needsWorkspace(action.CapabilityID) {
-			taskID := fmt.Sprintf("%s-%d-%d-%s", sc.loopID[:8], sc.iteration, i,
-				strconv.FormatInt(time.Now().UnixNano(), 36))
-			// A branch the plan names, already held to the template's branch
-			// patterns by the decide step, is the branch the work is done on:
-			// a repair of a pull request's head is made on that head.
-			plannedBranch, _ := params["branch"].(string)
-			wt, err := sc.svc.wt.Create(ctx, git.WorktreeOptions{
-				ObjectiveID: sc.obj.ID,
-				TaskID:      taskID,
-				BranchName:  plannedBranch,
-			})
-			provisionErr = err
-			if err == nil {
-				params["worktree_path"] = wt.Path
-				// The plan's own branch is the ref the action is declared to
-				// push; the worktree's branch replaces params.branch below for
-				// the adapters that push or open a pull request from the
-				// worktree, so keep the plan's under its own key. Without it
-				// the pushed-refs check (Phase 40 step 3) declared only the
-				// worktree branch and failed every push to the item branch.
-				if planned, _ := params["branch"].(string); planned != "" {
-					params["planned_branch"] = planned
-				}
-				params["branch"] = wt.Branch
-				// Persist worktree record
-				_ = sc.svc.store.SaveWorktree(ctx, storage.Worktree{
-					TaskID:      wt.TaskID,
-					ObjectiveID: string(wt.ObjectiveID),
-					Path:        wt.Path,
-					Branch:      wt.Branch,
-					CreatedAt:   wt.CreatedAt,
-				})
-				sc.svc.hub.Publish(ctx, event.Event{
-					Type:        event.TypeWorktreeCreated,
-					ObjectiveID: string(sc.obj.ID),
-					Payload:     map[string]any{"task_id": taskID, "path": wt.Path, "branch": wt.Branch},
-					Timestamp:   time.Now().UTC(),
-				})
-			}
-		}
-
-		var result environment.ActionResult
 		// Whether the action could not be carried out at all, as opposed to
 		// ran and reported failure.
 		errored := true
 		var actErr error
-		if provisionErr != nil {
-			// The environment would refuse for want of a worktree anyway; say
-			// why there is none instead.
-			result = environment.ActionResult{
-				Success: false,
-				Error:   fmt.Sprintf("could not provision a worktree for %s: %v", action.CapabilityID, provisionErr),
-			}
-		} else if targetEnv != nil {
-			// Wraps only a real Environment.Act call: a quota-refused or
-			// unrouted action ran no tool, so a span for it would claim one
-			// did (Phase 29 Step 2 in docs/roadmap.md).
-			actCtx, span := sc.svc.tracing().Start(ctx, "execute_tool "+action.CapabilityID,
-				telemetry.Attribute{Key: telemetry.GenAIOperationName, Value: telemetry.OpExecuteTool},
-				telemetry.Attribute{Key: telemetry.GenAIToolName, Value: action.CapabilityID},
-				telemetry.Attribute{Key: telemetry.AttrKarakuriEnvironmentID, Value: string(targetEnv.ID())},
-			)
-			// Named for a stop's audit record, with the worktree a cut
-			// delegation may have left half done (Phase 37 step 5).
-			workdir, _ := params["worktree_path"].(string)
-			branch, _ := params["branch"].(string)
-			sc.state.startAction(StopAction{
-				CapabilityID: action.CapabilityID,
-				EnvID:        string(targetEnv.ID()),
-				Workdir:      workdir,
-				Branch:       branch,
-			})
-			var err error
-			result, err = targetEnv.Act(actCtx, environment.Action{
-				CapabilityID: capability.CapabilityID(action.CapabilityID),
-				Params:       params,
-			})
-			sc.state.endAction()
-			if err != nil {
-				// What the environment reported beside its error stays: a
-				// coding agent refused for quota still names the salvage
-				// branch its edits went to (Phase 40 step 8).
-				result.Success = false
-				if result.Error == "" {
-					result.Error = err.Error()
+
+		// a2. The gateway charges the twin's daily capability allowance before
+		// the action, runs it, and writes its audit row and its cost (Phase 39
+		// step 1). What only the loop decides, the worktree, the span and the
+		// unrouted message, happens inside perform, so a refused action
+		// provisions nothing, as before.
+		perform := func(ctx context.Context) (environment.ActionResult, error) {
+
+			// b. Worktree for capabilities that declare they write files.
+			//
+			// Asked of the capability registry rather than matched on the name:
+			// the suffix test gave a worktree to two capabilities that had no
+			// implementation and withheld one from delegate_to_cli, which is the
+			// only one that can actually write. See ADR 019.
+			//
+			// The task ID names the branch and the directory, so it has to be
+			// unique per attempt, not per action index: a retried iteration, or a
+			// loop resumed after a restart, runs the same actions again, and
+			// `git worktree add` refuses a path or branch that already exists.
+			var provisionErr error
+			if sc.svc.needsWorkspace(action.CapabilityID) {
+				taskID := fmt.Sprintf("%s-%d-%d-%s", sc.loopID[:8], sc.iteration, i,
+					strconv.FormatInt(time.Now().UnixNano(), 36))
+				// A branch the plan names, already held to the template's branch
+				// patterns by the decide step, is the branch the work is done on:
+				// a repair of a pull request's head is made on that head.
+				plannedBranch, _ := params["branch"].(string)
+				wt, err := sc.svc.wt.Create(ctx, git.WorktreeOptions{
+					ObjectiveID: sc.obj.ID,
+					TaskID:      taskID,
+					BranchName:  plannedBranch,
+				})
+				provisionErr = err
+				if err == nil {
+					params["worktree_path"] = wt.Path
+					// The plan's own branch is the ref the action is declared to
+					// push; the worktree's branch replaces params.branch below for
+					// the adapters that push or open a pull request from the
+					// worktree, so keep the plan's under its own key. Without it
+					// the pushed-refs check (Phase 40 step 3) declared only the
+					// worktree branch and failed every push to the item branch.
+					if planned, _ := params["branch"].(string); planned != "" {
+						params["planned_branch"] = planned
+					}
+					params["branch"] = wt.Branch
+					// Persist worktree record
+					_ = sc.svc.store.SaveWorktree(ctx, storage.Worktree{
+						TaskID:      wt.TaskID,
+						ObjectiveID: string(wt.ObjectiveID),
+						Path:        wt.Path,
+						Branch:      wt.Branch,
+						CreatedAt:   wt.CreatedAt,
+					})
+					sc.svc.hub.Publish(ctx, event.Event{
+						Type:        event.TypeWorktreeCreated,
+						ObjectiveID: string(sc.obj.ID),
+						Payload:     map[string]any{"task_id": taskID, "path": wt.Path, "branch": wt.Branch},
+						Timestamp:   time.Now().UTC(),
+					})
 				}
 			}
-			errored = err != nil
-			actErr = err
-			if !result.Success {
-				span.SetError(result.Error)
-			}
-			span.End()
-		} else {
-			// Nothing declared it serves this capability, and the plan's
-			// env_id matched nothing either. Used to silently succeed with
-			// Success=true; now fails honestly so the audit trail and verify
-			// step see the gap instead of treating it as work done.
-			available := make([]string, 0, len(sc.envs))
-			for _, env := range sc.envs {
-				available = append(available, string(env.ID()))
-			}
 
-			// Which failure this is decides what an operator does about it, so
-			// the message has to distinguish them rather than defaulting to
-			// "no environment matches env_id" and sending whoever reads it
-			// looking in the wrong place.
-			var serves []string
-			activeServers := 0
-			if sc.svc.envReg != nil {
-				for _, id := range sc.svc.envReg.ServedBy(capability.CapabilityID(action.CapabilityID)) {
-					serves = append(serves, string(id))
-					for _, env := range sc.envs {
-						if env.ID() == id {
-							activeServers++
-							break
+			var result environment.ActionResult
+			if provisionErr != nil {
+				// The environment would refuse for want of a worktree anyway; say
+				// why there is none instead.
+				result = environment.ActionResult{
+					Success: false,
+					Error:   fmt.Sprintf("could not provision a worktree for %s: %v", action.CapabilityID, provisionErr),
+				}
+			} else if targetEnv != nil {
+				// Wraps only a real Environment.Act call: a quota-refused or
+				// unrouted action ran no tool, so a span for it would claim one
+				// did (Phase 29 Step 2 in docs/roadmap.md).
+				actCtx, span := sc.svc.tracing().Start(ctx, "execute_tool "+action.CapabilityID,
+					telemetry.Attribute{Key: telemetry.GenAIOperationName, Value: telemetry.OpExecuteTool},
+					telemetry.Attribute{Key: telemetry.GenAIToolName, Value: action.CapabilityID},
+					telemetry.Attribute{Key: telemetry.AttrKarakuriEnvironmentID, Value: string(targetEnv.ID())},
+				)
+				// Named for a stop's audit record, with the worktree a cut
+				// delegation may have left half done (Phase 37 step 5).
+				workdir, _ := params["worktree_path"].(string)
+				branch, _ := params["branch"].(string)
+				sc.state.startAction(StopAction{
+					CapabilityID: action.CapabilityID,
+					EnvID:        string(targetEnv.ID()),
+					Workdir:      workdir,
+					Branch:       branch,
+				})
+				var err error
+				result, err = targetEnv.Act(actCtx, environment.Action{
+					CapabilityID: capability.CapabilityID(action.CapabilityID),
+					Params:       params,
+				})
+				sc.state.endAction()
+				if err != nil {
+					// What the environment reported beside its error stays: a
+					// coding agent refused for quota still names the salvage
+					// branch its edits went to (Phase 40 step 8).
+					result.Success = false
+					if result.Error == "" {
+						result.Error = err.Error()
+					}
+				}
+				errored = err != nil
+				actErr = err
+				if !result.Success {
+					span.SetError(result.Error)
+				}
+				span.End()
+			} else {
+				// Nothing declared it serves this capability, and the plan's
+				// env_id matched nothing either. Used to silently succeed with
+				// Success=true; now fails honestly so the audit trail and verify
+				// step see the gap instead of treating it as work done.
+				available := make([]string, 0, len(sc.envs))
+				for _, env := range sc.envs {
+					available = append(available, string(env.ID()))
+				}
+
+				// Which failure this is decides what an operator does about it, so
+				// the message has to distinguish them rather than defaulting to
+				// "no environment matches env_id" and sending whoever reads it
+				// looking in the wrong place.
+				var serves []string
+				activeServers := 0
+				if sc.svc.envReg != nil {
+					for _, id := range sc.svc.envReg.ServedBy(capability.CapabilityID(action.CapabilityID)) {
+						serves = append(serves, string(id))
+						for _, env := range sc.envs {
+							if env.ID() == id {
+								activeServers++
+								break
+							}
 						}
 					}
 				}
-			}
 
-			var errMsg string
-			switch {
-			case len(serves) == 0:
-				// Nothing anywhere claims it: the plan named a capability no
-				// enabled pack serves.
-				errMsg = fmt.Sprintf("no environment matches env_id=%q (available: %v)", action.EnvID, available)
-			case activeServers == 0:
-				// A pack to enable or an adapter to bind.
-				errMsg = fmt.Sprintf("capability %q is served by %v, none of which this twin has active (available: %v)",
-					action.CapabilityID, serves, available)
-			default:
-				// Several active environments claim it, so routing declined to
-				// choose and the plan's env_id matched nothing. The pack is
-				// what needs fixing; conformance names it.
-				errMsg = fmt.Sprintf("capability %q is served by %v — more than one, so routing deferred to env_id=%q, which matches no active environment (available: %v)",
-					action.CapabilityID, serves, action.EnvID, available)
-			}
+				var errMsg string
+				switch {
+				case len(serves) == 0:
+					// Nothing anywhere claims it: the plan named a capability no
+					// enabled pack serves.
+					errMsg = fmt.Sprintf("no environment matches env_id=%q (available: %v)", action.EnvID, available)
+				case activeServers == 0:
+					// A pack to enable or an adapter to bind.
+					errMsg = fmt.Sprintf("capability %q is served by %v, none of which this twin has active (available: %v)",
+						action.CapabilityID, serves, available)
+				default:
+					// Several active environments claim it, so routing declined to
+					// choose and the plan's env_id matched nothing. The pack is
+					// what needs fixing; conformance names it.
+					errMsg = fmt.Sprintf("capability %q is served by %v — more than one, so routing deferred to env_id=%q, which matches no active environment (available: %v)",
+						action.CapabilityID, serves, action.EnvID, available)
+				}
 
-			result = environment.ActionResult{
-				Success: false,
-				Error:   errMsg,
-				StateDelta: map[string]any{
-					"capability": action.CapabilityID,
-					"status":     "unrouted",
-					"env_id":     action.EnvID,
-					"available":  available,
-					"served_by":  serves,
-				},
+				result = environment.ActionResult{
+					Success: false,
+					Error:   errMsg,
+					StateDelta: map[string]any{
+						"capability": action.CapabilityID,
+						"status":     "unrouted",
+						"env_id":     action.EnvID,
+						"available":  available,
+						"served_by":  serves,
+					},
+				}
+				sc.svc.hub.Publish(ctx, event.Event{
+					Type:        event.TypeAdapterSkipped,
+					ObjectiveID: string(sc.obj.ID),
+					Payload: map[string]any{
+						"capability": action.CapabilityID,
+						"reason":     "unrouted",
+						"env_id":     action.EnvID,
+						"available":  available,
+						"served_by":  serves,
+					},
+					Timestamp: time.Now().UTC(),
+				})
 			}
-			sc.svc.hub.Publish(ctx, event.Event{
-				Type:        event.TypeAdapterSkipped,
-				ObjectiveID: string(sc.obj.ID),
-				Payload: map[string]any{
-					"capability": action.CapabilityID,
-					"reason":     "unrouted",
-					"env_id":     action.EnvID,
-					"available":  available,
-					"served_by":  serves,
-				},
-				Timestamp: time.Now().UTC(),
+			return result, actErr
+		}
+		result, err := sc.svc.gate().Call(ctx, gateway.Call{
+			Caller:      gateway.CallerLoop,
+			TwinID:      sc.twinID,
+			ObjectiveID: string(sc.obj.ID),
+			AgentID:     string(sc.agentDef.ID),
+			Capability:  action.CapabilityID,
+			EnvID:       envAdapter,
+			Params:      params,
+			LoopID:      sc.loopID,
+			Index:       i,
+			RoutedBy:    routedBy,
+			Confidence:  p.Confidence,
+			Stamp: func(row *storage.ToolEvent, payload map[string]any) {
+				sc.stampProvenance(row, p, payload)
+			},
+		}, perform)
+
+		// A refusal skips the action and records why, rather than failing the
+		// iteration: the loop can still make progress on whatever else it
+		// planned, and the operator sees a bounded twin rather than a broken one.
+		var refused *gateway.QuotaRefusal
+		if errors.As(err, &refused) {
+			sc.svc.reportCapabilityPressure(ctx, sc, action.CapabilityID, i, refused.Decision)
+			outcomes = append(outcomes, actionOutcome{
+				CapabilityID: action.CapabilityID,
+				Result:       result,
+				Errored:      true,
 			})
+			continue
 		}
 
 		// d. Emit artifact_written if blobs produced
@@ -321,77 +342,13 @@ func stepAct(ctx context.Context, sc *stepContext, p plan) []actionOutcome {
 			successCount++
 		}
 
-		// f. Save ToolEvent. routed_by records which rule picked the
-		// environment, because "the pack said so" and "the model said so" are
-		// different claims about the same successful action, and the second
-		// one is the one worth noticing when it stops being true.
-		payload := map[string]any{
-			"params":    params,
-			"result":    result,
-			"routed_by": routedBy,
-		}
-		agentIDStr := string(sc.agentDef.ID)
-		envAdapter := ""
-		if targetEnv != nil {
-			envAdapter = string(targetEnv.ID())
-		}
-		row := storage.ToolEvent{
-			ID:          fmt.Sprintf("te-%d-%d", time.Now().UnixNano(), i),
-			ObjectiveID: string(sc.obj.ID),
-			AgentID:     agentIDStr,
-			Capability:  action.CapabilityID,
-			Adapter:     envAdapter,
-			Success:     result.Success,
-			Confidence:  p.Confidence,
-			CreatedAt:   time.Now().UTC(),
-		}
-		sc.stampProvenance(&row, p, payload)
-		payloadJSON, _ := json.Marshal(payload)
-		row.PayloadJSON = string(payloadJSON)
-		_ = sc.svc.store.SaveToolEvent(ctx, row)
-
 		// f2. An action that did something outside its declared bounds, such
-		// as a push to a ref it never named (Phase 40 step 3), is one bounds
-		// row of step 2's refusal kind, and the run's state keeps the first
-		// such violation so reconcile can block the stream on it.
+		// as a push to a ref it never named (Phase 40 step 3): the gateway
+		// wrote its bounds row, and the run's state keeps the first such
+		// violation so reconcile can block the stream on it.
 		if v := result.BoundsViolation; v != nil {
-			violationPayload := map[string]any{
-				"capability": action.CapabilityID,
-				"env_id":     envAdapter,
-				"refs":       v.Refs,
-			}
-			violationRow := storage.ToolEvent{
-				ID:               fmt.Sprintf("audit-%d-%d", time.Now().UnixNano(), i),
-				ObjectiveID:      string(sc.obj.ID),
-				AgentID:          agentIDStr,
-				Capability:       action.CapabilityID,
-				Adapter:          envAdapter,
-				Success:          false,
-				Confidence:       p.Confidence,
-				Kind:             storage.ToolEventRefusal,
-				EscalationReason: v.Reason,
-				BoundsViolation:  true,
-				CreatedAt:        time.Now().UTC(),
-			}
-			sc.stampProvenance(&violationRow, p, violationPayload)
-			violationJSON, _ := json.Marshal(violationPayload)
-			violationRow.PayloadJSON = string(violationJSON)
-			_ = sc.svc.store.SaveToolEvent(ctx, violationRow)
 			sc.state.recordViolation(v)
 		}
-
-		// g. And what it cost. Attributed to the objective rather than the twin,
-		// because "which piece of work spent this" is the question a bill
-		// prompts — the twin is still the subject that pays, and its containers
-		// are what a per-team report groups on.
-		sc.svc.costs.Record(ctx, karakuriquota.Spend{
-			TwinID:       sc.twinID,
-			ResourceType: "objective",
-			ResourceID:   string(sc.obj.ID),
-			Provider:     envAdapter,
-			Units:        1,
-			UnitKind:     cost.UnitCalls,
-		})
 
 		// A result carrying somebody else's writing — a scraped page, a fetched
 		// issue body — puts its environment into evidence for every plan

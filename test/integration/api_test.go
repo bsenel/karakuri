@@ -23,6 +23,7 @@ import (
 	"github.com/bsenel/karakuri/internal/core/event"
 	objectivepkg "github.com/bsenel/karakuri/internal/core/objective"
 	"github.com/bsenel/karakuri/internal/feature/audit"
+	"github.com/bsenel/karakuri/internal/feature/gateway"
 	platformdb "github.com/bsenel/karakuri/internal/platform/db"
 	"github.com/bsenel/karakuri/internal/platform/git"
 	"github.com/bsenel/karakuri/internal/platform/llm"
@@ -206,7 +207,7 @@ func newTestApp(t *testing.T, configure func(*config.Config), extra ...capabilit
 	if auditKeep.FloorDays == 0 {
 		auditKeep.FloorDays = audit.FloorDays
 	}
-	apiApp := api.NewApp(cfg, store, providers, toolReg, exporters, wt, hub, otel, capReg, envReg, domReg, templates, auditKeep, nil, nil, authDeps, quotaDeps)
+	apiApp := api.NewApp(cfg, store, providers, toolReg, exporters, wt, hub, otel, capReg, envReg, domReg, templates, auditKeep, nil, nil, authDeps, quotaDeps, gateway.New(store, quotaDeps, quotaDeps.Costs))
 
 	pair, err := authDeps.Tokens.IssueForPassword(ctx, cfg.Auth.Bootstrap.AdminID, testAdminPassword)
 	if err != nil {

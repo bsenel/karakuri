@@ -15,10 +15,12 @@ import (
 	"github.com/bsenel/karakuri/auth"
 	karakuriauth "github.com/bsenel/karakuri/internal/auth"
 	corecheckpoint "github.com/bsenel/karakuri/internal/core/checkpoint"
+	"github.com/bsenel/karakuri/internal/core/environment"
 	coreobjective "github.com/bsenel/karakuri/internal/core/objective"
 	"github.com/bsenel/karakuri/internal/core/reconcile"
 	coretelemetry "github.com/bsenel/karakuri/internal/core/telemetry"
 	featurecp "github.com/bsenel/karakuri/internal/feature/checkpoint"
+	"github.com/bsenel/karakuri/internal/feature/gateway"
 	featureobjective "github.com/bsenel/karakuri/internal/feature/objective"
 	featurereconcile "github.com/bsenel/karakuri/internal/feature/reconcile"
 	featurereport "github.com/bsenel/karakuri/internal/feature/report"
@@ -75,6 +77,12 @@ type MCPHandler struct {
 	// Containers attaches the containers a named resource belongs to, so an
 	// org-scoped binding reaches an objective inside it.
 	Containers karakuriauth.ScopeLookup
+
+	// Gateway is the one path a tool call takes (Phase 39 step 1): it charges
+	// the capability quota, writes the call's audit row and records its cost.
+	// A call reaches it only after the authorizer allowed it. Nil runs the
+	// tool directly, for fixtures that wire no gateway.
+	Gateway *gateway.Gateway
 }
 
 // mcpServerInfo is what this deployment calls itself to a client. Deliberately
@@ -109,6 +117,12 @@ var mcpModernVersions = []string{mcp.ModernProtocolVersion}
 // standard codes says this: a refused call is neither a bad request nor an
 // internal failure, and reporting it as either would send a client retrying.
 const codeForbidden = -32003
+
+// codeQuotaExhausted is this server's JSON-RPC code for "not today": the
+// caller may make this call, but its capability allowance is spent. Apart
+// from codeForbidden because a client may retry it after the reset, and
+// should never retry a refusal.
+const codeQuotaExhausted = -32004
 
 // maxMCPBody caps the JSON-RPC message this server will read. The global 1 MiB
 // body ceiling already applies; this is the same bound stated locally so the
@@ -713,7 +727,11 @@ func (h *MCPHandler) callTool(r *http.Request, p auth.Principal, req mcp.Request
 		return nil, &mcp.Error{Code: codeForbidden, Message: decision.Reason}
 	}
 
-	value, err := tool.read(ctx, h, p, args)
+	value, err := h.runTool(ctx, p, tool, args)
+	var refusal *gateway.QuotaRefusal
+	if errors.As(err, &refusal) {
+		return nil, &mcp.Error{Code: codeQuotaExhausted, Message: refusal.Error()}
+	}
 	if err != nil {
 		// A fair question with a bad answer: the protocol's own way of saying
 		// the tool ran and failed, which is what lets a client tell this apart
@@ -729,6 +747,37 @@ func (h *MCPHandler) callTool(r *http.Request, p auth.Principal, req mcp.Request
 		return nil, &mcp.Error{Code: mcp.CodeInternalError, Message: "could not encode the result"}
 	}
 	return marshalResult(mcp.TextResult(string(rendered)))
+}
+
+// runTool runs an allowed tool through the gateway, which charges the
+// principal's capability allowance for the tool, writes the call's one audit
+// row and records its cost. The tool's value is carried around the gateway
+// rather than through it, so the bytes a client receives are the tool's own;
+// the audit row records only whether the call succeeded, not its answer,
+// because an answer can be a whole audit export.
+func (h *MCPHandler) runTool(ctx context.Context, p auth.Principal, tool *mcpTool, args mcpArgs) (any, error) {
+	if h.Gateway == nil {
+		return tool.read(ctx, h, p, args)
+	}
+	var value any
+	_, err := h.Gateway.Call(ctx, gateway.Call{
+		Caller: gateway.CallerMCP,
+		// A served call has no twin of its own: the principal is the subject
+		// whose allowance it spends.
+		TwinID:     p.ID,
+		AgentID:    p.ID,
+		Capability: tool.def.Name,
+		EnvID:      string(gateway.CallerMCP),
+		Params:     args,
+	}, func(ctx context.Context) (environment.ActionResult, error) {
+		var err error
+		value, err = tool.read(ctx, h, p, args)
+		if err != nil {
+			return environment.ActionResult{}, err
+		}
+		return environment.ActionResult{Success: true}, nil
+	})
+	return value, err
 }
 
 // mcpVerbatim is a tool's answer that is already the document: returned as it
