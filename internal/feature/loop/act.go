@@ -121,7 +121,9 @@ func stepAct(ctx context.Context, sc *stepContext, p plan) []actionOutcome {
 		// step 1). What only the loop decides, the worktree, the span and the
 		// unrouted message, happens inside perform, so a refused action
 		// provisions nothing, as before.
+		performed := false
 		perform := func(ctx context.Context) (environment.ActionResult, error) {
+			performed = true
 
 			// b. Worktree for capabilities that declare they write files.
 			//
@@ -332,6 +334,15 @@ func stepAct(ctx context.Context, sc *stepContext, p plan) []actionOutcome {
 				Errored:      true,
 			})
 			continue
+		}
+
+		// A pack's server answered instead of perform (Phase 39 step 3): it
+		// was carried out, so only the gateway's error makes it errored. Left
+		// at its default, stepVerify read every routed verifier as
+		// verifier_error and never reached the pack's result.
+		if !performed {
+			errored = err != nil
+			actErr = err
 		}
 
 		// d. Emit artifact_written if blobs produced
