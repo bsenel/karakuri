@@ -362,14 +362,13 @@ func TestTheDefaultSoftwareAgentAlsoEscalates(t *testing.T) {
 
 // ── Phase 26: the write path ─────────────────────────────────────────────
 
-// The capabilities that write declare that they need a workspace.
+// The capabilities that write declare it.
 //
 // This was decided by matching the capability's name against ".write_code"
-// and ".write_test", which gave a worktree to two capabilities with no
-// implementation and withheld one from delegate_to_cli — the only one that
-// could actually write. A capability that needs a workspace is something only
-// the capability knows.
-func TestWritingCapabilitiesDeclareTheirWorkspace(t *testing.T) {
+// and ".write_test", which missed delegate_to_cli — the only one that could
+// actually write. That a capability writes is something only the capability
+// knows.
+func TestWritingCapabilitiesDeclareThatTheyWrite(t *testing.T) {
 	need := map[capability.CapabilityID]bool{
 		"software.act.write_code":      true,
 		"software.act.write_test":      true,
@@ -379,11 +378,11 @@ func TestWritingCapabilitiesDeclareTheirWorkspace(t *testing.T) {
 	seen := map[capability.CapabilityID]bool{}
 	for _, c := range New().Capabilities() {
 		seen[c.ID] = true
-		if need[c.ID] && !c.NeedsWorkspace {
-			t.Errorf("%q writes files but does not declare NeedsWorkspace", c.ID)
+		if need[c.ID] && !c.Writes {
+			t.Errorf("%q writes files but does not declare Writes", c.ID)
 		}
-		if !need[c.ID] && c.NeedsWorkspace {
-			t.Errorf("%q declares NeedsWorkspace but does not write", c.ID)
+		if !need[c.ID] && c.Writes {
+			t.Errorf("%q declares Writes but does not write", c.ID)
 		}
 	}
 	for id := range need {

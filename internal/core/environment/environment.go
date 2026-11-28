@@ -22,7 +22,7 @@ type Environment interface {
 // Trust says who wrote what a payload carries.
 //
 // It is declared by the environment that built the payload, the way
-// Capability.NeedsWorkspace and Factory.Serves are declared, and for the same
+// Capability.Writes and Factory.Serves are declared, and for the same
 // reason: the environment is the only party that knows. The loop does not, and
 // deriving it from an EnvID would be the name-suffix mistake ADR 019 exists to
 // record — `software.env.communication` reads like prose and returns an adapter

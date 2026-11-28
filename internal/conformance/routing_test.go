@@ -35,14 +35,14 @@ func (p *routingPack) PlannerHints() []domain.PlannerHint          { return nil 
 func (p *routingPack) Init(context.Context, domain.Config) error { return nil }
 func (p *routingPack) Teardown(context.Context) error            { return nil }
 
-func routingCap(id string, needsWorkspace bool) capability.Capability {
+func routingCap(id string, writes bool) capability.Capability {
 	return capability.Capability{
-		ID:             capability.CapabilityID(id),
-		Name:           id,
-		Domain:         "routing",
-		InputSchema:    capability.Schema{Type: "object"},
-		OutputSchema:   capability.Schema{Type: "object"},
-		NeedsWorkspace: needsWorkspace,
+		ID:           capability.CapabilityID(id),
+		Name:         id,
+		Domain:       "routing",
+		InputSchema:  capability.Schema{Type: "object"},
+		OutputSchema: capability.Schema{Type: "object"},
+		Writes:       writes,
 	}
 }
 
@@ -121,15 +121,15 @@ func TestRoutingCheckCatchesBrokenDeclarations(t *testing.T) {
 			contains: "cannot choose between them",
 		},
 		{
-			// The bug this phase exists for: write_code was given a git
-			// worktree and had no environment behind it, so every plan that
-			// used it created a branch and returned "unimplemented".
+			// The bug this check exists for: write_code was planned as a
+			// write and had no environment behind it, so every plan that
+			// used it returned "unimplemented".
 			name: "a capability that writes routes nowhere",
 			pack: &routingPack{
 				caps: []capability.Capability{routingCap("routing.act.write", true)},
 				envs: []environment.Factory{routingEnv("routing.env.a")},
 			},
-			contains: "NeedsWorkspace",
+			contains: "declares Writes but no environment serves it",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

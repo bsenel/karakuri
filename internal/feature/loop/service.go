@@ -25,7 +25,6 @@ import (
 	"github.com/bsenel/karakuri/internal/feature/gateway"
 	featurememory "github.com/bsenel/karakuri/internal/feature/memory"
 	platformagent "github.com/bsenel/karakuri/internal/platform/agent"
-	"github.com/bsenel/karakuri/internal/platform/git"
 	"github.com/bsenel/karakuri/internal/platform/observability"
 	"github.com/bsenel/karakuri/internal/platform/storage"
 	karakuriquota "github.com/bsenel/karakuri/internal/quota"
@@ -247,7 +246,6 @@ type serviceImpl struct {
 	memSvc  *featurememory.Service
 	cpSvc   *featurecp.Service
 	artSvc  *featureart.Service
-	wt      git.WorktreeManager
 	hub     *event.Hub
 	otel    *observability.OTel
 	domReg  *domain.Registry
@@ -326,7 +324,6 @@ func NewService(
 	memSvc *featurememory.Service,
 	cpSvc *featurecp.Service,
 	artSvc *featureart.Service,
-	wt git.WorktreeManager,
 	hub *event.Hub,
 	otel *observability.OTel,
 	domReg *domain.Registry,
@@ -346,7 +343,6 @@ func NewService(
 		memSvc:  memSvc,
 		cpSvc:   cpSvc,
 		artSvc:  artSvc,
-		wt:      wt,
 		hub:     hub,
 		otel:    otel,
 		domReg:  domReg,

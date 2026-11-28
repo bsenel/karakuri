@@ -13,8 +13,8 @@ import (
 )
 
 // Phase 39 step 3: a server inside the binary serves the software pack's
-// observe capabilities and its verifiers as MCP tools; its acting
-// capabilities stay on the in-process path.
+// observe capabilities and its verifiers as MCP tools. Step 4 adds the acting
+// capabilities that write files (pack_acting_test.go).
 
 // boundTo binds every call to the version control instance named "forge".
 func boundTo(context.Context, domain.CallContract) map[string]string {
@@ -29,39 +29,31 @@ func packWithForge(forge versioncontrol.VersionControlAdapter) *Pack {
 	return NewWithTools(reg)
 }
 
-func TestTheSoftwarePacksServerServesItsObserveCapabilitiesAndItsVerifiersOnly(t *testing.T) {
+// Which acting tools it serves besides is pinned by step 4's
+// TestTheSoftwarePacksServerListsItsFileWritingActingToolsAndNoOtherActingTool.
+func TestTheSoftwarePacksServerServesItsObserveCapabilitiesAndItsVerifiers(t *testing.T) {
 	pack := packWithForge(&vcStub{})
 	served, err := pack.MCPServer(boundTo).ListTools(context.Background())
 	if err != nil {
 		t.Fatalf("list tools: %v", err)
 	}
 
-	var want []string
+	listed := map[string]bool{}
+	for _, id := range served {
+		listed[string(id)] = true
+	}
+	var missing []string
 	for _, c := range pack.Capabilities() {
-		if strings.HasPrefix(string(c.ID), "software.observe.") || c.Verifiable {
-			want = append(want, string(c.ID))
+		if (strings.HasPrefix(string(c.ID), "software.observe.") || c.Verifiable) && !listed[string(c.ID)] {
+			missing = append(missing, string(c.ID))
 		}
 	}
-	got := make([]string, 0, len(served))
-	for _, id := range served {
-		got = append(got, string(id))
+	sort.Strings(missing)
+	if len(missing) > 0 {
+		t.Errorf("the server does not serve the observe capabilities and verifiers %v", missing)
 	}
-	sort.Strings(want)
-	sort.Strings(got)
-	if strings.Join(got, ",") != strings.Join(want, ",") {
-		t.Errorf("served tools = %v, want the observe capabilities and the verifiers %v", got, want)
-	}
-	fetchesPRs := false
-	for _, id := range served {
-		fetchesPRs = fetchesPRs || id == "software.observe.fetch_prs"
-	}
-	if !fetchesPRs {
+	if !listed["software.observe.fetch_prs"] {
 		t.Error("the server does not serve software.observe.fetch_prs")
-	}
-	for _, id := range served {
-		if id == "software.act.write_code" || id == "software.act.create_pr" {
-			t.Errorf("the server serves the acting capability %s, which stays on the in-process path", id)
-		}
 	}
 }
 

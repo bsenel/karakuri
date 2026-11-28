@@ -11,7 +11,6 @@ func TestLoopStateActionsNameTheCompletedAndTheCutAction(t *testing.T) {
 	ls.startAction(StopAction{
 		CapabilityID: "delegate_to_cli",
 		EnvID:        "software",
-		Workdir:      "/tmp/wt",
 		Branch:       "karakuri/wt",
 	})
 
@@ -22,8 +21,8 @@ func TestLoopStateActionsNameTheCompletedAndTheCutAction(t *testing.T) {
 	if cut == nil {
 		t.Fatal("cut = nil, want the delegation in flight")
 	}
-	if cut.CapabilityID != "delegate_to_cli" || cut.Workdir != "/tmp/wt" || cut.Branch != "karakuri/wt" {
-		t.Errorf("cut = %+v, want the delegation with its workdir and branch", *cut)
+	if cut.CapabilityID != "delegate_to_cli" || cut.Branch != "karakuri/wt" {
+		t.Errorf("cut = %+v, want the delegation with its branch", *cut)
 	}
 	if cut.Ended != StopActionEndedUnknown {
 		t.Errorf("cut ended = %q, want %q", cut.Ended, StopActionEndedUnknown)

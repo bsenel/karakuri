@@ -88,15 +88,15 @@ func TestEveryWorkspaceCapabilityInTheSoftwarePackRoutes(t *testing.T) {
 
 	checked := 0
 	for _, c := range pack.Capabilities() {
-		if !c.NeedsWorkspace {
+		if !c.Writes {
 			continue
 		}
 		checked++
 		if len(reg.ServedBy(c.ID)) == 0 {
-			t.Errorf("%q is given a worktree and no environment serves it", c.ID)
+			t.Errorf("%q declares Writes and no environment serves it", c.ID)
 		}
 	}
 	if checked == 0 {
-		t.Fatal("no capability declares NeedsWorkspace; this test is checking nothing")
+		t.Fatal("no capability declares Writes; this test is checking nothing")
 	}
 }

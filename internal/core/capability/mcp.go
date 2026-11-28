@@ -75,10 +75,11 @@ func MCPToolOf(id CapabilityID) string {
 
 // NewMCPCapability builds the registry entry for one discovered tool.
 //
-// NeedsWorkspace is absent rather than false-by-omission: a discovered tool
-// never gets a git worktree, whatever its description claims about writing
-// files. The loop provisions a branch for capabilities a pack declared, and a
-// name that arrived over a socket this morning is not a reason to create one.
+// Writes is absent rather than false-by-omission: a discovered tool never
+// counts as one of the writes a pack declared, whatever its description claims
+// about writing files. A name that arrived over a socket this morning is not a
+// declaration this repository made, and the loop asks the ID as well as the
+// field, because anything that rewrites the registry entry could set it.
 //
 // Verifiable is likewise absent. A criterion settled by a tool a third party
 // controls is a criterion that party can decide, which is the whole argument of

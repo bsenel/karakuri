@@ -29,6 +29,7 @@ type Bindings func(ctx context.Context, call domain.CallContract) map[string]str
 // server what it answers in process. A verifier runs in the worktree the
 // pack's keeper holds for the call's objective and pass (step 4); one that a
 // call names a workdir for still runs there, until the loop stops naming one.
+// The acting capabilities that write files run in that same worktree.
 type MCPServer struct {
 	pack       *Pack
 	bindings   Bindings
@@ -50,12 +51,13 @@ func (s *MCPServer) WithTelemetry(r telemetry.Reader) *MCPServer {
 	return s
 }
 
-// ListTools names the tools the server serves: every observe capability and
-// every verifier the pack declares.
+// ListTools names the tools the server serves: every observe capability,
+// every verifier the pack declares and the acting capabilities that write
+// files (step 4).
 func (s *MCPServer) ListTools(context.Context) ([]capability.CapabilityID, error) {
 	var served []capability.CapabilityID
 	for _, c := range s.pack.Capabilities() {
-		if strings.HasPrefix(string(c.ID), "software.observe.") || c.Verifiable {
+		if strings.HasPrefix(string(c.ID), "software.observe.") || c.Verifiable || fileWritingTools[c.ID] {
 			served = append(served, c.ID)
 		}
 	}
@@ -87,7 +89,7 @@ func (s *MCPServer) CallTool(ctx context.Context, call domain.CallContract, tool
 	if err != nil {
 		return environment.ActionResult{}, fmt.Errorf("software: build %s for %s: %w", fac.EnvID, tool, err)
 	}
-	return s.inWorkspace(ctx, call, fac.EnvID, params, func(p map[string]any) (environment.ActionResult, error) {
+	return s.inWorkspace(ctx, call, tool, fac.EnvID, params, func(p map[string]any) (environment.ActionResult, error) {
 		return env.Act(ctx, environment.Action{CapabilityID: tool, Params: p})
 	})
 }

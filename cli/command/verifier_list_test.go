@@ -27,7 +27,7 @@ const verifierCapabilities = `[
       "params": [{"name": "packages", "type": "string"}]},
      {"name": "flaky_tests", "unit": "count", "direction": "lower_is_better"}
    ]},
-  {"id": "software.act.write_code", "name": "Write Code", "domain": "software", "needs_workspace": true,
+  {"id": "software.act.write_code", "name": "Write Code", "domain": "software", "writes": true,
    "input_schema": {"type": "object"}, "output_schema": {"type": "object"}},
   {"id": "web.verify.latency", "name": "Latency", "domain": "web", "verifiable": true,
    "input_schema": {"type": "object"}, "output_schema": {"type": "object"},
@@ -62,7 +62,7 @@ func startVerifierServer(t *testing.T) (*verifierServer, string) {
 				  "metrics": [{"name": "statement_coverage", "unit": "percent", "direction": "higher_is_better",
 				               "params": [{"name": "packages", "type": "string"}]},
 				              {"name": "flaky_tests", "unit": "count", "direction": "lower_is_better"}]}`,
-				`{"id": "software.act.write_code", "name": "Write Code", "domain": "software", "needs_workspace": true}`,
+				`{"id": "software.act.write_code", "name": "Write Code", "domain": "software", "writes": true}`,
 			}, ",") + `]`
 		}
 		w.Header().Set("Content-Type", "application/json")

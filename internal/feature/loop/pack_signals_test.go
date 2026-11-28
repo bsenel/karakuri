@@ -18,7 +18,6 @@ import (
 	"github.com/bsenel/karakuri/internal/core/objective"
 	"github.com/bsenel/karakuri/internal/feature/gateway"
 	platformagent "github.com/bsenel/karakuri/internal/platform/agent"
-	"github.com/bsenel/karakuri/internal/platform/git"
 	"github.com/bsenel/karakuri/internal/platform/llm"
 	karakuriquota "github.com/bsenel/karakuri/internal/quota"
 )
@@ -356,33 +355,10 @@ func TestAFailedSignalDoesNotFailThePassAndIsNotRetried(t *testing.T) {
 	}
 }
 
-// countingWorktrees counts the workspaces the loop provisions, which must be
-// none for actions a pack serves.
-type countingWorktrees struct {
-	git.WorktreeManager
-	dir string
-
-	mu      sync.Mutex
-	creates int
-}
-
-func (w *countingWorktrees) Create(_ context.Context, opts git.WorktreeOptions) (git.Worktree, error) {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	w.creates++
-	return git.Worktree{TaskID: opts.TaskID, ObjectiveID: opts.ObjectiveID, Path: w.dir, Branch: "provisioned/" + opts.TaskID, CreatedAt: time.Now()}, nil
-}
-
-func (w *countingWorktrees) count() int {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	return w.creates
-}
-
 // shareFixture is a step context whose capability registry says the write
-// produces files, the declaration that made the loop provision a worktree,
-// and whose gateway routes both the write and the run to pack.
-func shareFixture(t *testing.T, pack *lifecyclePack, loopID string) (*stepContext, *countingWorktrees, *inProcessCounter) {
+// changes something, and whose gateway routes both the write and the run to
+// pack.
+func shareFixture(t *testing.T, pack *lifecyclePack, loopID string) (*stepContext, *inProcessCounter) {
 	t.Helper()
 	sc := decideFixture(t, coreagent.AuthorityBounds{MaxAutonomousActions: coreagent.UnlimitedActions})
 	sc.loopID = loopID
@@ -392,7 +368,7 @@ func shareFixture(t *testing.T, pack *lifecyclePack, loopID string) (*stepContex
 
 	caps := capability.NewRegistry()
 	for _, c := range []capability.Capability{
-		{ID: toolWrite, Name: "Write", Domain: "test", NeedsWorkspace: true},
+		{ID: toolWrite, Name: "Write", Domain: "test", Writes: true},
 		{ID: toolRun, Name: "Run", Domain: "test", Verifiable: true},
 	} {
 		if err := caps.Register(c); err != nil {
@@ -400,15 +376,13 @@ func shareFixture(t *testing.T, pack *lifecyclePack, loopID string) (*stepContex
 		}
 	}
 	sc.svc.capReg = caps
-	wt := &countingWorktrees{dir: t.TempDir()}
-	sc.svc.wt = wt
 
 	gw := gateway.New(sc.svc.store, karakuriquota.Deps{}, sc.svc.costs)
 	if err := gw.ServePack(context.Background(), "test", pack); err != nil {
 		t.Fatalf("serve the pack: %v", err)
 	}
 	sc.svc.gateway = gw
-	return sc, wt, env
+	return sc, env
 }
 
 func writeThenRun(content string) plan {
@@ -434,7 +408,7 @@ func assertNoWorkspaceField(t *testing.T, where string, m map[string]any) {
 
 func TestAWriteAndATestRunInOnePassShareFilesWithoutTheLoopPassingAnything(t *testing.T) {
 	pack := newLifecyclePack(toolWrite, toolRun)
-	sc, wt, env := shareFixture(t, pack, "loop-share-0001")
+	sc, env := shareFixture(t, pack, "loop-share-0001")
 
 	outcomes := stepAct(context.Background(), sc, writeThenRun("written in this pass"))
 
@@ -453,9 +427,6 @@ func TestAWriteAndATestRunInOnePassShareFilesWithoutTheLoopPassingAnything(t *te
 	}
 	if len(calls[1].params) != 0 {
 		t.Errorf("the run reached the pack with params %v; the plan gave it none, and the loop adds no path or reference", calls[1].params)
-	}
-	if n := wt.count(); n != 0 {
-		t.Errorf("the loop provisioned %d workspaces for actions the pack serves; it provisions none", n)
 	}
 	if n := env.count(); n != 0 {
 		t.Errorf("the in-process environment ran %d actions; the pack serves both", n)
@@ -476,7 +447,7 @@ func TestAWriteAndATestRunInOnePassShareFilesWithoutTheLoopPassingAnything(t *te
 
 func TestTwoConcurrentPassesDoNotShareFiles(t *testing.T) {
 	pack := newLifecyclePack(toolWrite, toolRun)
-	one, wt, _ := shareFixture(t, pack, "loop-share-0001")
+	one, _ := shareFixture(t, pack, "loop-share-0001")
 	two := decideFixture(t, coreagent.AuthorityBounds{MaxAutonomousActions: coreagent.UnlimitedActions})
 	two.svc = one.svc
 	two.envs = one.envs
@@ -506,8 +477,5 @@ func TestTwoConcurrentPassesDoNotShareFiles(t *testing.T) {
 		if got := results[i][1].Result.StateDelta["seen"]; !reflect.DeepEqual(got, want) {
 			t.Errorf("the run of %s saw %v, want only its own pass's write %v", sc.loopID, got, want)
 		}
-	}
-	if n := wt.count(); n != 0 {
-		t.Errorf("the loop provisioned %d workspaces; it provisions none for actions a pack serves", n)
 	}
 }

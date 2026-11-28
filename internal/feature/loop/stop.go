@@ -46,10 +46,10 @@ type StopAction struct {
 	// stop cancels the action and returns without waiting for it, so it is
 	// StopActionEndedUnknown unless the loop saw it end.
 	Ended StopActionEnded `json:"ended,omitempty"`
-	// Workdir and Branch are what a delegated action may have left half
-	// done: the worktree it ran in and the branch it wrote to.
-	Workdir string `json:"workdir,omitempty"`
-	Branch  string `json:"branch,omitempty"`
+	// Branch is what a delegated action may have left half done: the branch
+	// the plan named for it. The worktree it ran in is the pack's and stays
+	// in the pack (Phase 39 step 4).
+	Branch string `json:"branch,omitempty"`
 }
 
 // StopActionEnded is whether a cut action is known to have ended.

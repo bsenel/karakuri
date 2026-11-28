@@ -21,7 +21,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bsenel/karakuri/config"
 	"github.com/bsenel/karakuri/domains/software"
 	coreagent "github.com/bsenel/karakuri/internal/core/agent"
 	"github.com/bsenel/karakuri/internal/core/capability"
@@ -29,15 +28,16 @@ import (
 	"github.com/bsenel/karakuri/internal/core/environment"
 	"github.com/bsenel/karakuri/internal/core/loop"
 	"github.com/bsenel/karakuri/internal/core/objective"
+	"github.com/bsenel/karakuri/internal/feature/gateway"
 	featurememory "github.com/bsenel/karakuri/internal/feature/memory"
 	platformagent "github.com/bsenel/karakuri/internal/platform/agent"
-	platformgit "github.com/bsenel/karakuri/internal/platform/git"
 	"github.com/bsenel/karakuri/internal/platform/llm"
 	"github.com/bsenel/karakuri/internal/platform/observability"
 	"github.com/bsenel/karakuri/internal/platform/storage"
 	"github.com/bsenel/karakuri/internal/platform/tools"
 	"github.com/bsenel/karakuri/internal/platform/tools/cliagent"
 	"github.com/bsenel/karakuri/internal/platform/tools/versioncontrol"
+	karakuriquota "github.com/bsenel/karakuri/internal/quota"
 )
 
 const (
@@ -288,13 +288,6 @@ func runUnmergeablePass(t *testing.T, templateID, branch, newBranch string, list
 	pass6aGit(t, seed, "push", "origin", "HEAD:refs/heads/main")
 	pass6aGit(t, root, "clone", origin, work)
 
-	wtm, err := platformgit.NewGoGitWorktreeManager(config.GitConfig{
-		RepoPath: work, WorktreeBase: ".worktrees", BaseBranch: "main", BranchPrefix: "karakuri",
-	})
-	if err != nil {
-		t.Fatalf("worktree manager: %v", err)
-	}
-
 	forge := &pass6aForge{VersionControlAdapter: versioncontrol.NewNoOp(), pr: versioncontrol.PRSummary{
 		ID: "260", Number: 260, Title: "a stream pull request", HeadBranch: branch, BaseBranch: "main",
 		OwnAuthor: true, Draft: true, UpdatedAt: time.Now().UTC(),
@@ -308,8 +301,14 @@ func runUnmergeablePass(t *testing.T, templateID, branch, newBranch string, list
 	svc, _, store := newResumeFixture(t)
 	svc.otel = observability.NewOTel(nil)
 	svc.memSvc = featurememory.NewService(store, 5)
-	svc.wt = wtm
 	svc.domReg = softwareRegistryFor(t, pack)
+	// The write reaches the pack's own server, which runs it in the worktree
+	// its Workspaces keeps for the pass, as bootstrap wires it (Phase 39 step 4).
+	server := pack.MCPServer(nil).WithWorkspaces(software.NewWorkspaces(work, time.Hour, time.Now))
+	svc.gateway = gateway.New(store, karakuriquota.Deps{}, nil)
+	if err := svc.gateway.ServePack(ctx, "software", server); err != nil {
+		t.Fatalf("serve the software pack: %v", err)
+	}
 
 	planner := &pass6aPlanner{t: t, newBranch: newBranch}
 	if listOutOfBand {
@@ -401,12 +400,12 @@ func runUnmergeablePass(t *testing.T, templateID, branch, newBranch string, list
 	if !strings.Contains(strings.ToLower(first.prompt), "merge") {
 		t.Errorf("the first write action is not the repair: its task is %q", first.prompt)
 	}
-	// The write must happen on the pull request's branch. stepAct provisions
-	// a worktree on a branch of its own and writes it into params.branch,
-	// replacing the branch the planner named; this says whether that is so.
+	// The write must happen on the pull request's branch. The software pack
+	// runs it in the pass's worktree, which sits on a karakuri-pack/ branch of
+	// its own; this says whether the plan's branch is checked out for it.
 	if first.worktreeOn != branch {
 		t.Errorf("the first write action ran in a worktree on %q, not on the pull request's branch %q: "+
-			"the loop provisions its own branch for a write action and overwrites params.branch, so the repair is not made on the branch the plan named",
+			"the pack's worktree for the pass is not checked out on the branch the plan named, so the repair is not made on it",
 			first.worktreeOn, branch)
 	}
 

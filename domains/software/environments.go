@@ -883,8 +883,9 @@ func (e *cliEnv) Act(ctx context.Context, a environment.Action) (environment.Act
 			Error:   fmt.Sprintf("%s needs a task to delegate: pass params.prompt (or task/instruction)", a.CapabilityID),
 		}, nil
 	}
-	// A capability that declares NeedsWorkspace is given one by stepAct before
-	// it runs. Arriving without it means the provisioning failed, and writing
+	// A file-writing capability is given a worktree by the pack's own server
+	// before it runs (fileWritingTools in pack_workspace.go). Arriving without
+	// one means that provisioning did not happen, and writing
 	// into the checked-out tree instead is the one outcome a planner hint
 	// explicitly forbids — so it refuses rather than guessing a path.
 	worktree := asString(a.Params, "worktree_path")

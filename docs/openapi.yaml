@@ -6209,8 +6209,6 @@ components:
           type: array
         name:
           type: string
-        needs_workspace:
-          type: boolean
         output_schema:
           additionalProperties: false
           properties:
@@ -6239,6 +6237,8 @@ components:
               type: string
           type: object
         verifiable:
+          type: boolean
+        writes:
           type: boolean
       type: object
     CatalogEntry:

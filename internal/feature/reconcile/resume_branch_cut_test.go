@@ -123,7 +123,7 @@ func realCutLoop(t *testing.T, f *fixture, obj objective.Objective) string {
 		t.Fatalf("register: %v", err)
 	}
 	svc := featureloop.NewService(f.store, platformagent.NewFactory(providers, hub, otel, nil), nil, envReg,
-		featurememory.NewService(f.store, 5), featurecp.NewService(f.store, hub), nil, nil, hub, otel, nil,
+		featurememory.NewService(f.store, 5), featurecp.NewService(f.store, hub), nil, hub, otel, nil,
 		karakuriquota.Deps{}, gateway.New(f.store, karakuriquota.Deps{}, nil), nil, 0)
 
 	run, err := svc.Run(context.Background(), coreloop.Request{

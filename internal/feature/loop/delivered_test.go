@@ -40,7 +40,7 @@ func deliveredFixture(t *testing.T) *stepContext {
 	})
 	reg := capability.NewRegistry()
 	for _, c := range []capability.Capability{
-		{ID: "software.act.write_code", Domain: "software", NeedsWorkspace: true},
+		{ID: "software.act.write_code", Domain: "software", Writes: true},
 		{ID: "software.act.review_pr", Domain: "software"},
 	} {
 		if err := reg.Register(c); err != nil {

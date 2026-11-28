@@ -188,7 +188,7 @@ func TestOneIterationExportsOneTraceOverOTLP(t *testing.T) {
 	factory := platformagent.NewFactory(providers, hub, otel, otel)
 	svc := featureloop.NewService(store, factory, nil, envReg,
 		featurememory.NewService(store, 5), featurecp.NewService(store, hub),
-		nil, nil, hub, otel, nil, karakuriquota.Deps{}, gateway.New(store, karakuriquota.Deps{}, nil), otel, 0)
+		nil, hub, otel, nil, karakuriquota.Deps{}, gateway.New(store, karakuriquota.Deps{}, nil), otel, 0)
 
 	ctx := context.Background()
 	obj := objective.Objective{ID: "obj-acc", Title: "trace one iteration", Domain: "test"}

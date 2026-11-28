@@ -128,7 +128,7 @@ func stepDecide(ctx context.Context, sc *stepContext, p plan, mods *corecheckpoi
 	var writes []string
 	for _, action := range p.Actions {
 		planned = append(planned, environment.Action{CapabilityID: capability.CapabilityID(action.CapabilityID), Params: action.Params})
-		if prompt, ok := action.Params["prompt"].(string); ok && sc.svc.needsWorkspace(action.CapabilityID) {
+		if prompt, ok := action.Params["prompt"].(string); ok && sc.svc.writes(action.CapabilityID) {
 			writes = append(writes, prompt)
 		}
 	}

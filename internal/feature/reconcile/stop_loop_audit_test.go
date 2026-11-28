@@ -51,7 +51,6 @@ var (
 		CapabilityID: "delegate_to_cli",
 		EnvID:        "software",
 		Ended:        featureloop.StopActionEndedUnknown,
-		Workdir:      "/tmp/karakuri/worktrees/obj-oneshot-1",
 		Branch:       "karakuri/obj-oneshot-1",
 	}
 )
@@ -129,9 +128,6 @@ func assertCut(t *testing.T, ev stopEvent, want featureloop.StopAction) {
 	if a["ended"] != string(featureloop.StopActionEndedUnknown) {
 		t.Errorf("cut action ended = %v, want %q: a stop does not wait for the action, so it cannot know it ended",
 			a["ended"], featureloop.StopActionEndedUnknown)
-	}
-	if want.Workdir != "" && a["workdir"] != want.Workdir {
-		t.Errorf("cut action workdir = %v, want %q, what it may have left half done", a["workdir"], want.Workdir)
 	}
 	if want.Branch != "" && a["branch"] != want.Branch {
 		t.Errorf("cut action branch = %v, want %q, what it may have left half done", a["branch"], want.Branch)
