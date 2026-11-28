@@ -23,8 +23,8 @@ import (
 // Phase 39 step 3, wired as the server wires it: the gateway routes a fetch of
 // pull requests to the software pack's in-binary server, which answers with
 // what the in-process call answers, third party when it carries a pull
-// request, and an error when it cannot see; acting capabilities stay on the
-// in-process path.
+// request, and an error when it cannot see. Step 4 serves the acting
+// capabilities that write files there too (software_acting_test.go).
 
 // prForge is a bound version control instance whose window holds prs.
 type prForge struct {
@@ -246,26 +246,5 @@ func TestABundleSizeVerifierThroughTheGatewayMeasuresWhatTheInProcessCallMeasure
 	store.mu.Unlock()
 	if rows != 1 {
 		t.Errorf("audit rows = %d, want exactly one for the routed verifier", rows)
-	}
-}
-
-func TestWritingCodeIsNotSentToTheSoftwarePacksServer(t *testing.T) {
-	pack := softwarePack(&prForge{NoOp: versioncontrol.NewNoOp()})
-	call := fetchPRsCall()
-	call.Capability = "software.act.write_code"
-	ran := 0
-
-	got, err := servedGateway(t, pack).Call(context.Background(), call, func(context.Context) (environment.ActionResult, error) {
-		ran++
-		return environment.ActionResult{Success: true, StateDelta: map[string]any{"path": "in process"}}, nil
-	})
-	if err != nil {
-		t.Fatalf("call: %v", err)
-	}
-	if ran != 1 {
-		t.Fatalf("the in-process write_code ran %d times, want once; acting capabilities stay on the in-process path", ran)
-	}
-	if got.StateDelta["path"] != "in process" {
-		t.Errorf("result = %+v, want the in-process call's own", got)
 	}
 }
