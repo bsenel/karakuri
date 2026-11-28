@@ -15,7 +15,6 @@ import (
 	"github.com/bsenel/karakuri/internal/core/domain"
 	"github.com/bsenel/karakuri/internal/core/environment"
 	"github.com/bsenel/karakuri/internal/feature/gateway"
-	"github.com/bsenel/karakuri/internal/platform/git"
 	"github.com/bsenel/karakuri/internal/platform/tools"
 	"github.com/bsenel/karakuri/internal/platform/tools/cliagent"
 	karakuriquota "github.com/bsenel/karakuri/internal/quota"
@@ -54,19 +53,6 @@ func (a *writingAgent) worktrees() []string {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	return append([]string(nil), a.dirs...)
-}
-
-// provisionCounter stands for the loop's WorktreeManager and counts the
-// worktrees asked of it.
-type provisionCounter struct {
-	git.WorktreeManager
-	dir     string
-	creates int
-}
-
-func (w *provisionCounter) Create(_ context.Context, opts git.WorktreeOptions) (git.Worktree, error) {
-	w.creates++
-	return git.Worktree{TaskID: opts.TaskID, ObjectiveID: opts.ObjectiveID, Path: w.dir, Branch: "provisioned/" + opts.TaskID, CreatedAt: time.Now()}, nil
 }
 
 // actingRepo is a git repository with one commit and a bare origin, for the
@@ -128,22 +114,19 @@ func TestAWriteCodeActionThroughTheGatewayReachesTheSoftwarePackAndTheLoopProvis
 		"allowed_tools": []any{"Read", "Edit"},
 		"branch":        "karakuri/phase-39-step-04-planned-group",
 	}
-	loopTrees := &provisionCounter{dir: t.TempDir()}
-
-	// The loop's perform: it provisions a worktree for a capability that
-	// writes files, then runs the environment in process.
-	got, err := gw.Call(context.Background(), call, func(ctx context.Context) (environment.ActionResult, error) {
-		wt, err := loopTrees.Create(ctx, git.WorktreeOptions{ObjectiveID: "obj-1", TaskID: "task-1", BranchName: "karakuri/phase-39-step-04-planned-group"})
-		if err != nil {
-			return environment.ActionResult{}, err
-		}
-		return environment.ActionResult{Success: false, Error: "ran in process in " + wt.Path}, nil
+	// The loop's perform runs the environment in process; it provisions
+	// nothing, and the gateway must not fall back to it for a tool the pack
+	// serves.
+	inProcess := 0
+	got, err := gw.Call(context.Background(), call, func(context.Context) (environment.ActionResult, error) {
+		inProcess++
+		return environment.ActionResult{Success: false, Error: "ran in process"}, nil
 	})
 	if err != nil {
 		t.Fatalf("write_code through the gateway: %v", err)
 	}
-	if loopTrees.creates != 0 {
-		t.Errorf("the loop's WorktreeManager received %d Create calls; the software pack serves write_code in its own worktree", loopTrees.creates)
+	if inProcess != 0 {
+		t.Errorf("write_code ran in process %d times; the software pack serves it in its own worktree", inProcess)
 	}
 	dirs := agent.worktrees()
 	if len(dirs) != 1 {
