@@ -58,7 +58,7 @@ func observeUnmergeablePRs(ctx context.Context, adapter versioncontrol.VersionCo
 		}
 		if reason != "" {
 			listed = append(listed, map[string]any{
-				"pr": pr.ID, "branch": pr.HeadBranch, "stream": stream, "reason": reason,
+				"pr": pr.ID, "number": pr.Number, "branch": pr.HeadBranch, "stream": stream, "reason": reason,
 			})
 			lines = append(lines, fmt.Sprintf("%s %s: repair it before any other work.", name, reason))
 			continue

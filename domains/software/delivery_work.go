@@ -30,7 +30,11 @@ type DeliveryWork struct {
 	// merged, by branch, sorted (Phase 40 step 14a). It is not work and moves
 	// neither HasWork, Reasons nor the snapshot hash.
 	Unmergeable []string
-	Reasons     []string
+	// UnmergeablePRs is the number of the open pull request on each branch of
+	// Unmergeable (Phase 40 step 14b), so a pass sent to repair one knows where
+	// to post its diagnosis.
+	UnmergeablePRs map[string]int
+	Reasons        []string
 }
 
 var (
@@ -114,7 +118,14 @@ func ComputeDeliveryWork(roadmap string, roadmapErr error, prs []versioncontrol.
 	unmergeable, _ := state["unmergeable_prs"].([]map[string]any)
 	for _, u := range unmergeable {
 		if u["stream"] == roadmapDeliveryTemplateID {
-			w.Unmergeable = append(w.Unmergeable, fmt.Sprint(u["branch"]))
+			branch := fmt.Sprint(u["branch"])
+			w.Unmergeable = append(w.Unmergeable, branch)
+			if n, ok := u["number"].(int); ok && n > 0 {
+				if w.UnmergeablePRs == nil {
+					w.UnmergeablePRs = map[string]int{}
+				}
+				w.UnmergeablePRs[branch] = n
+			}
 		}
 	}
 	sort.Strings(w.Unmergeable)
@@ -158,7 +169,7 @@ func (e *deliveryWorkEnv) Observe(ctx context.Context, _ environment.Observation
 	// comment body, so the observation carries nothing a third party wrote.
 	sum := sha256.Sum256([]byte(fmt.Sprintf("%v|%s", work.HasWork, strings.Join(work.Reasons, "\n"))))
 	return environment.Observation{
-		EnvID: e.id, State: map[string]any{"has_work": work.HasWork, "reasons": work.Reasons, "unmergeable_prs": work.Unmergeable},
+		EnvID: e.id, State: map[string]any{"has_work": work.HasWork, "reasons": work.Reasons, "unmergeable_prs": work.Unmergeable, "unmergeable_pr_numbers": work.UnmergeablePRs},
 		Version: hex.EncodeToString(sum[:])[:16], Timestamp: time.Now().UTC(), Trust: environment.TrustOperator,
 	}, nil
 }
