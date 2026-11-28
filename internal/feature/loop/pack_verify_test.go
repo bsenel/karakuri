@@ -3,15 +3,19 @@ package loop
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"sync"
 	"testing"
 
+	"github.com/bsenel/karakuri/domains/software"
 	coreagent "github.com/bsenel/karakuri/internal/core/agent"
 	"github.com/bsenel/karakuri/internal/core/capability"
 	"github.com/bsenel/karakuri/internal/core/domain"
 	"github.com/bsenel/karakuri/internal/core/environment"
 	"github.com/bsenel/karakuri/internal/core/objective"
 	"github.com/bsenel/karakuri/internal/feature/gateway"
+	"github.com/bsenel/karakuri/internal/platform/tools"
 )
 
 // Phase 39 step 3, the last clause of its acceptance: a criterion is verified
@@ -249,6 +253,119 @@ func TestAMeasuredCriterionThroughThePacksToolIsComparedWithItsTargetByTheLoop(t
 
 			if got.State != tc.want {
 				t.Errorf("state = %q (reason %q), want %q for coverage %v against >= 0.8", got.State, got.Reason, tc.want, tc.value)
+			}
+		})
+	}
+}
+
+// countingPackServer wraps a real pack server and counts the calls it serves.
+type countingPackServer struct {
+	domain.PackServer
+	mu    sync.Mutex
+	calls int
+}
+
+func (s *countingPackServer) CallTool(ctx context.Context, c domain.CallContract, tool capability.CapabilityID, params map[string]any) (environment.ActionResult, error) {
+	s.mu.Lock()
+	s.calls++
+	s.mu.Unlock()
+	return s.PackServer.CallTool(ctx, c, tool, params)
+}
+
+func (s *countingPackServer) count() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.calls
+}
+
+// The software pack's real server behind the real gateway: a bundle-size
+// criterion naming software.verify.web_bundle_bytes is settled by stepVerify
+// from the routed call, on either side of its target, and the verdict is the
+// one the in-process call gives.
+func TestASoftwareVerifierThroughThePacksServerSettlesTheCriterionAsInProcess(t *testing.T) {
+	const verifier = "software.verify.web_bundle_bytes"
+	workdir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(workdir, "dist"), 0o755); err != nil {
+		t.Fatalf("make the bundle dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(workdir, "dist", "app.js"), make([]byte, 1500), 0o600); err != nil {
+		t.Fatalf("write the bundle: %v", err)
+	}
+	params := map[string]any{"workdir": workdir, "dir": "dist"}
+	pack := software.NewWithTools(tools.NewRegistry())
+
+	cases := []struct {
+		target float64
+		want   objective.CriterionState
+	}{
+		{2000, objective.CriterionMet},
+		{1000, objective.CriterionNotMet},
+	}
+	for _, tc := range cases {
+		t.Run(fmt.Sprint(tc.target), func(t *testing.T) {
+			target := tc.target
+			criterion := objective.Criterion{
+				ID:          "bundle",
+				Description: "the web bundle is within its size budget",
+				Kind:        objective.KindMeasured,
+				Verifier:    verifier,
+				Metric:      "web_bundle_bytes",
+				Op:          objective.OpLessEqual,
+				Target:      &target,
+				Unit:        "bytes",
+				Weight:      1.0,
+			}
+
+			// In process: the verify environment's own result, settled by stepVerify.
+			inProc := decideFixture(t, coreagent.AuthorityBounds{MaxAutonomousActions: coreagent.UnlimitedActions})
+			inProc.obj.SuccessCriteria = []objective.Criterion{criterion}
+			var direct environment.ActionResult
+			for _, fac := range pack.EnvironmentFactories() {
+				if fac.EnvID != "software.env.verify" {
+					continue
+				}
+				env, err := fac.Build(environment.BuildContext{})
+				if err != nil {
+					t.Fatalf("build the verify environment: %v", err)
+				}
+				if direct, err = env.Act(context.Background(), environment.Action{CapabilityID: verifier, Params: params}); err != nil {
+					t.Fatalf("in-process %s: %v", verifier, err)
+				}
+			}
+			stepVerify(context.Background(), inProc, []actionOutcome{{CapabilityID: verifier, Result: direct}})
+			if got := inProc.obj.SuccessCriteria[0].State; got != tc.want {
+				t.Fatalf("in process the criterion is %q, want %q; the fixture is wrong", got, tc.want)
+			}
+
+			// Through the pack's server.
+			sc := decideFixture(t, coreagent.AuthorityBounds{MaxAutonomousActions: coreagent.UnlimitedActions})
+			local := &inProcessCounter{provEnv: provEnv{id: "software.env.verify"}}
+			sc.envs = []environment.Environment{local}
+			sc.obj.SuccessCriteria = []objective.Criterion{criterion}
+			store := &gatewayAuditStore{StorageAdapter: sc.svc.store}
+			gw := gateway.New(store, quotaOver(&takeCounter{}), sc.svc.costs)
+			server := &countingPackServer{PackServer: pack.MCPServer(nil)}
+			if err := gw.ServePack(context.Background(), "software", server); err != nil {
+				t.Fatalf("serve the software pack: %v", err)
+			}
+			sc.svc.gateway = gw
+
+			outcomes := stepAct(context.Background(), sc, plan{
+				Confidence: 0.9,
+				Actions:    []plannedAction{{CapabilityID: verifier, EnvID: "software.env.verify", Params: params}},
+			})
+			stepVerify(context.Background(), sc, outcomes)
+
+			if n := server.count(); n != 1 {
+				t.Fatalf("the software pack's server served %d calls for %s, want exactly one", n, verifier)
+			}
+			if n := local.count(); n != 0 {
+				t.Errorf("the in-process environment ran %s %d times; the pack's server serves it", verifier, n)
+			}
+			got := sc.obj.SuccessCriteria[0]
+			if got.State != inProc.obj.SuccessCriteria[0].State {
+				t.Errorf("through the pack the criterion is %q (reason %q), in process %q: the routed call must settle it the same way",
+					got.State, got.Reason, inProc.obj.SuccessCriteria[0].State)
 			}
 		})
 	}

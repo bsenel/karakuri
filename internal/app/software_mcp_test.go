@@ -3,6 +3,8 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
@@ -164,6 +166,86 @@ func TestAFetchOfPullRequestsWithNoVersionControlBoundIsAnErrorNotAnEmptyList(t 
 	}
 	if _, listed := got.StateDelta["prs"]; listed {
 		t.Errorf("state delta %v carries a pull request list though nothing could be read", got.StateDelta)
+	}
+}
+
+// bundleDir is a temp workdir holding a built bundle under dist, whose regular
+// files sum to 1500 bytes.
+func bundleDir(t *testing.T) string {
+	t.Helper()
+	workdir := t.TempDir()
+	dist := filepath.Join(workdir, "dist")
+	if err := os.MkdirAll(filepath.Join(dist, "assets"), 0o755); err != nil {
+		t.Fatalf("make the bundle dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dist, "index.html"), make([]byte, 500), 0o600); err != nil {
+		t.Fatalf("write index.html: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dist, "assets", "app.js"), make([]byte, 1000), 0o600); err != nil {
+		t.Fatalf("write app.js: %v", err)
+	}
+	return workdir
+}
+
+// Phase 39 step 3: a verifier the software pack declares is served by its
+// server through the gateway, not by the in-process path, and measures what the
+// in-process call measures. The loop settles the criterion from that result
+// (internal/feature/loop/pack_verify_test.go,
+// TestASoftwareVerifierThroughThePacksServerSettlesTheCriterionAsInProcess).
+func TestABundleSizeVerifierThroughTheGatewayMeasuresWhatTheInProcessCallMeasures(t *testing.T) {
+	const verifier = "software.verify.web_bundle_bytes"
+	pack := softwarePack(nil)
+	params := map[string]any{"workdir": bundleDir(t), "dir": "dist"}
+
+	var want environment.ActionResult
+	for _, fac := range pack.EnvironmentFactories() {
+		if fac.EnvID != "software.env.verify" {
+			continue
+		}
+		env, err := fac.Build(environment.BuildContext{})
+		if err != nil {
+			t.Fatalf("build the verify environment: %v", err)
+		}
+		if want, err = env.Act(context.Background(), environment.Action{CapabilityID: verifier, Params: params}); err != nil {
+			t.Fatalf("in-process %s: %v", verifier, err)
+		}
+	}
+	if !want.Success || len(want.Measurements) != 1 || want.Measurements[0].Value != 1500 {
+		t.Fatalf("the in-process measurement = %+v, want one success of 1500 bytes", want)
+	}
+
+	store := &rowStore{}
+	gw := gateway.New(store, karakuriquota.Deps{}, &karakuriquota.Recorder{})
+	if err := gw.ServePack(context.Background(), "software", pack.MCPServer(forgeBinding)); err != nil {
+		t.Fatalf("serve the software pack: %v", err)
+	}
+	call := fetchPRsCall()
+	call.Capability = verifier
+	call.EnvID = "software.env.verify"
+	call.Params = params
+	ranInProcess := 0
+
+	got, err := gw.Call(context.Background(), call, func(context.Context) (environment.ActionResult, error) {
+		ranInProcess++
+		return environment.ActionResult{Success: false, Error: "ran in process"}, nil
+	})
+	if err != nil {
+		t.Fatalf("%s through the gateway: %v", verifier, err)
+	}
+	if ranInProcess != 0 {
+		t.Errorf("%s ran on the in-process path %d times; the software pack's server serves it", verifier, ranInProcess)
+	}
+	if !got.Success {
+		t.Fatalf("%s through the gateway failed: %s", verifier, got.Error)
+	}
+	if a, b := asJSON(t, got.Measurements), asJSON(t, want.Measurements); a != b {
+		t.Errorf("through the gateway the verifier measured %s, in process %s", a, b)
+	}
+	store.mu.Lock()
+	rows := len(store.rows)
+	store.mu.Unlock()
+	if rows != 1 {
+		t.Errorf("audit rows = %d, want exactly one for the routed verifier", rows)
 	}
 }
 
