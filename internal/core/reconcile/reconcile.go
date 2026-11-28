@@ -84,6 +84,10 @@ type Fingerprint struct {
 	// Working lists environments whose snapshot says they hold work (state
 	// "has_work" true). With no baseline yet, that is a reason to run.
 	Working []string `json:"working,omitempty"`
+	// Unmergeable lists the branches whose pull request cannot be merged, as
+	// an environment's snapshot state "unmergeable_prs" names them (Phase 40
+	// step 14a).
+	Unmergeable []string `json:"unmergeable,omitempty"`
 	// TakenAt is when the snapshots were read.
 	TakenAt time.Time `json:"taken_at"`
 }
@@ -252,6 +256,16 @@ type State struct {
 	// stall detector and the breaker read what they always read. A criterion
 	// with no sustain has no entry.
 	Sustain []CriterionSustain `json:"sustain,omitempty"`
+
+	// Blockers are what the stream is stuck on now, counted per (kind,
+	// subject) across passes (Phase 40 step 14a). Detection only: nothing
+	// reads them to decide whether a pass runs.
+	Blockers []Blocker `json:"blockers,omitempty"`
+	// BranchSHA is the stream's branch tip as the last pass with work saw it,
+	// and StalledPasses how many passes with work in a row saw it unmoved. The
+	// no_progress blocker reads them; they are stored, not served.
+	BranchSHA     string `json:"-"`
+	StalledPasses int    `json:"-"`
 
 	// ConsecutiveFailures drives the circuit breaker and the backoff.
 	ConsecutiveFailures int `json:"consecutive_failures"`

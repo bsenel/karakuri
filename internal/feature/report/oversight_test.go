@@ -176,6 +176,60 @@ func TestDigestRefusalsFollowTheWindow(t *testing.T) {
 	}
 }
 
+// Phase 40 step 14a acceptance: the reconcile state's blockers appear in the
+// stream's blocks with kind, subject and count, in a stable order, and the
+// same window gives the same content.
+func TestDigestListsEachStreamsBlockers(t *testing.T) {
+	svc, store, clock := newService(t)
+	ctx := context.Background()
+	seedTwin(t, store, "twin-1", "CTO twin")
+	a := seedStanding(t, store, "twin-1", "obj-a", "stream a")
+	seedStanding(t, store, "twin-1", "obj-b", "stream b, quiet")
+
+	until := *clock
+	since := until.Add(-24 * time.Hour)
+	seen := since.Add(3 * time.Hour)
+	// Seeded out of kind order on purpose.
+	err := store.SaveReconcileState(ctx, reconcile.State{
+		ObjectiveID: a.ID, TwinID: "twin-1", Phase: reconcile.PhaseIdle,
+		Blockers: []reconcile.Blocker{
+			{Kind: reconcile.BlockerVerifyFailed, Subject: "tests-green", Count: 2, FirstSeen: since.Add(time.Hour), LastSeen: seen},
+			{Kind: reconcile.BlockerNoProgress, Subject: "karakuri/phase-40", Count: 1, FirstSeen: seen, LastSeen: seen},
+		},
+	})
+	if err != nil {
+		t.Fatalf("seed state: %v", err)
+	}
+
+	d, err := svc.Assemble(ctx, "twin-1", since, until)
+	if err != nil {
+		t.Fatalf("assemble: %v", err)
+	}
+	sa := summaryOf(t, d, "obj-a")
+	if len(sa.Blocks) != 2 {
+		t.Fatalf("stream a blocks = %+v, want its two blockers", sa.Blocks)
+	}
+	if b := sa.Blocks[0]; b.Kind != digest.BlockKind(reconcile.BlockerNoProgress) || b.Subject != "karakuri/phase-40" || b.Count != 1 {
+		t.Errorf("blocks[0] = %+v, want no_progress on karakuri/phase-40 x1", b)
+	}
+	if b := sa.Blocks[1]; b.Kind != digest.BlockKind(reconcile.BlockerVerifyFailed) || b.Subject != "tests-green" || b.Count != 2 {
+		t.Errorf("blocks[1] = %+v, want verify_failed on tests-green x2", b)
+	}
+	if sb := summaryOf(t, d, "obj-b"); len(sb.Blocks) != 0 {
+		t.Errorf("quiet stream b blocks = %+v, want none", sb.Blocks)
+	}
+
+	again, err := svc.Assemble(ctx, "twin-1", since, until)
+	if err != nil {
+		t.Fatalf("assemble again: %v", err)
+	}
+	first, _ := json.Marshal(d)
+	second, _ := json.Marshal(again)
+	if string(first) != string(second) {
+		t.Errorf("assembling the same window twice differs:\n%s\n%s", first, second)
+	}
+}
+
 func equalStrings(a, b []string) bool {
 	if len(a) != len(b) {
 		return false

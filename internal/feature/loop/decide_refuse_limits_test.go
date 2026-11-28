@@ -96,6 +96,9 @@ func TestDecideRefusesAPlanOutsideItsLimits(t *testing.T) {
 			if reasons := escalationReasons(t, sc); len(reasons) != 0 {
 				t.Errorf("a refused plan wrote escalation rows: %v", reasons)
 			}
+			if got := sc.state.planRefused; got != rows[0].EscalationReason {
+				t.Errorf("the run keeps plan_refused reason %q, want the refusal's %q", got, rows[0].EscalationReason)
+			}
 		})
 	}
 }

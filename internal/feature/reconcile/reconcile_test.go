@@ -57,6 +57,10 @@ type fakeLoop struct {
 	gate chan struct{}
 	// violation is the bounds violation an action of the run carried.
 	violation *environment.BoundsViolation
+	// refused is why the bounds refused a plan of the run.
+	refused string
+	// runOutcome is how the loop row says the run ended (Phase 40 step 14a).
+	runOutcome coreloop.RunOutcome
 	// onRun, when set, is called as a run starts: what the run does to the
 	// world, such as opening a pull request.
 	onRun func()
@@ -86,6 +90,10 @@ func (f *fakeLoop) Run(ctx context.Context, req coreloop.Request) (coreloop.Resu
 		return coreloop.Result{}, err
 	}
 
+	outcome := f.outcome
+	if f.runOutcome != "" {
+		outcome = f.runOutcome
+	}
 	id := newOutcomeID()
 	st := coreloop.State{
 		LoopID:          id,
@@ -97,9 +105,11 @@ func (f *fakeLoop) Run(ctx context.Context, req coreloop.Request) (coreloop.Resu
 		CheckpointID:    f.checkpoint,
 		Criteria:        f.criteria,
 		Error:           f.failure,
-		Outcome:         f.outcome,
+		Outcome:         outcome,
 		RetryAfter:      f.retryAfter,
 		BoundsViolation: f.violation,
+
+		PlanRefusedReason: f.refused,
 	}
 	if err := f.store.SaveLoopState(ctx, st); err != nil {
 		return coreloop.Result{}, err
@@ -130,6 +140,8 @@ type fakeEnv struct {
 	id      string
 	sha     string
 	present bool
+	// state is what the environment's snapshot carries besides its hash.
+	state map[string]any
 }
 
 func (e *fakeEnv) ID() environment.EnvironmentID { return environment.EnvironmentID(e.id) }
@@ -147,7 +159,7 @@ func (e *fakeEnv) Snapshot(context.Context) (environment.EnvironmentSnapshot, er
 	if e.sha == "" {
 		return environment.EnvironmentSnapshot{EnvID: e.ID()}, nil
 	}
-	return environment.EnvironmentSnapshot{EnvID: e.ID(), SHA: e.sha}, nil
+	return environment.EnvironmentSnapshot{EnvID: e.ID(), SHA: e.sha, State: e.state}, nil
 }
 
 // ── fixture ───────────────────────────────────────────────────────────────

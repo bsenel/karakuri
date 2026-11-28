@@ -175,6 +175,7 @@ func stepDecide(ctx context.Context, sc *stepContext, p plan, mods *corecheckpoi
 		auditPayload, _ := json.Marshal(payload)
 		row.PayloadJSON = string(auditPayload)
 		_ = sc.svc.store.SaveToolEvent(ctx, row)
+		sc.state.recordPlanRefusal(verdict.Reason)
 		// The run ends here: planning again under the same bounds is refused
 		// again, and spending the iterations on that would name the run
 		// budget_spent (Phase 40 step 7).

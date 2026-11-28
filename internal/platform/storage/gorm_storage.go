@@ -762,6 +762,8 @@ func (s *GORMStorage) SaveLoopState(ctx context.Context, st coreloop.State) erro
 		StopReason:   st.StopReason,
 		RetryAfterMS: st.RetryAfter.Milliseconds(),
 		RequestJSON:  st.RequestJSON,
+
+		PlanRefusedReason: st.PlanRefusedReason,
 	}
 	if m.RequestJSON == "" {
 		m.RequestJSON = "{}"
@@ -828,27 +830,28 @@ func loopStateFromModel(m schema.LoopStateModel) coreloop.State {
 		}
 	}
 	return coreloop.State{
-		BoundsViolation: violation,
-		Outcome:         coreloop.RunOutcome(m.Outcome),
-		Criteria:        criteria,
-		LoopID:          m.LoopID,
-		ObjectiveID:     objective.ObjectiveID(m.ObjectiveID),
-		TwinID:          m.TwinID,
-		AgentID:         m.AgentID,
-		Iteration:       m.Iteration,
-		Paused:          m.Paused,
-		Completed:       m.Completed,
-		LastStep:        coreloop.Step(m.LastStep),
-		Status:          objective.ObjectiveStatus(m.Status),
-		CriteriaMet:     m.CriteriaMet,
-		CheckpointID:    m.CheckpointID,
-		Error:           m.Error,
-		StoppedBy:       m.StoppedBy,
-		StopReason:      m.StopReason,
-		RetryAfter:      time.Duration(m.RetryAfterMS) * time.Millisecond,
-		RequestJSON:     m.RequestJSON,
-		CreatedAt:       m.CreatedAt,
-		UpdatedAt:       m.UpdatedAt,
+		PlanRefusedReason: m.PlanRefusedReason,
+		BoundsViolation:   violation,
+		Outcome:           coreloop.RunOutcome(m.Outcome),
+		Criteria:          criteria,
+		LoopID:            m.LoopID,
+		ObjectiveID:       objective.ObjectiveID(m.ObjectiveID),
+		TwinID:            m.TwinID,
+		AgentID:           m.AgentID,
+		Iteration:         m.Iteration,
+		Paused:            m.Paused,
+		Completed:         m.Completed,
+		LastStep:          coreloop.Step(m.LastStep),
+		Status:            objective.ObjectiveStatus(m.Status),
+		CriteriaMet:       m.CriteriaMet,
+		CheckpointID:      m.CheckpointID,
+		Error:             m.Error,
+		StoppedBy:         m.StoppedBy,
+		StopReason:        m.StopReason,
+		RetryAfter:        time.Duration(m.RetryAfterMS) * time.Millisecond,
+		RequestJSON:       m.RequestJSON,
+		CreatedAt:         m.CreatedAt,
+		UpdatedAt:         m.UpdatedAt,
 	}
 }
 

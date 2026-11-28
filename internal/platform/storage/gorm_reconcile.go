@@ -46,6 +46,9 @@ func (s *GORMStorage) SaveReconcileState(ctx context.Context, st reconcile.State
 		ScoreStreak:         st.ScoreStreak,
 		ConsecutiveFailures: st.ConsecutiveFailures,
 		SustainJSON:         jsonArray(st.Sustain),
+		BlockersJSON:        jsonArray(st.Blockers),
+		BranchSHA:           st.BranchSHA,
+		StalledPasses:       st.StalledPasses,
 
 		Autonomy:  string(st.Autonomy),
 		CleanRuns: st.CleanRuns,
@@ -281,6 +284,10 @@ func reconcileStateFromModel(m schema.ReconcileStateModel) reconcile.State {
 	if m.SustainJSON != "" {
 		_ = json.Unmarshal([]byte(m.SustainJSON), &sustain)
 	}
+	var blockers []reconcile.Blocker
+	if m.BlockersJSON != "" {
+		_ = json.Unmarshal([]byte(m.BlockersJSON), &blockers)
+	}
 	return reconcile.State{
 		ObjectiveID:  objective.ObjectiveID(m.ObjectiveID),
 		TwinID:       m.TwinID,
@@ -308,6 +315,9 @@ func reconcileStateFromModel(m schema.ReconcileStateModel) reconcile.State {
 		ScoreStreak:         m.ScoreStreak,
 		ConsecutiveFailures: m.ConsecutiveFailures,
 		Sustain:             sustain,
+		Blockers:            blockers,
+		BranchSHA:           m.BranchSHA,
+		StalledPasses:       m.StalledPasses,
 
 		Autonomy:  objective.AutonomyLevel(m.Autonomy),
 		CleanRuns: m.CleanRuns,

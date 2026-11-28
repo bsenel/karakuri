@@ -6686,9 +6686,15 @@ components:
                     at:
                       format: date-time
                       type: string
+                    count:
+                      description: How many passes saw a reconcile blocker (Phase 40 step 14a). Absent for a block that is not one.
+                      type: integer
                     kind:
                       type: string
                     reason:
+                      type: string
+                    subject:
+                      description: What a reconcile blocker is about. Absent for a block that is not one.
                       type: string
                     until:
                       format: date-time
@@ -7637,6 +7643,28 @@ components:
           type: string
         autonomy:
           type: string
+        blockers:
+          description: What the stream is stuck on, counted per kind and subject across passes (Phase 40 step 14a). Detection only; nothing reads it to decide whether a pass runs. Absent when none.
+          items:
+            additionalProperties: false
+            properties:
+              count:
+                type: integer
+              first_seen:
+                format: date-time
+                type: string
+              kind:
+                description: verify_failed, plan_refused, plan_error, unmergeable_pr, deferred_quota, pushed_refs_violation or no_progress.
+                type: string
+              last_seen:
+                format: date-time
+                type: string
+              subject:
+                description: The pull request, branch or item the blocker is about.
+                type: string
+            type: object
+          nullable: true
+          type: array
         clean_runs:
           type: integer
         consecutive_failures:
@@ -7665,6 +7693,12 @@ components:
             taken_at:
               format: date-time
               type: string
+            unmergeable:
+              description: Branches whose pull request cannot be merged, as an environment's snapshot names them; shown, not acted on.
+              items:
+                type: string
+              nullable: true
+              type: array
             working:
               description: Environments whose snapshot says they hold work; with no baseline yet, that is a reason to run.
               items:

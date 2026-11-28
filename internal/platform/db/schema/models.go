@@ -212,6 +212,9 @@ type LoopStateModel struct {
 	Error        string  `gorm:"column:error;not null;default:''"`
 	StoppedBy    string  `gorm:"column:stopped_by;not null;default:''"`
 	StopReason   string  `gorm:"column:stop_reason;not null;default:''"`
+	// PlanRefusedReason is why the bounds refused a plan of the run (Phase 40
+	// step 14a), empty when none was.
+	PlanRefusedReason string `gorm:"column:plan_refused_reason;not null;default:''"`
 	// RetryAfterMS is how long a provider that refused the run for quota asked
 	// it to wait, in milliseconds; 0 when it did not say (Phase 40 step 8).
 	RetryAfterMS int64 `gorm:"column:retry_after_ms;not null;default:0"`
@@ -279,6 +282,12 @@ type ReconcileStateModel struct {
 	// window (Phase 41), beside ScoreStreak. JSON because which criteria
 	// declare a sustain is the objective's to change, not the schema's.
 	SustainJSON string `gorm:"column:sustain_json;not null;default:'[]'"`
+
+	// BlockersJSON is what the stream is stuck on (Phase 40 step 14a); BranchSHA
+	// and StalledPasses are the no_progress blocker's counters.
+	BlockersJSON  string `gorm:"column:blockers_json;not null;default:'[]'"`
+	BranchSHA     string `gorm:"column:branch_sha;not null;default:''"`
+	StalledPasses int    `gorm:"column:stalled_passes;not null;default:0"`
 
 	Autonomy  string `gorm:"column:autonomy;not null;default:''"`
 	CleanRuns int    `gorm:"column:clean_runs;not null;default:0"`

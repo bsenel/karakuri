@@ -53,6 +53,11 @@ type State struct {
 	// rather than on Error's text.
 	BoundsViolation *environment.BoundsViolation `json:"bounds_violation,omitempty"`
 
+	// PlanRefusedReason is why the authority bounds refused a plan during the
+	// run (Phase 40 step 14a), empty when none was refused. A typed field, so
+	// reconcile need not read the audit row's text.
+	PlanRefusedReason string `json:"plan_refused_reason,omitempty"`
+
 	// RequestJSON is the full marshalled Request as supplied to Run(); enough
 	// to reconstruct the loop's parameters on a cold start.
 	RequestJSON string `json:"request_json,omitempty"`
