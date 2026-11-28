@@ -4,12 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/bsenel/karakuri/config"
+	"github.com/bsenel/karakuri/internal/core/capability"
 	"github.com/bsenel/karakuri/internal/core/domain"
 	"github.com/bsenel/karakuri/internal/core/environment"
 	"github.com/bsenel/karakuri/internal/core/objective"
@@ -68,11 +70,18 @@ func worktreeKey(call domain.CallContract) string {
 // For is the worktree of the call's objective and pass, made on first use.
 // The path stays inside the pack.
 func (w *Workspaces) For(ctx context.Context, call domain.CallContract) (string, error) {
+	wt, err := w.worktree(ctx, call)
+	return wt.Path, err
+}
+
+// worktree is For's worktree whole, its branch with it, which the acting
+// tools that push or open a pull request read.
+func (w *Workspaces) worktree(ctx context.Context, call domain.CallContract) (git.Worktree, error) {
 	if w.repoErr != nil {
-		return "", fmt.Errorf("software: the pack's repository: %w", w.repoErr)
+		return git.Worktree{}, fmt.Errorf("software: the pack's repository: %w", w.repoErr)
 	}
 	if call.ObjectiveID == "" {
-		return "", errors.New("software: a call with no objective has no worktree of the pack")
+		return git.Worktree{}, errors.New("software: a call with no objective has no worktree of the pack")
 	}
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -82,11 +91,11 @@ func (w *Workspaces) For(ctx context.Context, call domain.CallContract) (string,
 	if err != nil {
 		wt, err = w.trees.Create(ctx, git.WorktreeOptions{ObjectiveID: objective.ObjectiveID(call.ObjectiveID), TaskID: key})
 		if err != nil {
-			return "", fmt.Errorf("software: worktree of objective %s pass %d: %w", call.ObjectiveID, call.Pass, err)
+			return git.Worktree{}, fmt.Errorf("software: worktree of objective %s pass %d: %w", call.ObjectiveID, call.Pass, err)
 		}
 	}
 	w.lastUsed[key] = w.now()
-	return wt.Path, nil
+	return wt, nil
 }
 
 // PassEnded removes the worktree of the call's objective and pass. A pass the
@@ -170,12 +179,34 @@ func (s *MCPServer) lifecycle(ctx context.Context, call domain.CallContract, too
 	}, nil
 }
 
-// inWorkspace runs act with params.workdir set to the worktree of the call's
-// objective and pass, when the tool reads one and the call named none, and
+// fileWritingTools are the acting capabilities that write files, the ones
+// capabilities.go marks with writes: the server serves them in the worktree of
+// the call's objective and pass, so the loop provisions none for them.
+var fileWritingTools = map[capability.CapabilityID]bool{
+	"software.act.create_pr":       true,
+	"software.act.delegate_to_cli": true,
+	"software.act.write_code":      true,
+	"software.act.write_test":      true,
+}
+
+// inWorkspace runs act in the worktree of the call's objective and pass, and
 // keeps the worktree's path out of what it returns.
-func (s *MCPServer) inWorkspace(ctx context.Context, call domain.CallContract, envID environment.EnvironmentID, params map[string]any,
+//
+// A verifier is handed it as params.workdir, when the call named none. A tool
+// that writes files is handed it as the loop's provisioning hands it: the path
+// as params.worktree_path, the plan's params.branch kept as
+// params.planned_branch, the ref the pushed-refs check declares (Phase 40
+// step 3), and the worktree's own branch as params.branch when the plan named
+// none, the branch create_pr opens its pull request from.
+func (s *MCPServer) inWorkspace(ctx context.Context, call domain.CallContract, tool capability.CapabilityID, envID environment.EnvironmentID, params map[string]any,
 	act func(map[string]any) (environment.ActionResult, error)) (environment.ActionResult, error) {
-	if s.workspaces == nil || envID != workspaceEnv {
+	if s.workspaces == nil {
+		return act(params)
+	}
+	if fileWritingTools[tool] {
+		return s.inWritingWorktree(ctx, call, params, act)
+	}
+	if envID != workspaceEnv {
 		return act(params)
 	}
 	if requested, _ := params["workdir"].(string); requested != "" {
@@ -192,6 +223,30 @@ func (s *MCPServer) inWorkspace(ctx context.Context, call domain.CallContract, e
 	withDir["workdir"] = dir
 	res, err := act(withDir)
 	return withoutWorkspace(res, dir), err
+}
+
+// inWritingWorktree runs a tool that writes files in the pass's worktree.
+func (s *MCPServer) inWritingWorktree(ctx context.Context, call domain.CallContract, params map[string]any,
+	act func(map[string]any) (environment.ActionResult, error)) (environment.ActionResult, error) {
+	wt, err := s.workspaces.worktree(ctx, call)
+	if err != nil {
+		return environment.ActionResult{}, err
+	}
+	inTree := maps.Clone(params)
+	if inTree == nil {
+		inTree = map[string]any{}
+	}
+	inTree["worktree_path"] = wt.Path
+	// The loop checked its worktree out on the plan's branch, so the branch it
+	// put in params.branch was the plan's; the pack's worktree is the pass's,
+	// so the plan's branch stays the one the action names.
+	if planned, _ := params["branch"].(string); planned != "" {
+		inTree["planned_branch"] = planned
+	} else {
+		inTree["branch"] = wt.Branch
+	}
+	res, err := act(inTree)
+	return withoutWorkspace(res, wt.Path), err
 }
 
 // withoutWorkspace drops the keys that name where the pack worked and writes

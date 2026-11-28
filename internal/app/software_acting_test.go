@@ -69,7 +69,8 @@ func (w *provisionCounter) Create(_ context.Context, opts git.WorktreeOptions) (
 	return git.Worktree{TaskID: opts.TaskID, ObjectiveID: opts.ObjectiveID, Path: w.dir, Branch: "provisioned/" + opts.TaskID, CreatedAt: time.Now()}, nil
 }
 
-// actingRepo is a git repository with one commit, for the pack's keeper.
+// actingRepo is a git repository with one commit and a bare origin, for the
+// pack's keeper.
 func actingRepo(t *testing.T) string {
 	t.Helper()
 	if _, err := exec.LookPath("git"); err != nil {
@@ -94,6 +95,12 @@ func actingRepo(t *testing.T) string {
 	}
 	run("add", ".gitignore")
 	run("commit", "-q", "-m", "init")
+	// An origin, because the coding agent's run reads origin's refs before and
+	// after it (Phase 40 step 3) and fails when it cannot.
+	origin := filepath.Join(filepath.Dir(root), "origin.git")
+	run("init", "-q", "--bare", "-b", "main", origin)
+	run("remote", "add", "origin", origin)
+	run("push", "-q", "origin", "HEAD:refs/heads/main")
 	return root
 }
 
