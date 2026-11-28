@@ -68,16 +68,16 @@ func (r *Registry) RegisterManifest(packID string, tools []capability.Capability
 	// pack's tools (ADR 028 section a).
 	for _, c := range tools {
 		if !inNamespace(packID, c.ID) || c.Domain != packID {
-			return fmt.Errorf("domain %q: tool %q (domain %q) is outside the pack's namespace %s.", packID, c.ID, c.Domain, packID)
+			return fmt.Errorf("domain %q: tool %q (domain %q) is outside the pack's namespace %s", packID, c.ID, c.Domain, packID)
 		}
 	}
 	for _, id := range m.Verifiers {
 		if !inNamespace(packID, id) {
-			return fmt.Errorf("domain %q: verifier %q is outside the pack's namespace %s.", packID, id, packID)
+			return fmt.Errorf("domain %q: verifier %q is outside the pack's namespace %s", packID, id, packID)
 		}
 	}
 	if m.SnapshotTool != "" && !inNamespace(packID, m.SnapshotTool) {
-		return fmt.Errorf("domain %q: snapshot tool %q is outside the pack's namespace %s.", packID, m.SnapshotTool, packID)
+		return fmt.Errorf("domain %q: snapshot tool %q is outside the pack's namespace %s", packID, m.SnapshotTool, packID)
 	}
 
 	r.mu.Lock()
