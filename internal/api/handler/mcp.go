@@ -19,6 +19,7 @@ import (
 	"github.com/bsenel/karakuri/internal/core/reconcile"
 	coretelemetry "github.com/bsenel/karakuri/internal/core/telemetry"
 	featurecp "github.com/bsenel/karakuri/internal/feature/checkpoint"
+	"github.com/bsenel/karakuri/internal/feature/gateway"
 	featureobjective "github.com/bsenel/karakuri/internal/feature/objective"
 	featurereconcile "github.com/bsenel/karakuri/internal/feature/reconcile"
 	featurereport "github.com/bsenel/karakuri/internal/feature/report"
@@ -75,6 +76,11 @@ type MCPHandler struct {
 	// Containers attaches the containers a named resource belongs to, so an
 	// org-scoped binding reaches an objective inside it.
 	Containers karakuriauth.ScopeLookup
+
+	// Gateway is the one path a tool call takes (Phase 39 step 1): it charges
+	// the capability quota, writes the call's audit row and records its cost.
+	// Not yet called by callTool.
+	Gateway *gateway.Gateway
 }
 
 // mcpServerInfo is what this deployment calls itself to a client. Deliberately
