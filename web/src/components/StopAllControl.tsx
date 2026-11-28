@@ -29,7 +29,7 @@ export function StopAllControl() {
       <button className="small" onClick={() => setOpen(true)}>Stop all</button>
       {open && (
         <ReasonDialog
-          title="Stop every run"
+          title="Stop every loop"
           confirmLabel="Stop everything"
           onClose={() => setOpen(false)}
           onConfirm={stopAll}
@@ -53,7 +53,7 @@ function StopAllSummary({ result, onClose }: { result: StopAllResult; onClose: (
 
   return (
     <div className="card small" style={{ position: 'absolute', right: 16, top: 48, zIndex: 10, maxWidth: 420 }}>
-      {nothing && <p>Nothing was stopped or paused: no run was going.</p>}
+      {nothing && <p>Nothing was stopped or paused: no loop was running.</p>}
       {loops.length > 0 && (
         <>
           <h4>Loops stopped</h4>

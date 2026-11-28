@@ -126,7 +126,7 @@ func (c *Client) doAuthContext(ctx context.Context, method, path string, body an
 	// A 403 is a policy decision, not a transport failure — surface the
 	// server's reason rather than an empty body and a status code.
 	if resp.StatusCode == http.StatusForbidden {
-		return data, resp.StatusCode, errors.New(apiMessage(data, resp.StatusCode))
+		return data, resp.StatusCode, fmt.Errorf("%s\nYou are logged in, but your role does not allow this; `krk auth whoami` shows who you are, and an administrator can grant a role with `krk auth bindings add`", apiMessage(data, resp.StatusCode))
 	}
 	// A 404 is almost always a mistyped or stale ID. Its plain-text body is
 	// not JSON, so printed as output it came out as "null" and exit 0.
