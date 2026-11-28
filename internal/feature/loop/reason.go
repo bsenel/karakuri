@@ -88,6 +88,8 @@ func stepReason(ctx context.Context, sc *stepContext, ws loop.WorldState) plan {
 		Task: "Plan the next actions to make progress on this objective. " +
 			"Return a JSON object with 'actions' (array of {capability, params, reason, env_id}), " +
 			"'confidence' (0.0-1.0), and 'reasoning' (string). " +
+			"Optionally, 'remedy' (plain text): the fix this plan applies to the blocker named below, if any; " +
+			"it is kept as a hint for a later blocker of the same kind and grants no authority. " +
 			"Return raw JSON only — no Markdown code fences, no commentary before or after.\n\n" +
 			provenance +
 			buildResumeNotice(sc) +
