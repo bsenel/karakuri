@@ -55,6 +55,8 @@ type stepContext struct {
 	// commits and the criteria not settled. Nil for a pass that follows no
 	// cut-off one (Phase 40 step 9a).
 	resume *loop.Resume
+	// unblock is the blocker the request asked this pass to diagnose (step 14b).
+	unblock *loop.Unblock
 
 	// threshold is the confidence bar stepDecide last applied, which an
 	// operator's modify may have lowered below the one the agent declares.
@@ -160,6 +162,7 @@ func (s *serviceImpl) runLoop(ctx context.Context, loopID string, req loop.Reque
 		svc:      s,
 		rung:     req.AutonomyRung,
 		resume:   req.Resume,
+		unblock:  req.Unblock,
 		sleep:    s.sleep,
 	}
 
@@ -273,6 +276,7 @@ func (s *serviceImpl) runLoop(ctx context.Context, loopID string, req loop.Reque
 			state.mu.Unlock()
 
 			p = stepReason(ictx, sc, ws)
+			state.recordRemedy(p.Remedy)
 			inputJSON, _ := json.Marshal(ws)
 			outputJSON, _ := json.Marshal(p)
 			iterations = append(iterations, loop.Iteration{
@@ -395,6 +399,7 @@ func (s *serviceImpl) runLoop(ctx context.Context, loopID string, req loop.Reque
 		state.mu.Unlock()
 
 		savePlanBeforeAct(ictx, sc, p)
+		savePlanAuditRow(ictx, sc, p)
 		results := stepAct(ictx, sc, p)
 		iterations = append(iterations, loop.Iteration{
 			Number:    iter,
@@ -659,10 +664,6 @@ func (s *serviceImpl) finalizeLoop(ctx context.Context, state *loopState, obj ob
 	}
 	state.mu.Unlock()
 
-	// Persist the terminal state (Phase 11): Completed=true keeps it out of
-	// the ListActiveLoopStates set used by the restart-resume path.
-	s.persistState(ctx, state, true)
-
 	if obj.ID != "" {
 		state.mu.RLock()
 		criteria := slices.Clone(state.criteria)
@@ -675,11 +676,18 @@ func (s *serviceImpl) finalizeLoop(ctx context.Context, state *loopState, obj ob
 			payload["error"] = runErr.Error()
 		}
 		s.recordRunEnd(ctx, state.id, obj, finalStatus, outcome, criteriaMet, criteria, retryAfter, runErr)
+		// Persist the terminal state last (Phase 11): Completed=true keeps it
+		// out of the ListActiveLoopStates set used by the restart-resume path,
+		// and it is what a caller waits on, so every write of the run is done
+		// before it is readable.
+		s.persistState(ctx, state, true)
 		s.hub.Publish(ctx, event.Event{
 			Type:        evtType,
 			ObjectiveID: string(obj.ID),
 			Payload:     payload,
 			Timestamp:   time.Now().UTC(),
 		})
+		return
 	}
+	s.persistState(ctx, state, true)
 }

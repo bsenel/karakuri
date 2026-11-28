@@ -114,3 +114,14 @@ func TestDeliveryWorkSnapshotListsTheDeliveryStreamsUnmergeableBranches(t *testi
 		t.Errorf("state[unmergeable_prs] = %v for pull requests that merge, want none", got)
 	}
 }
+
+// Phase 40 step 14b: the snapshot also names each listed branch's pull request
+// number, in the shape reconcile's sense reads, so a pass sent to repair the
+// branch posts its diagnosis there.
+func TestDeliveryWorkSnapshotNamesEachUnmergeableBranchsPullRequest(t *testing.T) {
+	snap := deliverySnapshot(t, deliveryForge("1", "2", "3"))
+	want := map[string]int{deliveryBranch1: 1, deliveryBranch2: 3}
+	if got, _ := snap.State["unmergeable_pr_numbers"].(map[string]int); !reflect.DeepEqual(got, want) {
+		t.Errorf("state[unmergeable_pr_numbers] = %#v, want the delivery stream's branches to their pull requests: %v", snap.State["unmergeable_pr_numbers"], want)
+	}
+}

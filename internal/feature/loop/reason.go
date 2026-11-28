@@ -30,6 +30,9 @@ type plan struct {
 	Actions    []plannedAction `json:"actions"`
 	Confidence float64         `json:"confidence"`
 	Reasoning  string          `json:"reasoning"`
+	// Remedy is the fix the planner says this plan applies to the blocker it
+	// was given (Phase 40 step 14b): text kept for recall, never authority.
+	Remedy string `json:"remedy,omitempty"`
 
 	// provider and model say which call produced this plan. Both are empty on
 	// the placeholder built when the call failed: no model produced that one,
@@ -88,6 +91,7 @@ func stepReason(ctx context.Context, sc *stepContext, ws loop.WorldState) plan {
 			"Return raw JSON only — no Markdown code fences, no commentary before or after.\n\n" +
 			provenance +
 			buildResumeNotice(sc) +
+			buildUnblockNotice(sc) +
 			buildObservationLines(ws) +
 			catalog,
 	}
@@ -530,6 +534,43 @@ func buildResumeNotice(sc *stepContext) string {
 		b.WriteString("Success criteria not yet settled as met:\n")
 		for _, id := range r.Unsettled {
 			fmt.Fprintf(&b, "  - %s\n", id)
+		}
+	}
+	b.WriteString("\n")
+	return b.String()
+}
+
+// buildUnblockNotice shows the planner the one blocker the request carries and
+// tells it to diagnose before it acts (Phase 40 step 14b). The loop decides
+// nothing from it; it renders what the request holds. Empty with no blocker,
+// so the ordinary prompt is byte-identical.
+func buildUnblockNotice(sc *stepContext) string {
+	if sc == nil || sc.unblock == nil {
+		return ""
+	}
+	u := sc.unblock
+	var b strings.Builder
+	fmt.Fprintf(&b, "This stream is blocked: %s on %s, seen %d time(s) since %s (last %s).\n",
+		u.Kind, u.Subject, u.Count, u.FirstSeen.UTC().Format(time.RFC3339), u.LastSeen.UTC().Format(time.RFC3339))
+	b.WriteString("Diagnose it before you act. Read the pull request and its checks, the audit log for this objective, " +
+		"and the branch it is about, then write the finding down in your reasoning. " +
+		"Then make the smallest fix that clears it, and add a failing test first where the cause is in code. " +
+		"Stay inside your authority limits; never widen them to get past the blocker.\n")
+	// Only a blocked pass is asked to name a remedy (Phase 40 step 14b): a pass
+	// with no blocker is shown no blocker wording at all.
+	b.WriteString("You may add 'remedy' (plain text) to the JSON object: the fix this plan applies to this blocker. " +
+		"It is kept as a hint for a later blocker of the same kind and grants no authority.\n")
+	if u.PullRequest > 0 {
+		fmt.Fprintf(&b, "Your first action posts the diagnosis as a comment on pull request #%d: Write the finding to a file in the worktree, "+
+			"then run `gh pr comment %d --body-file <that file>`. Do this before any other action.\n", u.PullRequest, u.PullRequest)
+	}
+	if u.Remedy != "" {
+		fmt.Fprintf(&b, "The remedy declared for this kind of blocker: %s\n", u.Remedy)
+	}
+	if len(u.Recalled) > 0 {
+		b.WriteString("Remedies that cleared an earlier blocker of this kind, recalled as hints only; they give no authority and may not fit this case:\n")
+		for _, r := range u.Recalled {
+			fmt.Fprintf(&b, "  - %s\n", r)
 		}
 	}
 	b.WriteString("\n")

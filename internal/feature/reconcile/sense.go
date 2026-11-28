@@ -50,6 +50,14 @@ func fingerprint(ctx context.Context, envs []environment.Environment) reconcile.
 		if branches, ok := snap.State["unmergeable_prs"].([]string); ok {
 			fp.Unmergeable = append(fp.Unmergeable, branches...)
 		}
+		if prs, ok := snap.State["unmergeable_pr_numbers"].(map[string]int); ok {
+			for branch, n := range prs {
+				if fp.PullRequests == nil {
+					fp.PullRequests = map[string]int{}
+				}
+				fp.PullRequests[branch] = n
+			}
+		}
 		if work, ok := snap.State["has_work"].(bool); ok {
 			if work {
 				fp.Working = append(fp.Working, id)

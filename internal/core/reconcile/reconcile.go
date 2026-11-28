@@ -88,6 +88,11 @@ type Fingerprint struct {
 	// an environment's snapshot state "unmergeable_prs" names them (Phase 40
 	// step 14a).
 	Unmergeable []string `json:"unmergeable,omitempty"`
+	// PullRequests maps each branch of Unmergeable to the number of its open
+	// pull request, as the snapshot state "unmergeable_pr_numbers" names it
+	// (Phase 40 step 14b). It serves the pass this fingerprint was sensed for
+	// and is not stored.
+	PullRequests map[string]int `json:"-"`
 	// TakenAt is when the snapshots were read.
 	TakenAt time.Time `json:"taken_at"`
 }

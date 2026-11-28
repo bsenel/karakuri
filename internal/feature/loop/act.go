@@ -40,6 +40,38 @@ func savePlanBeforeAct(ctx context.Context, sc *stepContext, p plan) {
 	})
 }
 
+// savePlanAuditRow writes the plan to the audit log before its first action
+// runs (Phase 40 step 14b): its reasoning, its actions and, when the request
+// carried one, the blocker it answers. The loop reads nothing from the blocker
+// here; it records what the request held. Best effort, like savePlanBeforeAct.
+func savePlanAuditRow(ctx context.Context, sc *stepContext, p plan) {
+	payload := map[string]any{
+		"loop_id": sc.loopID, "iteration": sc.iteration,
+		"reasoning": p.Reasoning, "actions": p.Actions, "confidence": p.Confidence,
+	}
+	if u := sc.unblock; u != nil {
+		payload["blocker"] = map[string]any{"kind": u.Kind, "subject": u.Subject, "count": u.Count}
+	}
+	pj, err := json.Marshal(payload)
+	if err != nil {
+		return
+	}
+	now := time.Now().UTC()
+	_ = sc.svc.store.SaveToolEvent(ctx, storage.ToolEvent{
+		ID:          fmt.Sprintf("plan-%s-%d-%d", sc.loopID, sc.iteration, now.UnixNano()),
+		ObjectiveID: string(sc.obj.ID),
+		AgentID:     string(sc.agentDef.ID),
+		Kind:        storage.ToolEventPlan,
+		Success:     true,
+		Confidence:  p.Confidence,
+		Provider:    p.provider,
+		Model:       p.model,
+		TemplateID:  sc.obj.TemplateID,
+		PayloadJSON: string(pj),
+		CreatedAt:   now,
+	})
+}
+
 // actionOutcome pairs an action with what it produced.
 //
 // stepAct returns these rather than bare results because a result cannot say

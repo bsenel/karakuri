@@ -383,6 +383,9 @@ func (s *GORMStorage) QuerySemantic(ctx context.Context, q memory.Query) ([]memo
 	if q.TwinID != "" {
 		db = db.Where("twin_id = ?", q.TwinID)
 	}
+	if q.Domain != "" {
+		db = db.Where("domain = ?", q.Domain)
+	}
 	if q.TopK > 0 {
 		db = db.Limit(q.TopK)
 	}
@@ -764,6 +767,7 @@ func (s *GORMStorage) SaveLoopState(ctx context.Context, st coreloop.State) erro
 		RequestJSON:  st.RequestJSON,
 
 		PlanRefusedReason: st.PlanRefusedReason,
+		Remedy:            st.Remedy,
 	}
 	if m.RequestJSON == "" {
 		m.RequestJSON = "{}"
@@ -831,6 +835,7 @@ func loopStateFromModel(m schema.LoopStateModel) coreloop.State {
 	}
 	return coreloop.State{
 		PlanRefusedReason: m.PlanRefusedReason,
+		Remedy:            m.Remedy,
 		BoundsViolation:   violation,
 		Outcome:           coreloop.RunOutcome(m.Outcome),
 		Criteria:          criteria,

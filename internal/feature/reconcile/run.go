@@ -270,7 +270,7 @@ func (s *Service) pass(ctx context.Context, id objective.ObjectiveID, forced rec
 			StartedAt:     started,
 			EndedAt:       s.now(),
 		}
-		s.noteBlockers(&st, deferred, coreloop.State{}, nil)
+		s.noteBlockers(&st, deferred, coreloop.State{}, nil, nil)
 		return s.finish(ctx, &st, obj, cadence, deferred, nil)
 	}
 
@@ -325,6 +325,16 @@ func (s *Service) reconcileNow(
 		StartedAt:   started,
 	}
 
+	brief := unblockBrief(st.Blockers, tmpl)
+	if brief != nil {
+		brief.Recalled = s.recalledRemedies(ctx, def.ID, brief.Kind)
+		// An unmergeable_pr blocker's subject is the branch; the pass posts
+		// its diagnosis on the open pull request whose head that branch is.
+		if brief.Kind == string(reconcile.BlockerUnmergeablePR) {
+			brief.PullRequest = fp.PullRequests[brief.Subject]
+		}
+	}
+
 	res, err := s.loops.Run(ctx, coreloop.Request{
 		Objective: obj,
 		Twin:      twin,
@@ -334,6 +344,7 @@ func (s *Service) reconcileNow(
 		// name the rung without the loop working it back out of the bounds.
 		AutonomyRung: level,
 		Resume:       s.resumeBrief(ctx, obj),
+		Unblock:      brief,
 	})
 	if p, stopped := stoppedBy(ctx); stopped {
 		outcome.LoopID = res.LoopID
@@ -420,7 +431,8 @@ func (s *Service) reconcileNow(
 	if !escalated && final.BoundsViolation != nil {
 		s.block(ctx, st, obj, *final.BoundsViolation)
 	}
-	s.noteBlockers(st, outcome, final, &fp)
+	s.noteBlockers(st, outcome, final, &fp, brief)
+	s.keepConfirmedRemedy(ctx, st, def.ID, brief, final.Remedy)
 	return s.finish(ctx, st, obj, cadence, outcome, &fp)
 }
 

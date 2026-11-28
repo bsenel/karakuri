@@ -60,6 +60,23 @@ const (
 // found nothing new opens no pull request; stream_pr is then inconclusive:
 // no_data, which blocks completion without tripping the breaker.
 func streamTemplates() []objective.Template {
+	ts := streamTemplateList()
+	for i := range ts {
+		ts[i].BlockerRemedies = blockerRemedies()
+	}
+	return ts
+}
+
+// blockerRemedies are the remedies the pack declares for the blocker kinds a
+// step of this phase already fixes (Phase 40 step 14b).
+func blockerRemedies() map[string]string {
+	return map[string]string{
+		"unmergeable_pr": "Repair the conflict as step 6a does: merge main into the branch, keeping both sides of each conflict, " +
+			"never rebase and never force-push; rerun the tests of what the merge touched; then push the branch.",
+	}
+}
+
+func streamTemplateList() []objective.Template {
 	hard := func(id, desc, expr string) objective.Constraint {
 		return objective.Constraint{ID: id, Description: desc, Hard: true, Expression: expr}
 	}

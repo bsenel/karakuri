@@ -58,6 +58,11 @@ type State struct {
 	// reconcile need not read the audit row's text.
 	PlanRefusedReason string `json:"plan_refused_reason,omitempty"`
 
+	// Remedy is the fix a diagnose-and-fix pass applied to its blocker (Phase 40
+	// step 14b), empty when the pass applied none. Reconcile stores it as a
+	// semantic memory only once it has read the blocker clear.
+	Remedy string `json:"remedy,omitempty"`
+
 	// RequestJSON is the full marshalled Request as supplied to Run(); enough
 	// to reconstruct the loop's parameters on a cold start.
 	RequestJSON string `json:"request_json,omitempty"`
