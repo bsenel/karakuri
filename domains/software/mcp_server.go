@@ -26,12 +26,14 @@ type Bindings func(ctx context.Context, call domain.CallContract) map[string]str
 //
 // Each call builds the environment that serves the tool from the call's own
 // twin bindings, the way the loop builds it, so a tool answers through the
-// server what it answers in process. A verifier that runs in a worktree the
-// loop provisioned still finds it in the call's params (step 4 removes this).
+// server what it answers in process. A verifier runs in the worktree the
+// pack's keeper holds for the call's objective and pass (step 4); one that a
+// call names a workdir for still runs there, until the loop stops naming one.
 type MCPServer struct {
-	pack      *Pack
-	bindings  Bindings
-	telemetry telemetry.Reader
+	pack       *Pack
+	bindings   Bindings
+	telemetry  telemetry.Reader
+	workspaces *Workspaces
 }
 
 // MCPServer builds the pack's in-binary tool server over the bindings each
@@ -67,6 +69,9 @@ func (s *MCPServer) ListTools(context.Context) ([]capability.CapabilityID, error
 // environment cannot be built, is an error rather than an empty answer
 // (rule 10).
 func (s *MCPServer) CallTool(ctx context.Context, call domain.CallContract, tool capability.CapabilityID, params map[string]any) (environment.ActionResult, error) {
+	if tool == domain.ToolPassEnded || tool == domain.ToolObjectiveEnded {
+		return s.lifecycle(ctx, call, string(tool))
+	}
 	if !s.serves(ctx, tool) {
 		return environment.ActionResult{}, fmt.Errorf("software: %s is not a tool this server serves", tool)
 	}
@@ -82,7 +87,9 @@ func (s *MCPServer) CallTool(ctx context.Context, call domain.CallContract, tool
 	if err != nil {
 		return environment.ActionResult{}, fmt.Errorf("software: build %s for %s: %w", fac.EnvID, tool, err)
 	}
-	return env.Act(ctx, environment.Action{CapabilityID: tool, Params: params})
+	return s.inWorkspace(ctx, call, fac.EnvID, params, func(p map[string]any) (environment.ActionResult, error) {
+		return env.Act(ctx, environment.Action{CapabilityID: tool, Params: p})
+	})
 }
 
 // serves reports whether tool is one ListTools names.

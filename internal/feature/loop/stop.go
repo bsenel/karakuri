@@ -112,6 +112,10 @@ func (s *serviceImpl) Stop(ctx context.Context, loopID, principal, reason string
 	s.closeStopped(ctx, objID, cpID, principal, reason)
 	if cancel != nil {
 		cancel(errLoopStopped)
+	} else if obj, err := s.store.GetObjective(ctx, objID); err == nil {
+		// No runner is left to unwind and signal the packs the run called (a
+		// loop paused at a checkpoint), so the stop does (Phase 39 step 4).
+		s.signalObjectiveEnded(ctx, obj)
 	}
 	if persistErr != nil {
 		return res, fmt.Errorf("loop %q stopped, but its stopped state was not stored: %w", loopID, persistErr)

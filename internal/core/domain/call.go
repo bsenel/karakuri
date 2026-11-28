@@ -22,6 +22,16 @@ type CallContract struct {
 	Bounds      agent.AuthorityBounds
 }
 
+// Lifecycle signals the orchestrator sends a pack it called, as reserved tool
+// names on the same CallTool path every call takes (Phase 39 step 4). The
+// call's contract names what ended: the objective and the loop/pass for a pass,
+// the objective for an objective. A signal is safe to repeat and delivery is
+// best effort; a pack with nothing to release answers it and does nothing.
+const (
+	ToolPassEnded      capability.CapabilityID = "lifecycle.pass_ended"
+	ToolObjectiveEnded capability.CapabilityID = "lifecycle.objective_ended"
+)
+
 // PackServer is a pack's tool server as the gateway reaches it (Phase 39 step
 // 3). The result carries the trust of its text, set by the pack from what the
 // payload holds; an error means the pack could not look.
