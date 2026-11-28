@@ -229,6 +229,11 @@ func printCriteria(w io.Writer, data []byte) error {
 		}
 	}
 	fmt.Fprintf(w, "%s  %s\n\nRequired:\n", obj.ID, obj.Title)
+	// An empty gate printed as nothing under the heading, which read as a
+	// cut-off answer; "-" is how an empty field reads elsewhere.
+	if len(gate) == 0 {
+		fmt.Fprintln(w, "  -")
+	}
 	writeCriteria(w, gate, true)
 	if len(progress) > 0 {
 		fmt.Fprintln(w, "\nProgress (required: false, not part of the gate):")
