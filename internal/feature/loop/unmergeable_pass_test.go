@@ -400,12 +400,12 @@ func runUnmergeablePass(t *testing.T, templateID, branch, newBranch string, list
 	if !strings.Contains(strings.ToLower(first.prompt), "merge") {
 		t.Errorf("the first write action is not the repair: its task is %q", first.prompt)
 	}
-	// The write must happen on the pull request's branch. stepAct provisions
-	// a worktree on a branch of its own and writes it into params.branch,
-	// replacing the branch the planner named; this says whether that is so.
+	// The write must happen on the pull request's branch. The software pack
+	// runs it in the pass's worktree, which sits on a karakuri-pack/ branch of
+	// its own; this says whether the plan's branch is checked out for it.
 	if first.worktreeOn != branch {
 		t.Errorf("the first write action ran in a worktree on %q, not on the pull request's branch %q: "+
-			"the loop provisions its own branch for a write action and overwrites params.branch, so the repair is not made on the branch the plan named",
+			"the pack's worktree for the pass is not checked out on the branch the plan named, so the repair is not made on it",
 			first.worktreeOn, branch)
 	}
 
