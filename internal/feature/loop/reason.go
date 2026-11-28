@@ -88,8 +88,6 @@ func stepReason(ctx context.Context, sc *stepContext, ws loop.WorldState) plan {
 		Task: "Plan the next actions to make progress on this objective. " +
 			"Return a JSON object with 'actions' (array of {capability, params, reason, env_id}), " +
 			"'confidence' (0.0-1.0), and 'reasoning' (string). " +
-			"Optionally, 'remedy' (plain text): the fix this plan applies to the blocker named below, if any; " +
-			"it is kept as a hint for a later blocker of the same kind and grants no authority. " +
 			"Return raw JSON only — no Markdown code fences, no commentary before or after.\n\n" +
 			provenance +
 			buildResumeNotice(sc) +
@@ -558,6 +556,10 @@ func buildUnblockNotice(sc *stepContext) string {
 		"and the branch it is about, then write the finding down in your reasoning. " +
 		"Then make the smallest fix that clears it, and add a failing test first where the cause is in code. " +
 		"Stay inside your authority limits; never widen them to get past the blocker.\n")
+	// Only a blocked pass is asked to name a remedy (Phase 40 step 14b): a pass
+	// with no blocker is shown no blocker wording at all.
+	b.WriteString("You may add 'remedy' (plain text) to the JSON object: the fix this plan applies to this blocker. " +
+		"It is kept as a hint for a later blocker of the same kind and grants no authority.\n")
 	if u.PullRequest > 0 {
 		fmt.Fprintf(&b, "Your first action posts the diagnosis as a comment on pull request #%d: Write the finding to a file in the worktree, "+
 			"then run `gh pr comment %d --body-file <that file>`. Do this before any other action.\n", u.PullRequest, u.PullRequest)
