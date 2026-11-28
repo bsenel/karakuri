@@ -38,3 +38,15 @@ func TestTwinHelpSaysWhatATwinIsAndWhereItsIDGoes(t *testing.T) {
 		t.Errorf("--name usage %q gives no example", usage)
 	}
 }
+
+// checkpoint list is where a user lands when a loop stops, and its help said
+// "List pending checkpoints" without what to do with one.
+func TestCheckpointListHelpSaysHowToDecide(t *testing.T) {
+	cmd := checkpointListCmd()
+	requireExample(t, cmd)
+	for _, want := range []string{"human decision", "krk checkpoint get <id>", "krk checkpoint resolve <id> --decision approve|reject|modify"} {
+		if !strings.Contains(cmd.Long, want) {
+			t.Errorf("checkpoint list Long %q does not contain %q", cmd.Long, want)
+		}
+	}
+}
