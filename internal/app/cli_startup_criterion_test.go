@@ -17,6 +17,7 @@ import (
 	coreloop "github.com/bsenel/karakuri/internal/core/loop"
 	coreobjective "github.com/bsenel/karakuri/internal/core/objective"
 	featurecp "github.com/bsenel/karakuri/internal/feature/checkpoint"
+	"github.com/bsenel/karakuri/internal/feature/gateway"
 	featureloop "github.com/bsenel/karakuri/internal/feature/loop"
 	featurememory "github.com/bsenel/karakuri/internal/feature/memory"
 	featureobjective "github.com/bsenel/karakuri/internal/feature/objective"
@@ -171,7 +172,7 @@ func settleCLIStartup(t *testing.T, sleeps ...string) coreobjective.Criterion {
 	providers.Register(&planProvider{reply: startupPlan(t, envID, workdir, sleeps...)})
 	svc := featureloop.NewService(store, platformagent.NewFactory(providers, hub, otel, nil), capReg, envReg,
 		featurememory.NewService(store, 5), featurecp.NewService(store, hub), nil, nil, hub, otel, nil,
-		karakuriquota.Deps{}, nil, 0)
+		karakuriquota.Deps{}, gateway.New(store, karakuriquota.Deps{}, nil), nil, 0)
 
 	def := coreagent.Definition{
 		ID: "cli-startup-agent", Name: "CLI Startup Agent", Domain: "software",

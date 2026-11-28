@@ -328,6 +328,11 @@ func (s *Service) reconcileNow(
 	brief := unblockBrief(st.Blockers, tmpl)
 	if brief != nil {
 		brief.Recalled = s.recalledRemedies(ctx, def.ID, brief.Kind)
+		// An unmergeable_pr blocker's subject is the branch; the pass posts
+		// its diagnosis on the open pull request whose head that branch is.
+		if brief.Kind == string(reconcile.BlockerUnmergeablePR) {
+			brief.PullRequest = fp.PullRequests[brief.Subject]
+		}
 	}
 
 	res, err := s.loops.Run(ctx, coreloop.Request{

@@ -276,6 +276,7 @@ func (s *serviceImpl) runLoop(ctx context.Context, loopID string, req loop.Reque
 			state.mu.Unlock()
 
 			p = stepReason(ictx, sc, ws)
+			state.recordRemedy(p.Remedy)
 			inputJSON, _ := json.Marshal(ws)
 			outputJSON, _ := json.Marshal(p)
 			iterations = append(iterations, loop.Iteration{

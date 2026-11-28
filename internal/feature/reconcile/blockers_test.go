@@ -24,7 +24,7 @@ import (
 //     typed signal is the row. Subject: the objective ID.
 //   - pushed_refs_violation: the loop row's BoundsViolation (step 3), also
 //     State.PausedReason. Subject: its first ref.
-//   - deferred_quota: Outcome.Deferred ("budget_exhausted" or
+//   - deferred_quota: Outcome.Deferred ("budget_exhausted", "waiting_for_quota" or
 //     "provider_rate_limited"). Subject: the objective ID. Never an Error, so
 //     ConsecutiveFailures does not move.
 //   - no_progress: no field. The branch's tip is the "git" environment's
@@ -192,6 +192,24 @@ func TestABudgetDeferralIsAQuotaBlockerAndNotAFailure(t *testing.T) {
 	if st.NextDueAt == nil || !st.NextDueAt.After(f.clock.Add(time.Hour)) {
 		t.Errorf("next due = %v, want the deferral's floor, unchanged by this step", st.NextDueAt)
 	}
+}
+
+// A pass whose coding agent ran out of quota is filed as waiting_for_quota
+// (Phase 40 step 8), the deferral this deployment hits most: it is a
+// deferred_quota blocker like the other two, and a second one counts it.
+func TestAPassWaitingForQuotaIsAQuotaBlocker(t *testing.T) {
+	f, obj := blockerFixture(t)
+	quotaPass(f, 0)
+
+	f.pass(t, obj.ID, reconcile.TriggerManual)
+	st := f.state(t, obj.ID)
+	wantBlockers(t, st, reconcile.Blocker{Kind: reconcile.BlockerDeferredQuota, Subject: string(obj.ID), Count: 1})
+	if st.ConsecutiveFailures != 0 {
+		t.Errorf("consecutive_failures = %d after a quota deferral, want 0", st.ConsecutiveFailures)
+	}
+
+	f.again(t, obj.ID)
+	wantBlockers(t, f.state(t, obj.ID), reconcile.Blocker{Kind: reconcile.BlockerDeferredQuota, Subject: string(obj.ID), Count: 2})
 }
 
 func TestNothingPlannedYieldsNoBlocker(t *testing.T) {

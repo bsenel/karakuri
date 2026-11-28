@@ -30,6 +30,9 @@ type plan struct {
 	Actions    []plannedAction `json:"actions"`
 	Confidence float64         `json:"confidence"`
 	Reasoning  string          `json:"reasoning"`
+	// Remedy is the fix the planner says this plan applies to the blocker it
+	// was given (Phase 40 step 14b): text kept for recall, never authority.
+	Remedy string `json:"remedy,omitempty"`
 
 	// provider and model say which call produced this plan. Both are empty on
 	// the placeholder built when the call failed: no model produced that one,
@@ -553,6 +556,10 @@ func buildUnblockNotice(sc *stepContext) string {
 		"and the branch it is about, then write the finding down in your reasoning. " +
 		"Then make the smallest fix that clears it, and add a failing test first where the cause is in code. " +
 		"Stay inside your authority limits; never widen them to get past the blocker.\n")
+	// Only a blocked pass is asked to name a remedy (Phase 40 step 14b): a pass
+	// with no blocker is shown no blocker wording at all.
+	b.WriteString("You may add 'remedy' (plain text) to the JSON object: the fix this plan applies to this blocker. " +
+		"It is kept as a hint for a later blocker of the same kind and grants no authority.\n")
 	if u.PullRequest > 0 {
 		fmt.Fprintf(&b, "Your first action posts the diagnosis as a comment on pull request #%d: Write the finding to a file in the worktree, "+
 			"then run `gh pr comment %d --body-file <that file>`. Do this before any other action.\n", u.PullRequest, u.PullRequest)

@@ -22,6 +22,7 @@ import (
 	"github.com/bsenel/karakuri/internal/core/telemetry"
 	featureart "github.com/bsenel/karakuri/internal/feature/artifact"
 	featurecp "github.com/bsenel/karakuri/internal/feature/checkpoint"
+	"github.com/bsenel/karakuri/internal/feature/gateway"
 	featurememory "github.com/bsenel/karakuri/internal/feature/memory"
 	platformagent "github.com/bsenel/karakuri/internal/platform/agent"
 	"github.com/bsenel/karakuri/internal/platform/git"
@@ -91,6 +92,9 @@ type loopState struct {
 	// planRefused is the reason the bounds refused the run's first refused
 	// plan (Phase 40 step 14a), persisted so reconcile can raise plan_refused.
 	planRefused string
+	// remedy is the fix the run's planner named for its blocker (Phase 40
+	// step 14b), persisted so reconcile can keep it once the blocker clears.
+	remedy string
 	// diagnosis is the reasoning of the run's first plan when the request
 	// carried a blocker (Phase 40 step 14c), persisted so reconcile records
 	// what each attempt found.
@@ -130,6 +134,19 @@ func (ls *loopState) recordPlanRefusal(reason string) {
 	if ls.planRefused == "" {
 		ls.planRefused = reason
 	}
+}
+
+// recordRemedy keeps the remedy a plan of the run named (Phase 40 step 14b);
+// a later plan that names one replaces it, because that is the fix the run
+// applied last, and a plan that names none leaves it as it was. Text kept for
+// recall only: nothing in the loop reads it to decide.
+func (ls *loopState) recordRemedy(remedy string) {
+	if remedy == "" {
+		return
+	}
+	ls.mu.Lock()
+	defer ls.mu.Unlock()
+	ls.remedy = remedy
 }
 
 // recordDiagnosis keeps the reasoning of the run's first plan.
@@ -285,6 +302,10 @@ type serviceImpl struct {
 	quota karakuriquota.Deps
 	costs *karakuriquota.Recorder
 
+	// gateway is the one path a tool call takes (Phase 39 step 1, ADR 028):
+	// stepAct hands it every routed action. Read it through gate().
+	gateway *gateway.Gateway
+
 	// tracer opens the invoke_agent and execute_tool spans. Nil means no
 	// tracing; read it through tracing() rather than directly.
 	tracer telemetry.Tracer
@@ -351,6 +372,7 @@ func NewService(
 	otel *observability.OTel,
 	domReg *domain.Registry,
 	quotaDeps karakuriquota.Deps,
+	gw *gateway.Gateway,
 	tracer telemetry.Tracer,
 	checkpointTTL time.Duration,
 ) Service {
@@ -372,6 +394,7 @@ func NewService(
 		budget:  quotaDeps.TokenBudget,
 		quota:   quotaDeps,
 		costs:   quotaDeps.Costs,
+		gateway: gw,
 		tracer:  tracer,
 		states:  make(map[string]*loopState),
 		cancels: make(map[string]context.CancelCauseFunc),
@@ -624,6 +647,7 @@ func (s *serviceImpl) persistState(ctx context.Context, state *loopState, comple
 	retryAfter := state.retryAfter
 	violation := state.violation
 	planRefused := state.planRefused
+	remedy := state.remedy
 	diagnosis := state.diagnosis
 	stoppedBy, stopReason := state.stoppedBy, state.stopReason
 	state.mu.RUnlock()
@@ -659,6 +683,7 @@ func (s *serviceImpl) persistState(ctx context.Context, state *loopState, comple
 		BoundsViolation: violation,
 
 		PlanRefusedReason: planRefused,
+		Remedy:            remedy,
 		Diagnosis:         diagnosis,
 	}
 	return s.store.SaveLoopState(ctx, persisted)
