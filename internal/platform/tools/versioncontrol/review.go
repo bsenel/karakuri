@@ -9,6 +9,10 @@ func (n *NoOp) PostReview(_ context.Context, _, _, _ string, _ []ReviewComment) 
 	return fmt.Errorf("noop: post review: %w", ErrUnsupported)
 }
 
+func (n *NoOp) ListReviews(_ context.Context, _, _ string) ([]Review, error) {
+	return nil, fmt.Errorf("noop: list reviews: %w", ErrUnsupported)
+}
+
 func (n *NoOp) ReviewedCommits(_ context.Context, _, _ string) ([]string, error) {
 	return nil, fmt.Errorf("noop: reviewed commits: %w", ErrUnsupported)
 }

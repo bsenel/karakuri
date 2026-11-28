@@ -1,8 +1,11 @@
 package command
 
 import (
+	"encoding/json"
 	"fmt"
+	"io"
 	"net/url"
+	"strings"
 
 	"github.com/bsenel/karakuri/cli/client"
 	"github.com/spf13/cobra"
@@ -27,7 +30,7 @@ one blocking work.`,
   krk report preview --twin twin_1
   krk report list`,
 	}
-	cmd.AddCommand(reportCreateCmd(), reportListCmd(), reportPreviewCmd(), reportSendCmd(), reportDeleteCmd())
+	cmd.AddCommand(reportCreateCmd(), reportListCmd(), reportPreviewCmd(), reportOversightCmd(), reportSendCmd(), reportDeleteCmd())
 	return cmd
 }
 
@@ -152,6 +155,112 @@ tomorrow's would have looked like.`,
 	cmd.Flags().StringVar(&window, "window", "24h", "How far back to look, e.g. 24h or 168h for a week")
 	_ = cmd.MarkFlagRequired("twin")
 	return cmd
+}
+
+// reportOversightCmd is the one oversight listing: per stream, its passes and
+// outcomes, pull requests waiting for a merge with the review result, and the
+// refusals and blocks the digest carries (Phase 40 step 14).
+func reportOversightCmd() *cobra.Command {
+	var twinID, window string
+	cmd := &cobra.Command{
+		Use:   "oversight",
+		Short: "List each stream's passes, waiting pull requests, refusals and blocks",
+		Example: `  # Every stream's last day.
+  krk report oversight --twin twin_1
+
+  # The same over the last week.
+  krk report oversight --twin twin_1 --window 168h`,
+		RunE: func(c *cobra.Command, _ []string) error {
+			data, _, err := api.Get("/reports/preview?twin_id=" + url.QueryEscape(twinID) +
+				"&window=" + url.QueryEscape(window))
+			if err != nil {
+				return err
+			}
+			if output == "json" || output == "quiet" {
+				client.PrintOutput(data, output)
+				return nil
+			}
+			var d oversightView
+			if err := json.Unmarshal(data, &d); err != nil {
+				return fmt.Errorf("read digest: %w", err)
+			}
+			printOversight(c.OutOrStdout(), d)
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&twinID, "twin", "", "Twin to report on (required)")
+	cmd.Flags().StringVar(&window, "window", "24h", "How far back to look, e.g. 24h or 168h for a week")
+	_ = cmd.MarkFlagRequired("twin")
+	return cmd
+}
+
+// oversightView is the part of the digest the listing reads. Waiting pull
+// requests are listed when the API carries them.
+type oversightView struct {
+	Objectives []struct {
+		Title       string `json:"title"`
+		Status      string `json:"status"`
+		Senses      int    `json:"senses"`
+		Reconciles  int    `json:"reconciles"`
+		Converged   int    `json:"converged"`
+		Escalations int    `json:"escalations"`
+		Failures    int    `json:"failures"`
+		Waiting     []struct {
+			Number int    `json:"number"`
+			Title  string `json:"title"`
+			Review string `json:"review"`
+		} `json:"waiting_pull_requests"`
+		Refusals []struct {
+			Capability string `json:"capability"`
+			Reason     string `json:"reason"`
+		} `json:"refusals"`
+		Blocks []struct {
+			Kind   string `json:"kind"`
+			Reason string `json:"reason"`
+			Until  string `json:"until"`
+		} `json:"blocks"`
+	} `json:"objectives"`
+}
+
+func countOf(n int, noun string) string {
+	if n == 1 {
+		return fmt.Sprintf("%d %s", n, noun)
+	}
+	return fmt.Sprintf("%d %ss", n, noun)
+}
+
+func printOversight(w io.Writer, d oversightView) {
+	if len(d.Objectives) == 0 {
+		fmt.Fprintln(w, "No streams in this window.")
+		return
+	}
+	for _, o := range d.Objectives {
+		fmt.Fprintf(w, "%s (%s)\n", o.Title, o.Status)
+		fmt.Fprintf(w, "  %s, %s", countOf(o.Reconciles, "reconcile"), countOf(o.Senses, "sense"))
+		if o.Converged > 0 {
+			fmt.Fprintf(w, ", %d converged", o.Converged)
+		}
+		if o.Escalations > 0 {
+			fmt.Fprintf(w, ", %s", countOf(o.Escalations, "escalation"))
+		}
+		if o.Failures > 0 {
+			fmt.Fprintf(w, ", %s", countOf(o.Failures, "failure"))
+		}
+		fmt.Fprintln(w)
+		for _, pr := range o.Waiting {
+			fmt.Fprintf(w, "  waiting: #%d %s [%s]\n", pr.Number, pr.Title, pr.Review)
+		}
+		for _, r := range o.Refusals {
+			fmt.Fprintf(w, "  refused: %s: %s\n", r.Capability, r.Reason)
+		}
+		for _, b := range o.Blocks {
+			fmt.Fprintf(w, "  blocked: %s: %s", b.Kind, b.Reason)
+			if b.Until != "" && !strings.HasPrefix(b.Until, "0001-") {
+				fmt.Fprintf(w, " (until %s)", b.Until)
+			}
+			fmt.Fprintln(w)
+		}
+	}
 }
 
 func reportSendCmd() *cobra.Command {
