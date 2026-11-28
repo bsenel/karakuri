@@ -17,6 +17,9 @@ func objectiveCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "objective",
 		Short: "Manage objectives",
+		Long: "Manage objectives: what a twin should achieve and how to tell it is done.\n" +
+			"Create one with krk objective create, then start a loop on its ID with\n" +
+			"krk loop start <id>. Declare it standing to keep it held on a cadence.",
 		Example: `  # Say what done looks like, then start a loop on it with: krk loop start <id>
   krk objective create --title "Fix the flaky login test" --twin t_7f2a
   krk objective list
@@ -35,6 +38,9 @@ func objectiveCreateCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "create",
 		Short: "Create an objective",
+		Long: "Create an objective and print its ID. Nothing runs yet: start a loop\n" +
+			"on it with krk loop start <id>, and watch its success criteria with\n" +
+			"krk objective criteria <id>.",
 		Example: `  krk objective create --title "Fix the flaky login test" --twin t_7f2a
 
   # From a template (see: krk objective templates)
