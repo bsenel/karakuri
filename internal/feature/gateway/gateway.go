@@ -119,10 +119,15 @@ func (g *Gateway) Call(ctx context.Context, call Call, perform Perform) (environ
 
 	// Attributed to the objective rather than the twin, because "which piece
 	// of work spent this" is the question a bill prompts; the twin is still
-	// the subject that pays.
+	// the subject that pays. A call made for no objective (a served MCP read)
+	// leaves the type empty, which the recorder attributes to the subject.
+	resourceType := "objective"
+	if call.ObjectiveID == "" {
+		resourceType = ""
+	}
 	g.costs.Record(ctx, karakuriquota.Spend{
 		TwinID:       call.TwinID,
-		ResourceType: "objective",
+		ResourceType: resourceType,
 		ResourceID:   call.ObjectiveID,
 		Provider:     call.EnvID,
 		Units:        1,

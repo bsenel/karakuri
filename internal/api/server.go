@@ -302,6 +302,8 @@ func NewApp(
 		Enforcer:    authDeps.Enforcer,
 		Scopes:      authDeps.Authorizer,
 		Containers:  containerSvc,
+		// The same gateway the loop's actions take (Phase 39 step 1).
+		Gateway: gw,
 	}
 	contH := &handler.ContainerHandler{Containers: containerSvc, Authorizer: authDeps.Authorizer}
 	quotaH := &handler.QuotaHandler{
