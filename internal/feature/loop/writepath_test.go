@@ -2,7 +2,6 @@ package loop
 
 import (
 	"context"
-	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -10,19 +9,20 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bsenel/karakuri/config"
 	"github.com/bsenel/karakuri/domains/software"
 	coreagent "github.com/bsenel/karakuri/internal/core/agent"
 	"github.com/bsenel/karakuri/internal/core/capability"
+	"github.com/bsenel/karakuri/internal/core/domain"
 	"github.com/bsenel/karakuri/internal/core/environment"
 	"github.com/bsenel/karakuri/internal/core/event"
 	"github.com/bsenel/karakuri/internal/core/objective"
+	"github.com/bsenel/karakuri/internal/feature/gateway"
 	platformdb "github.com/bsenel/karakuri/internal/platform/db"
-	"github.com/bsenel/karakuri/internal/platform/git"
 	"github.com/bsenel/karakuri/internal/platform/storage"
 	"github.com/bsenel/karakuri/internal/platform/tools"
 	"github.com/bsenel/karakuri/internal/platform/tools/cliagent"
 	"github.com/bsenel/karakuri/internal/platform/tools/versioncontrol"
+	karakuriquota "github.com/bsenel/karakuri/internal/quota"
 )
 
 // ── stub adapters ────────────────────────────────────────────────────────────
@@ -204,8 +204,11 @@ func TestWritePathEndToEnd(t *testing.T) {
 			t.Error("the CLI was handed an empty task")
 		}
 	}
-	if cli.calls[0].WorktreePath == cli.calls[1].WorktreePath {
-		t.Error("both actions shared one worktree; isolation per action is the point of provisioning them")
+	// The pack keeps one worktree per pass, so the test it writes and the code
+	// that makes it pass are in the same tree (Phase 39 step 4).
+	if cli.calls[0].WorktreePath != cli.calls[1].WorktreePath {
+		t.Errorf("write_test ran in %s and write_code in %s; actions of one pass share the pack's worktree",
+			cli.calls[0].WorktreePath, cli.calls[1].WorktreePath)
 	}
 
 	// The files actually landed, in the worktree rather than the checked-out
@@ -349,48 +352,11 @@ func TestWritePathSurvivesAReplayedIteration(t *testing.T) {
 	if len(cli.calls) != 2 {
 		t.Fatalf("the CLI was called %d times, want 2", len(cli.calls))
 	}
-	if cli.calls[0].WorktreePath == cli.calls[1].WorktreePath {
-		t.Error("the replay reused the first attempt's worktree; each attempt needs its own")
-	}
-}
-
-// failingWorktrees refuses to create anything, the way `git worktree add` does
-// when the path or branch is already taken.
-type failingWorktrees struct{ git.WorktreeManager }
-
-func (failingWorktrees) Create(context.Context, git.WorktreeOptions) (git.Worktree, error) {
-	return git.Worktree{}, errors.New("worktree add: path already exists")
-}
-
-// When provisioning fails, the action fails with the reason. The error used to
-// be discarded, and the environment then refused for want of a worktree — true,
-// and useless to whoever had to find out why there was none.
-func TestWritePathReportsWhyProvisioningFailed(t *testing.T) {
-	if _, err := exec.LookPath("git"); err != nil {
-		t.Skip("git not available")
-	}
-
-	repo := scratchRepo(t)
-	cli := &scriptedCLI{}
-	sc := writePathContext(t, repo, cli, &recordingVC{})
-	sc.svc.wt = failingWorktrees{sc.svc.wt}
-
-	results := stepAct(context.Background(), sc, plan{
-		Confidence: 0.9,
-		Actions: []plannedAction{{
-			CapabilityID: "software.act.write_code",
-			Params:       map[string]any{"prompt": "implement the router"},
-		}},
-	})
-
-	if len(results) != 1 || results[0].Result.Success {
-		t.Fatalf("write_code succeeded without a worktree: %+v", results)
-	}
-	if !strings.Contains(results[0].Result.Error, "path already exists") {
-		t.Errorf("error %q does not say why the worktree could not be provisioned", results[0].Result.Error)
-	}
-	if len(cli.calls) != 0 {
-		t.Errorf("the CLI was called %d times with no worktree provisioned", len(cli.calls))
+	// The replay is the same pass, so the pack hands it the worktree the first
+	// attempt made rather than asking git for one it already has.
+	if cli.calls[0].WorktreePath != cli.calls[1].WorktreePath {
+		t.Errorf("the replay ran in %s, the first attempt in %s; a replayed pass keeps the pack's worktree",
+			cli.calls[1].WorktreePath, cli.calls[0].WorktreePath)
 	}
 }
 
@@ -484,14 +450,14 @@ func packContext(t *testing.T, repo string, cli cliagent.CLIAgentAdapter, vc ver
 		envs = append(envs, env)
 	}
 
-	wt, err := git.NewGoGitWorktreeManager(config.GitConfig{
-		RepoPath:     repo,
-		WorktreeBase: "worktrees",
-		BaseBranch:   "main",
-		BranchPrefix: "karakuri",
-	})
-	if err != nil {
-		t.Fatalf("worktree manager: %v", err)
+	// The file-writing tools reach the pack's own server, which runs them in
+	// the worktree its Workspaces keeps for the pass, as bootstrap wires it;
+	// the loop provisions none (Phase 39 step 4).
+	server := pack.MCPServer(func(context.Context, domain.CallContract) map[string]string { return adapterBindings }).
+		WithWorkspaces(software.NewWorkspaces(repo, time.Hour, time.Now))
+	gw := gateway.New(store, karakuriquota.Deps{}, nil)
+	if err := gw.ServePack(context.Background(), "software", server); err != nil {
+		t.Fatalf("serve the software pack: %v", err)
 	}
 
 	return &stepContext{
@@ -505,11 +471,11 @@ func packContext(t *testing.T, repo string, cli cliagent.CLIAgentAdapter, vc ver
 		},
 		twinID: "twin-1",
 		svc: &serviceImpl{
-			store:  store,
-			capReg: capReg,
-			envReg: envReg,
-			wt:     wt,
-			hub:    event.NewHub(),
+			store:   store,
+			capReg:  capReg,
+			envReg:  envReg,
+			gateway: gw,
+			hub:     event.NewHub(),
 		},
 	}
 }

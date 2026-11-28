@@ -46,6 +46,13 @@ type Capability struct {
 	// Read it through GrantsWorkspace rather than directly: a capability
 	// discovered from an MCP server never gets one, whatever it declares.
 	NeedsWorkspace bool `json:"needs_workspace,omitempty"`
+
+	// Writes says this capability changes something rather than reading it.
+	// It grants nothing: the authority policy reads it to tell the prompts of
+	// the planned writes from the rest when it checks them against the work
+	// already delivered. A capability discovered from an MCP server is never
+	// counted as a write, whatever it declares (ADR 022).
+	Writes bool `json:"writes,omitempty"`
 }
 
 // GrantsWorkspace reports whether the loop must provision a git worktree before

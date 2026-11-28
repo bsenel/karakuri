@@ -19,11 +19,12 @@ func softwareCapabilities() []capability.Capability {
 			OutputSchema: capability.Schema{Type: "object"},
 		}
 	}
-	// writes marks a capability that produces files and therefore needs an
-	// isolated worktree. Declared here so the loop provisions one by what the
-	// capability says it does rather than by what it is called.
+	// writes marks a capability that produces files: Writes tells the core it
+	// changes something, and NeedsWorkspace, until it leaves the core, that it
+	// runs in a worktree, which the pack's own server keeps (Phase 39 step 4).
 	writes := func(c capability.Capability) capability.Capability {
 		c.NeedsWorkspace = true
+		c.Writes = true
 		return c
 	}
 	// run_tests' definition is the test files, so a pass that edits one changed

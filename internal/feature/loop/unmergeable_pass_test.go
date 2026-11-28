@@ -21,7 +21,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bsenel/karakuri/config"
 	"github.com/bsenel/karakuri/domains/software"
 	coreagent "github.com/bsenel/karakuri/internal/core/agent"
 	"github.com/bsenel/karakuri/internal/core/capability"
@@ -29,15 +28,16 @@ import (
 	"github.com/bsenel/karakuri/internal/core/environment"
 	"github.com/bsenel/karakuri/internal/core/loop"
 	"github.com/bsenel/karakuri/internal/core/objective"
+	"github.com/bsenel/karakuri/internal/feature/gateway"
 	featurememory "github.com/bsenel/karakuri/internal/feature/memory"
 	platformagent "github.com/bsenel/karakuri/internal/platform/agent"
-	platformgit "github.com/bsenel/karakuri/internal/platform/git"
 	"github.com/bsenel/karakuri/internal/platform/llm"
 	"github.com/bsenel/karakuri/internal/platform/observability"
 	"github.com/bsenel/karakuri/internal/platform/storage"
 	"github.com/bsenel/karakuri/internal/platform/tools"
 	"github.com/bsenel/karakuri/internal/platform/tools/cliagent"
 	"github.com/bsenel/karakuri/internal/platform/tools/versioncontrol"
+	karakuriquota "github.com/bsenel/karakuri/internal/quota"
 )
 
 const (
@@ -288,13 +288,6 @@ func runUnmergeablePass(t *testing.T, templateID, branch, newBranch string, list
 	pass6aGit(t, seed, "push", "origin", "HEAD:refs/heads/main")
 	pass6aGit(t, root, "clone", origin, work)
 
-	wtm, err := platformgit.NewGoGitWorktreeManager(config.GitConfig{
-		RepoPath: work, WorktreeBase: ".worktrees", BaseBranch: "main", BranchPrefix: "karakuri",
-	})
-	if err != nil {
-		t.Fatalf("worktree manager: %v", err)
-	}
-
 	forge := &pass6aForge{VersionControlAdapter: versioncontrol.NewNoOp(), pr: versioncontrol.PRSummary{
 		ID: "260", Number: 260, Title: "a stream pull request", HeadBranch: branch, BaseBranch: "main",
 		OwnAuthor: true, Draft: true, UpdatedAt: time.Now().UTC(),
@@ -308,8 +301,14 @@ func runUnmergeablePass(t *testing.T, templateID, branch, newBranch string, list
 	svc, _, store := newResumeFixture(t)
 	svc.otel = observability.NewOTel(nil)
 	svc.memSvc = featurememory.NewService(store, 5)
-	svc.wt = wtm
 	svc.domReg = softwareRegistryFor(t, pack)
+	// The write reaches the pack's own server, which runs it in the worktree
+	// its Workspaces keeps for the pass, as bootstrap wires it (Phase 39 step 4).
+	server := pack.MCPServer(nil).WithWorkspaces(software.NewWorkspaces(work, time.Hour, time.Now))
+	svc.gateway = gateway.New(store, karakuriquota.Deps{}, nil)
+	if err := svc.gateway.ServePack(ctx, "software", server); err != nil {
+		t.Fatalf("serve the software pack: %v", err)
+	}
 
 	planner := &pass6aPlanner{t: t, newBranch: newBranch}
 	if listOutOfBand {

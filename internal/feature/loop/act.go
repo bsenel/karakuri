@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"maps"
-	"strconv"
 	"time"
 
 	"github.com/bsenel/karakuri/internal/core/capability"
@@ -16,7 +15,6 @@ import (
 	"github.com/bsenel/karakuri/internal/core/loop"
 	"github.com/bsenel/karakuri/internal/core/telemetry"
 	"github.com/bsenel/karakuri/internal/feature/gateway"
-	"github.com/bsenel/karakuri/internal/platform/git"
 	"github.com/bsenel/karakuri/internal/platform/storage"
 )
 
@@ -99,9 +97,8 @@ func stepAct(ctx context.Context, sc *stepContext, p plan) []actionOutcome {
 		// a. Find the environment that runs this action.
 		targetEnv, routedBy := sc.svc.resolveEnv(sc.envs, action)
 
-		// A copy, because the worktree fields below are per attempt: written
-		// into the plan's own map, a replay of the plan would carry the last
-		// attempt's worktree_path into this one.
+		// A copy, so an environment that writes into its params never writes
+		// into the plan's own map, which a replay of the plan reads again.
 		params := maps.Clone(action.Params)
 		if params == nil {
 			params = make(map[string]any)
@@ -118,76 +115,14 @@ func stepAct(ctx context.Context, sc *stepContext, p plan) []actionOutcome {
 
 		// a2. The gateway charges the twin's daily capability allowance before
 		// the action, runs it, and writes its audit row and its cost (Phase 39
-		// step 1). What only the loop decides, the worktree, the span and the
-		// unrouted message, happens inside perform, so a refused action
-		// provisions nothing, as before.
+		// step 1). What only the loop decides, the span and the unrouted
+		// message, happens inside perform.
 		performed := false
 		perform := func(ctx context.Context) (environment.ActionResult, error) {
 			performed = true
 
-			// b. Worktree for capabilities that declare they write files.
-			//
-			// Asked of the capability registry rather than matched on the name:
-			// the suffix test gave a worktree to two capabilities that had no
-			// implementation and withheld one from delegate_to_cli, which is the
-			// only one that can actually write. See ADR 019.
-			//
-			// The task ID names the branch and the directory, so it has to be
-			// unique per attempt, not per action index: a retried iteration, or a
-			// loop resumed after a restart, runs the same actions again, and
-			// `git worktree add` refuses a path or branch that already exists.
-			var provisionErr error
-			if sc.svc.needsWorkspace(action.CapabilityID) {
-				taskID := fmt.Sprintf("%s-%d-%d-%s", sc.loopID[:8], sc.iteration, i,
-					strconv.FormatInt(time.Now().UnixNano(), 36))
-				// A branch the plan names, already held to the template's branch
-				// patterns by the decide step, is the branch the work is done on:
-				// a repair of a pull request's head is made on that head.
-				plannedBranch, _ := params["branch"].(string)
-				wt, err := sc.svc.wt.Create(ctx, git.WorktreeOptions{
-					ObjectiveID: sc.obj.ID,
-					TaskID:      taskID,
-					BranchName:  plannedBranch,
-				})
-				provisionErr = err
-				if err == nil {
-					params["worktree_path"] = wt.Path
-					// The plan's own branch is the ref the action is declared to
-					// push; the worktree's branch replaces params.branch below for
-					// the adapters that push or open a pull request from the
-					// worktree, so keep the plan's under its own key. Without it
-					// the pushed-refs check (Phase 40 step 3) declared only the
-					// worktree branch and failed every push to the item branch.
-					if planned, _ := params["branch"].(string); planned != "" {
-						params["planned_branch"] = planned
-					}
-					params["branch"] = wt.Branch
-					// Persist worktree record
-					_ = sc.svc.store.SaveWorktree(ctx, storage.Worktree{
-						TaskID:      wt.TaskID,
-						ObjectiveID: string(wt.ObjectiveID),
-						Path:        wt.Path,
-						Branch:      wt.Branch,
-						CreatedAt:   wt.CreatedAt,
-					})
-					sc.svc.hub.Publish(ctx, event.Event{
-						Type:        event.TypeWorktreeCreated,
-						ObjectiveID: string(sc.obj.ID),
-						Payload:     map[string]any{"task_id": taskID, "path": wt.Path, "branch": wt.Branch},
-						Timestamp:   time.Now().UTC(),
-					})
-				}
-			}
-
 			var result environment.ActionResult
-			if provisionErr != nil {
-				// The environment would refuse for want of a worktree anyway; say
-				// why there is none instead.
-				result = environment.ActionResult{
-					Success: false,
-					Error:   fmt.Sprintf("could not provision a worktree for %s: %v", action.CapabilityID, provisionErr),
-				}
-			} else if targetEnv != nil {
+			if targetEnv != nil {
 				// Wraps only a real Environment.Act call: a quota-refused or
 				// unrouted action ran no tool, so a span for it would claim one
 				// did (Phase 29 Step 2 in docs/roadmap.md).
@@ -196,14 +131,12 @@ func stepAct(ctx context.Context, sc *stepContext, p plan) []actionOutcome {
 					telemetry.Attribute{Key: telemetry.GenAIToolName, Value: action.CapabilityID},
 					telemetry.Attribute{Key: telemetry.AttrKarakuriEnvironmentID, Value: string(targetEnv.ID())},
 				)
-				// Named for a stop's audit record, with the worktree a cut
+				// Named for a stop's audit record, with the branch a cut
 				// delegation may have left half done (Phase 37 step 5).
-				workdir, _ := params["worktree_path"].(string)
 				branch, _ := params["branch"].(string)
 				sc.state.startAction(StopAction{
 					CapabilityID: action.CapabilityID,
 					EnvID:        string(targetEnv.ID()),
-					Workdir:      workdir,
 					Branch:       branch,
 				})
 				var err error
@@ -487,19 +420,17 @@ func (s *serviceImpl) resolveEnv(envs []environment.Environment, action plannedA
 	return nil, "unrouted"
 }
 
-// needsWorkspace reports whether a capability declared that it writes files.
+// writes reports whether a capability declared that it changes something
+// rather than reading it.
 //
-// Unknown capabilities get no workspace: a capability the registry has never
-// heard of is one no pack declared, and provisioning a git worktree for a
-// name a model invented would create a branch per hallucination.
-//
-// Asked through GrantsWorkspace rather than reading NeedsWorkspace, so a tool
-// discovered from an MCP server never gets one however its description reads —
-// the first of ADR 022's four bounds, applied at the one place that provisions.
-func (s *serviceImpl) needsWorkspace(capID string) bool {
-	if s.capReg == nil {
+// An unknown capability is no write: one the registry has never heard of is
+// one no pack declared. A tool discovered from an MCP server is never one
+// either, however it declares itself: a server this repository did not write
+// sets that declaration (ADR 022).
+func (s *serviceImpl) writes(capID string) bool {
+	if s.capReg == nil || capability.IsMCPCapability(capability.CapabilityID(capID)) {
 		return false
 	}
 	cap, ok := s.capReg.Get(capability.CapabilityID(capID))
-	return ok && cap.GrantsWorkspace()
+	return ok && cap.Writes
 }

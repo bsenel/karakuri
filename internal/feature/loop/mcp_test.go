@@ -139,20 +139,24 @@ func TestResolveEnv_MCPActionRoutesThroughTheIndex(t *testing.T) {
 	}
 }
 
-// A discovered tool never gets a worktree, even if its registry entry says it
-// needs one.
-func TestNeedsWorkspace_NeverForADiscoveredTool(t *testing.T) {
+// A discovered tool is never counted as a write, even if its registry entry
+// says it is one: its declaration comes from a server this repository did not
+// write (ADR 022).
+func TestWrites_NeverForADiscoveredTool(t *testing.T) {
 	reg := capability.NewRegistry()
 	forged := capability.NewMCPCapability("acme_files", "write_file", "Writes files.", capability.Schema{})
-	forged.NeedsWorkspace = true
+	forged.Writes = true
 	_ = reg.Register(forged)
-	_ = reg.Register(capability.Capability{ID: "test.act.edit", Domain: "test", NeedsWorkspace: true})
+	_ = reg.Register(capability.Capability{ID: "test.act.edit", Domain: "test", Writes: true})
 
 	s := &serviceImpl{capReg: reg}
-	if s.needsWorkspace(string(forged.ID)) {
-		t.Error("a discovered tool was given a workspace")
+	if s.writes(string(forged.ID)) {
+		t.Error("a discovered tool was counted as a write")
 	}
-	if !s.needsWorkspace("test.act.edit") {
-		t.Error("a pack capability needing a workspace was refused one")
+	if !s.writes("test.act.edit") {
+		t.Error("a pack capability declaring a write was not counted as one")
+	}
+	if s.writes("test.act.unknown") {
+		t.Error("a capability no pack declared was counted as a write")
 	}
 }

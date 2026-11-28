@@ -6240,6 +6240,8 @@ components:
           type: object
         verifiable:
           type: boolean
+        writes:
+          type: boolean
       type: object
     CatalogEntry:
       type: object

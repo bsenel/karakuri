@@ -171,7 +171,7 @@ func settleCLIStartup(t *testing.T, sleeps ...string) coreobjective.Criterion {
 	providers := llm.NewRegistry(nil)
 	providers.Register(&planProvider{reply: startupPlan(t, envID, workdir, sleeps...)})
 	svc := featureloop.NewService(store, platformagent.NewFactory(providers, hub, otel, nil), capReg, envReg,
-		featurememory.NewService(store, 5), featurecp.NewService(store, hub), nil, nil, hub, otel, nil,
+		featurememory.NewService(store, 5), featurecp.NewService(store, hub), nil, hub, otel, nil,
 		karakuriquota.Deps{}, gateway.New(store, karakuriquota.Deps{}, nil), nil, 0)
 
 	def := coreagent.Definition{
