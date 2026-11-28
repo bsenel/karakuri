@@ -196,6 +196,7 @@ func (p *pass6aPlanner) Complete(_ context.Context, req llm.CompletionRequest) (
 					"prompt":        "Merge origin/main into " + branch + ", keeping both sides of docs/roadmap.md. Never rebase, never force-push. Push the merge to " + branch + ".",
 					"branch":        branch,
 					"allowed_tools": p.tools,
+					"paths":         []any{"docs/roadmap.md"},
 				},
 			},
 			{
@@ -206,6 +207,7 @@ func (p *pass6aPlanner) Complete(_ context.Context, req llm.CompletionRequest) (
 					"prompt":        "Start the next item.",
 					"branch":        p.newBranch,
 					"allowed_tools": p.tools,
+					"paths":         []any{"docs/roadmap.md"},
 				},
 			},
 		}

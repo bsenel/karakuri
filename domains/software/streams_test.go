@@ -51,8 +51,9 @@ var streamCases = []struct {
 	risk  objective.RiskClass
 	agent string
 }{
-	{marketDiscoveryTemplateID, objective.RiskRoutine, "software.agent.strategist"},
-	{engineeringBacklogTemplateID, objective.RiskRoutine, "software.agent.maintainer"},
+	// The proposal streams run as the proposer (Phase 40 step 10, ADR 030).
+	{marketDiscoveryTemplateID, objective.RiskRoutine, string(AgentProposer)},
+	{engineeringBacklogTemplateID, objective.RiskRoutine, string(AgentProposer)},
 	{uxImprovementTemplateID, objective.RiskConsequential, "software.agent.implementer"},
 	{roadmapDeliveryTemplateID, objective.RiskConsequential, "software.agent.implementer"},
 }
