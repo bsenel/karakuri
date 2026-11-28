@@ -23,6 +23,7 @@ import (
 	"github.com/bsenel/karakuri/internal/feature/checkpoint"
 	"github.com/bsenel/karakuri/internal/feature/container"
 	"github.com/bsenel/karakuri/internal/feature/eval"
+	"github.com/bsenel/karakuri/internal/feature/gateway"
 	featureloop "github.com/bsenel/karakuri/internal/feature/loop"
 	"github.com/bsenel/karakuri/internal/feature/memory"
 	"github.com/bsenel/karakuri/internal/feature/objective"
@@ -111,6 +112,7 @@ func NewApp(
 	prometheusHandler http.Handler, // optional; mounted at /metrics outside auth when non-nil
 	authDeps AuthDeps,
 	quotaDeps karakuriquota.Deps,
+	gw *gateway.Gateway, // the one path the loop's tool calls take (Phase 39 step 1)
 ) *App {
 	var memSvc *memory.Service
 	if semanticBackend != nil {
@@ -141,7 +143,7 @@ func NewApp(
 		tracer = otel
 	}
 	agentFactory := platformagent.NewFactory(providers, hub, otel, tracer)
-	loopSvc := featureloop.NewService(store, agentFactory, capReg, envReg, memSvc, cpSvc, artSvc, wt, hub, otel, domReg, quotaDeps, tracer, cfg.Reconcile.CheckpointTTLDuration())
+	loopSvc := featureloop.NewService(store, agentFactory, capReg, envReg, memSvc, cpSvc, artSvc, wt, hub, otel, domReg, quotaDeps, gw, tracer, cfg.Reconcile.CheckpointTTLDuration())
 	// Closes the cycle: the loop raises checkpoints, and resolving one has to
 	// reach back into the loop that is blocked on it. Constructor injection
 	// cannot express that in either direction, so the second edge is wired

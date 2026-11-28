@@ -261,8 +261,8 @@ type serviceImpl struct {
 	quota karakuriquota.Deps
 	costs *karakuriquota.Recorder
 
-	// gateway is the one path a tool call takes (Phase 39 step 1, ADR 028).
-	// Scaffolding: stepAct does not call it yet.
+	// gateway is the one path a tool call takes (Phase 39 step 1, ADR 028):
+	// stepAct hands it every routed action. Read it through gate().
 	gateway *gateway.Gateway
 
 	// tracer opens the invoke_agent and execute_tool spans. Nil means no
@@ -331,6 +331,7 @@ func NewService(
 	otel *observability.OTel,
 	domReg *domain.Registry,
 	quotaDeps karakuriquota.Deps,
+	gw *gateway.Gateway,
 	tracer telemetry.Tracer,
 	checkpointTTL time.Duration,
 ) Service {
@@ -352,6 +353,7 @@ func NewService(
 		budget:  quotaDeps.TokenBudget,
 		quota:   quotaDeps,
 		costs:   quotaDeps.Costs,
+		gateway: gw,
 		tracer:  tracer,
 		states:  make(map[string]*loopState),
 		cancels: make(map[string]context.CancelCauseFunc),
