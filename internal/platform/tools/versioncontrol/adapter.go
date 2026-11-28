@@ -152,12 +152,23 @@ type VersionControlAdapter interface {
 	// forge cannot returns an error wrapping ErrUnsupported, never an empty
 	// list.
 	ReviewedCommits(ctx context.Context, repo, prID string) ([]string, error)
+	// ListReviews lists every review on a pull request, oldest first, each
+	// with its state and the commit it was left at. An adapter whose forge
+	// cannot returns an error wrapping ErrUnsupported, never an empty list.
+	ListReviews(ctx context.Context, repo, prID string) ([]Review, error)
 	// ListPullRequestComments reads every comment on a pull request, from the
 	// conversation, the diff and the reviews, oldest first. An adapter whose
 	// forge cannot returns an error wrapping ErrUnsupported, never an empty
 	// list.
 	ListPullRequestComments(ctx context.Context, repo string, number int) ([]PullRequestComment, error)
 	Active() bool
+}
+
+// Review is one review of a pull request. State is lower case: "approved",
+// "changes_requested", "commented", "dismissed" or "pending".
+type Review struct {
+	State    string
+	CommitID string
 }
 
 // PullRequestComment is one thing somebody wrote on a pull request, as read

@@ -43,10 +43,25 @@ func (s *Service) Assemble(ctx context.Context, twinID string, since, until time
 		return d, err
 	}
 
+	// Read once: the forge is asked one question per twin, not one per stream.
+	// Skipped for a twin with no standing objective, which has nothing to list.
+	var pulls []StreamPullRequest
+	var pullsErr error
+	if len(objectives) > 0 {
+		pulls, pullsErr = s.readPullRequests(ctx, twinID)
+	}
+
 	titles := make(map[objective.ObjectiveID]string, len(objectives))
 	for _, obj := range objectives {
 		titles[obj.ID] = obj.Title
-		d.Objectives = append(d.Objectives, s.summarise(ctx, obj, since, until))
+		sum := s.summarise(ctx, obj, since, until)
+		var blind *digest.Block
+		sum.WaitingPullRequests, blind = waitingFor(pulls, pullsErr, obj.ID, until)
+		if blind != nil {
+			sum.Blocks = append(sum.Blocks, *blind)
+			sort.SliceStable(sum.Blocks, func(i, j int) bool { return sum.Blocks[i].Kind < sum.Blocks[j].Kind })
+		}
+		d.Objectives = append(d.Objectives, sum)
 		d.AutonomyChanges = append(d.AutonomyChanges, s.autonomyChanges(ctx, obj, since)...)
 		if x, ok := s.exhaustion(ctx, obj, since, until); ok {
 			d.Exhausted = append(d.Exhausted, x)
@@ -153,7 +168,74 @@ func (s *Service) summarise(ctx context.Context, obj objective.Objective, since,
 			}
 		}
 	}
+	sum.Refusals, sum.Blocks = s.refusalsAndBlocks(ctx, obj, since, until)
 	return sum
+}
+
+// refusalsAndBlocks reads the bounds refusals and the blocks of one stream
+// for the window, oldest first.
+//
+// Refusals are the audit log's refusal rows in [since, until]. The blocks are
+// what the stream is stuck on at the end of the window: the latest pass in the
+// window deferred for quota or unable to see any environment, and the latest
+// refusal of a single action (a row naming a capability, as the pushed-refs
+// check writes; a refused plan names none) as a bounds violation.
+func (s *Service) refusalsAndBlocks(ctx context.Context, obj objective.Objective, since, until time.Time) ([]digest.Refusal, []digest.Block) {
+	var refusals []digest.Refusal
+	var blocks []digest.Block
+
+	events, err := s.store.ListToolEvents(ctx, storage.ToolEventFilter{
+		ObjectiveID:    string(obj.ID),
+		Kind:           storage.ToolEventRefusal,
+		CreatedAtSince: &since,
+		OldestFirst:    true,
+		Limit:          1000,
+	})
+	if err != nil {
+		// Blind, not quiet: no rows read is not no refusals (AGENTS.md rule 10).
+		blocks = append(blocks, digest.Block{Kind: digest.BlockRemoteUnreadable, Reason: "audit log could not be read: " + err.Error(), At: until})
+	} else {
+		var violation *digest.Block
+		for _, e := range events {
+			if e.CreatedAt.After(until) {
+				continue
+			}
+			refusals = append(refusals, digest.Refusal{At: e.CreatedAt, Capability: e.Capability, Reason: e.EscalationReason})
+			if e.Capability != "" {
+				violation = &digest.Block{Kind: digest.BlockBoundsViolation, Reason: e.EscalationReason, At: e.CreatedAt}
+			}
+		}
+		if violation != nil {
+			blocks = append(blocks, *violation)
+		}
+	}
+
+	outcomes, err := s.store.ListReconcileOutcomes(ctx, obj.ID, 2000)
+	if err != nil {
+		blocks = append(blocks, digest.Block{Kind: digest.BlockRemoteUnreadable, Reason: "reconcile outcomes could not be read: " + err.Error(), At: until})
+	} else {
+		var latest *reconcile.Outcome
+		for i := range outcomes {
+			o := &outcomes[i]
+			if o.StartedAt.Before(since) || o.StartedAt.After(until) {
+				continue
+			}
+			if latest == nil || o.StartedAt.After(latest.StartedAt) {
+				latest = o
+			}
+		}
+		if latest != nil {
+			if latest.Deferred == string(digest.BlockQuota) {
+				blocks = append(blocks, digest.Block{Kind: digest.BlockQuota, Reason: latest.Deferred, At: latest.StartedAt, Until: latest.DeferredUntil})
+			}
+			if latest.Drift.Blind {
+				blocks = append(blocks, digest.Block{Kind: digest.BlockRemoteUnreadable, Reason: "no environment could be read", At: latest.StartedAt})
+			}
+		}
+	}
+
+	sort.SliceStable(blocks, func(i, j int) bool { return blocks[i].Kind < blocks[j].Kind })
+	return refusals, blocks
 }
 
 // criteria reads the criterion states the window's passes settled and returns

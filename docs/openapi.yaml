@@ -6679,6 +6679,23 @@ components:
                 type: integer
               autonomy:
                 type: string
+              blocks:
+                items:
+                  additionalProperties: false
+                  properties:
+                    at:
+                      format: date-time
+                      type: string
+                    kind:
+                      type: string
+                    reason:
+                      type: string
+                    until:
+                      format: date-time
+                      type: string
+                  type: object
+                nullable: true
+                type: array
               converged:
                 type: integer
               criteria:
@@ -6731,12 +6748,43 @@ components:
                 type: object
               reconciles:
                 type: integer
+              refusals:
+                items:
+                  additionalProperties: false
+                  properties:
+                    at:
+                      format: date-time
+                      type: string
+                    capability:
+                      type: string
+                    reason:
+                      type: string
+                  type: object
+                nullable: true
+                type: array
               senses:
                 type: integer
               status:
                 type: string
               title:
                 type: string
+              waiting_pull_requests:
+                items:
+                  additionalProperties: false
+                  properties:
+                    number:
+                      type: integer
+                    review:
+                      type: string
+                    reviewed_head:
+                      type: boolean
+                    title:
+                      type: string
+                    url:
+                      type: string
+                  type: object
+                nullable: true
+                type: array
             type: object
           nullable: true
           type: array

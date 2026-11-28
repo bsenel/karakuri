@@ -49,6 +49,7 @@ type Service struct {
 	quota   karakuriquota.Deps
 	cfg     Config
 	holder  string
+	pulls   PullRequestReader
 	now     func() time.Time
 }
 
@@ -58,8 +59,9 @@ func NewService(
 	factory *platformagent.Factory,
 	quotaDeps karakuriquota.Deps,
 	cfg Config,
+	opts ...Option,
 ) *Service {
-	return &Service{
+	svc := &Service{
 		store:   store,
 		tools:   toolReg,
 		factory: factory,
@@ -68,6 +70,10 @@ func NewService(
 		holder:  newHolderID(),
 		now:     func() time.Time { return time.Now().UTC() },
 	}
+	for _, opt := range opts {
+		opt(svc)
+	}
+	return svc
 }
 
 // Start runs the sender on its own ticker.

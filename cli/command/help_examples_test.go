@@ -44,6 +44,14 @@ func TestReportHelp(t *testing.T) {
 	if !strings.Contains(usage, "krk twin list") || !strings.Contains(usage, "default") {
 		t.Errorf("--twin usage %q does not say where an ID comes from or name the default", usage)
 	}
+	// create and preview said "Twin to report on (required)" while their
+	// sibling list said it takes an ID from krk twin list.
+	for _, cmd := range []*cobra.Command{reportCreateCmd(), reportPreviewCmd()} {
+		usage := cmd.Flags().Lookup("twin").Usage
+		if !strings.Contains(usage, "twin ID") || !strings.Contains(usage, "krk twin list") {
+			t.Errorf("%s --twin usage %q does not say it takes a twin ID from krk twin list", cmd.Name(), usage)
+		}
+	}
 }
 
 func TestTwinBindingsHelp(t *testing.T) {

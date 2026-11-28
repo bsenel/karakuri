@@ -36,6 +36,14 @@ describe('MemoryPage', () => {
     expect(screen.queryByText(/run a recall query/)).not.toBeInTheDocument();
   });
 
+  it('tells a screen reader that nothing matched', async () => {
+    post.mockResolvedValue([]);
+
+    render(<MemoryPage />);
+    recall();
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent(/No memories matched/));
+  });
+
   it('does not report a failed recall as no results yet', async () => {
     post.mockRejectedValue(new Error('API 500: boom'));
 

@@ -18,6 +18,7 @@ import { UsersPage }         from '@/pages/UsersPage';
 import { RolesPage }         from '@/pages/RolesPage';
 import { OrgsPage }          from '@/pages/OrgsPage';
 import { QuotaPage }         from '@/pages/QuotaPage';
+import { OversightPage }     from '@/pages/OversightPage';
 // The cost page is the only thing that pulls in Recharts, which is larger than
 // the rest of the application put together. Loading it lazily means everybody
 // else pays nothing for a page they may never open.
@@ -60,6 +61,7 @@ function Shell() {
         <Route path="users" element={<UsersPage />} />
         <Route path="roles" element={<RolesPage />} />
         <Route path="orgs" element={<OrgsPage />} />
+        <Route path="oversight" element={<OversightPage />} />
         {/* Quota has nested tabs, so it claims the subtree rather than one path. */}
         <Route path="quota/*" element={<QuotaPage />} />
         <Route
