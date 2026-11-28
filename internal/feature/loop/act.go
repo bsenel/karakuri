@@ -121,7 +121,9 @@ func stepAct(ctx context.Context, sc *stepContext, p plan) []actionOutcome {
 		// step 1). What only the loop decides, the worktree, the span and the
 		// unrouted message, happens inside perform, so a refused action
 		// provisions nothing, as before.
+		performed := false
 		perform := func(ctx context.Context) (environment.ActionResult, error) {
+			performed = true
 
 			// b. Worktree for capabilities that declare they write files.
 			//
@@ -306,9 +308,15 @@ func stepAct(ctx context.Context, sc *stepContext, p plan) []actionOutcome {
 			EnvID:       envAdapter,
 			Params:      params,
 			LoopID:      sc.loopID,
-			Index:       i,
-			RoutedBy:    routedBy,
-			Confidence:  p.Confidence,
+			// The rest of the call contract a pack's server receives (ADR
+			// 028 section b). The deployment has no tenant yet, so TenantID
+			// stays empty; the action is named by its place in this pass.
+			Pass:       sc.iteration,
+			ActionID:   fmt.Sprintf("%s-%d-%d", sc.loopID, sc.iteration, i),
+			Bounds:     sc.agentDef.Authority,
+			Index:      i,
+			RoutedBy:   routedBy,
+			Confidence: p.Confidence,
 			Stamp: func(row *storage.ToolEvent, payload map[string]any) {
 				sc.stampProvenance(row, p, payload)
 			},
@@ -326,6 +334,15 @@ func stepAct(ctx context.Context, sc *stepContext, p plan) []actionOutcome {
 				Errored:      true,
 			})
 			continue
+		}
+
+		// A pack's server answered instead of perform (Phase 39 step 3): it
+		// was carried out, so only the gateway's error makes it errored. Left
+		// at its default, stepVerify read every routed verifier as
+		// verifier_error and never reached the pack's result.
+		if !performed {
+			errored = err != nil
+			actErr = err
 		}
 
 		// d. Emit artifact_written if blobs produced
