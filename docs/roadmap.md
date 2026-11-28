@@ -60,6 +60,9 @@ Phases 27–32 were proposed from two kinds of evidence: what this repository de
 | 47    | First Alpha Release (`v0.1.0-alpha.1`, tagged once 37 to 41 and 47 are Completed) | **Planned** |
 | 48    | Independent Groups Run in Parallel         | **Planned**   |
 | 49    | A Bound That Says No Delegation Is Kept     | **Planned**   |
+| 50    | An Approved Action Is Re-checked When It Runs | **Planned** |
+| 51    | A Model Call Has One Deadline, Retries Included | **Planned** |
+| 52    | The Audit Row Records the Model That Answered | **Planned** |
 
 
 ---
@@ -7204,6 +7207,149 @@ what an approval after third-party text buys (Phase 46, Planned) or whether
 the repository's checks run before a delegated push (Phase 45, Planned). It
 does not touch `CanModifyObjective`; whether anything reads that field was
 not checked for this phase.
+
+---
+
+## Phase 50 — An Approved Action Is Re-checked When It Runs (Planned)
+
+**Kind: DEMAND.** From docs/research/discovery-2026-11-22.md, '## Fit and
+bets', ranking candidate 1 ('passes the bar'), resting on part 6 feasibility
+row F1. Three organisations' trackers ask for an approval bound to the action
+and run it was given for, or for authority re-checked after a wait:
+openai-agents-python #5413, "Approval decision transfers across runs when call
+ID is reused", open
+(https://github.com/openai/openai-agents-python/issues/5413, read 2026-11-27,
+[Q]); langgraph #8102, a pre-execution policy hook, closed not planned on
+2026-10-16 (https://github.com/langchain-ai/langgraph/issues/8102, read
+2026-11-27, [Q]/[E]); and Temporal forum t/19610 on authorization drift in
+long-running workflows (https://community.temporal.io/t/19610, read
+2026-11-27, title only). The demand is partial: the wait itself has one clean
+source (t/19610); the bind-to-action neighbour has two organisations.
+
+**Goal:** a loop that acts on an approved checkpoint observes the world again
+and re-runs the authority decision against the current bounds before it acts;
+if the verdict narrows, it does not act, and the audit log says why.
+
+**Why.** Observed by part 6 F1 (path:line from the report, not re-read for
+this phase): a restored loop whose checkpoint was approved acts on
+`approved.observed, approved.plan`, the world state from checkpoint time,
+without observing again (`internal/feature/loop/runner.go:240-251`;
+`approvedPlan` at `internal/feature/loop/service.go:200-215`). That authority
+is checked before an action is Karakuri's core claim, and on this path the
+check is as old as the checkpoint. Not verified: the in-process (no restart)
+approve path may already re-check.
+
+**Steps.**
+1. **Read both approve paths.** Trace the restored path
+   (`internal/feature/loop/runner.go`, `service.go`) and the in-process one;
+   record in this phase which one acts on checkpoint-time state. If neither
+   does, close the phase as already built.
+2. **Observe again, decide again.** Before acting on `takeApproved()`, call
+   `Observe` and re-run `DecideActions` against the run's current
+   `AuthorityBounds` (`internal/feature/loop/runner.go`, `decide.go`). An
+   environment that cannot observe returns an error (ADR 026); the loop then
+   does not act.
+3. **Refuse with a reason.** A narrower verdict writes an audit row naming
+   the action and the bound that changed, and the run ends with a distinct
+   outcome instead of acting (`internal/feature/loop/runner.go`, tests).
+
+**Acceptance.**
+- `go test ./internal/feature/loop/...` holds a case where the bounds narrow
+  between approval and action and the action is not taken, and one where
+  nothing changes and it is.
+- An environment whose `Observe` fails after approval yields no action.
+- `go test ./...` passes.
+
+**What this is not.** It does not change what an approval after third-party
+text buys (Phase 46, Planned), nor refuse an answer to a superseded
+checkpoint, which is built (Phase 40, `internal/feature/checkpoint/service.go:195-197`).
+It does not bind approvals to a call id across runs in the API; the sources
+name that neighbour and this phase leaves it to step 1's findings.
+
+---
+
+## Phase 51 — A Model Call Has One Deadline, Retries Included (Planned)
+
+**Kind: DEMAND.** From docs/research/discovery-2026-11-22.md, '## Fit and
+bets', ranking candidate 2 ('passes the bar'), resting on part 6 feasibility
+row F4. Users of two organisations' tools report a configured timeout that is
+not honoured end to end: claude-code #110211 and #112366
+(https://github.com/anthropics/claude-code/issues/110211 and /112366, read
+2026-11-27, [Q]) and BerriAI's litellm #49751, carried from
+docs/research/discovery-2026-11-15.md and not re-read this cycle. Counts are
+low: 2 and 1 comments.
+
+**Goal:** every model call on the provider path runs under one deadline that
+covers its retries, and a call that hits it fails with a timeout error the
+loop can see.
+
+**Why.** Observed by part 6 F4: delegation timeouts exist in config
+(`config/default.yaml:402`, `:421`), but a grep found no timeout in
+`internal/platform/llm/*.go` (only a comment at `claude.go:140`). A grep miss
+is not proof of absence; the retry code was not opened.
+
+**Steps.**
+1. **Read the retry code** in `internal/platform/llm` and record whether a
+   whole-call deadline already exists. If it does, close the phase with the
+   path:line.
+2. **One deadline per call.** Wrap each provider call and its retries in one
+   deadline from a config value with a default in `config/default.yaml`
+   (`internal/platform/llm/*.go`, tests).
+3. **Name the failure.** A deadline hit surfaces as a timeout, not a generic
+   error, in the loop's outcome (`internal/platform/llm`, tests).
+
+**Acceptance.**
+- `go test ./internal/platform/llm/...` holds a case where a provider that
+  keeps failing retryably is stopped at the deadline, not after the retry
+  count.
+- `go test ./...` passes.
+
+**What this is not.** It does not add timeouts to tools, hooks or delegated
+CLIs, whose timeouts already sit in config, and it does not change retry
+counts or backoff.
+
+---
+
+## Phase 52 — The Audit Row Records the Model That Answered (Planned)
+
+**Kind: FRONTIER BET.** From docs/research/discovery-2026-11-22.md, '## Fit
+and bets', ranking candidate 3 ('passes the bar'), resting on part 6
+feasibility row F6. **The bet:** providers will answer a pinned model id with
+a different model, so an audit row that stores the id Karakuri asked for will
+misstate what decided. **Evidence:** the Google AI Studio changelog announces
+rerouting of `gemini-2.5-pro` from 2026-12-01 (entry dated 2026-11-02,
+https://aistudio.google.com/docs/changelog, read 2026-11-27, [E] extract, not
+quoted); one primary source. **What would prove it wrong:** no provider
+reroutes a pinned model id within the next two discovery cycles, or the audit
+row already stores the response's model id.
+
+**Goal:** the audit row's `Model` is the model id the provider's response
+names, and a mismatch with the requested id is visible.
+
+**Why.** Observed by part 6 F6: the audit row carries `Model`
+(`internal/platform/storage/adapter.go:124-131`, Phase 31), but whether it is
+the requested id or the returned one was not traced. Inferred: Phase 30's
+baselines compare runs by model, and a silent reroute would break that
+comparison (report part 5 C3).
+
+**Steps.**
+1. **Find out, time-boxed to one session.** Trace where `Model` is written,
+   from the LLM adapters (`internal/platform/llm/*`) to
+   `internal/platform/storage/adapter.go`. **Kill criterion:** if it is
+   already the id from the provider's response, close the phase as built and
+   record the path:line.
+2. **Store the answered id.** Take the model id from each provider response in
+   `internal/platform/llm/*` and write it to the audit row, keeping the
+   requested id beside it (`internal/platform/storage/adapter.go`, tests).
+
+**Acceptance.**
+- A test with a fake provider that answers with a different model id writes
+  that id to the audit row.
+- `go test ./...` passes, including `test/integration/openapi_schemas_test.go`
+  if an exported field changes.
+
+**What this is not.** It does not refuse a rerouted answer or pin models at
+the provider; whether a reroute should stop a run is a later question.
 
 ---
 
