@@ -80,7 +80,7 @@ func reportCreateCmd() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&twinID, "twin", "", "Twin to report on (required)")
+	cmd.Flags().StringVar(&twinID, "twin", "", "Twin to report on, by twin ID from 'krk twin list' (required)")
 	cmd.Flags().StringVar(&channel, "channel", "messaging", "Adapter slot: messaging|email|projectmgmt|versioncontrol")
 	cmd.Flags().StringVar(&instance, "instance", "", "Named adapter instance; empty uses the twin's binding")
 	cmd.Flags().StringVar(&target, "target", "", "Where to send it — a channel, an address (required)")
@@ -151,7 +151,7 @@ tomorrow's would have looked like.`,
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&twinID, "twin", "", "Twin to report on (required)")
+	cmd.Flags().StringVar(&twinID, "twin", "", "Twin to report on, by twin ID from 'krk twin list' (required)")
 	cmd.Flags().StringVar(&window, "window", "24h", "How far back to look, e.g. 24h or 168h for a week")
 	_ = cmd.MarkFlagRequired("twin")
 	return cmd

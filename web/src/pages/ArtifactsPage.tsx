@@ -9,6 +9,9 @@ export function ArtifactsPage() {
   const [err, setErr] = useState<string | null>(null);
   // null until the first answer, so "not loaded" never reads as "none exist".
   const [loaded, setLoaded] = useState<'ok' | 'failed' | null>(null);
+  // The objective the shown list was filtered by, '' for all of them, so an
+  // empty filtered list is not reported as there being no artifacts at all.
+  const [shownFor, setShownFor] = useState('');
 
   // Diff state
   const [sha1, setSha1] = useState('');
@@ -24,6 +27,7 @@ export function ArtifactsPage() {
       const q = objectiveID ? `?objective=${encodeURIComponent(objectiveID)}` : '';
       const list = await api.get<Artifact[]>(`/artifacts${q}`);
       setItems(list ?? []);
+      setShownFor(objectiveID ?? '');
       setErr(null);
       setLoaded('ok');
     } catch (e) {
@@ -39,6 +43,13 @@ export function ArtifactsPage() {
     setErr(null);
     setLoaded(null);
     void load(filter || undefined);
+  };
+
+  // Clears the old rows first: left up while the filtered list loads, they
+  // read as the answer to the new filter.
+  const apply = () => {
+    setItems([]);
+    retry();
   };
 
   const runDiff = async () => {
@@ -67,7 +78,7 @@ export function ArtifactsPage() {
             <label htmlFor="artifact-objective">Objective ID</label>
             <input id="artifact-objective" value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="(all)" />
           </div>
-          <button onClick={() => void load(filter || undefined)}>Apply</button>
+          <button onClick={apply}>Apply</button>
         </div>
       </div>
 
@@ -104,7 +115,11 @@ export function ArtifactsPage() {
             </tr>
           )}
           {loaded === 'ok' && items.length === 0 && (
-            <tr><td colSpan={6} className="muted">No artifacts yet. Agents store them as objectives run.</td></tr>
+            <tr><td colSpan={6} className="muted">
+              {shownFor
+                ? `No artifacts for objective ${shownFor}. Check the ID, or clear the filter to see them all.`
+                : 'No artifacts yet. Agents store them as objectives run.'}
+            </td></tr>
           )}
         </tbody>
       </table>

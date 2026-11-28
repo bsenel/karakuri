@@ -12,8 +12,10 @@ import (
 	"github.com/bsenel/karakuri/internal/core/event"
 	"github.com/bsenel/karakuri/internal/core/objective"
 	featurecp "github.com/bsenel/karakuri/internal/feature/checkpoint"
+	"github.com/bsenel/karakuri/internal/feature/gateway"
 	"github.com/bsenel/karakuri/internal/platform/llm"
 	karakuriquota "github.com/bsenel/karakuri/internal/quota"
+	"github.com/bsenel/karakuri/quota"
 	"github.com/bsenel/karakuri/quota/cost"
 )
 
@@ -204,33 +206,22 @@ func (s *serviceImpl) pauseIfBudgetExhausted(ctx context.Context, sc *stepContex
 	return true
 }
 
-// allowCapability charges the twin's daily allowance for one capability and
-// reports whether the action may run.
-//
-// The tier has been configured, documented and defaulted since Phase 15 and was
-// enforced nowhere — TakeCapability had no callers. This is that call site.
-//
-// It fails open, like every other limiter here: a counter that cannot be read
-// must not stop work that is otherwise fine, because a quota backend outage
-// turning into a halted loop does more damage than the calls it would have
-// bounded.
-func (s *serviceImpl) allowCapability(ctx context.Context, sc *stepContext, capabilityID string, index int) bool {
-	if s.quota.Backend == nil || sc.twinID == "" || capabilityID == "" {
-		return true
+// gate returns the gateway the loop's actions go through, never nil: a
+// service built as a struct literal in a test gets one over its own store,
+// quota and cost recorder, the three it charged and wrote through before the
+// gateway existed.
+func (s *serviceImpl) gate() *gateway.Gateway {
+	if s.gateway == nil {
+		return gateway.New(s.store, s.quota, s.costs)
 	}
-	dec, err := s.quota.TakeCapability(ctx, sc.twinID, capabilityID, time.Now())
-	if err != nil {
-		slog.Error("capability quota could not be read; allowing the action",
-			"twin", sc.twinID, "capability", capabilityID, "loop", sc.loopID, "err", err)
-		return true
-	}
-	if dec.Allowed {
-		return true
-	}
+	return s.gateway
+}
 
-	slog.Warn("capability quota exhausted; skipping the action",
-		"twin", sc.twinID, "capability", capabilityID, "loop", sc.loopID,
-		"limit", dec.Limit, "reset_at", dec.ResetAt)
+// reportCapabilityPressure tells the operator an action was skipped because
+// the twin's daily allowance for its capability is spent. The gateway took
+// the charge and refused; the event is the loop's, because it names the
+// objective and the action's place in the plan.
+func (s *serviceImpl) reportCapabilityPressure(ctx context.Context, sc *stepContext, capabilityID string, index int, dec quota.Decision) {
 	s.hub.Publish(ctx, event.Event{
 		Type:        event.TypeQuotaPressure,
 		ObjectiveID: string(sc.obj.ID),
@@ -245,7 +236,6 @@ func (s *serviceImpl) allowCapability(ctx context.Context, sc *stepContext, capa
 		},
 		Timestamp: time.Now().UTC(),
 	})
-	return false
 }
 
 // resourceTypeFor keeps an ad-hoc loop — one with no objective behind it —
