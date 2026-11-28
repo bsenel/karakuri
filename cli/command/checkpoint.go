@@ -25,6 +25,9 @@ func checkpointListCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List pending checkpoints",
+		Long: "List the checkpoints waiting for a human decision; each one holds its\n" +
+			"loop until it is resolved. Read one with krk checkpoint get <id>, then\n" +
+			"decide it with krk checkpoint resolve <id> --decision approve|reject|modify.",
 		Example: `  krk checkpoint list
   krk checkpoint list --twin t_7f2a`,
 		RunE: func(c *cobra.Command, _ []string) error {
